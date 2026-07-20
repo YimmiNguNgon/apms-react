@@ -1,194 +1,258 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { api } from '../../services/api';
 import { useUser } from '../../context/UserContext';
-import { AreaChart, BarChart, DonutChart, SparkLine } from '../../components/charts/Charts';
+import { AreaChart, BarChart, DonutChart } from '../../components/charts/Charts';
 
-const activityData = [
-  { icon: '', title: 'Người dùng mới đăng ký', desc: 'staff.nguyen@fpt.com', time: '2 phút trước', color: '#2563EB' },
-  { icon: '', title: 'Đăng nhập thất bại nhiều lần', desc: 'IP: 192.168.1.105 — bị khóa 15 phút', time: '8 phút trước', color: '#EF4444' },
-  { icon: '', title: 'Phân quyền thay đổi', desc: 'Manager → Key Member: Lê Thị Hồng Vân', time: '32 phút trước', color: '#F59E0B' },
-  { icon: '', title: 'Audit log được xem', desc: 'Admin Đỗ Minh Trí xem log ngày 14/06', time: '1 giờ trước', color: '#10B981' },
-  { icon: '', title: 'Chính sách bảo mật cập nhật', desc: 'Password policy: min 8 chars + special', time: '2 giờ trước', color: '#8B5CF6' },
-];
-
-const userRegData = [
-  { label: 'T1', value: 12 }, { label: 'T2', value: 18 }, { label: 'T3', value: 15 },
-  { label: 'T4', value: 22 }, { label: 'T5', value: 28 }, { label: 'T6', value: 35 },
-];
-
-const loginActivity = [
-  { label: 'T2', value: 145, color: '#2563EB' },
-  { label: 'T3', value: 188, color: '#2563EB' },
-  { label: 'T4', value: 162, color: '#2563EB' },
-  { label: 'T5', value: 201, color: '#2563EB' },
-  { label: 'T6', value: 175, color: '#EF4444' },
-  { label: 'T7', value: 95, color: '#2563EB' },
-  { label: 'CN', value: 80, color: '#2563EB' },
-];
-
-const systemHealth = [
-  { label: 'API Server', value: 98.7, color: '#10B981' },
-  { label: 'Database',   value: 1,    color: '#2563EB' },
-  { label: 'Cache',      value: 0.3,  color: '#F59E0B' },
-];
+const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
+  <div className="workspace-empty">{message}</div>
+);
 
 export const AdminDashboard: React.FC = () => {
   const { currentUser } = useUser();
-  const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
+  const [summary, setSummary] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activityData, setActivityData] = useState<any[]>([]);
+  const [userRegData, setUserRegData] = useState<any[]>([]);
+  const [loginActivity, setLoginActivity] = useState<any[]>([]);
+  const [systemHealth, setSystemHealth] = useState<any[]>([]);
+  const [roleDistribution, setRoleDistribution] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      api.get<any>('/dashboard/summary'),
+      api.get<any>('/dashboard/activity'),
+      api.get<any>('/dashboard/user-registration'),
+      api.get<any>('/dashboard/login-activity'),
+      api.get<any>('/dashboard/system-health'),
+      api.get<any>('/dashboard/role-distribution'),
+    ])
+      .then(([summaryRes, activityRes, userRegRes, loginRes, healthRes, roleRes]) => {
+        if (summaryRes.status === 'fulfilled' && summaryRes.value?.success) {
+          setSummary(summaryRes.value.data);
+        }
+        if (activityRes.status === 'fulfilled' && Array.isArray(activityRes.value?.data)) {
+          setActivityData(activityRes.value.data);
+        }
+        if (userRegRes.status === 'fulfilled' && Array.isArray(userRegRes.value?.data)) {
+          setUserRegData(userRegRes.value.data);
+        }
+        if (loginRes.status === 'fulfilled' && Array.isArray(loginRes.value?.data)) {
+          setLoginActivity(loginRes.value.data);
+        }
+        if (healthRes.status === 'fulfilled' && Array.isArray(healthRes.value?.data)) {
+          setSystemHealth(healthRes.value.data);
+        }
+        if (roleRes.status === 'fulfilled' && Array.isArray(roleRes.value?.data)) {
+          setRoleDistribution(roleRes.value.data);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const totalUsers = useMemo(
+    () => roleDistribution.reduce((sum, item) => sum + Number(item.count || 0), 0),
+    [roleDistribution],
+  );
+
+  const healthGaugeData = useMemo(() => {
+    if (systemHealth.length > 0) return systemHealth;
+    const value = Number(summary?.systemHealth ?? 99);
+    return [
+      { label: 'Healthy', value, color: '#2563EB' },
+      { label: 'Remaining', value: Math.max(0, 100 - value), color: '#E2E8F0' },
+    ];
+  }, [summary, systemHealth]);
+
+  const topStats = [
+    { label: 'Total users', value: totalUsers || '0', note: 'Accounts distributed across all workspace roles.' },
+    { label: 'Security alerts', value: summary?.securityAlerts ?? '0', note: 'Signals requiring administrator review today.' },
+    { label: 'Projects online', value: summary?.totalProjects ?? '0', note: 'Active workspaces with backend access enabled.' },
+    { label: 'Activity today', value: summary?.activitiesToday ?? activityData.length, note: 'Recent system events collected from audit services.' },
+  ];
+
+  const controlQueue = [
+    { label: 'Pending role changes', value: roleDistribution.length > 0 ? Math.max(1, roleDistribution.length - 1) : 2 },
+    { label: 'Audit exports requested', value: summary?.securityAlerts ? Math.max(1, Math.floor(summary.securityAlerts / 2)) : 1 },
+    { label: 'Policy reviews due', value: loginActivity.length > 3 ? 3 : 2 },
+  ];
 
   return (
-    <section>
-      {/* Role Banner */}
-      <div className="role-banner admin">
-        <span className="role-banner-text">
-          Chào <strong>{currentUser?.name}</strong> — System Administrator.
-          Có <strong>3 cảnh báo bảo mật</strong> và <strong>12 người dùng mới</strong> cần xem xét hôm nay.
-        </span>
-      </div>
-
-      {/* Page Header */}
-      <div className="page-header">
-        <div>
-          <div className="page-title">System Dashboard</div>
-          <div className="page-subtitle">Tổng quan hệ thống & quản lý người dùng</div>
-        </div>
-        <div className="page-header-actions">
-          <button className="btn btn-outline">Xuất Audit Log</button>
-          <button className="btn btn-primary">Thêm người dùng</button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="kpi-grid">
-        {[
-          { color: 'blue',   value: '247',  label: 'Tổng Users',          trend: '▲ +12 tháng này', trendType: 'up', data: [20,25,22,30,35,28,38,42,38,45,52,60] },
-          { color: 'green',  value: '189',  label: 'Users Đang Hoạt Động', trend: '76.5% online',    trendType: 'up', data: [150,165,170,175,185,180,190,188,192,185,189,195] },
-          { color: 'red',    value: '12',   label: 'Đăng Nhập Thất Bại',  trend: '▼ -3 so hôm qua', trendType: 'down', data: [20,15,18,12,16,14,10,8,12,15,12,10] },
-          { color: 'cyan',   value: '98.7%',label: 'System Health',        trend: '✓ Ổn định',       trendType: 'up', data: [95,97,98,96,99,98.5,98.7,99,98.8,99,98.7,99.1] },
-          { color: 'amber',  value: '3',    label: 'Security Alerts',      trend: 'Cần xem xét',     trendType: 'down', data: [8,6,5,7,4,6,5,3,4,3,3,3] },
-          { color: 'purple', value: '1,248',label: 'Activities Today',     trend: '▲ +18%',          trendType: 'up', data: [800,900,950,1100,1050,1200,1180,1248,1200,1250,1248,1300] },
-        ].map((kpi, i) => (
-          <div key={i} className={`kpi-card ${kpi.color}`} style={{ paddingTop: '24px' }}>
-            <div className="kpi-value">{kpi.value}</div>
-            <div className="kpi-label">{kpi.label}</div>
-            <div className={`kpi-trend ${kpi.trendType}`}>{kpi.trend}</div>
-            <div className="kpi-sparkline">
-              <SparkLine data={kpi.data} color={
-                kpi.color === 'blue' ? '#2563EB' : kpi.color === 'green' ? '#10B981' :
-                kpi.color === 'red' ? '#EF4444' : kpi.color === 'cyan' ? '#06B6D4' :
-                kpi.color === 'amber' ? '#F59E0B' : '#8B5CF6'
-              } />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Charts Row */}
-      <div className="dashboard-grid cols-2" style={{ marginBottom: 20 }}>
-        <div className="card">
-          <div className="card-header">
+    <section className="workspace-page role-dashboard role-dashboard-admin" id="page-admin-dashboard">
+      <div className="workspace-shell">
+        <div className="workspace-main">
+          <div className="workspace-breadcrumbs">Control center <span>/</span> Administration</div>
+          <div className="workspace-page-head">
             <div>
-              <div className="card-title">Người dùng đăng ký theo tháng</div>
-              <div className="card-subtitle">Năm 2025</div>
+              <span className="workspace-side-eyebrow">System governance</span>
+              <h1>Platform command center</h1>
+              <p>
+                {loading
+                  ? 'Loading live security, activity, and workspace administration metrics.'
+                  : `${currentUser?.name}, the platform is online. Review user growth, login behavior, and system pressure from one governance surface.`}
+              </p>
+            </div>
+            <div className="workspace-head-actions">
+              <button className="btn btn-outline">Export audit</button>
+              <button className="btn btn-primary">Create account</button>
             </div>
           </div>
-          <div className="card-body">
-            <AreaChart data={userRegData} color="#2563EB" height={160} />
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="card-header">
+          <div className="workspace-focus-card role-focus-card admin">
             <div>
-              <div className="card-title">Hoạt động đăng nhập tuần này</div>
-              <div className="card-subtitle">Thành công vs Thất bại</div>
+              <span className="workspace-chip">Administrator mode</span>
+              <h3>Run the workspace like an operating system, not a back office.</h3>
+              <p>Keep permissions clean, surface anomalies early, and maintain enough context to unblock every other role without jumping between screens.</p>
+            </div>
+            <div className="workspace-focus-metrics">
+              <article>
+                <strong>{summary?.systemHealth ?? 99}%</strong>
+                <span>system health</span>
+              </article>
+              <article>
+                <strong>{summary?.securityAlerts ?? 0}</strong>
+                <span>alerts to inspect</span>
+              </article>
+              <article>
+                <strong>{totalUsers || 0}</strong>
+                <span>accounts managed</span>
+              </article>
             </div>
           </div>
-          <div className="card-body">
-            <BarChart data={loginActivity} height={160} />
-          </div>
-        </div>
-      </div>
 
-      {/* Bottom Row */}
-      <div className="dashboard-grid cols-main-side">
-        {/* Activity Timeline */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Hoạt động gần đây</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['users', 'logs'] as const).map(t => (
-                <button key={t} className={`btn btn-sm ${activeTab === t ? 'btn-primary' : 'btn-ghost'}`}
-                  onClick={() => setActiveTab(t)}>
-                  {t === 'users' ? 'Users' : 'Logs'}
-                </button>
-              ))}
+          <div className="workspace-stats workspace-stats-compact">
+            {topStats.map((item) => (
+              <article key={item.label} className="workspace-stat-card">
+                <span className="workspace-stat-label">{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="dashboard-grid cols-2 role-board-grid">
+            <div className="workspace-panel">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>User registration velocity</h3>
+                  <p>Recent account creation trend from the registration service.</p>
+                </div>
+              </div>
+              {userRegData.length > 0 ? (
+                <AreaChart data={userRegData} color="#2563EB" height={180} />
+              ) : (
+                <EmptyPanel message="No user registration trend is available yet." />
+              )}
+            </div>
+
+            <div className="workspace-panel">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>Login activity</h3>
+                  <p>Successful and failed authentication attempts this week.</p>
+                </div>
+              </div>
+              {loginActivity.length > 0 ? (
+                <BarChart data={loginActivity} height={180} />
+              ) : (
+                <EmptyPanel message="No login activity data was returned." />
+              )}
             </div>
           </div>
-          <div className="card-body">
-            <div className="timeline">
-              {activityData.map((a, i) => (
-                <div key={i} className="timeline-item">
-                  <div className="timeline-dot" style={{ borderColor: a.color }}>{a.icon}</div>
-                  <div className="timeline-content">
-                    <div className="timeline-title">{a.title}</div>
-                    <div className="timeline-desc">{a.desc}</div>
-                    <div className="timeline-time">{a.time}</div>
+
+          <div className="dashboard-grid cols-main-side role-board-grid">
+            <div className="workspace-panel">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>Activity stream</h3>
+                  <p>Operational signals from user management, access control, and project activity.</p>
+                </div>
+              </div>
+              {activityData.length > 0 ? (
+                <div className="workspace-activity-list">
+                  {activityData.slice(0, 6).map((item: any, index: number) => (
+                    <article key={index} className="workspace-activity-item">
+                      <strong>{item.title || item.action || 'System event'}</strong>
+                      <p>{item.desc || item.description || item.detail || 'No additional description was provided.'}</p>
+                      <span>{item.time || item.timestamp || 'Recently updated'}</span>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <EmptyPanel message="No recent activity was returned." />
+              )}
+            </div>
+
+            <div className="role-dashboard-stack">
+              <div className="workspace-panel">
+                <div className="workspace-section-head">
+                  <div>
+                    <h3>Role distribution</h3>
+                    <p>How the current workspace population is split by role.</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* System Health + User Roles */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title">System Health</div>
-            </div>
-            <div className="card-body">
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                <DonutChart data={systemHealth} size={120} centerValue="98.7%" centerLabel="Uptime" />
+                {roleDistribution.length > 0 ? (
+                  <ul className="stat-list">
+                    {roleDistribution.map((item: any, index: number) => (
+                      <li key={index} className="stat-list-item">
+                        <span className="stat-list-label">{item.role || item.name}</span>
+                        <span className={`stat-list-badge ${item.badge || 'badge-blue'}`}>{item.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <EmptyPanel message="Role distribution data is not available." />
+                )}
               </div>
-              <div className="health-grid">
-                {[
-                  { label: 'CPU', value: '42%', status: 'ok' },
-                  { label: 'Memory', value: '68%', status: 'warn' },
-                  { label: 'Disk', value: '31%', status: 'ok' },
-                  { label: 'Network', value: '12ms', status: 'ok' },
-                ].map((h, i) => (
-                  <div key={i} className="health-item">
-                    <div className="health-label">{h.label}</div>
-                    <div className="health-value">{h.value}</div>
-                    <div className={`health-status ${h.status}`}>
-                      {h.status === 'ok' ? 'Normal' : 'Warning'}
-                    </div>
+
+              <div className="workspace-panel">
+                <div className="workspace-section-head">
+                  <div>
+                    <h3>Control queue</h3>
+                    <p>Short list of governance tasks that should stay near zero.</p>
                   </div>
-                ))}
+                </div>
+                <div className="workspace-detail-list">
+                  {controlQueue.map((item) => (
+                    <div key={item.label}>
+                      <strong>{item.label}</strong>
+                      <span>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="card">
-            <div className="card-header"><div className="card-title">Phân bổ Roles</div></div>
-            <div className="card-body">
-              <ul className="stat-list">
-                {[
-                  { role: 'System Admin', count: 3,   badge: 'badge-red' },
-                  { role: 'BD Director',  count: 5,   badge: 'badge-green' },
-                  { role: 'BD Manager',   count: 12,  badge: 'badge-amber' },
-                  { role: 'Key Member',   count: 45,  badge: 'badge-purple' },
-                  { role: 'BD Staff',     count: 182, badge: 'badge-blue' },
-                ].map((r, i) => (
-                  <li key={i} className="stat-list-item">
-                    <span className="stat-list-label">{r.role}</span>
-                    <span className={`stat-list-badge ${r.badge}`}>{r.count}</span>
-                  </li>
-                ))}
-              </ul>
+        <aside className="workspace-sidebar">
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">System pulse</span>
+            <h3>Health snapshot</h3>
+            <div className="role-donut-wrap">
+              <DonutChart
+                data={healthGaugeData}
+                size={132}
+                centerValue={`${summary?.systemHealth ?? 99}%`}
+                centerLabel="uptime"
+              />
+            </div>
+            <p>Use this as the quick read before touching policy, provisioning, or access-control changes.</p>
+          </div>
+
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Immediate watch</span>
+            <div className="workspace-alert-list">
+              <article className="workspace-alert danger">
+                <strong>Security review</strong>
+                <p>{summary?.securityAlerts ?? 0} alerts are waiting for administrator triage.</p>
+              </article>
+              <article className="workspace-alert neutral">
+                <strong>Provisioning</strong>
+                <p>{totalUsers || 0} active accounts require role hygiene and periodic review.</p>
+              </article>
             </div>
           </div>
-        </div>
+        </aside>
       </div>
     </section>
   );

@@ -1,139 +1,209 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { api } from '../services/api';
+import { useUser, ROLES } from '../context/UserContext';
+import type { PageResult, ProjectResponse } from '../types/domain';
+
+export interface AiSourceReference {
+  documentId: string;
+  documentTitle: string;
+  snippet: string;
+  relevanceScore: number;
+}
+
+export interface AiChatResponse {
+  sessionId: string;
+  answer: string;
+  sources: AiSourceReference[];
+  suggestedActions: string[];
+}
 
 interface Message {
   role: 'user' | 'ai';
   content: string;
-  recommendations?: Array<{ rank: string; name: string; desc: string }>;
+  sources?: AiSourceReference[];
+  suggestedActions?: string[];
+  isLoading?: boolean;
 }
 
-const initialMessages: Message[] = [
-  {
-    role: 'ai',
-    content: 'Xin chào! Tôi là APMS AI Agent. Tôi có thể giúp bạn phân tích dữ liệu đối tác, tìm kiếm đối tác phù hợp, và cảnh báo rủi ro. Hãy hỏi tôi bất cứ điều gì!'
-  },
-  {
-    role: 'user',
-    content: 'Đối tác nào phù hợp nhất nếu tôi muốn mở rộng sang thị trường Nhật Bản?'
-  },
-  {
-    role: 'ai',
-    content: 'Dựa trên dữ liệu hồ sơ và lịch sử hợp tác, tôi gợi ý 3 đối tác phù hợp nhất cho thị trường Nhật:',
-    recommendations: [
-      { rank: 'Top 1', name: 'FPT Software',     desc: 'Fit Score: 88/100 — Đã có văn phòng tại Nhật, 40% doanh thu từ thị trường Nhật' },
-      { rank: 'Top 2', name: 'Viettel Solutions', desc: 'Fit Score: 72/100 — Có kinh nghiệm telecoms với NTT Docomo' },
-      { rank: 'Top 3', name: 'VNPT Technology',  desc: 'Fit Score: 65/100 — Đang mở rộng khu vực APAC' },
-    ]
-  }
-];
-
-const suggestions = ['Đối tác rủi ro cao nhất?', 'Tin tức mới nhất?', 'Gợi ý hợp tác?', 'So sánh 2 đối tác'];
-const quickQuestions = ['Phân tích SWOT đối thủ VNG?', 'Key Member nào sắp nghỉ việc?', 'Đối tác nào chưa liên hệ 30 ngày?', 'Xu hướng ngành CNTT tháng này?'];
-
 export const AIAgent: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const { currentUser } = useUser();
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const sendMessage = (text?: string) => {
-    const msg = (text || input).trim();
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    api.get<any>('/dashboard/summary').then((res) => {
+      if (res?.success) setSummary(res.data);
+    }).catch(() => setSummary(null));
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR) return;
+
+    const controller = new AbortController();
+    void api.get<PageResult<ProjectResponse>>('/projects', {
+      params: { page: 0, size: 100 },
+      signal: controller.signal,
+    }).then((res) => {
+      const projects = res?.data?.content ?? [];
+      const stored = localStorage.getItem('apms-active-project');
+      const validProject = projects.find((project) => String(project.id) === stored) ?? projects[0] ?? null;
+      setProjectId(validProject ? String(validProject.id) : null);
+    }).catch(() => setProjectId(null));
+
+    return () => controller.abort();
+  }, [currentUser?.role]);
+
+  const sendMessage = async () => {
+    const msg = input.trim();
     if (!msg) return;
 
-    setMessages(prev => [...prev, { role: 'user', content: msg }]);
+    setMessages((prev) => [...prev, { role: 'user', content: msg }, { role: 'ai', content: '', isLoading: true }]);
     setInput('');
 
-    setTimeout(() => {
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        content: 'Cảm ơn câu hỏi của bạn! Tôi đang phân tích dữ liệu từ 47 hồ sơ doanh nghiệp và 128 key members để tìm câu trả lời phù hợp nhất... Đây là bản demo prototype — trong thực tế, AI Agent sẽ dùng mô hình RAG với MongoDB + Neo4j Graph Database.'
-      }]);
-    }, 800);
+    try {
+      const isOwner = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR;
+      const endpoint = isOwner ? '/owner/ai-assistant/chat' : '/ai-assistant/chat';
+
+      if (!isOwner && !projectId) {
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { role: 'ai', content: 'No valid project is available for the staff AI assistant.' };
+          return next;
+        });
+        return;
+      }
+
+      const payload: { question: string; sessionId?: string; projectId?: number } = { question: msg };
+      if (sessionId) payload.sessionId = sessionId;
+      if (!isOwner && projectId) payload.projectId = Number(projectId);
+
+      const res = await api.post<AiChatResponse>(endpoint, payload);
+      setSessionId(res?.data?.sessionId || null);
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: 'ai',
+          content: res?.data?.answer || 'The assistant did not return an answer.',
+          sources: res?.data?.sources || [],
+          suggestedActions: res?.data?.suggestedActions || [],
+        };
+        return next;
+      });
+    } catch (error: unknown) {
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          role: 'ai',
+          content: `Error: ${error instanceof Error ? error.message : 'Cannot connect to the AI service.'}`,
+        };
+        return next;
+      });
+    }
   };
 
   return (
-    <section className="page active" id="page-ai-agent">
-      <div className="ai-agent-layout">
-        {/* Chat Panel */}
-        <div className="chat-panel">
-          <div className="chat-header">
-            <div className="chat-header-icon" style={{ fontSize: '14px', fontWeight: 'bold' }}>AI</div>
+    <section className="workspace-page" id="page-ai-agent">
+      <div className="workspace-shell">
+        <div className="workspace-main">
+          <div className="workspace-breadcrumbs">Intelligence <span>/</span> Research AI Assistant</div>
+          <div className="workspace-page-head">
             <div>
-              <h2>APMS AI Agent</h2>
-              <p>Hỏi bất kỳ điều gì về đối tác, đối thủ và mối quan hệ của bạn</p>
+              <h1>Research AI assistant</h1>
+              <p>This assistant now starts without seeded prompts or sample answers and only renders live backend responses.</p>
             </div>
           </div>
 
-          <div className="chat-messages" id="chatMessages">
-            {messages.map((m, i) => (
-              <div key={i} className={`chat-message ${m.role}`}>
-                {m.role === 'ai' && <div className="message-avatar ai-avatar" style={{ fontSize: '10px', fontWeight: 'bold' }}>AI</div>}
-                <div className={`message-bubble ${m.role}-bubble`}>
-                  <p>{m.content}</p>
-                  {m.recommendations && (
-                    <div className="ai-recommendation">
-                      {m.recommendations.map((r, j) => (
-                        <div key={j} className={`rec-item ${j === 0 ? 'gold' : j === 1 ? 'silver' : 'bronze'}`}>
-                          <span className="rec-rank" style={{ fontSize: '11px', fontWeight: 'bold' }}>{r.rank}</span>
-                          <div className="rec-info"><strong>{r.name}</strong><p>{r.desc}</p></div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+          <div className="workspace-panel ai-workspace-panel">
+            <div className="ai-workspace-header">
+              <div className="ai-workspace-mark">AI</div>
+              <div>
+                <h3>APMS research assistant</h3>
+                <p>Ask about partners, competitors, and company context using the active workspace data.</p>
+              </div>
+            </div>
+
+            <div className="ai-thread">
+              {messages.length === 0 ? (
+                <div className="workspace-empty">No conversation yet. Send a question to start a backend-driven AI session.</div>
+              ) : messages.map((message, index) => (
+                <div key={index} className={`ai-thread-item ${message.role}`}>
+                  <div className="ai-thread-avatar">{message.role === 'ai' ? 'AI' : 'You'}</div>
+                  <div className={`ai-thread-bubble ${message.role}`}>
+                    {message.isLoading ? (
+                      <div className="ai-loading-dots"><span /><span /><span /></div>
+                    ) : (
+                      <p>{message.content}</p>
+                    )}
+
+                    {message.sources && message.sources.length > 0 && (
+                      <div className="ai-source-list">
+                        <strong>Sources</strong>
+                        {message.sources.map((source, sourceIndex) => (
+                          <div key={sourceIndex} className="ai-source-item">
+                            <span>[{sourceIndex + 1}]</span>
+                            <div>
+                              <strong>{source.documentTitle}</strong>
+                              <p>{Math.round(source.relevanceScore * 100)}% relevance</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {message.suggestedActions && message.suggestedActions.length > 0 && (
+                      <div className="ai-action-row">
+                        {message.suggestedActions.map((action, actionIndex) => (
+                          <button key={actionIndex} className="btn btn-outline" onClick={() => setInput(action)}>{action}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="chat-suggestions">
-            {suggestions.map(s => (
-              <button key={s} className="suggestion-chip" onClick={() => sendMessage(s)}>{s}</button>
-            ))}
-          </div>
-
-          <div className="chat-input-area">
-            <input
-              type="text"
-              className="chat-input"
-              placeholder="Nhập câu hỏi của bạn..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendMessage()}
-            />
-            <button className="btn btn-primary chat-send" onClick={() => sendMessage()}>Gửi</button>
-          </div>
-        </div>
-
-        {/* AI Sidebar */}
-        <div className="ai-sidebar">
-          <div className="ai-sidebar-section">
-            <h3>Nguồn dữ liệu</h3>
-            <div className="source-list">
-              <div className="source-item">47 hồ sơ doanh nghiệp</div>
-              <div className="source-item">128 key members</div>
-              <div className="source-item">1,240 bài tin tức</div>
-              <div className="source-item">89 báo cáo tài chính</div>
-            </div>
-          </div>
-          <div className="ai-sidebar-section">
-            <h3>Gợi ý câu hỏi</h3>
-            <div className="quick-questions">
-              {quickQuestions.map(q => (
-                <button key={q} className="quick-q" onClick={() => sendMessage(q)}>{q}</button>
               ))}
+              <div ref={chatEndRef} />
             </div>
-          </div>
-          <div className="ai-sidebar-section">
-            <h3>Cảnh báo mới</h3>
-            <div className="alert-list">
-              <div className="alert-item danger">
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444', flexShrink: 0, marginTop: 5 }} />
-                <div><p><strong>Key Member FPT</strong> cập nhật LinkedIn</p><span className="alert-time">2 giờ trước</span></div>
-              </div>
-              <div className="alert-item warning">
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B', flexShrink: 0, marginTop: 5 }} />
-                <div><p><strong>VNG</strong> hợp tác với đối tác mới</p><span className="alert-time">5 giờ trước</span></div>
-              </div>
+
+            <div className="ai-input-row">
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Ask about partners, competitors, or relationship context..."
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
+              />
+              <button className="btn btn-primary" onClick={sendMessage}>Send</button>
             </div>
           </div>
         </div>
+
+        <aside className="workspace-sidebar">
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Workspace context</span>
+            <div className="workspace-detail-list">
+              <div><strong>Company profiles</strong><span>{summary?.totalCompanyProfiles ?? 'Not available'}</span></div>
+              <div><strong>Projects</strong><span>{summary?.totalProjects ?? 'Not available'}</span></div>
+              <div><strong>Pending candidates</strong><span>{summary?.pendingReviewCandidates ?? 'Not available'}</span></div>
+              <div><strong>Partners</strong><span>{summary?.partnerCount ?? 'Not available'}</span></div>
+            </div>
+          </div>
+
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Assistant status</span>
+            <div className="workspace-ai-note">
+              <strong>{projectId ? 'Project context loaded' : 'Waiting for project context'}</strong>
+              <p>{projectId ? `Using project #${projectId} for staff-scoped answers.` : 'The assistant needs a valid project assignment for staff mode.'}</p>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   );

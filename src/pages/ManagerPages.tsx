@@ -1,52 +1,151 @@
-import React, { useState } from 'react';
-
-// ─── Shared mock ───
-const COMPANIES_POOL = [
-  { id: 1, name: 'FPT Corporation',   region: 'HCM', industry: 'Technology', score: 92 },
-  { id: 2, name: 'VNPT Group',        region: 'HN',  industry: 'Telecom',    score: 85 },
-  { id: 3, name: 'Viettel Digital',   region: 'HN',  industry: 'Technology', score: 88 },
-  { id: 4, name: 'CMC Technology',    region: 'HCM', industry: 'IT',         score: 74 },
-  { id: 5, name: 'MoMo',             region: 'HCM', industry: 'FinTech',    score: 69 },
-  { id: 6, name: 'VinGroup',         region: 'HN',  industry: 'Conglomerate',score: 95 },
-  { id: 7, name: 'Sacombank',        region: 'HCM', industry: 'Banking',    score: 71 },
-  { id: 8, name: 'TH True Milk',     region: 'HN',  industry: 'FMCG',       score: 66 },
-];
-
-// ─── Partner Evaluation ───
-const EVALUATIONS = [
-  { id: 1, company: 'FPT Corporation', evaluator: 'Trần QB', date: '14/06/2026', score: 92, recommendation: 'Nâng cấp Platinum', status: 'approved' },
-  { id: 2, company: 'MoMo',           evaluator: 'Lê HV',   date: '13/06/2026', score: 69, recommendation: 'Giữ nguyên Silver',  status: 'pending' },
-  { id: 3, company: 'CMC Technology', evaluator: 'Hà ĐH',   date: '12/06/2026', score: 74, recommendation: 'Xem xét lại Q3',     status: 'review' },
-  { id: 4, company: 'Sacombank',      evaluator: 'Trần QB', date: '10/06/2026', score: 71, recommendation: 'Cần bổ sung tài liệu',status: 'pending' },
-];
+﻿import React, { useState, useEffect } from 'react';
+import { api } from '../services/api';
+import { DonutChart } from '../components/charts/Charts';
 
 const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> = {
-  approved: { bg: '#D1FAE5', color: '#065F46', label: 'Đã duyệt' },
-  pending:  { bg: '#FEF3C7', color: '#92400E', label: 'Chờ duyệt' },
-  review:   { bg: '#DBEAFE', color: '#1E40AF', label: 'Đang xem xét' },
-  rejected: { bg: '#FEE2E2', color: '#991B1B', label: 'Từ chối' },
+  VERIFIED: { bg: '#D1FAE5', color: '#065F46', label: 'Đã duyệt' },
+  PENDING_REVIEW:  { bg: '#FEF3C7', color: '#92400E', label: 'Chờ duyệt' },
+  IN_PROGRESS:   { bg: '#DBEAFE', color: '#1E40AF', label: 'Đang xem xét' },
+  REJECTED: { bg: '#FEE2E2', color: '#991B1B', label: 'Từ chối' },
+  ACTIVE: { bg: '#D1FAE5', color: '#065F46', label: 'Hoạt động' },
+  DEFAULT: { bg: '#FEE2E2', color: '#991B1B', label: 'Chưa rõ' },
 };
 
 export const PartnerEvaluation: React.FC = () => {
   const [search, setSearch] = useState('');
-  const filtered = EVALUATIONS.filter(e =>
-    e.company.toLowerCase().includes(search.toLowerCase())
+  const [evaluations, setEvaluations] = useState<any[]>([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [draft, setDraft] = useState({
+    companyName: '',
+    score: '75',
+    reviewStatus: 'PENDING_REVIEW',
+    note: '',
+  });
+
+  useEffect(() => {
+    api.get<any>('/profiles').then(res => {
+      if (res?.success && res.data) {
+        const rows = res.data.content || res.data || [];
+        setEvaluations(Array.isArray(rows) ? rows : []);
+      }
+    });
+  }, []);
+
+  const filtered = evaluations.filter(e =>
+    (e.tradeName || e.legalName)?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const handleCreateEvaluation = () => {
+    const companyName = draft.companyName.trim();
+    const parsedScore = Number(draft.score);
+
+    if (!companyName) {
+      setFeedback('Nhập tên công ty trước khi tạo đánh giá.');
+      return;
+    }
+
+    const nextEvaluation = {
+      companyId: `local-${Date.now()}`,
+      tradeName: companyName,
+      legalName: companyName,
+      reviewStatus: draft.reviewStatus,
+      score: Number.isFinite(parsedScore) ? Math.max(0, Math.min(100, parsedScore)) : null,
+      totalScore: Number.isFinite(parsedScore) ? Math.max(0, Math.min(100, parsedScore)) : null,
+      industry: 'Manual entry',
+      taxCode: 'N/A',
+      createdFrom: 'local-draft',
+      notes: draft.note.trim(),
+    };
+
+    setEvaluations(current => [nextEvaluation, ...current]);
+    setDraft({
+      companyName: '',
+      score: '75',
+      reviewStatus: 'PENDING_REVIEW',
+      note: '',
+    });
+    setShowCreateForm(false);
+    setFeedback(`Đã tạo đánh giá nháp cho ${companyName}.`);
+  };
+
   return (
-    <section className="page active">
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
       <div className="page-header">
         <h1>Partner Evaluation</h1>
         <div className="page-header-actions">
-          <button className="btn btn-primary">+ Tạo đánh giá</button>
+          <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>
+            {showCreateForm ? 'Đóng form' : '+ Tạo đánh giá'}
+          </button>
         </div>
       </div>
+      {feedback && <div className="workspace-inline-note" style={{ marginBottom: 16 }}>{feedback}</div>}
+      {showCreateForm && (
+        <div className="workspace-panel" style={{ marginBottom: 18 }}>
+          <div className="workspace-section-head">
+            <div>
+              <h3>Create partner evaluation</h3>
+              <p>Tạo nháp đánh giá trong phiên hiện tại. Khi chưa có API tạo riêng, mục này giữ cho nút hoạt động ngay.</p>
+            </div>
+          </div>
+          <div className="workspace-form-grid">
+            <label>
+              <span>Company name</span>
+              <input
+                className="search-input"
+                value={draft.companyName}
+                onChange={(e) => setDraft((current) => ({ ...current, companyName: e.target.value }))}
+                placeholder="FPT Software"
+              />
+            </label>
+            <label>
+              <span>Score</span>
+              <input
+                className="search-input"
+                value={draft.score}
+                onChange={(e) => setDraft((current) => ({ ...current, score: e.target.value }))}
+                inputMode="numeric"
+                placeholder="75"
+              />
+            </label>
+            <label>
+              <span>Status</span>
+              <select
+                className="search-input"
+                value={draft.reviewStatus}
+                onChange={(e) => setDraft((current) => ({ ...current, reviewStatus: e.target.value }))}
+              >
+                <option value="PENDING_REVIEW">Pending review</option>
+                <option value="IN_PROGRESS">In progress</option>
+                <option value="VERIFIED">Verified</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="ACTIVE">Active</option>
+              </select>
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <span>Note</span>
+              <textarea
+                className="search-input"
+                value={draft.note}
+                onChange={(e) => setDraft((current) => ({ ...current, note: e.target.value }))}
+                rows={3}
+                placeholder="Short context for this evaluation"
+                style={{ resize: 'vertical' }}
+              />
+            </label>
+          </div>
+          <div className="workspace-head-actions">
+            <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleCreateEvaluation}>Create draft</button>
+          </div>
+        </div>
+      )}
       <div className="dashboard-grid" style={{ marginBottom: 24 }}>
         {[
-          { label: 'Tổng đánh giá', value: EVALUATIONS.length },
-          { label: 'Đã duyệt',      value: EVALUATIONS.filter(e => e.status === 'approved').length },
-          { label: 'Chờ duyệt',     value: EVALUATIONS.filter(e => e.status === 'pending').length },
-          { label: 'Điểm TB',        value: Math.round(EVALUATIONS.reduce((s,e) => s+e.score,0)/EVALUATIONS.length) },
+          { label: 'Tổng đánh giá', value: evaluations.length },
+          { label: 'Đã duyệt',      value: evaluations.filter(e => e.reviewStatus === 'VERIFIED').length },
+          { label: 'Chờ duyệt',     value: evaluations.filter(e => e.reviewStatus === 'PENDING_REVIEW').length },
+          { label: 'Điểm TB',        value: 'N/A' },
         ].map(s => (
           <div key={s.label} className="kpi-card">
             <div className="kpi-value">{s.value}</div>
@@ -57,22 +156,23 @@ export const PartnerEvaluation: React.FC = () => {
       <input className="search-input" placeholder="Tìm công ty..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16, width: '100%', maxWidth: 360 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {filtered.map(ev => {
-          const sc = STATUS_MAP[ev.status];
+          const sc = STATUS_MAP[ev.reviewStatus || 'DEFAULT'] || STATUS_MAP.DEFAULT;
+          const score = typeof ev.score === 'number' ? ev.score : typeof ev.totalScore === 'number' ? ev.totalScore : null;
           return (
-            <div key={ev.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: `conic-gradient(#2563EB ${ev.score * 3.6}deg, var(--border-light) 0deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>{ev.score}</div>
+            <div key={ev.companyId} className="card" style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: score !== null ? `conic-gradient(#2563EB ${score * 3.6}deg, var(--border-light) 0deg)` : 'var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>{score ?? '—'}</div>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{ev.company}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Đánh giá bởi {ev.evaluator} · {ev.date}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>{ev.recommendation}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{ev.tradeName || ev.legalName}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Mã số thuế: {ev.taxCode} · Lĩnh vực: {ev.industry}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>Dữ liệu lấy từ hệ thống</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                 <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: sc.bg, color: sc.color }}>{sc.label}</span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-sm btn-outline">Xem</button>
-                  {ev.status === 'pending' && <button className="btn btn-sm btn-primary">Duyệt</button>}
+                  {ev.reviewStatus === 'PENDING_REVIEW' && <button className="btn btn-sm btn-primary">Duyệt</button>}
                 </div>
               </div>
             </div>
@@ -83,390 +183,938 @@ export const PartnerEvaluation: React.FC = () => {
   );
 };
 
-// ─── Company Assignment ───
-const STAFF_LIST = [
-  { id: 1, name: 'Lê Thị Hồng Vân', role: 'Key Member', assigned: 3 },
-  { id: 2, name: 'Hà Đức Huy',      role: 'BD Staff',   assigned: 4 },
-  { id: 3, name: 'Phạm Thị Lan',    role: 'BD Staff',   assigned: 2 },
-];
-
+// â”€â”€â”€ Company Assignment â”€â”€â”€
 export const CompanyAssignment: React.FC = () => {
-  const [assignments, setAssignments] = useState<Record<number, number>>({
-    1: 1, 2: 1, 3: 2, 4: 3, 5: 2, 6: 1, 7: 3, 8: 2,
+  const [projects, setProjects] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get<any>('/projects', { params: { page: 0, size: 50 } })
+      .then(res => {
+        if (res?.success && Array.isArray(res.data?.content)) setProjects(res.data.content);
+        else if (res?.success && Array.isArray(res.data)) setProjects(res.data);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = projects.filter(project => {
+    const label = `${project.projectName || ''} ${project.targetCompanyName || ''} ${project.projectType || ''}`.toLowerCase();
+    return label.includes(search.toLowerCase());
   });
 
+  const counts = {
+    total: projects.length,
+    active: projects.filter(p => p.status === 'IN_PROGRESS').length,
+    draft: projects.filter(p => p.status === 'DRAFT').length,
+    members: projects.reduce((sum, project) => sum + ((project.members || []).length || 0), 0),
+  };
+
+  const statusTone = (status: string) => {
+    if (status === 'COMPLETED') return { bg: '#D1FAE5', color: '#065F46', label: 'Done' };
+    if (status === 'IN_PROGRESS') return { bg: '#DBEAFE', color: '#1D4ED8', label: 'In progress' };
+    if (status === 'CANCELLED') return { bg: '#FEE2E2', color: '#B91C1C', label: 'Cancelled' };
+    return { bg: '#E2E8F0', color: '#475569', label: 'Draft' };
+  };
+
   return (
-    <section className="page active">
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
       <div className="page-header">
+        <span className="page-subtitle">Manager workspace</span>
         <h1>Company Assignment</h1>
-        <div className="page-header-actions">
-          <button className="btn btn-primary">Lưu phân công</button>
-        </div>
+        <p>Review active projects, track ownership, and keep member assignments aligned with the current workload.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20 }}>
-        <div>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Phân công công ty</h3>
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-                  {['Công ty', 'Khu vực', 'Ngành', 'Điểm', 'Nhân viên phụ trách'].map(h => (
-                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {COMPANIES_POOL.map(c => (
-                  <tr key={c.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <td style={{ padding: '11px 14px', fontWeight: 600 }}>{c.name}</td>
-                    <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{c.region}</td>
-                    <td style={{ padding: '11px 14px' }}><span className="badge badge-blue" style={{ fontSize: 11 }}>{c.industry}</span></td>
-                    <td style={{ padding: '11px 14px', fontWeight: 700, color: c.score >= 80 ? '#10B981' : c.score >= 70 ? '#F59E0B' : '#EF4444' }}>{c.score}</td>
-                    <td style={{ padding: '11px 14px' }}>
-                      <select
-                        value={assignments[c.id] || ''}
-                        onChange={e => setAssignments(prev => ({ ...prev, [c.id]: Number(e.target.value) }))}
-                        style={{ padding: '5px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12 }}
-                      >
-                        {STAFF_LIST.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="dashboard-grid" style={{ marginBottom: 18 }}>
+        {[
+          { label: 'Projects', value: counts.total },
+          { label: 'In progress', value: counts.active },
+          { label: 'Drafts', value: counts.draft },
+          { label: 'Assigned members', value: counts.members },
+        ].map(item => (
+          <div key={item.label} className="kpi-card">
+            <div className="kpi-value">{item.value}</div>
+            <div className="kpi-label">{item.label}</div>
           </div>
-        </div>
+        ))}
+      </div>
 
-        <div>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tải công việc</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {STAFF_LIST.map(s => {
-              const count = Object.values(assignments).filter(v => v === s.id).length;
-              const pct = Math.round((count / COMPANIES_POOL.length) * 100);
-              return (
-                <div key={s.id} className="card">
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>{s.role}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, background: 'var(--border-light)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, background: pct > 60 ? '#EF4444' : '#2563EB', height: '100%', borderRadius: 4, transition: 'width 0.3s' }} />
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 700, minWidth: 32 }}>{count}</span>
+      <input
+        className="search-input"
+        placeholder="Search project or company..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ width: '100%', maxWidth: 380, marginBottom: 16 }}
+      />
+
+      {loading ? (
+        <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading projects...</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+          {filtered.map(project => {
+            const tone = statusTone(project.status);
+            const memberCount = (project.members || []).length || 0;
+            return (
+              <div key={project.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>{project.projectName}</div>
+                    <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 12 }}>{project.targetCompanyName}</div>
+                  </div>
+                  <span style={{ padding: '4px 10px', borderRadius: 999, background: tone.bg, color: tone.color, fontSize: 11, fontWeight: 700 }}>{tone.label}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
+                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Type</div>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{project.projectType}</div>
+                  </div>
+                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Members</div>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{memberCount}</div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {project.description || 'No description available for this project.'}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
     </section>
   );
 };
 
-// ─── Risk Monitoring ───
-const RISKS = [
-  { id: 1, company: 'MoMo',           risk: 'Tài chính', level: 'High',   desc: 'Tăng trưởng giảm 3% liên tiếp 2 quý; burn rate tăng 15%.', lastUpdate: '15/06/2026' },
-  { id: 2, company: 'CMC Technology', risk: 'Hoạt động', level: 'Medium', desc: 'Chưa nộp báo cáo kiểm toán Q1/2026 theo hợp đồng.', lastUpdate: '14/06/2026' },
-  { id: 3, company: 'Sacombank',      risk: 'Pháp lý',   level: 'Medium', desc: 'Đang điều tra của Ngân hàng Nhà nước về một giao dịch.', lastUpdate: '12/06/2026' },
-  { id: 4, company: 'TH True Milk',   risk: 'Thị trường',level: 'Low',    desc: 'Thị phần giảm nhẹ tại miền Nam do cạnh tranh mới.', lastUpdate: '10/06/2026' },
-];
+// â”€â”€â”€ Risk Monitoring â”€â”€â”€
+export const RiskMonitoring: React.FC = () => {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const RISK_COLOR = { High: '#EF4444', Medium: '#F59E0B', Low: '#10B981' };
+  useEffect(() => {
+    api.get<any>('/risk-monitoring')
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) setItems(res.data);
+        else if (res?.success && Array.isArray(res.data?.content)) setItems(res.data.content);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-export const RiskMonitoring: React.FC = () => (
-  <section className="page active">
-    <div className="page-header">
-      <h1>Risk Monitoring</h1>
-      <div className="page-header-actions">
-        <button className="btn btn-outline">Xuất báo cáo rủi ro</button>
-      </div>
-    </div>
-    <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-      {[
-        { label: 'Tổng rủi ro',   value: RISKS.length },
-        { label: 'Mức cao',       value: RISKS.filter(r => r.level === 'High').length },
-        { label: 'Mức trung bình',value: RISKS.filter(r => r.level === 'Medium').length },
-        { label: 'Mức thấp',      value: RISKS.filter(r => r.level === 'Low').length },
-      ].map(s => (
-        <div key={s.label} className="kpi-card">
-          <div className="kpi-value">{s.value}</div>
-          <div className="kpi-label">{s.label}</div>
-        </div>
-      ))}
-    </div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {RISKS.map(r => (
-        <div key={r.id} className="card" style={{ borderLeft: `4px solid ${RISK_COLOR[r.level as keyof typeof RISK_COLOR]}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{r.company}</div>
-              <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.risk}</span>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: `${RISK_COLOR[r.level as keyof typeof RISK_COLOR]}15`, color: RISK_COLOR[r.level as keyof typeof RISK_COLOR] }}>
-                {r.level}
-              </span>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Cập nhật: {r.lastUpdate}</div>
-            </div>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>{r.desc}</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-sm btn-outline">Xem chi tiết</button>
-            <button className="btn btn-sm btn-outline">Ghi chú</button>
-          </div>
-        </div>
-      ))}
-    </div>
-  </section>
-);
+  const high = items.filter(item => (Number(item?.riskScore) || 0) >= 60).length;
+  const medium = items.filter(item => (Number(item?.riskScore) || 0) >= 40 && (Number(item?.riskScore) || 0) < 60).length;
+  const low = items.filter(item => (Number(item?.riskScore) || 0) < 40).length;
+  const averageRisk = items.length > 0
+    ? Math.round(items.reduce((sum, item) => sum + (Number(item?.riskScore) || 0), 0) / items.length)
+    : 0;
 
-// ─── Approvals (suggested-actions-approval) ───
-const APPROVALS = [
-  { id: 1, title: 'Phân loại FPT Corporation → Platinum Partner', requestedBy: 'Lê HV',  date: '16/06/2026', type: 'Classification', priority: 'High' },
-  { id: 2, title: 'Thêm mới: Công ty Vinamilk vào hệ thống',      requestedBy: 'Hà ĐH',  date: '16/06/2026', type: 'New Company',    priority: 'Normal' },
-  { id: 3, title: 'Cập nhật dữ liệu VNPT Group (Q2/2026)',         requestedBy: 'Hà ĐH',  date: '15/06/2026', type: 'Data Update',   priority: 'Normal' },
-  { id: 4, title: 'Xóa công ty trùng: CMC Corp duplicate',         requestedBy: 'Lê HV',  date: '15/06/2026', type: 'Dedup',         priority: 'Low' },
-  { id: 5, title: 'AI gợi ý: Theo dõi thêm MoMo 30 ngày',         requestedBy: 'AI Bot', date: '14/06/2026', type: 'AI Action',     priority: 'High' },
-];
-
-export const ApprovalsPage: React.FC = () => {
-  const [decisions, setDecisions] = useState<Record<number, 'approved' | 'rejected' | null>>({});
-
-  const decide = (id: number, d: 'approved' | 'rejected') =>
-    setDecisions(prev => ({ ...prev, [id]: d }));
-
-  const pending = APPROVALS.filter(a => !decisions[a.id]);
+  const tone = (riskScore: number) => {
+    if (riskScore >= 60) return { bg: '#FEE2E2', color: '#B91C1C', label: 'High' };
+    if (riskScore >= 40) return { bg: '#FEF3C7', color: '#92400E', label: 'Medium' };
+    return { bg: '#D1FAE5', color: '#065F46', label: 'Low' };
+  };
 
   return (
-    <section className="page active">
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
       <div className="page-header">
+        <span className="page-subtitle">Risk dashboard</span>
+        <h1>Risk Monitoring</h1>
+        <p>Surface companies that need attention first, then separate the queue by risk intensity.</p>
+      </div>
+
+      <div className="dashboard-grid" style={{ marginBottom: 18 }}>
+        {[
+          { label: 'Average risk', value: `${averageRisk}%` },
+          { label: 'High risk', value: high },
+          { label: 'Medium risk', value: medium },
+          { label: 'Low risk', value: low },
+        ].map(item => (
+          <div key={item.label} className="kpi-card">
+            <div className="kpi-value">{item.value}</div>
+            <div className="kpi-label">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading risk data...</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+          {items.map(item => {
+            const riskScore = Number(item?.riskScore) || 0;
+            const rowTone = tone(riskScore);
+            return (
+              <div key={item.companyId} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.tradeName || item.legalName}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{item.industry}</div>
+                  </div>
+                  <span style={{ padding: '4px 10px', borderRadius: 999, background: rowTone.bg, color: rowTone.color, fontSize: 11, fontWeight: 700 }}>{rowTone.label}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--border-light)', overflow: 'hidden' }}>
+                    <div style={{ width: `${riskScore}%`, height: '100%', borderRadius: 'inherit', background: riskScore >= 60 ? '#ef4444' : riskScore >= 40 ? '#f59e0b' : '#10b981' }} />
+                  </div>
+                  <strong style={{ minWidth: 36, textAlign: 'right' }}>{riskScore}</strong>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 12 }}>
+                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status</div>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.reviewStatus}</div>
+                  </div>
+                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tax code</div>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.taxCode || '—'}</div>
+                  </div>
+                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Risk label</div>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.riskLevel}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+};
+
+// â”€â”€â”€ Approvals â”€â”€â”€
+export const ApprovalsPage: React.FC = () => {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<any>('/projects', { params: { page: 0, size: 50 } })
+      .then(res => {
+        const rows = res?.data?.content || res?.data || [];
+        const normalized = Array.isArray(rows) ? rows : [];
+        setProjects(normalized);
+        const stored = localStorage.getItem('apms-active-project');
+        const nextProjectId = stored && normalized.some(project => String(project.id) === stored)
+          ? stored
+          : normalized[0]?.id ? String(normalized[0].id) : '';
+        setSelectedProjectId(nextProjectId);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingProjects(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setCandidates([]);
+      return;
+    }
+
+    setLoadingCandidates(true);
+    api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } })
+      .then(res => {
+        const rows = res?.data?.content || res?.data || [];
+        setCandidates(Array.isArray(rows) ? rows : []);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingCandidates(false));
+  }, [selectedProjectId]);
+
+  const activeProject = projects.find(project => String(project.id) === selectedProjectId) || projects[0] || null;
+  const queue = candidates.filter(candidate => candidate.status === 'PENDING_REVIEW' || candidate.status === 'CORRECTED');
+  const ready = candidates.filter(candidate => candidate.status === 'APPROVED').length;
+  const rejected = candidates.filter(candidate => candidate.status === 'REJECTED').length;
+  const pending = queue.length;
+
+  const approveCandidate = async (candidateId: string) => {
+    try {
+      await api.post(`/candidates/${candidateId}/approve`, {});
+      setFeedback('Candidate approved.');
+      if (selectedProjectId) {
+        const res = await api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
+        const rows = res?.data?.content || res?.data || [];
+        setCandidates(Array.isArray(rows) ? rows : []);
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Failed to approve candidate.');
+    }
+  };
+
+  const rejectCandidate = async (candidateId: string) => {
+    const reason = window.prompt('Rejection reason', 'Insufficient evidence');
+    if (!reason) return;
+
+    try {
+      await api.post(`/candidates/${candidateId}/reject`, { rejectionReason: reason });
+      setFeedback('Candidate rejected.');
+      if (selectedProjectId) {
+        const res = await api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
+        const rows = res?.data?.content || res?.data || [];
+        setCandidates(Array.isArray(rows) ? rows : []);
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Failed to reject candidate.');
+    }
+  };
+
+  return (
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <span className="page-subtitle">Approval queue</span>
         <h1>Approvals</h1>
+        <p>Review candidate suggestions inside the active project and decide whether they should move forward.</p>
+      </div>
+
+      {feedback && <div className="workspace-inline-note" style={{ marginBottom: 16 }}>{feedback}</div>}
+
+      <div className="dashboard-grid" style={{ marginBottom: 18 }}>
+        {[
+          { label: 'Pending', value: pending },
+          { label: 'Approved', value: ready },
+          { label: 'Rejected', value: rejected },
+          { label: 'Project', value: activeProject ? 1 : 0 },
+        ].map(item => (
+          <div key={item.label} className="kpi-card">
+            <div className="kpi-value">{item.value}</div>
+            <div className="kpi-label">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {loadingProjects || loadingCandidates ? (
+        <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading approvals...</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>Projects</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {projects.map(project => (
+                <button
+                  key={project.id}
+                  className="btn btn-outline"
+                  onClick={() => setSelectedProjectId(String(project.id))}
+                  style={{
+                    justifyContent: 'space-between',
+                    background: String(project.id) === selectedProjectId ? 'rgba(37,99,235,0.08)' : undefined,
+                    borderColor: String(project.id) === selectedProjectId ? 'rgba(37,99,235,0.28)' : undefined,
+                  }}
+                >
+                  <span>{project.projectName}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{(project.members || []).length || 0}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {activeProject && (
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{activeProject.projectName}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{activeProject.targetCompanyName}</div>
+                  </div>
+                  <span className="badge badge-blue" style={{ fontSize: 11 }}>{activeProject.status}</span>
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6 }}>{activeProject.description || 'No project description available.'}</div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              {queue.map((candidate: any) => (
+                <div key={candidate.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{candidate.companyName || candidate.suggestedCompanyName || candidate.id}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Status: {candidate.status} · Confidence: {candidate.relationshipConfidenceScore ?? '—'}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.6 }}>
+                      {candidate.suggestedRelationshipType || 'No relationship suggestion available.'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+                    <button className="btn btn-sm btn-primary" onClick={() => approveCandidate(candidate.id)}>Approve</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => rejectCandidate(candidate.id)}>Reject</button>
+                  </div>
+                </div>
+              ))}
+              {queue.length === 0 && (
+                <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No pending approval items for this project.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
+// â”€â”€â”€ Team KPI â”€â”€â”€
+export const TeamKPI: React.FC = () => {
+  const [kpiData, setKpiData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadTeamKpi = () => {
+    setLoading(true);
+    api.get<any>('/kpi/team')
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) setKpiData(res.data);
+        else if (res?.success && res.data?.content) setKpiData(res.data.content);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadTeamKpi();
+  }, []);
+
+  const rows = [...kpiData].sort((a, b) => {
+    const aRatio = (Number(a?.companiesReviewed) || 0) / Math.max(1, Number(a?.target) || 1);
+    const bRatio = (Number(b?.companiesReviewed) || 0) / Math.max(1, Number(b?.target) || 1);
+    return bRatio - aRatio;
+  });
+
+  const totalMembers = rows.length;
+  const totalReviewed = rows.reduce((sum, row) => sum + (Number(row?.companiesReviewed) || 0), 0);
+  const totalTarget = rows.reduce((sum, row) => sum + (Number(row?.target) || 0), 0);
+  const avgAccuracy = totalMembers > 0
+    ? Math.round(rows.reduce((sum, row) => sum + (Number(row?.accuracy) || 0), 0) / totalMembers)
+    : 0;
+  const hitTarget = rows.filter(row => (Number(row?.companiesReviewed) || 0) >= (Number(row?.target) || 0)).length;
+  const bonusCount = rows.filter(row => Boolean(row?.bonus)).length;
+  const nearTarget = rows.filter(row => {
+    const target = Math.max(1, Number(row?.target) || 1);
+    const pct = ((Number(row?.companiesReviewed) || 0) / target) * 100;
+    return pct >= 70 && pct < 100;
+  }).length;
+  const behindCount = Math.max(0, totalMembers - hitTarget - nearTarget);
+  const completionRate = totalTarget > 0 ? Math.round((totalReviewed / totalTarget) * 100) : 0;
+  const topMember = rows[0];
+  const topProgress = topMember
+    ? Math.min(100, Math.round(((Number(topMember.companiesReviewed) || 0) / Math.max(1, Number(topMember.target) || 1)) * 100))
+    : 0;
+  const donutData = [
+    { label: 'Hit target', value: hitTarget, color: '#2563EB' },
+    { label: 'Near target', value: nearTarget, color: '#93C5FD' },
+    { label: 'Behind', value: behindCount || 1, color: '#E2E8F0' },
+  ];
+
+  return (
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <span className="page-subtitle">Manager overview</span>
+        <h1>Team KPI</h1>
+        <p>Track output, accuracy, and bonus eligibility across the team.</p>
         <div className="page-header-actions">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{pending.length} đang chờ</span>
+          <button className="btn btn-outline" onClick={loadTeamKpi} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh data'}
+          </button>
         </div>
       </div>
-      <div className="dashboard-grid" style={{ marginBottom: 24 }}>
+
+      <div className="team-kpi-summary-grid">
         {[
-          { label: 'Chờ xử lý', value: pending.length },
-          { label: 'Đã duyệt',  value: Object.values(decisions).filter(d => d === 'approved').length },
-          { label: 'Từ chối',   value: Object.values(decisions).filter(d => d === 'rejected').length },
-          { label: 'Ưu tiên cao',value: APPROVALS.filter(a => a.priority === 'High' && !decisions[a.id]).length },
+          { label: 'Team members', value: totalMembers },
+          { label: 'Hit target', value: hitTarget },
+          { label: 'Avg accuracy', value: totalMembers > 0 ? `${avgAccuracy}%` : '—' },
+          { label: 'Bonus eligible', value: bonusCount },
         ].map(s => (
-          <div key={s.label} className="kpi-card">
+          <div key={s.label} className="kpi-card team-kpi-summary-card">
             <div className="kpi-value">{s.value}</div>
             <div className="kpi-label">{s.label}</div>
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {APPROVALS.map(a => {
-          const d = decisions[a.id];
-          return (
-            <div key={a.id} className="card" style={{ opacity: d ? 0.6 : 1, transition: 'opacity 0.3s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                    <span className="badge badge-blue" style={{ fontSize: 11 }}>{a.type}</span>
-                    {a.priority === 'High' && <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: '#FEE2E2', color: '#991B1B' }}>Ưu tiên cao</span>}
+
+      {!loading && rows.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>KPI</div>
+          <div>Chưa có dữ liệu KPI.</div>
+        </div>
+      ) : (
+        <div className="team-kpi-layout">
+          <div className="team-kpi-list">
+            {rows.map((k: any, i: number) => {
+              const target = Math.max(1, Number(k?.target) || 1);
+              const reviewed = Number(k?.companiesReviewed) || 0;
+              const pct = Math.min(100, Math.round((reviewed / target) * 100));
+              const accuracy = Number(k?.accuracy) || 0;
+              const progressTone = pct >= 100 ? 'good' : pct >= 70 ? 'warn' : 'danger';
+
+              return (
+                <div key={`${k?.name || 'member'}-${i}`} className="card team-kpi-row">
+                  <div className="team-kpi-row-head">
+                    <div className="team-kpi-rank">#{i + 1}</div>
+                    <div className="team-kpi-identity">
+                      <div className="team-kpi-name">{k?.name || 'Unknown'}</div>
+                      <div className="team-kpi-role">{k?.role || 'Member'}</div>
+                    </div>
+                    {k?.bonus && <span className="team-kpi-badge">Bonus</span>}
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{a.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Yêu cầu bởi {a.requestedBy} · {a.date}</div>
+
+                  <div className="team-kpi-metrics">
+                    <div className="team-kpi-metric">
+                      <strong>{reviewed}/{target}</strong>
+                      <span>Companies</span>
+                    </div>
+                    <div className="team-kpi-metric">
+                      <strong>{accuracy}%</strong>
+                      <span>Accuracy</span>
+                    </div>
+                    <div className="team-kpi-metric">
+                      <strong>{k?.aiReviewed ?? '—'}</strong>
+                      <span>AI reviewed</span>
+                    </div>
+                  </div>
+
+                  <div className="team-kpi-progress">
+                    <div className={`team-kpi-progress-bar ${progressTone}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="team-kpi-row-foot">
+                    <span>{pct}% of target</span>
+                    <span>{reviewed} reviewed</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginLeft: 20 }}>
-                  {d ? (
-                    <span style={{
-                      padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-                      background: d === 'approved' ? '#D1FAE5' : '#FEE2E2',
-                      color: d === 'approved' ? '#065F46' : '#991B1B',
-                    }}>
-                      {d === 'approved' ? 'Đã duyệt' : 'Đã từ chối'}
-                    </span>
-                  ) : (
-                    <>
-                      <button className="btn btn-sm btn-primary" onClick={() => decide(a.id, 'approved')}>Duyệt</button>
-                      <button className="btn btn-sm btn-outline" style={{ color: '#EF4444', borderColor: '#EF4444' }} onClick={() => decide(a.id, 'rejected')}>Từ chối</button>
-                    </>
-                  )}
+              );
+            })}
+          </div>
+
+          <aside className="team-kpi-rail">
+            <div className="card team-kpi-graphic">
+              <div className="team-kpi-rail-title">
+                <div>
+                  <span className="page-subtitle">Team mix</span>
+                  <h3>{completionRate}% completion</h3>
+                </div>
+                <div className="team-kpi-mini-stat">
+                  <strong>{totalReviewed}</strong>
+                  <span>Total reviewed</span>
+                </div>
+              </div>
+              <DonutChart
+                data={donutData}
+                size={168}
+                centerValue={`${avgAccuracy}%`}
+                centerLabel="avg accuracy"
+              />
+              <div className="team-kpi-legend">
+                {donutData.map(item => (
+                  <div key={item.label} className="team-kpi-legend-item">
+                    <span className="team-kpi-legend-swatch" style={{ background: item.color }} />
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card team-kpi-notes">
+              <span className="page-subtitle">Manager notes</span>
+              <div className="team-kpi-notes-list">
+                <div className="team-kpi-note">
+                  <strong>{topMember?.name || 'No leader yet'}</strong>
+                  <span>Top progress at {topProgress}% of target.</span>
+                </div>
+                <div className="team-kpi-note">
+                  <strong>{bonusCount} bonus eligible</strong>
+                  <span>Keep reward review in sync with weekly output.</span>
+                </div>
+                <div className="team-kpi-note">
+                  <strong>{completionRate}% team completion</strong>
+                  <span>Use this to rebalance workloads before the next cycle.</span>
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </aside>
+        </div>
+      )}
     </section>
   );
 };
 
-// ─── Team KPI ───
-const KPI_DATA = [
-  { name: 'Lê Thị Hồng Vân', role: 'Key Member', companiesReviewed: 24, accuracy: 96, aiReviewed: 18, target: 20, bonus: true },
-  { name: 'Hà Đức Huy',      role: 'BD Staff',   companiesReviewed: 18, accuracy: 91, aiReviewed: 12, target: 15, bonus: true },
-  { name: 'Phạm Thị Lan',    role: 'BD Staff',   companiesReviewed: 10, accuracy: 84, aiReviewed:  6, target: 15, bonus: false },
-];
+// â”€â”€â”€ Reports (Manager) â”€â”€â”€
+export const ManagerReports: React.FC = () => {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [reportDraft, setReportDraft] = useState({
+    title: '',
+    type: 'Weekly summary',
+    author: '',
+    pages: '4',
+    status: 'draft',
+  });
+  const [reportFeedback, setReportFeedback] = useState<string | null>(null);
 
-export const TeamKPI: React.FC = () => (
-  <section className="page active">
-    <div className="page-header">
-      <h1>Team KPI</h1>
-      <div className="page-header-actions">
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Kỳ: Tháng 6/2026</span>
-      </div>
-    </div>
-    <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-      {[
-        { label: 'Thành viên',      value: KPI_DATA.length },
-        { label: 'Đạt KPI',        value: KPI_DATA.filter(k => k.companiesReviewed >= k.target).length },
-        { label: 'Độ chính xác TB',value: `${Math.round(KPI_DATA.reduce((s,k) => s+k.accuracy,0)/KPI_DATA.length)}%` },
-        { label: 'Đủ điều kiện thưởng', value: KPI_DATA.filter(k => k.bonus).length },
-      ].map(s => (
-        <div key={s.label} className="kpi-card">
-          <div className="kpi-value">{s.value}</div>
-          <div className="kpi-label">{s.label}</div>
-        </div>
-      ))}
-    </div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {KPI_DATA.map((k, i) => {
-        const pct = Math.min(100, Math.round((k.companiesReviewed / k.target) * 100));
-        return (
-          <div key={i} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{k.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{k.role}</div>
-              </div>
-              {k.bonus && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#D1FAE5', color: '#065F46' }}>Đủ thưởng</span>}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 14 }}>
-              {[
-                { label: 'Công ty xử lý', value: `${k.companiesReviewed}/${k.target}` },
-                { label: 'Độ chính xác', value: `${k.accuracy}%` },
-                { label: 'AI đã xét duyệt', value: k.aiReviewed },
-              ].map(m => (
-                <div key={m.label} style={{ textAlign: 'center', padding: '10px', background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--text-primary)' }}>{m.value}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{m.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ flex: 1, background: 'var(--border-light)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, background: pct >= 100 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444', height: '100%', borderRadius: 4, transition: 'width 0.5s' }} />
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 700, minWidth: 36, color: 'var(--text-muted)' }}>{pct}%</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </section>
-);
+  useEffect(() => {
+    api.get<any>('/reports')
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) setReports(res.data);
+        else if (res?.success && res.data?.content) setReports(res.data.content);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-// ─── Reports (Manager) ───
-const MANAGER_REPORTS = [
-  { id: 1, title: 'Báo cáo Hiệu suất Đội ngũ T6/2026',     date: '01/06/2026', type: 'Monthly',  status: 'published' },
-  { id: 2, title: 'Tình trạng Đánh giá Đối tác Q2/2026',   date: '15/05/2026', type: 'Quarterly', status: 'published' },
-  { id: 3, title: 'Báo cáo Rủi ro Danh mục T5/2026',       date: '31/05/2026', type: 'Monthly',  status: 'draft' },
-  { id: 4, title: 'Phân tích Phân công Công việc H1/2026',  date: '30/04/2026', type: 'Ad-hoc',   status: 'published' },
-];
+  const handleCreateReport = () => {
+    const title = reportDraft.title.trim();
+    const author = reportDraft.author.trim();
 
-export const ManagerReports: React.FC = () => (
-  <section className="page active">
-    <div className="page-header">
-      <h1>Reports</h1>
-      <div className="page-header-actions">
-        <button className="btn btn-primary">+ Tạo báo cáo</button>
-      </div>
-    </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px,1fr))', gap: 16 }}>
-      {MANAGER_REPORTS.map(r => (
-        <div key={r.id} className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.type}</span>
-            <span style={{
-              padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: r.status === 'published' ? '#D1FAE5' : '#FEF3C7',
-              color: r.status === 'published' ? '#065F46' : '#92400E',
-            }}>{r.status === 'published' ? 'Đã đăng' : 'Bản nháp'}</span>
-          </div>
-          <h3 style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.4, marginBottom: 10, color: 'var(--text-primary)' }}>{r.title}</h3>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{r.date}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-outline btn-sm">Xem</button>
-            {r.status === 'draft' && <button className="btn btn-primary btn-sm">Đăng</button>}
-          </div>
-        </div>
-      ))}
-    </div>
-  </section>
-);
+    if (!title || !author) {
+      setReportFeedback('Title and author are required.');
+      return;
+    }
 
-// ─── Analysis History ───
-const ANALYSES = [
-  { id: 1, company: 'FPT Corporation', analyst: 'Lê HV',  date: '16/06/2026', type: 'Toàn diện', duration: '2h 15m', result: 'Đề xuất Platinum' },
-  { id: 2, company: 'VNPT Group',      analyst: 'Hà ĐH',  date: '15/06/2026', type: 'Nhanh',     duration: '35m',   result: 'Giữ nguyên Gold' },
-  { id: 3, company: 'Viettel Digital', analyst: 'Lê HV',  date: '14/06/2026', type: 'Toàn diện', duration: '1h 50m', result: 'Tăng điểm +5' },
-  { id: 4, company: 'CMC Technology',  analyst: 'Hà ĐH',  date: '13/06/2026', type: 'Rủi ro',    duration: '45m',   result: 'Cảnh báo tài chính' },
-];
+    const nextReport = {
+      id: `draft-${Date.now()}`,
+      title,
+      type: reportDraft.type.trim() || 'Weekly summary',
+      author,
+      pages: Number(reportDraft.pages) || 1,
+      status: reportDraft.status,
+      date: new Date().toLocaleDateString('vi-VN'),
+    };
 
-export const AnalysisHistory: React.FC = () => (
-  <section className="page active">
-    <div className="page-header">
-      <h1>Analysis History</h1>
-    </div>
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead>
-          <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-            {['Công ty', 'Phân tích viên', 'Ngày', 'Loại phân tích', 'Thời gian', 'Kết quả', ''].map(h => (
-              <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {ANALYSES.map(a => (
-            <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-              <td style={{ padding: '11px 14px', fontWeight: 600 }}>{a.company}</td>
-              <td style={{ padding: '11px 14px', color: 'var(--text-secondary)' }}>{a.analyst}</td>
-              <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.date}</td>
-              <td style={{ padding: '11px 14px' }}><span className="badge badge-blue" style={{ fontSize: 11 }}>{a.type}</span></td>
-              <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.duration}</td>
-              <td style={{ padding: '11px 14px', fontSize: 13 }}>{a.result}</td>
-              <td style={{ padding: '11px 14px' }}><button className="btn btn-sm btn-outline">Chi tiết</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </section>
-);
+    setReports((current) => [nextReport, ...current]);
+    setReportDraft({
+      title: '',
+      type: 'Weekly summary',
+      author: '',
+      pages: '4',
+      status: 'draft',
+    });
+    setShowCreateForm(false);
+    setReportFeedback('Draft report created in the current view.');
+  };
 
-// ─── Partner Status ───
-export const PartnerStatus: React.FC = () => {
-  const statusGroups = [
-    { label: 'Platinum', color: '#8B5CF6', companies: ['FPT Corporation', 'VinGroup'] },
-    { label: 'Gold',     color: '#F59E0B', companies: ['VNPT Group', 'Viettel Digital'] },
-    { label: 'Silver',   color: '#64748B', companies: ['CMC Technology', 'MoMo', 'Sacombank'] },
-    { label: 'Watch',    color: '#EF4444', companies: ['TH True Milk'] },
-  ];
   return (
-    <section className="page active">
-      <div className="page-header"><h1>Partner Status</h1></div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 16 }}>
-        {statusGroups.map(g => (
-          <div key={g.label} className="card" style={{ borderTop: `3px solid ${g.color}` }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: g.color }}>{g.label}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>{g.companies.length} đối tác</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {g.companies.map(c => (
-                <div key={c} style={{ padding: '6px 10px', background: 'var(--surface)', borderRadius: 'var(--radius)', fontSize: 13 }}>{c}</div>
-              ))}
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <h1>Reports {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Đang tải...)</span>}</h1>
+        <div className="page-header-actions">
+          <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>
+            + Tạo báo cáo
+          </button>
+        </div>
+      </div>
+      {reportFeedback && <div className="workspace-inline-note" style={{ marginBottom: 16 }}>{reportFeedback}</div>}
+      {showCreateForm && (
+        <div className="workspace-panel" style={{ marginBottom: 18 }}>
+          <div className="workspace-section-head">
+            <div>
+              <h3>Create report draft</h3>
+              <p>Create a draft report in the current session. Backend persistence is not wired yet.</p>
+            </div>
+          </div>
+          <div className="workspace-form-grid">
+            <label>
+              <span>Title</span>
+              <input
+                className="search-input"
+                value={reportDraft.title}
+                onChange={(e) => setReportDraft((current) => ({ ...current, title: e.target.value }))}
+                placeholder="Weekly manager summary"
+              />
+            </label>
+            <label>
+              <span>Type</span>
+              <input
+                className="search-input"
+                value={reportDraft.type}
+                onChange={(e) => setReportDraft((current) => ({ ...current, type: e.target.value }))}
+                placeholder="Weekly summary"
+              />
+            </label>
+            <label>
+              <span>Author</span>
+              <input
+                className="search-input"
+                value={reportDraft.author}
+                onChange={(e) => setReportDraft((current) => ({ ...current, author: e.target.value }))}
+                placeholder="Manager name"
+              />
+            </label>
+            <label>
+              <span>Pages</span>
+              <input
+                className="search-input"
+                value={reportDraft.pages}
+                onChange={(e) => setReportDraft((current) => ({ ...current, pages: e.target.value }))}
+                inputMode="numeric"
+              />
+            </label>
+          </div>
+          <div className="workspace-head-actions">
+            <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={handleCreateReport}>Create draft</button>
+          </div>
+        </div>
+      )}
+      {!loading && reports.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+          <div>Chưa có báo cáo nào.</div>
+        </div>
+      ) : (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px,1fr))', gap: 16 }}>
+        {reports.map((r: any) => (
+          <div key={r.id} className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.type}</span>
+              <span style={{
+                padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                background: r.status === 'published' ? '#D1FAE5' : '#FEF3C7',
+                color: r.status === 'published' ? '#065F46' : '#92400E',
+              }}>{r.status === 'published' ? 'Đã đăng' : 'Bản nháp'}</span>
+            </div>
+            <h3 style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.4, marginBottom: 10, color: 'var(--text-primary)' }}>{r.title}</h3>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{r.date}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline btn-sm">Xem</button>
+              {r.status === 'draft' && <button className="btn btn-primary btn-sm">Đăng</button>}
             </div>
           </div>
         ))}
       </div>
+      )}
     </section>
   );
 };
+
+// ─── Analysis History ───
+export const AnalysisHistory: React.FC = () => {
+  const [analyses, setAnalyses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get<any>('/analysis/history')
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) setAnalyses(res.data);
+        else if (res?.success && res.data?.content) setAnalyses(res.data.content);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <h1>Analysis History {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Đang tải...)</span>}</h1>
+      </div>
+      {!loading && analyses.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+          <div>Chưa có lịch sử phân tích nào.</div>
+        </div>
+      ) : (
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
+              {['Công ty', 'Phân tích viên', 'Ngày', 'Loại phân tích', 'Thời gian', 'Kết quả', ''].map(h => (
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {analyses.map((a: any) => (
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <td style={{ padding: '11px 14px', fontWeight: 600 }}>{a.company}</td>
+                <td style={{ padding: '11px 14px', color: 'var(--text-secondary)' }}>{a.analyst}</td>
+                <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.date}</td>
+                <td style={{ padding: '11px 14px' }}><span className="badge badge-blue" style={{ fontSize: 11 }}>{a.type}</span></td>
+                <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.duration}</td>
+                <td style={{ padding: '11px 14px', fontSize: 13 }}>{a.result}</td>
+                <td style={{ padding: '11px 14px' }}><button className="btn btn-sm btn-outline">Chi tiết</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      )}
+    </section>
+  );
+};
+
+// ─── Partner Status ───
+export const PartnerStatus: React.FC = () => {
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  const loadPartnerStatus = () => {
+    setLoading(true);
+    api.get<any>('/profiles?page=0&size=100')
+      .then(res => {
+        if (res?.success && res.data?.content) setProfiles(res.data.content);
+        else if (res?.success && Array.isArray(res.data)) setProfiles(res.data);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadPartnerStatus();
+  }, []);
+
+  const TIER_COLORS: Record<string, string> = {
+    Platinum: '#2563EB',
+    Gold: '#0F766E',
+    Silver: '#64748B',
+    Watch: '#DC2626',
+  };
+
+  const rows = profiles.filter(profile => {
+    const label = `${profile.tradeName || ''} ${profile.legalName || ''} ${profile.partnerTier || profile.tier || ''}`.toLowerCase();
+    return label.includes(search.toLowerCase());
+  });
+
+  const statusGroups = Object.entries(TIER_COLORS).map(([label, color]) => {
+    const companies = rows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
+    return { label, color, companies };
+  });
+
+  const summary = {
+    total: rows.length,
+    verified: rows.filter(p => p.reviewStatus === 'VERIFIED').length,
+    pending: rows.filter(p => p.reviewStatus === 'PENDING_REVIEW').length,
+    watch: rows.filter(p => (p.partnerTier || p.tier || 'Silver') === 'Watch').length,
+  };
+
+  const statusTone = (status?: string) => {
+    if (status === 'VERIFIED') return { bg: '#D1FAE5', color: '#065F46', label: 'Verified' };
+    if (status === 'PENDING_REVIEW') return { bg: '#FEF3C7', color: '#92400E', label: 'Pending' };
+    if (status === 'IN_PROGRESS') return { bg: '#DBEAFE', color: '#1D4ED8', label: 'In progress' };
+    if (status === 'REJECTED') return { bg: '#FEE2E2', color: '#B91C1C', label: 'Rejected' };
+    return { bg: '#E2E8F0', color: '#475569', label: 'Unspecified' };
+  };
+
+  return (
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <span className="page-subtitle">Partner portfolio</span>
+        <h1>Partner Status</h1>
+        <p>Monitor the current tier distribution and review state across all partners in one view.</p>
+        <div className="page-header-actions">
+          <button className="btn btn-outline" onClick={loadPartnerStatus} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+      <div className="team-kpi-summary-grid partner-status-summary-grid">
+        {[
+          { label: 'Partners', value: summary.total },
+          { label: 'Verified', value: summary.verified },
+          { label: 'Pending', value: summary.pending },
+          { label: 'Watchlist', value: summary.watch },
+        ].map(item => (
+          <div key={item.label} className="kpi-card team-kpi-summary-card">
+            <div className="kpi-value">{item.value}</div>
+            <div className="kpi-label">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <input
+        className="search-input"
+        placeholder="Search partner, legal name, tier..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ width: '100%', maxWidth: 420, marginBottom: 16 }}
+      />
+
+      {loading ? (
+        <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading partner status...</div>
+      ) : (
+        <div className="partner-status-layout">
+          <div className="partner-status-list">
+            {statusGroups.map(group => (
+              <div key={group.label} className="card partner-status-group" style={{ borderTop: `3px solid ${group.color}` }}>
+                <div className="partner-status-group-head">
+                  <div>
+                    <div className="partner-status-group-title" style={{ color: group.color }}>{group.label}</div>
+                    <div className="partner-status-group-subtitle">{group.companies.length} partners</div>
+                  </div>
+                  <span className="partner-status-badge" style={{ background: group.color, color: '#fff' }}>
+                    {Math.round((group.companies.length / Math.max(1, rows.length)) * 100)}%
+                  </span>
+                </div>
+
+                {group.companies.length === 0 ? (
+                  <div className="partner-status-empty">No partners in this tier.</div>
+                ) : (
+                  <div className="partner-status-items">
+                    {group.companies.map(profile => {
+                      const tone = statusTone(profile.reviewStatus);
+                      return (
+                        <div key={profile.companyId || profile.id || profile.tradeName || profile.legalName} className="partner-status-item">
+                          <div className="partner-status-item-head">
+                            <div className="partner-status-item-title">
+                              {profile.tradeName || profile.legalName || 'Doanh nghiệp'}
+                            </div>
+                            <span className="partner-status-chip" style={{ background: tone.bg, color: tone.color }}>
+                              {tone.label}
+                            </span>
+                          </div>
+                          <div className="partner-status-item-meta">
+                            <span>{profile.industry || profile.business?.industries?.[0] || 'Unknown industry'}</span>
+                            <span>{profile.taxCode || 'No tax code'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <aside className="partner-status-rail">
+            <div className="card partner-status-rail-card">
+              <span className="page-subtitle">Portfolio snapshot</span>
+              <div className="partner-status-rail-title">What needs attention first</div>
+              <div className="partner-status-rail-note">
+                Watchlist partners stay visible here so the queue is not hidden inside the tier cards.
+              </div>
+              <div className="partner-status-rail-stats">
+                <div>
+                  <strong>{summary.watch}</strong>
+                  <span>Watchlist</span>
+                </div>
+                <div>
+                  <strong>{summary.pending}</strong>
+                  <span>Pending review</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card partner-status-rail-card">
+              <span className="page-subtitle">Tier mix</span>
+              <div className="partner-status-legend">
+                {Object.entries(TIER_COLORS).map(([tier, color]) => {
+                  const count = rows.filter(p => (p.partnerTier || p.tier || 'Silver') === tier).length;
+                  return (
+                    <div key={tier} className="partner-status-legend-item">
+                      <span className="partner-status-legend-swatch" style={{ background: color }} />
+                      <span>{tier}</span>
+                      <strong>{count}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+    </section>
+  );
+};
+
+
+
+

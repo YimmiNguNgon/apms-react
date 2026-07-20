@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../hooks/useTheme';
 import { LogoutModal } from './LogoutModal';
@@ -8,92 +8,88 @@ interface TopbarProps {
   setActivePage: (page: string) => void;
 }
 
-// Sample notifications per role
 const NOTIFICATIONS = [
-  { id: 1, title: 'AI đề xuất 3 đối tác tiềm năng mới', time: '5 phút trước', color: '#2563EB', dot: '🤖' },
-  { id: 2, title: 'Hồ sơ FPT Software cần xác nhận', time: '20 phút trước', color: '#F59E0B', dot: '📋' },
-  { id: 3, title: 'Báo cáo tháng 6 đã sẵn sàng', time: '1 giờ trước', color: '#10B981', dot: '📊' },
-  { id: 4, title: 'Cảnh báo rủi ro: Đối thủ mới xuất hiện', time: '2 giờ trước', color: '#EF4444', dot: '⚠️' },
-  { id: 5, title: 'Yêu cầu xét duyệt từ Hà Đức Huy', time: '3 giờ trước', color: '#8B5CF6', dot: '✅' },
+  { id: 1, title: 'AI surfaced 3 new potential partners', time: '5 minutes ago', color: '#2563EB' },
+  { id: 2, title: 'FPT Software profile needs manager review', time: '20 minutes ago', color: '#F59E0B' },
+  { id: 3, title: 'June strategic report is ready', time: '1 hour ago', color: '#10B981' },
+  { id: 4, title: 'Risk alert: new competitor activity detected', time: '2 hours ago', color: '#EF4444' },
+  { id: 5, title: 'Approval request from Ha Duc Huy', time: '3 hours ago', color: '#8B5CF6' },
 ];
 
-// Page label map
 const PAGE_LABELS: Record<string, string> = {
-  'admin-dashboard':            'System Dashboard',
-  'director-dashboard':         'Executive Dashboard',
-  'manager-dashboard':          'Manager Dashboard',
-  'keymember-dashboard':        'Key Member Dashboard',
-  'staff-dashboard':            'Staff Dashboard',
-  'users':                      'User Management',
-  'roles':                      'Role Management',
-  'permissions':                'Permissions',
-  'access-control':             'Access Control',
-  'activity-history':           'Activity History',
-  'audit-logs':                 'Audit Logs',
-  'system-settings':            'System Settings',
-  'security-settings':          'Security Settings',
-  'partner-ecosystem':          'Partner Ecosystem',
-  'competitor-intelligence':    'Competitor Intelligence',
-  'relationship-map':           'Relationship Map',
-  'market-opportunities':       'Market Opportunities',
-  'ai-recommendations':         'AI Recommendations',
-  'strategic-reports':          'Strategic Reports',
-  'partner-evaluation':         'Partner Evaluation',
-  'company-assignment':         'Company Assignment',
-  'analysis-history':           'Analysis History',
-  'risk-monitoring':            'Risk Monitoring',
-  'partner-status':             'Partner Status',
+  'admin-dashboard': 'Platform Command Center',
+  'director-dashboard': 'Director Workspace',
+  'manager-dashboard': 'Approval and Delivery Board',
+  'keymember-dashboard': 'Key Member Dashboard',
+  'staff-dashboard': 'Research Staff Dashboard',
+  users: 'User Management',
+  roles: 'Role Management',
+  permissions: 'Permissions',
+  'access-control': 'Access Control',
+  'activity-history': 'Activity History',
+  'audit-logs': 'Audit Logs',
+  'system-settings': 'System Settings',
+  'security-settings': 'Security Settings',
+  'partner-ecosystem': 'Partner Ecosystem',
+  'competitor-intelligence': 'Competitor Intelligence',
+  'relationship-map': 'Relationship Map',
+  'market-opportunities': 'Market Opportunities',
+  'ai-recommendations': 'AI Recommendations',
+  'strategic-reports': 'Strategic Reports',
+  'partner-evaluation': 'Partner Evaluation',
+  'company-assignment': 'Company Assignment',
+  'analysis-history': 'Analysis History',
+  'risk-monitoring': 'Risk Monitoring',
+  'partner-status': 'Partner Status',
   'suggested-actions-approval': 'Approvals',
-  'team-kpi':                   'Team KPI',
-  'reports':                    'Reports',
-  'review-extracted-data':      'Review Extracted Data',
-  'company-validation':         'Company Validation',
-  'partner-classification':     'Partner Classification',
-  'competitor-classification':  'Competitor Classification',
-  'ai-suggestion-review':       'AI Suggestion Review',
-  'relationship-updates':       'Relationship Updates',
-  'onboarding-support':         'Onboarding Support',
-  'upload-documents':           'Upload Documents',
-  'company-profiles':           'Company Profiles',
-  'partner-management':         'Partner Management',
-  'competitor-management':      'Competitor Management',
-  'ai-extracted-data':          'AI Extracted Data',
-  'search-companies':           'Search Companies',
-  'personal-ai-agent':          'Personal AI Agent',
-  'ai-training-mode':           'AI Training Mode',
-  'learning-center':            'Learning Center',
-  'companies':                  'Company Profiles',
-  'company-detail':             'Company Detail',
-  'verify':                     'Approval Queue',
-  'validate':                   'Validation Queue',
-  'add-company':                'Add Company',
-  'ai-agent':                   'AI Agent',
-  'news':                       'News & Intelligence',
-  'profile':                    'My Profile',
+  'team-kpi': 'Team KPI',
+  reports: 'Reports',
+  'review-extracted-data': 'Review Extracted Data',
+  'company-validation': 'Company Validation',
+  'partner-classification': 'Partner Classification',
+  'competitor-classification': 'Competitor Classification',
+  'ai-suggestion-review': 'AI Suggestion Review',
+  'relationship-updates': 'Relationship Updates',
+  'onboarding-support': 'Onboarding Support',
+  'upload-documents': 'My Tasks',
+  'company-profiles': 'Company Profiles',
+  'partner-management': 'Partner Directory',
+  'competitor-management': 'Competitor Watchlist',
+  'ai-extracted-data': 'AI Extraction Queue',
+  'search-companies': 'Search Companies',
+  'personal-ai-agent': 'Research AI Assistant',
+  'ai-training-mode': 'Training Mode',
+  'learning-center': 'Learning Center',
+  companies: 'Company Profiles',
+  'company-detail': 'Company Detail',
+  verify: 'Approval Queue',
+  validate: 'Validation Queue',
+  'add-company': 'Create Company Profile',
+  'ai-agent': 'AI Agent',
+  news: 'News & Intelligence',
+  profile: 'My Profile',
 };
 
 export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => {
   const { currentUser, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
-
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
   const [searchVal, setSearchVal] = useState('');
-
-  const notifRef   = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdowns on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setShowNotif(false);
       }
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setShowProfile(false);
       }
     };
+
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
@@ -102,15 +98,9 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
   const pageLabel = PAGE_LABELS[activePage] || 'Dashboard';
 
-  const handleLogout = () => {
-    logout();
-    setShowLogout(false);
-  };
-
   return (
     <>
       <header className="topbar">
-        {/* Left: Breadcrumb */}
         <div className="topbar-left">
           <div className="breadcrumb">
             <span>APMS</span>
@@ -118,60 +108,74 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
             <span className="breadcrumb-current">{pageLabel}</span>
           </div>
 
-          {/* Search */}
           <div className="topbar-search">
             <input
               type="text"
-              placeholder="Tìm kiếm..."
+              placeholder="Search workspace..."
               value={searchVal}
-              onChange={e => setSearchVal(e.target.value)}
+              onChange={(event) => setSearchVal(event.target.value)}
             />
           </div>
         </div>
 
-        {/* Right: Actions */}
         <div className="topbar-right">
-          {/* Dark/Light toggle */}
-          <button className="topbar-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'} style={{ width: 'auto', padding: '0 10px', fontSize: '12px' }}>
-            {theme === 'dark' ? 'Sáng' : 'Tối'}
+          <button className="topbar-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {theme === 'dark' ? 'Light' : 'Dark'}
           </button>
 
-          {/* Notifications */}
           <div className="relative" ref={notifRef}>
-            <button className="topbar-btn" onClick={() => { setShowNotif(p => !p); setShowProfile(false); }} style={{ width: 'auto', padding: '0 10px', fontSize: '12px' }}>
-              Thông báo
-              <span className="notif-badge" style={{ top: -3, right: -4 }} />
+            <button
+              className="topbar-btn topbar-icon-btn"
+              onClick={() => { setShowNotif((value) => !value); setShowProfile(false); }}
+              title="Notifications"
+              aria-label="Notifications"
+              aria-haspopup="menu"
+              aria-expanded={showNotif}
+            >
+              <svg viewBox="0 0 24 24" fill="none" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M15 17H5.5c1-1 1.5-2.1 1.5-4.5V10a5 5 0 1 1 10 0v2.5c0 2.4 0.5 3.5 1.5 4.5H15Zm-3 3a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2Z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="notif-badge" />
             </button>
 
             {showNotif && (
               <div className="notif-panel">
                 <div className="notif-header">
-                  <span>Thông báo</span>
+                  <div>
+                    <div className="notif-title-line">Notifications</div>
+                    <div className="notif-subtitle">Recent workspace updates</div>
+                  </div>
                   <span className="notif-count">{NOTIFICATIONS.length}</span>
                 </div>
                 <div className="notif-list">
-                  {NOTIFICATIONS.map(n => (
-                    <div key={n.id} className="notif-item">
-                      <div className="notif-dot" style={{ background: n.color }} />
+                  {NOTIFICATIONS.map((item) => (
+                    <div key={item.id} className="notif-item">
+                      <div className="notif-dot" style={{ background: item.color }} />
                       <div className="notif-content">
-                        <div className="notif-title">{n.title}</div>
-                        <div className="notif-time">{n.time}</div>
+                        <div className="notif-title">{item.title}</div>
+                        <div className="notif-time">{item.time}</div>
                       </div>
+                      <span className="notif-chevron">›</span>
                     </div>
                   ))}
                 </div>
-                <div className="card-footer" style={{ padding: '10px 16px' }}>
-                  <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}>
-                    Xem tất cả thông báo
+                <div className="notif-footer">
+                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}>
+                    View all notifications
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Profile */}
           <div className="relative" ref={profileRef}>
-            <div className="topbar-profile" onClick={() => { setShowProfile(p => !p); setShowNotif(false); }}>
+            <div className="topbar-profile" onClick={() => { setShowProfile((value) => !value); setShowNotif(false); }}>
               <div className="topbar-avatar" style={{ background: currentUser.avatarColor }}>
                 {currentUser.avatar}
               </div>
@@ -191,19 +195,11 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                     {currentUser.roleName}
                   </span>
                 </div>
-                <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>
-                  Hồ sơ cá nhân
-                </div>
-                <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>
-                  Cài đặt
-                </div>
-                <div className="dropdown-item" onClick={toggleTheme}>
-                  Chế độ {theme === 'dark' ? 'sáng' : 'tối'}
-                </div>
+                <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>Profile</div>
+                <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>Settings</div>
+                <div className="dropdown-item" onClick={toggleTheme}>Use {theme === 'dark' ? 'light' : 'dark'} mode</div>
                 <div className="dropdown-divider" />
-                <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>
-                  Đăng xuất
-                </div>
+                <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>Sign out</div>
               </div>
             )}
           </div>
@@ -211,7 +207,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
       </header>
 
       {showLogout && (
-        <LogoutModal onConfirm={handleLogout} onCancel={() => setShowLogout(false)} />
+        <LogoutModal onConfirm={() => { logout(); setShowLogout(false); }} onCancel={() => setShowLogout(false)} />
       )}
     </>
   );

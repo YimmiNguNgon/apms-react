@@ -1,182 +1,280 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
-// ─── System Settings ───
+type Tab = 'system' | 'security' | 'access-control';
+
 interface Setting {
   id: string;
   label: string;
   desc: string;
   value: string;
-  type: 'text' | 'select' | 'toggle';
+  type: 'text' | 'select';
   options?: string[];
 }
 
 const SYSTEM_SETTINGS: Setting[] = [
-  { id: 'ai_threshold', label: 'Ngưỡng tin cậy AI tối thiểu', desc: 'Dữ liệu dưới ngưỡng này sẽ vào hàng chờ xác thực thủ công.', value: '75', type: 'select', options: ['60', '70', '75', '80', '85', '90'] },
-  { id: 'crawl_freq',   label: 'Tần suất crawl tự động',    desc: 'Tần suất AI thu thập tin tức và dữ liệu từ các nguồn bên ngoài.', value: 'Mỗi 6 giờ', type: 'select', options: ['Mỗi giờ', 'Mỗi 3 giờ', 'Mỗi 6 giờ', 'Mỗi 12 giờ', 'Mỗi ngày'] },
-  { id: 'approval_ttl', label: 'Thời hạn phê duyệt',         desc: 'Sau thời gian này, dữ liệu chưa duyệt sẽ tự động nhắc nhở Manager.', value: '48', type: 'select', options: ['12', '24', '48', '72'] },
-  { id: 'max_upload',   label: 'Dung lượng upload tối đa',   desc: 'Giới hạn dung lượng mỗi lần upload tài liệu (MB).', value: '50', type: 'select', options: ['10', '25', '50', '100'] },
-  { id: 'lang',         label: 'Ngôn ngữ hệ thống',          desc: 'Ngôn ngữ mặc định của toàn bộ giao diện.', value: 'Tiếng Việt', type: 'select', options: ['Tiếng Việt', 'English'] },
-  { id: 'timezone',     label: 'Múi giờ',                    desc: 'Múi giờ được dùng cho tất cả các nhãn thời gian.', value: 'Asia/Ho_Chi_Minh (UTC+7)', type: 'select', options: ['Asia/Ho_Chi_Minh (UTC+7)', 'Asia/Singapore (UTC+8)', 'UTC'] },
+  { id: 'ai_threshold', label: 'AI confidence threshold', desc: 'Records below this confidence enter manual validation.', value: '75', type: 'select', options: ['60', '70', '75', '80', '85', '90'] },
+  { id: 'crawl_freq', label: 'Automated crawl frequency', desc: 'How often APMS collects public intelligence from external sources.', value: 'Every 6 hours', type: 'select', options: ['Hourly', 'Every 3 hours', 'Every 6 hours', 'Every 12 hours', 'Daily'] },
+  { id: 'approval_ttl', label: 'Approval SLA', desc: 'Pending records trigger a manager reminder after this window.', value: '48', type: 'select', options: ['12', '24', '48', '72'] },
+  { id: 'max_upload', label: 'Maximum upload size', desc: 'Maximum document upload size in MB.', value: '50', type: 'select', options: ['10', '25', '50', '100'] },
+  { id: 'lang', label: 'Default language', desc: 'Default interface language for the workspace.', value: 'Vietnamese', type: 'select', options: ['Vietnamese', 'English'] },
+  { id: 'timezone', label: 'Timezone', desc: 'Timezone used for all audit and workflow timestamps.', value: 'Asia/Ho_Chi_Minh (UTC+7)', type: 'select', options: ['Asia/Ho_Chi_Minh (UTC+7)', 'Asia/Singapore (UTC+8)', 'UTC'] },
 ];
 
 const SECURITY_SETTINGS = [
-  { id: 'mfa',        label: 'Xác thực 2 yếu tố (2FA)',  desc: 'Yêu cầu OTP khi đăng nhập mới.', enabled: true },
-  { id: 'session',    label: 'Tự động đăng xuất',         desc: 'Đăng xuất sau 30 phút không hoạt động.', enabled: true },
-  { id: 'ip_lock',    label: 'Chặn IP đáng ngờ',          desc: 'Tự động chặn IP đăng nhập thất bại >5 lần.', enabled: true },
-  { id: 'pass_policy',label: 'Chính sách mật khẩu mạnh',  desc: 'Yêu cầu ít nhất 8 ký tự, chữ hoa, số và ký tự đặc biệt.', enabled: false },
-  { id: 'audit',      label: 'Ghi lại mọi thao tác',      desc: 'Lưu tất cả hành động vào audit log.', enabled: true },
+  { id: 'mfa', label: 'Two-factor authentication', desc: 'Require OTP verification on new sign-ins.', enabled: true },
+  { id: 'session', label: 'Idle session timeout', desc: 'Sign users out after 30 minutes without activity.', enabled: true },
+  { id: 'ip_lock', label: 'Suspicious IP lockout', desc: 'Block IPs after repeated failed authentication attempts.', enabled: true },
+  { id: 'pass_policy', label: 'Strong password policy', desc: 'Require mixed case, numbers, and special characters.', enabled: false },
+  { id: 'audit', label: 'Full audit capture', desc: 'Write every sensitive operation to the audit log.', enabled: true },
 ];
 
-const Toggle: React.FC<{ enabled: boolean; onChange: (v: boolean) => void }> = ({ enabled, onChange }) => (
-  <div
-    onClick={() => onChange(!enabled)}
-    style={{
-      width: 44, height: 24, borderRadius: 12, cursor: 'pointer',
-      background: enabled ? '#2563EB' : 'var(--border)',
-      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-    }}
-  >
-    <div style={{
-      position: 'absolute', top: 3, left: enabled ? 23 : 3,
-      width: 18, height: 18, borderRadius: '50%', background: '#fff',
-      transition: 'left 0.2s', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-    }} />
-  </div>
+const Toggle: React.FC<{ enabled: boolean; onChange: (value: boolean) => void }> = ({ enabled, onChange }) => (
+  <button className={`admin-toggle ${enabled ? 'on' : ''}`} onClick={() => onChange(!enabled)} aria-pressed={enabled}>
+    <span />
+  </button>
 );
-
-type Tab = 'system' | 'security' | 'access-control';
 
 export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'system' }) => {
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [settings, setSettings] = useState(SYSTEM_SETTINGS);
   const [security, setSecurity] = useState(SECURITY_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [ipList, setIpList] = useState(['192.168.1.0/24', '10.0.0.0/8', '103.72.96.0/21']);
+  const [newIp, setNewIp] = useState('');
+
+  useEffect(() => {
+    setTab(defaultTab);
+  }, [defaultTab]);
 
   const updateSetting = (id: string, value: string) =>
-    setSettings(prev => prev.map(s => s.id === id ? { ...s, value } : s));
+    setSettings((prev) => prev.map((setting) => setting.id === id ? { ...setting, value } : setting));
 
-  const toggleSecurity = (id: string, val: boolean) =>
-    setSecurity(prev => prev.map(s => s.id === id ? { ...s, enabled: val } : s));
+  const toggleSecurity = (id: string, enabled: boolean) =>
+    setSecurity((prev) => prev.map((setting) => setting.id === id ? { ...setting, enabled } : setting));
 
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
-  // IP whitelist state
-  const [ipList, setIpList] = useState(['192.168.1.0/24', '10.0.0.0/8', '103.72.96.0/21']);
-  const [newIp, setNewIp] = useState('');
+  const enabledControls = security.filter((item) => item.enabled).length;
+  const pageMeta = useMemo(() => ({
+    system: {
+      eyebrow: 'Platform configuration',
+      title: 'System settings',
+      desc: 'Control workspace defaults, runtime behavior, and content limits for APMS administrators.',
+      meter: settings.length,
+      meterLabel: 'system rules',
+      stats: [
+        { label: 'System rules', value: settings.length },
+        { label: 'Language', value: settings.find((item) => item.id === 'lang')?.value || 'Vietnamese' },
+        { label: 'Timezone', value: 'UTC+7' },
+        { label: 'Upload limit', value: `${settings.find((item) => item.id === 'max_upload')?.value || '50'} MB` },
+      ],
+    },
+    security: {
+      eyebrow: 'Security posture',
+      title: 'Security settings',
+      desc: 'Tune authentication, session policy, and access boundaries without leaving the admin console.',
+      meter: `${enabledControls}/${security.length}`,
+      meterLabel: 'controls on',
+      stats: [
+        { label: 'Controls enabled', value: `${enabledControls}/${security.length}` },
+        { label: 'MFA', value: security.find((item) => item.id === 'mfa')?.enabled ? 'On' : 'Off' },
+        { label: 'Session timeout', value: security.find((item) => item.id === 'session')?.enabled ? 'Enabled' : 'Off' },
+        { label: 'Audit capture', value: security.find((item) => item.id === 'audit')?.enabled ? 'Enabled' : 'Off' },
+      ],
+    },
+    'access-control': {
+      eyebrow: 'Access boundary',
+      title: 'Access control',
+      desc: 'Restrict network entry points and define session boundaries for sensitive operations.',
+      meter: ipList.length,
+      meterLabel: 'trusted ranges',
+      stats: [
+        { label: 'Trusted IPs', value: ipList.length },
+        { label: 'Session policy', value: 'Active' },
+        { label: 'Lockout', value: security.find((item) => item.id === 'ip_lock')?.enabled ? 'On' : 'Off' },
+        { label: 'Timeout', value: '30m' },
+      ],
+    },
+  }[tab]), [enabledControls, ipList.length, security, settings, tab]);
 
   return (
-    <section className="page active">
-      <div className="page-header">
-        <h1>Cài đặt Hệ thống</h1>
-        <div className="page-header-actions">
-          {saved && <span style={{ fontSize: 13, color: '#10B981', fontWeight: 600 }}>Đã lưu cài đặt</span>}
-          <button className="btn btn-primary" onClick={handleSave}>Lưu cài đặt</button>
+    <section className={`page active admin-console-page admin-system-page ${tab} role-dashboard role-dashboard-admin`}>
+      <div className={`workspace-page-head admin-console-hero admin-system-hero ${tab}`}>
+        <div>
+          <span className="workspace-side-eyebrow">{pageMeta.eyebrow}</span>
+          <h1>{pageMeta.title}</h1>
+          <p>{pageMeta.desc}</p>
+        </div>
+        <div className="workspace-head-actions">
+          {saved && <span className="admin-save-state">Settings saved</span>}
+          <button className="btn btn-primary" onClick={handleSave}>Save settings</button>
         </div>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 20 }}>
-        {([['system', 'Hệ thống'], ['security', 'Bảo mật'], ['access-control', 'Kiểm soát Truy cập']] as [Tab, string][]).map(([k, l]) => (
-          <button key={k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>
+      <div className={`workspace-stats workspace-stats-compact admin-system-stats ${tab}`}>
+        {pageMeta.stats.map((item) => (
+          <article key={item.label} className="workspace-stat-card">
+            <span className="workspace-stat-label">{item.label}</span>
+            <strong>{item.value}</strong>
+          </article>
         ))}
       </div>
 
-      {tab === 'system' && (
-        <div className="card" style={{ maxWidth: 680 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 20 }}>Cấu hình chung</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {settings.map((s, i) => (
-              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: i < settings.length - 1 ? '1px solid var(--border-light)' : 'none', gap: 20 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{s.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.desc}</div>
+      <div className="admin-tabs">
+        {([
+          ['system', 'System'],
+          ['security', 'Security'],
+          ['access-control', 'Access control'],
+        ] as [Tab, string][]).map(([key, label]) => (
+          <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
+        ))}
+      </div>
+
+      <div className={`admin-system-content ${tab}`}>
+        {tab === 'system' && (
+          <div className="admin-system-layout">
+            <div className="workspace-panel admin-console-panel">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>General behavior</h3>
+                  <p>Application defaults and content limits.</p>
                 </div>
-                {s.type === 'select' ? (
-                  <select
-                    value={s.value}
-                    onChange={e => updateSetting(s.id, e.target.value)}
-                    style={{ padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, flexShrink: 0 }}
-                  >
-                    {s.options?.map(o => <option key={o} value={o}>{o}{s.id === 'ai_threshold' ? '%' : ''}</option>)}
-                  </select>
-                ) : (
-                  <input value={s.value} onChange={e => updateSetting(s.id, e.target.value)}
-                         style={{ padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, width: 160, flexShrink: 0 }} />
-                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab === 'security' && (
-        <div className="card" style={{ maxWidth: 680 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 20 }}>Cấu hình Bảo mật</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {security.map((s, i) => (
-              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: i < security.length - 1 ? '1px solid var(--border-light)' : 'none', gap: 20 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{s.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{s.desc}</div>
-                </div>
-                <Toggle enabled={s.enabled} onChange={v => toggleSecurity(s.id, v)} />
+              <div className="admin-setting-list">
+                {settings.map((setting) => (
+                  <article key={setting.id} className="admin-setting-row">
+                    <div>
+                      <strong>{setting.label}</strong>
+                      <p>{setting.desc}</p>
+                    </div>
+                    {setting.type === 'select' ? (
+                      <select className="admin-select" value={setting.value} onChange={(event) => updateSetting(setting.id, event.target.value)}>
+                        {setting.options?.map((option) => <option key={option} value={option}>{option}{setting.id === 'ai_threshold' ? '%' : ''}</option>)}
+                      </select>
+                    ) : (
+                      <input className="admin-input" value={setting.value} onChange={(event) => updateSetting(setting.id, event.target.value)} />
+                    )}
+                  </article>
+                ))}
               </div>
-            ))}
+            </div>
+            <aside className="workspace-side-card admin-system-aside">
+              <span className="workspace-side-eyebrow">Runtime notes</span>
+              <h3>Current defaults</h3>
+              <div className="admin-system-note-list">
+                <article>
+                  <strong>Upload size</strong>
+                  <p>{settings.find((item) => item.id === 'max_upload')?.value || '50'} MB max per file</p>
+                </article>
+                <article>
+                  <strong>Crawl cadence</strong>
+                  <p>{settings.find((item) => item.id === 'crawl_freq')?.value || 'Every 6 hours'}</p>
+                </article>
+                <article>
+                  <strong>Review window</strong>
+                  <p>{settings.find((item) => item.id === 'approval_ttl')?.value || '48'} hour SLA</p>
+                </article>
+              </div>
+            </aside>
           </div>
-        </div>
-      )}
+        )}
 
-      {tab === 'access-control' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 680 }}>
-          {/* IP Whitelist */}
-          <div className="card">
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>IP Whitelist</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>Chỉ cho phép đăng nhập từ các địa chỉ IP trong danh sách này.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-              {ipList.map((ip, i) => (
-                <div key={ip} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--surface)', borderRadius: 'var(--radius)', fontSize: 13 }}>
-                  <span style={{ flex: 1, fontFamily: 'monospace' }}>{ip}</span>
-                  <button onClick={() => setIpList(prev => prev.filter((_, j) => j !== i))}
-                          style={{ color: '#EF4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
-                    Xóa
-                  </button>
+        {tab === 'security' && (
+          <div className="admin-security-layout">
+            <div className="workspace-panel admin-console-panel">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>Protection controls</h3>
+                  <p>Authentication, session, and logging switches.</p>
                 </div>
-              ))}
+              </div>
+              <div className="admin-setting-list">
+                {security.map((setting) => (
+                  <article key={setting.id} className="admin-setting-row security-row">
+                    <div>
+                      <strong>{setting.label}</strong>
+                      <p>{setting.desc}</p>
+                    </div>
+                    <Toggle enabled={setting.enabled} onChange={(enabled) => toggleSecurity(setting.id, enabled)} />
+                  </article>
+                ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input value={newIp} onChange={e => setNewIp(e.target.value)}
-                     placeholder="Nhập địa chỉ IP (vd: 192.168.1.0/24)"
-                     style={{ flex: 1, padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }} />
-              <button className="btn btn-outline" onClick={() => { if (newIp.trim()) { setIpList(prev => [...prev, newIp.trim()]); setNewIp(''); } }}>
-                + Thêm
-              </button>
-            </div>
+            <aside className="workspace-side-card admin-system-aside">
+              <span className="workspace-side-eyebrow">Posture snapshot</span>
+              <h3>Protection summary</h3>
+              <div className="admin-system-note-list">
+                <article>
+                  <strong>Enabled controls</strong>
+                  <p>{enabledControls} active, {security.length - enabledControls} disabled</p>
+                </article>
+                <article>
+                  <strong>Network lockout</strong>
+                  <p>{security.find((item) => item.id === 'ip_lock')?.enabled ? 'Enabled' : 'Disabled'}</p>
+                </article>
+                <article>
+                  <strong>Password policy</strong>
+                  <p>{security.find((item) => item.id === 'pass_policy')?.enabled ? 'Strict' : 'Standard'}</p>
+                </article>
+              </div>
+            </aside>
           </div>
+        )}
 
-          {/* Session Policy */}
-          <div className="card">
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Chính sách Phiên đăng nhập</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>Cấu hình thời gian hết hạn và giới hạn phiên đăng nhập đồng thời.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {[
-                { label: 'Hết hạn Access Token', value: '15 phút' },
-                { label: 'Hết hạn Refresh Token', value: '7 ngày' },
-                { label: 'Tối đa phiên đồng thời', value: '3 phiên' },
-                { label: 'Tự động đăng xuất sau', value: '30 phút' },
-              ].map(f => (
-                <div key={f.label}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{f.label}</label>
-                  <select style={{ width: '100%', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }}>
-                    <option>{f.value}</option>
-                  </select>
+        {tab === 'access-control' && (
+          <div className="admin-access-grid">
+            <div className="admin-access-card">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>IP whitelist</h3>
+                  <p>Restrict sign-in traffic to trusted network ranges.</p>
                 </div>
-              ))}
+              </div>
+              <div className="admin-ip-list">
+                {ipList.map((ip, index) => (
+                  <div key={ip}>
+                    <code>{ip}</code>
+                    <button onClick={() => setIpList((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+              <div className="admin-toolbar compact">
+                <input className="admin-input" value={newIp} onChange={(event) => setNewIp(event.target.value)} placeholder="192.168.1.0/24" />
+                <button className="btn btn-outline" onClick={() => {
+                  if (!newIp.trim()) return;
+                  setIpList((prev) => [...prev, newIp.trim()]);
+                  setNewIp('');
+                }}>Add range</button>
+              </div>
+            </div>
+
+            <div className="admin-access-card">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>Session policy</h3>
+                  <p>Token expiry and concurrent session controls.</p>
+                </div>
+              </div>
+              <div className="admin-policy-grid">
+                {[
+                  { label: 'Access token', value: '15 minutes' },
+                  { label: 'Refresh token', value: '7 days' },
+                  { label: 'Concurrent sessions', value: '3 sessions' },
+                  { label: 'Idle timeout', value: '30 minutes' },
+                ].map((item) => (
+                  <label key={item.label}>
+                    <span>{item.label}</span>
+                    <select className="admin-select"><option>{item.value}</option></select>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 };

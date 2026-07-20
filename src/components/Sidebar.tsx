@@ -19,6 +19,34 @@ interface MenuSection {
   items: MenuItem[];
 }
 
+const ROLE_CONTEXT: Record<string, { label: string; description: string; accent: string }> = {
+  [ROLES.ADMIN]: {
+    label: 'System control',
+    description: 'Users, roles, audit, and platform health.',
+    accent: 'admin',
+  },
+  [ROLES.DIRECTOR]: {
+    label: 'Executive view',
+    description: 'Market posture, ecosystem movement, and strategic signals.',
+    accent: 'director',
+  },
+  [ROLES.MANAGER]: {
+    label: 'Operations desk',
+    description: 'Assignments, approvals, delivery risk, and team throughput.',
+    accent: 'manager',
+  },
+  [ROLES.KEY_MEMBER]: {
+    label: 'Validation desk',
+    description: 'Review extracted data, resolve ambiguity, and prepare handoff.',
+    accent: 'keymember',
+  },
+  [ROLES.STAFF]: {
+    label: 'Research flow',
+    description: 'Daily tasks, evidence collection, and profile completion.',
+    accent: 'staff',
+  },
+};
+
 // ─────────────────────────────────────────────────────────────
 // ROLE MENU CONFIGS (no emoji icons)
 // ─────────────────────────────────────────────────────────────
@@ -47,6 +75,7 @@ const ADMIN_MENU: MenuSection[] = [
   {
     title: 'System',
     items: [
+      { id: 'project-management', label: 'Project Management' },
       { id: 'system-settings',   label: 'System Settings' },
       { id: 'security-settings', label: 'Security Settings' },
     ],
@@ -65,16 +94,16 @@ const DIRECTOR_MENU: MenuSection[] = [
   {
     title: 'Ecosystem',
     items: [
-      { id: 'partner-ecosystem',       label: 'Partner Ecosystem',       badge: 47, badgeType: 'success' },
-      { id: 'competitor-intelligence', label: 'Competitor Intelligence', badge: 8,  badgeType: 'danger' },
+      { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
+      { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
       { id: 'relationship-map',        label: 'Relationship Map' },
     ],
   },
   {
     title: 'Intelligence',
     items: [
-      { id: 'market-opportunities', label: 'Market Opportunities', badge: 23, badgeType: 'success' },
-      { id: 'ai-recommendations',   label: 'AI Recommendations',   badge: 15, badgeType: 'warning' },
+      { id: 'market-opportunities', label: 'Market Opportunities' },
+      { id: 'ai-recommendations',   label: 'AI Recommendations' },
       { id: 'strategic-reports',    label: 'Strategic Reports' },
     ],
   },
@@ -99,6 +128,7 @@ const MANAGER_MENU: MenuSection[] = [
   {
     title: 'Operations',
     items: [
+      { id: 'project-management',      label: 'Project Management' },
       { id: 'partner-evaluation',      label: 'Partner Evaluation' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
       { id: 'company-assignment',      label: 'Company Assignment' },
@@ -141,16 +171,16 @@ const KEY_MEMBER_MENU: MenuSection[] = [
   {
     title: 'Validation',
     items: [
-      { id: 'review-extracted-data',    label: 'Review Extracted Data',  badge: 8, badgeType: 'warning' },
+      { id: 'review-extracted-data',    label: 'Review Extracted Data' },
       { id: 'company-validation',       label: 'Company Validation' },
       { id: 'partner-classification',   label: 'Partner Classification' },
-      { id: 'competitor-classification',label: 'Competitor Class.' },
+      { id: 'competitor-classification',label: 'Competitor Classification' },
     ],
   },
   {
     title: 'AI & Relationships',
     items: [
-      { id: 'ai-suggestion-review', label: 'AI Suggestion Review', badge: 6, badgeType: 'danger' },
+      { id: 'ai-suggestion-review', label: 'AI Suggestion Review' },
       { id: 'relationship-updates', label: 'Relationship Updates' },
       { id: 'onboarding-support',   label: 'Onboarding Support' },
     ],
@@ -171,37 +201,39 @@ const KEY_MEMBER_MENU: MenuSection[] = [
 const STAFF_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'staff-dashboard', label: 'Dashboard' },
+      { id: 'staff-dashboard', label: 'My Dashboard' },
     ],
   },
   {
-    title: 'Data Entry',
+    title: 'Work Queue',
     items: [
-      { id: 'upload-documents',    label: 'Upload Documents' },
-      { id: 'add-company',         label: 'Add Company' },
+      { id: 'upload-documents',    label: 'My Tasks' },
+      { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       { id: 'company-profiles',    label: 'Company Profiles' },
-      { id: 'partner-management',  label: 'Partner Management' },
-      { id: 'competitor-management',label: 'Competitor Mgmt' },
     ],
   },
   {
-    title: 'AI Tools',
+    title: 'Research Input',
     items: [
-      { id: 'ai-extracted-data', label: 'AI Extracted Data',  badge: 7, badgeType: 'warning' },
+      { id: 'add-company',           label: 'Create Company Profile' },
+      { id: 'partner-management',    label: 'Partner Directory' },
+      { id: 'competitor-management', label: 'Competitor Watchlist' },
+    ],
+  },
+  {
+    title: 'Intelligence',
+    items: [
       { id: 'search-companies',  label: 'Search Companies' },
-      { id: 'personal-ai-agent', label: 'Personal AI Agent' },
+      { id: 'personal-ai-agent', label: 'Research AI Assistant' },
       { id: 'news',              label: 'News & Intel' },
     ],
   },
   {
-    title: 'Growth',
+    title: 'Development',
     items: [
-      { id: 'ai-training-mode', label: 'AI Training Mode' },
+      { id: 'ai-training-mode', label: 'Training Mode' },
       { id: 'learning-center',  label: 'Learning Center' },
     ],
-  },
-  {
-    items: [{ id: 'profile', label: 'Profile' }],
   },
 ];
 
@@ -223,6 +255,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
   if (!currentUser) return null;
 
   const menuSections = MENU_BY_ROLE[currentUser.role] || [];
+  const roleContext = ROLE_CONTEXT[currentUser.role];
 
   const handleLogout = () => {
     logout();
@@ -231,7 +264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
 
   return (
     <>
-      <aside className="sidebar" id="sidebar">
+      <aside className={`sidebar role-${roleContext?.accent || 'default'}`} id="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
           <div className="logo-mark">
@@ -250,10 +283,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           </div>
         </div>
 
+        <div className={`sidebar-role-card ${roleContext?.accent || ''}`}>
+          <span className="sidebar-role-chip">{roleContext?.label}</span>
+          <strong>{currentUser.roleName}</strong>
+          <p>{roleContext?.description}</p>
+        </div>
+
         {/* Navigation */}
         <nav className="sidebar-nav">
           {menuSections.map((section, si) => (
-            <div key={si}>
+            <div className="nav-section" key={si}>
               {section.title && (
                 <div className="nav-section-title">{section.title}</div>
               )}

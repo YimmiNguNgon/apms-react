@@ -1,56 +1,67 @@
 import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 
-const QUICK_LOGIN_CARDS = [
-  { id: 'admin',     initials: 'MT', name: 'Đỗ Minh Trí',       role: 'System Administrator',       color: 'linear-gradient(135deg, #64748b, #475569)' },
-  { id: 'director',  initials: 'TT', name: 'Nguyễn Thế Trung',  role: 'Business Director',           color: 'linear-gradient(135deg, #10B981, #059669)' },
-  { id: 'manager',   initials: 'QB', name: 'Trần Quốc Bảo',     role: 'BD Manager',                 color: 'linear-gradient(135deg, #F59E0B, #D97706)' },
-  { id: 'keymember', initials: 'HV', name: 'Lê Thị Hồng Vân',   role: 'Key Member / Senior Staff',  color: 'linear-gradient(135deg, #8B5CF6, #6D28D9)' },
-  { id: 'staff',     initials: 'HH', name: 'Hà Đức Huy',         role: 'BD Staff',                   color: 'linear-gradient(135deg, #3B82F6, #2563EB)' },
-];
+const DEV_ACCOUNT_ALIASES: Record<string, string> = {
+  owner: 'owner@apms.com',
+  director: 'director@apms.com',
+  manager: 'manager@apms.com',
+  keymember: 'keymember@apms.com',
+  staff: 'staff@apms.com',
+};
 
 export const Login: React.FC = () => {
   const { login } = useUser();
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
+  const normalizeIdentity = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (trimmed.includes('@')) return trimmed;
+    return DEV_ACCOUNT_ALIASES[trimmed.toLowerCase()] || trimmed;
+  };
+
+  const handleSubmit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     setError('');
-    if (!email.trim())    { setError('Vui lòng nhập email.'); return; }
-    if (!password.trim()) { setError('Vui lòng nhập mật khẩu.'); return; }
+
+    if (!email.trim()) {
+      setError('Please enter your email or username.');
+      return;
+    }
+
+    if (!password.trim()) {
+      setError('Please enter your password.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const ok = await login(email.trim(), password);
-      if (!ok) setError('Đăng nhập thất bại. Kiểm tra lại thông tin.');
+      const ok = await login(normalizeIdentity(email), password);
+      if (!ok) {
+        setError('Sign-in failed. Please verify your credentials.');
+      }
     } catch (err: any) {
-      setError('Lỗi kết nối: ' + (err.message || 'Không thể kết nối server.'));
+      setError(`Connection error: ${err?.message || 'Cannot reach the server.'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickLogin = async (id: string) => {
+  const fillDevAccount = (identity: string) => {
+    setEmail(identity);
+    setPassword('123456');
     setError('');
-    setLoadingId(id);
-    try {
-      await login(id);
-    } catch (err: any) {
-      setError('Lỗi: ' + (err.message || 'Không thể kết nối server.'));
-    } finally {
-      setLoadingId(null);
-    }
   };
 
   return (
     <div className="login-page">
       <div className="login-wrapper">
-        {/* Left Hero */}
         <div className="login-left">
           <div className="login-hero-badge">
-            <span>✦</span>
+            <span>*</span>
             Business Ecosystem Intelligence
           </div>
           <h1 className="login-hero-title">
@@ -59,27 +70,24 @@ export const Login: React.FC = () => {
             Management
           </h1>
           <p className="login-hero-sub">
-            Nền tảng thông minh quản lý hệ sinh thái đối tác, đối thủ cạnh tranh
-            và cơ hội thị trường. Được trang bị AI để đưa ra các gợi ý chiến lược.
+            APMS connects partner, competitor, and market intelligence into one operational workspace backed by your live backend data.
           </p>
           <div className="login-hero-features">
             {[
-              'Bản đồ quan hệ đối tác trực quan',
-              'Phân tích đối thủ cạnh tranh AI',
-              'Cơ hội thị trường thời gian thực',
-              'RBAC với 5 cấp độ phân quyền',
-            ].map((f, i) => (
-              <div key={i} className="hero-feature">
+              'Relationship map and company profiles',
+              'Competitive and partnership intelligence',
+              'Role-based workspaces for review and approvals',
+              'Backend-connected research and scoring flows',
+            ].map((feature) => (
+              <div key={feature} className="hero-feature">
                 <div className="hero-feature-dot" />
-                {f}
+                {feature}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Right Card */}
-        <div className="login-card">
-          {/* Logo */}
+        <form className="login-card" onSubmit={handleSubmit}>
           <div className="login-card-logo">
             <div className="login-logo-mark">
               <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
@@ -97,69 +105,102 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          <div className="login-form-title">Đăng nhập hệ thống</div>
-          <div className="login-form-sub">Nhập thông tin đăng nhập của bạn</div>
+          <div className="login-form-title">Sign in</div>
+          <div className="login-form-sub">Use your backend account credentials.</div>
 
-          {/* Form */}
           <div className="form-field">
-            <label className="form-label">Email</label>
+            <label className="form-label">Email or username</label>
             <input
               className="form-input"
-              type="email"
-              placeholder="example@apms.com"
+              type="text"
+              autoComplete="username"
+              placeholder="owner@apms.com or manager"
               value={email}
-              disabled={loading || !!loadingId}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              disabled={loading}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </div>
+
           <div className="form-field">
-            <label className="form-label">Mật khẩu</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+              <label className="form-label" style={{ marginBottom: 0 }}>Password</label>
+            </div>
             <input
               className="form-input"
               type="password"
-              placeholder="••••••••"
+              autoComplete="current-password"
+              placeholder="********"
               value={password}
-              disabled={loading || !!loadingId}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              disabled={loading}
+              onChange={(event) => setPassword(event.target.value)}
             />
+            <span
+              style={{ fontSize: '12px', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
+              onClick={() => { window.location.href = '/forgot-password'; }}
+            >
+              Forgot password?
+            </span>
           </div>
 
-          {error && <div className="form-error">⚠️ {error}</div>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: -4, marginBottom: 4 }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => fillDevAccount('owner')}
+              disabled={loading}
+            >
+              Owner demo
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => fillDevAccount('director')}
+              disabled={loading}
+            >
+              Director demo
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => fillDevAccount('manager')}
+              disabled={loading}
+            >
+              Manager demo
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => fillDevAccount('keymember')}
+              disabled={loading}
+            >
+              Key member
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ padding: '6px 10px', fontSize: 12 }}
+              onClick={() => fillDevAccount('staff')}
+              disabled={loading}
+            >
+              Staff demo
+            </button>
+          </div>
+
+          {error && <div className="form-error">Warning: {error}</div>}
 
           <button
             className="btn btn-primary btn-block"
             style={{ marginTop: 4, padding: '11px 16px' }}
-            onClick={handleSubmit}
-            disabled={loading || !!loadingId}
+            type="submit"
+            disabled={loading}
           >
-            {loading ? '⏳ Đang xác thực...' : '→ Đăng nhập'}
+            {loading ? 'Authenticating...' : 'Sign in'}
           </button>
-
-          {/* Quick Login */}
-          <div className="quick-login-section">
-            <div className="quick-login-title">⚡ Đăng nhập nhanh để kiểm thử</div>
-            <div className="quick-login-grid">
-              {QUICK_LOGIN_CARDS.map(card => (
-                <div
-                  key={card.id}
-                  className={`quick-login-card ${loadingId || loading ? 'disabled' : ''}`}
-                  onClick={() => !loadingId && !loading && handleQuickLogin(card.id)}
-                >
-                  <div className="ql-avatar" style={{ background: card.color }}>
-                    {loadingId === card.id ? '⏳' : card.initials}
-                  </div>
-                  <div className="ql-info">
-                    <div className="ql-name">{card.name}</div>
-                    <div className="ql-role">{card.role}</div>
-                  </div>
-                  <span className="ql-arrow">›</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        </form>
       </div>
     </div>
   );

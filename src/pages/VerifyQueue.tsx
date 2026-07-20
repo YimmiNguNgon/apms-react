@@ -3,7 +3,7 @@ import React from 'react';
 // For Manager: Review & approve data submitted by staff or AI Crawl
 export const VerifyQueue: React.FC = () => {
   return (
-    <section className="page active" id="page-verify">
+    <section className="page active manager-page role-dashboard role-dashboard-manager verify-page" id="page-verify">
       <div className="page-header">
         <h1>Hàng đợi Xét duyệt Dữ liệu</h1>
         <span className="badge badge-red">5 đang chờ</span>
@@ -12,6 +12,20 @@ export const VerifyQueue: React.FC = () => {
         <button className="tab active">Tất cả <span className="tab-count">5</span></button>
         <button className="tab">Nhân viên nhập <span className="tab-count">3</span></button>
         <button className="tab">AI Crawl <span className="tab-count">2</span></button>
+      </div>
+      <div className="dashboard-grid" style={{ marginBottom: 18 }}>
+        {[
+          { label: 'Pending review', value: 5, note: 'Records waiting for manager sign-off' },
+          { label: 'Staff entries', value: 3, note: 'Human-submitted records' },
+          { label: 'AI crawl', value: 2, note: 'Machine-generated records' },
+          { label: 'High mismatch', value: 2, note: 'Records needing a closer look' },
+        ].map(item => (
+          <div key={item.label} className="kpi-card blue">
+            <div className="kpi-value">{item.value}</div>
+            <div className="kpi-label">{item.label}</div>
+            <p>{item.note}</p>
+          </div>
+        ))}
       </div>
       <div className="verify-split">
         <div className="verify-queue">

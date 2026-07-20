@@ -4,6 +4,8 @@ import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
+import { ForgotPassword } from './components/ForgotPassword';
+import { ResetPassword } from './components/ResetPassword';
 
 // ── Role dashboards ──
 import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
@@ -11,6 +13,10 @@ import { DirectorDashboard }  from './pages/dashboards/DirectorDashboard';
 import { ManagerDashboard }   from './pages/dashboards/ManagerDashboard';
 import { KeyMemberDashboard } from './pages/dashboards/KeyMemberDashboard';
 import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
+
+interface SharedProps {
+  setActivePage: (page: string) => void;
+}
 
 // ── Existing pages ──
 import { CompanyList }     from './pages/CompanyList';
@@ -37,7 +43,7 @@ import {
 } from './pages/DirectorPages';
 import { RelationshipMap } from './pages/RelationshipMap';
 
-// ── Manager pages ──
+// ─── Manager pages ──
 import {
   PartnerEvaluation,
   CompanyAssignment,
@@ -48,6 +54,7 @@ import {
   TeamKPI,
   ManagerReports,
 } from './pages/ManagerPages';
+import { ProjectManagement } from './pages/ProjectManagement';
 
 // ── Key Member pages ──
 import {
@@ -70,6 +77,8 @@ import {
   AITrainingMode,
   LearningCenter,
 } from './pages/StaffPages';
+import { CompetitorWatchlist } from './pages/CompetitorWatchlist';
+import { MyTasksWorkspace } from './pages/MyTasksWorkspace';
 
 // ── Shared pages ──
 import { ProfilePage } from './pages/ProfilePage';
@@ -122,16 +131,20 @@ const MainApp: React.FC = () => {
     );
   }
 
-  if (!currentUser) return <Login />;
-
+  if (!currentUser) {
+    const path = window.location.pathname;
+    if (path === '/forgot-password') return <ForgotPassword onBackToLogin={() => window.location.href = '/'} />;
+    if (path === '/reset-password') return <ResetPassword onBackToLogin={() => window.location.href = '/'} />;
+    return <Login />;
+  }
   // ── Role dashboard ──
   const renderDashboard = () => {
     switch (currentUser.role) {
       case ROLES.ADMIN:      return <AdminDashboard />;
       case ROLES.DIRECTOR:   return <DirectorDashboard />;
       case ROLES.MANAGER:    return <ManagerDashboard />;
-      case ROLES.KEY_MEMBER: return <KeyMemberDashboard />;
-      case ROLES.STAFF:      return <StaffDashboard />;
+      case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={setActivePage} />;
+      case ROLES.STAFF:      return <StaffDashboard setActivePage={setActivePage} />;
       default:               return <DirectorDashboard />;
     }
   };
@@ -200,6 +213,7 @@ const MainApp: React.FC = () => {
       case 'suggested-actions-approval': return <ApprovalsPage />;
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
+      case 'project-management':         return <ProjectManagement />;
 
       // ── Key Member pages ──
       case 'review-extracted-data':    return <ReviewExtractedData />;
@@ -211,11 +225,11 @@ const MainApp: React.FC = () => {
       case 'onboarding-support':       return <OnboardingSupport />;
 
       // ── Staff pages ──
-      case 'upload-documents':    return <UploadDocuments />;
+      case 'upload-documents':    return <MyTasksWorkspace setActivePage={setActivePage} />;
       case 'partner-management':  return <PartnerManagement />;
-      case 'competitor-management':return <CompetitorManagement />;
+      case 'competitor-management':return <CompetitorWatchlist />;
       case 'ai-extracted-data':   return <AIExtractedData />;
-      case 'search-companies':    return <SearchCompanies />;
+      case 'search-companies':    return <SearchCompanies setActivePage={setActivePage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;
 

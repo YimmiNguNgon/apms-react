@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
+import { api } from '../services/api';
 
 export const ProfilePage: React.FC = () => {
   const { currentUser } = useUser();
   const [editMode, setEditMode] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [form, setForm] = useState({
     name: currentUser?.name || '',
     email: currentUser?.email || '',
-    phone: '0901 234 567',
-    dept: 'Business Development',
-    bio: 'Chuyên viên phân tích hệ sinh thái đối tác và thị trường.',
+    phone: '+84 901 234 567',
+    dept: currentUser?.role?.includes('ADMIN') ? 'Platform Administration' : 'Business Development',
+    bio: 'Maintains workspace access, system policy, and operational governance for APMS.',
   });
-  const [saved, setSaved] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdMessage, setPwdMessage] = useState('');
+  const [pwdError, setPwdError] = useState('');
 
   if (!currentUser) return null;
 
@@ -21,166 +29,184 @@ export const ProfilePage: React.FC = () => {
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const STATS = [
-    { label: 'Công ty đã xử lý', value: 47 },
-    { label: 'Phê duyệt thành công', value: 32 },
-    { label: 'Tháng làm việc', value: 8 },
-    { label: 'Điểm tích lũy', value: 920 },
+  const handleChangePassword = async () => {
+    setPwdError('');
+    setPwdMessage('');
+
+    if (!currentPassword) {
+      setPwdError('Enter your current password.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPwdError('New password must contain at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPwdError('Password confirmation does not match.');
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      const res = await api.post<{ success: boolean; message: string }>('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      if (res?.success) {
+        setPwdMessage('Password updated.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+      }
+    } catch (err: any) {
+      setPwdError(err?.message || 'Could not update password.');
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
+  const stats = [
+    { label: 'Accessible pages', value: currentUser.allowedPages.length },
+    { label: 'Role status', value: 'Active' },
+    { label: 'Session mode', value: 'JWT' },
+    { label: 'Admin scope', value: currentUser.role.includes('ADMIN') ? 'Full' : 'Role' },
   ];
 
-  const RECENT_ACTIVITY = [
-    { action: 'Xác thực dữ liệu FPT Corporation',  time: '08:10 hôm nay' },
-    { action: 'Upload tài liệu VNPT Group',         time: '07:45 hôm nay' },
-    { action: 'Chạy AI Agent phân tích Viettel',    time: '15:30 hôm qua' },
-    { action: 'Hoàn thành khóa học BCTC cơ bản',   time: '10:00 hôm qua' },
-  ];
+  const accessItems = currentUser.allowedPages.slice(0, 8);
 
   return (
-    <section className="page active">
-      <div className="page-header">
-        <h1>Hồ sơ Cá nhân</h1>
-        <div className="page-header-actions">
-          {saved && (
-            <span style={{ fontSize: 13, color: '#10B981', fontWeight: 600 }}>Đã lưu thay đổi</span>
-          )}
+    <section className="page active admin-console-page role-dashboard role-dashboard-admin">
+      <div className="workspace-page-head admin-console-hero">
+        <div>
+          <span className="workspace-side-eyebrow">Account profile</span>
+          <h1>Profile</h1>
+          <p>Review identity details, role scope, accessible pages, and password security for this account.</p>
+        </div>
+        <div className="workspace-head-actions">
+          {saved && <span className="admin-save-state">Changes saved</span>}
           {!editMode ? (
-            <button className="btn btn-primary" onClick={() => setEditMode(true)}>Chỉnh sửa</button>
+            <button className="btn btn-primary" onClick={() => setEditMode(true)}>Edit profile</button>
           ) : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-outline" onClick={() => setEditMode(false)}>Hủy</button>
-              <button className="btn btn-primary" onClick={handleSave}>Lưu thay đổi</button>
-            </div>
+            <>
+              <button className="btn btn-outline" onClick={() => setEditMode(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave}>Save changes</button>
+            </>
           )}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20, alignItems: 'flex-start' }}>
-        {/* Left: Avatar + Role */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ textAlign: 'center', padding: 28 }}>
-            <div style={{
-              width: 80, height: 80, borderRadius: '50%', background: currentUser.avatarColor,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 28, fontWeight: 800, color: '#fff', margin: '0 auto 14px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-            }}>
-              {currentUser.avatar}
-            </div>
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>{currentUser.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{currentUser.email}</div>
-            <span style={{
-              display: 'inline-block', padding: '4px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-              background: 'rgba(37,99,235,0.1)', color: 'var(--accent)',
-            }}>
-              {currentUser.roleName}
-            </span>
+      <div className="admin-profile-layout">
+        <aside className="admin-profile-side">
+          <div className="workspace-side-card admin-profile-card">
+            <div className="admin-profile-avatar" style={{ background: currentUser.avatarColor }}>{currentUser.avatar}</div>
+            <h2>{currentUser.name}</h2>
+            <p>{currentUser.email}</p>
+            <span className="workspace-chip">{currentUser.roleName}</span>
           </div>
 
-          {/* Stats */}
-          <div className="card">
-            <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Thống kê</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {STATS.map(s => (
-                <div key={s.label} style={{ textAlign: 'center', padding: '12px 8px', background: 'var(--surface)', borderRadius: 'var(--radius)' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2 }}>{s.value}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.3 }}>{s.label}</div>
-                </div>
+          <div className="workspace-side-card">
+            <div className="workspace-section-head">
+              <div>
+                <h3>Access summary</h3>
+                <p>Primary permission envelope for this account.</p>
+              </div>
+            </div>
+            <div className="admin-profile-stats">
+              {stats.map((item) => (
+                <article key={item.label}>
+                  <strong>{item.value}</strong>
+                  <span>{item.label}</span>
+                </article>
               ))}
             </div>
           </div>
+        </aside>
 
-          {/* Recent activity */}
-          <div className="card">
-            <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hoạt động gần đây</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {RECENT_ACTIVITY.map((a, i) => (
-                <div key={i} style={{ borderLeft: '2px solid var(--accent)', paddingLeft: 10 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{a.action}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{a.time}</div>
-                </div>
-              ))}
+        <main className="admin-profile-main">
+          <div className="workspace-panel admin-console-panel">
+            <div className="workspace-section-head">
+              <div>
+                <h3>Personal information</h3>
+                <p>Profile fields used by APMS workspace surfaces.</p>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Right: Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Personal Info */}
-          <div className="card">
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 20, color: 'var(--text-primary)' }}>Thông tin cá nhân</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="admin-form-grid">
               {[
-                { label: 'Họ và tên', key: 'name' },
+                { label: 'Full name', key: 'name' },
                 { label: 'Email', key: 'email' },
-                { label: 'Số điện thoại', key: 'phone' },
-                { label: 'Phòng ban', key: 'dept' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {f.label}
-                  </label>
+                { label: 'Phone', key: 'phone' },
+                { label: 'Department', key: 'dept' },
+              ].map((field) => (
+                <label key={field.key}>
+                  <span>{field.label}</span>
                   {editMode ? (
                     <input
-                      value={form[f.key as keyof typeof form]}
-                      onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }}
+                      className="admin-input"
+                      value={form[field.key as keyof typeof form]}
+                      onChange={(event) => setForm((prev) => ({ ...prev, [field.key]: event.target.value }))}
                     />
                   ) : (
-                    <div style={{ fontSize: 13, color: 'var(--text-primary)', padding: '8px 0' }}>{form[f.key as keyof typeof form]}</div>
+                    <div className="admin-read-field">{form[field.key as keyof typeof form]}</div>
                   )}
-                </div>
+                </label>
               ))}
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Giới thiệu bản thân
+              <label className="admin-form-span">
+                <span>Bio</span>
+                {editMode ? (
+                  <textarea
+                    className="admin-input admin-textarea"
+                    value={form.bio}
+                    onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
+                    rows={3}
+                  />
+                ) : (
+                  <div className="admin-read-field">{form.bio}</div>
+                )}
               </label>
-              {editMode ? (
-                <textarea
-                  value={form.bio}
-                  onChange={e => setForm(prev => ({ ...prev, bio: e.target.value }))}
-                  rows={3}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, resize: 'vertical' }}
-                />
-              ) : (
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{form.bio}</div>
-              )}
             </div>
           </div>
 
-          {/* Role & Access */}
-          <div className="card">
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>Vai trò & Quyền truy cập</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface)', borderRadius: 'var(--radius)', fontSize: 13 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Vai trò hiện tại</span>
-                <strong>{currentUser.roleName}</strong>
+          <div className="workspace-panel admin-console-panel">
+            <div className="workspace-section-head">
+              <div>
+                <h3>Role and page access</h3>
+                <p>Pages currently available to {currentUser.roleName}.</p>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface)', borderRadius: 'var(--radius)', fontSize: 13 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Số trang được truy cập</span>
-                <strong>{currentUser.allowedPages.length} trang</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--surface)', borderRadius: 'var(--radius)', fontSize: 13 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Trạng thái tài khoản</span>
-                <span style={{ color: '#10B981', fontWeight: 700 }}>Hoạt động</span>
-              </div>
+            </div>
+            <div className="admin-access-chip-grid">
+              {accessItems.map((page) => <span key={page}>{page.replace(/-/g, ' ')}</span>)}
+              {currentUser.allowedPages.length > accessItems.length && <span>+{currentUser.allowedPages.length - accessItems.length} more</span>}
             </div>
           </div>
 
-          {/* Change Password */}
-          <div className="card">
-            <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>Đổi mật khẩu</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 }}>
-              {['Mật khẩu hiện tại', 'Mật khẩu mới', 'Xác nhận mật khẩu mới'].map(label => (
-                <div key={label}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{label}</label>
-                  <input type="password" style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }} placeholder="••••••••" />
-                </div>
-              ))}
-              <button className="btn btn-outline" style={{ alignSelf: 'flex-start' }}>Cập nhật mật khẩu</button>
+          <div className="workspace-panel admin-console-panel">
+            <div className="workspace-section-head">
+              <div>
+                <h3>Password security</h3>
+                <p>Change password without leaving the administrator console.</p>
+              </div>
             </div>
+            {pwdMessage && <div className="workspace-inline-note">{pwdMessage}</div>}
+            {pwdError && <div className="workspace-inline-error">{pwdError}</div>}
+            <div className="admin-form-grid narrow">
+              <label>
+                <span>Current password</span>
+                <input className="admin-input" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} disabled={pwdLoading} />
+              </label>
+              <label>
+                <span>New password</span>
+                <input className="admin-input" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} disabled={pwdLoading} />
+              </label>
+              <label>
+                <span>Confirm password</span>
+                <input className="admin-input" type="password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} disabled={pwdLoading} />
+              </label>
+            </div>
+            <button className="btn btn-outline" onClick={handleChangePassword} disabled={pwdLoading}>
+              {pwdLoading ? 'Updating...' : 'Update password'}
+            </button>
           </div>
-        </div>
+        </main>
       </div>
     </section>
   );

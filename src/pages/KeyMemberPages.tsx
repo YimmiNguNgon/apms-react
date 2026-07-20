@@ -1,491 +1,689 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { api } from '../services/api';
+import type { CandidateResponse, CandidateStatus, PageResult, RelationshipType } from '../types/domain';
 
-// ─── Shared mock ───
-const EXTRACTED_ITEMS = [
-  { id: 1, company: 'FPT Corporation',   field: 'Doanh thu 2025',        aiValue: '120,000 tỷ VND', confidence: 94, source: 'BCTC 2025', status: 'pending' },
-  { id: 2, company: 'FPT Corporation',   field: 'Số nhân viên',          aiValue: '47,000 người',   confidence: 88, source: 'LinkedIn', status: 'pending' },
-  { id: 3, company: 'VNPT Group',        field: 'Thị phần Viễn thông',   aiValue: '31.4%',          confidence: 79, source: 'VNPT Report', status: 'approved' },
-  { id: 4, company: 'Viettel Digital',   field: 'Sản phẩm chủ lực',     aiValue: 'ViettelPay, Viettel++', confidence: 91, source: 'Website', status: 'pending' },
-  { id: 5, company: 'CMC Technology',    field: 'Năm thành lập',         aiValue: '1993',           confidence: 99, source: 'ĐKKD', status: 'approved' },
-  { id: 6, company: 'MoMo',             field: 'Số người dùng',         aiValue: '31 triệu',       confidence: 72, source: 'Press Release', status: 'pending' },
-  { id: 7, company: 'VinGroup',         field: 'Lĩnh vực kinh doanh',  aiValue: 'BĐS, Ô tô, Công nghệ, Y tế', confidence: 97, source: 'Annual Report', status: 'rejected' },
-  { id: 8, company: 'Sacombank',        field: 'Tổng tài sản',         aiValue: '620,000 tỷ VND', confidence: 85, source: 'BCTC 2025', status: 'pending' },
-];
+interface DashboardCandidate extends CandidateResponse {
+  identity?: {
+    legalName?: string;
+    tradeName?: string;
+    taxCode?: string;
+  };
+  validation?: {
+    errors?: Array<{ message?: string } | string>;
+  };
+  scorePreview?: {
+    completenessScore?: number;
+  };
+  updatedAt?: string;
+  createdAt?: string;
+}
 
-// ─── Review Extracted Data ───
+const PROJECT_ID = localStorage.getItem('apms-active-project') || '';
+
+const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
+  DRAFT: { label: 'Draft', tone: 'neutral' },
+  PENDING_REVIEW: { label: 'Pending review', tone: 'success' },
+  REJECTED: { label: 'Rejected', tone: 'danger' },
+  CORRECTED: { label: 'Corrected', tone: 'info' },
+  APPROVED: { label: 'Approved', tone: 'success' },
+};
+
+const STEP_LABELS = ['Extracted', 'Reviewed', 'Classified', 'Submitted', 'Approved'];
+
+const getCandidateName = (candidate: DashboardCandidate) =>
+  candidate.identity?.tradeName ||
+  candidate.identity?.legalName ||
+  `Candidate ${candidate.id}`;
+
+const getConfidence = (candidate: DashboardCandidate) =>
+  typeof candidate.relationshipConfidenceScore === 'number'
+    ? Math.round(candidate.relationshipConfidenceScore)
+    : null;
+
+const getCompleteness = (candidate: DashboardCandidate) =>
+  typeof candidate.scorePreview?.completenessScore === 'number'
+    ? Math.round(candidate.scorePreview.completenessScore)
+    : null;
+
+const getErrors = (candidate: DashboardCandidate) => candidate.validation?.errors || [];
+
+const getRelationshipLabel = (relationship?: RelationshipType) => {
+  switch (relationship) {
+    case 'PARTNER_WITH':
+      return 'Partner';
+    case 'COMPETITOR_OF':
+      return 'Competitor';
+    case 'SUPPLIER_OF':
+      return 'Supplier';
+    case 'CUSTOMER_OF':
+      return 'Customer';
+    case 'POTENTIAL_PARTNER_OF':
+      return 'Potential partner';
+    default:
+      return 'Unclassified';
+  }
+};
+
+const getStepIndex = (status: CandidateStatus) => {
+  switch (status) {
+    case 'APPROVED':
+      return 5;
+    case 'PENDING_REVIEW':
+      return 4;
+    case 'CORRECTED':
+      return 3;
+    case 'REJECTED':
+      return 2;
+    default:
+      return 1;
+  }
+};
+
+const useProjectCandidates = () => {
+  const [candidates, setCandidates] = useState<DashboardCandidate[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchCandidates = () => {
+    if (!PROJECT_ID) {
+      setCandidates([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    api.get<PageResult<DashboardCandidate>>(`/projects/${PROJECT_ID}/candidates`, {
+      params: { page: 0, size: 100 },
+    })
+      .then((res) => {
+        setCandidates(res?.data?.content ?? []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchCandidates();
+  }, []);
+
+  return { candidates, loading, refresh: fetchCandidates };
+};
+
+const WorkspaceStatCards: React.FC<{
+  items: Array<{ label: string; value: string | number; note: string }>;
+  loading?: boolean;
+}> = ({ items, loading }) => (
+  <div className="workspace-stats workspace-stats-compact">
+    {items.map((item) => (
+      <article key={item.label} className="workspace-stat-card">
+        <span className="workspace-stat-label">{item.label}</span>
+        <strong>{loading ? '...' : item.value}</strong>
+        <p>{item.note}</p>
+      </article>
+    ))}
+  </div>
+);
+
+const WorkspaceShell: React.FC<{
+  pageId: string;
+  breadcrumbs: React.ReactNode;
+  title: string;
+  description: string;
+  actions?: React.ReactNode;
+  sidebar: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ pageId, breadcrumbs, title, description, actions, sidebar, children }) => (
+  <section className="workspace-page" id={pageId}>
+    <div className="workspace-shell">
+      <div className="workspace-main">
+        <div className="workspace-breadcrumbs">{breadcrumbs}</div>
+        <div className="workspace-page-head">
+          <div>
+            <h1>{title}</h1>
+            <p>{description}</p>
+          </div>
+          {actions && <div className="workspace-head-actions">{actions}</div>}
+        </div>
+        {children}
+      </div>
+      <aside className="workspace-sidebar">{sidebar}</aside>
+    </div>
+  </section>
+);
+
+const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
+  <div className="workspace-panel">
+    <div className="workspace-empty">{message}</div>
+  </div>
+);
+
 export const ReviewExtractedData: React.FC = () => {
-  const [data, setData] = useState(EXTRACTED_ITEMS);
-  const [filterStatus, setFilterStatus] = useState('pending');
-  const [editId, setEditId] = useState<number | null>(null);
-  const [editVal, setEditVal] = useState('');
+  const { candidates, loading, refresh } = useProjectCandidates();
+  const [filterStatus, setFilterStatus] = useState<'all' | CandidateStatus>('DRAFT');
 
-  const update = (id: number, status: 'approved' | 'rejected') =>
-    setData(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+  const filtered = useMemo(
+    () => candidates.filter((candidate) => filterStatus === 'all' || candidate.status === filterStatus),
+    [candidates, filterStatus],
+  );
 
-  const startEdit = (item: typeof EXTRACTED_ITEMS[0]) => {
-    setEditId(item.id);
-    setEditVal(item.aiValue);
-  };
-
-  const saveEdit = (id: number) => {
-    setData(prev => prev.map(d => d.id === id ? { ...d, aiValue: editVal, status: 'approved' } : d));
-    setEditId(null);
-  };
-
-  const filtered = data.filter(d => filterStatus === 'all' || d.status === filterStatus);
-
-  const STATUS_COLOR: Record<string, { bg: string; color: string; label: string }> = {
-    pending:  { bg: '#FEF3C7', color: '#92400E', label: 'Chờ xem xét' },
-    approved: { bg: '#D1FAE5', color: '#065F46', label: 'Đã xác nhận' },
-    rejected: { bg: '#FEE2E2', color: '#991B1B', label: 'Từ chối' },
-  };
+  const stats = [
+    { label: 'Total records', value: candidates.length, note: 'Candidate records loaded from the active project' },
+    { label: 'Draft', value: candidates.filter((candidate) => candidate.status === 'DRAFT').length, note: 'Still open for research correction' },
+    { label: 'Pending review', value: candidates.filter((candidate) => candidate.status === 'PENDING_REVIEW').length, note: 'Already submitted to manager review' },
+    { label: 'Rejected', value: candidates.filter((candidate) => candidate.status === 'REJECTED').length, note: 'Need another correction pass' },
+  ];
 
   return (
-    <section className="page active">
-      <div className="page-header">
-        <h1>Review Extracted Data</h1>
-        <div className="page-header-actions">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{data.filter(d => d.status === 'pending').length} mục chờ xem xét</span>
-        </div>
-      </div>
-      <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Tổng mục', value: data.length },
-          { label: 'Chờ xem xét', value: data.filter(d => d.status === 'pending').length },
-          { label: 'Đã xác nhận', value: data.filter(d => d.status === 'approved').length },
-          { label: 'Đã từ chối',  value: data.filter(d => d.status === 'rejected').length },
-        ].map(s => (
-          <div key={s.label} className="kpi-card">
-            <div className="kpi-value">{s.value}</div>
-            <div className="kpi-label">{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        {[['all','Tất cả'],['pending','Chờ xem xét'],['approved','Đã xác nhận'],['rejected','Đã từ chối']].map(([v,l]) => (
-          <button key={v} className={`tab ${filterStatus === v ? 'active' : ''}`} onClick={() => setFilterStatus(v)}>{l}</button>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map(item => {
-          const sc = STATUS_COLOR[item.status];
-          return (
-            <div key={item.id} className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                    <span className="badge badge-blue" style={{ fontSize: 11 }}>{item.company}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Nguồn: {item.source}</span>
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{item.field}</div>
-                  {editId === item.id ? (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input value={editVal} onChange={e => setEditVal(e.target.value)}
-                             style={{ padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, flex: 1 }} />
-                      <button className="btn btn-sm btn-primary" onClick={() => saveEdit(item.id)}>Lưu</button>
-                      <button className="btn btn-sm btn-outline" onClick={() => setEditId(null)}>Hủy</button>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{item.aiValue}</div>
-                  )}
-                </div>
-                <div style={{ marginLeft: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: `conic-gradient(${item.confidence >= 80 ? '#10B981' : item.confidence >= 60 ? '#F59E0B' : '#EF4444'} ${item.confidence * 3.6}deg, var(--border-light) 0deg)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>{item.confidence}%</div>
-                    </div>
-                  </div>
-                  <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: sc.bg, color: sc.color }}>{sc.label}</span>
-                  {item.status === 'pending' && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-sm btn-outline" onClick={() => startEdit(item)}>Sửa</button>
-                      <button className="btn btn-sm btn-primary" onClick={() => update(item.id, 'approved')}>OK</button>
-                      <button className="btn btn-sm btn-outline" style={{ color: '#EF4444', borderColor: '#EF4444' }} onClick={() => update(item.id, 'rejected')}>X</button>
-                    </div>
-                  )}
-                </div>
-              </div>
+    <WorkspaceShell
+      pageId="page-review-extracted-data"
+      breadcrumbs={<>Validation <span>/</span> Review Extracted Data</>}
+      title="Review extracted data"
+      description="Inspect candidate records created from the active project and check identity, classification, and validation quality before handoff."
+      actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
+      sidebar={(
+        <>
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Current filter</span>
+            <div className="workspace-filter-chips">
+              {[
+                ['all', 'All'],
+                ['DRAFT', 'Draft'],
+                ['PENDING_REVIEW', 'Pending review'],
+                ['REJECTED', 'Rejected'],
+                ['CORRECTED', 'Corrected'],
+              ].map(([value, label]) => (
+                <button key={value} className={`workspace-chip ${filterStatus === value ? 'workspace-chip-active' : ''}`} onClick={() => setFilterStatus(value as 'all' | CandidateStatus)}>
+                  {label}
+                </button>
+              ))}
             </div>
-          );
-        })}
-      </div>
-    </section>
+          </div>
+
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Review notes</span>
+            <div className="workspace-activity-list">
+              <article>
+                <strong>Identity first</strong>
+                <p>Prioritize legal name, tax code, and source linkage before deeper classification review.</p>
+              </article>
+              <article>
+                <strong>Escalate weak confidence</strong>
+                <p>Anything without confidence or completeness from backend should be checked against the original source.</p>
+              </article>
+            </div>
+          </div>
+        </>
+      )}
+    >
+      <WorkspaceStatCards items={stats} loading={loading} />
+
+      {!loading && filtered.length === 0 ? (
+        <EmptyPanel message="No extracted candidate data is available for the selected state." />
+      ) : (
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Candidate records</h3>
+              <p>Records below come directly from `GET /projects/{'{id}'}/candidates` for the active project.</p>
+            </div>
+            <span className="workspace-badge neutral">{loading ? 'Loading' : `${filtered.length} items`}</span>
+          </div>
+          <div className="keymember-record-list">
+            {filtered.map((candidate) => {
+              const statusMeta = STATUS_META[candidate.status];
+              const confidence = getConfidence(candidate);
+              const errors = getErrors(candidate);
+              const completeness = getCompleteness(candidate);
+
+              return (
+                <article key={candidate.id} className="keymember-record-card">
+                  <div className="keymember-record-main">
+                    <div className="keymember-record-head">
+                      <strong>{getCandidateName(candidate)}</strong>
+                      <span className={`workspace-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
+                    </div>
+                    <p>Suggested relationship: {getRelationshipLabel(candidate.suggestedRelationshipType)}</p>
+                    <small>Source: {candidate.rawDocumentId || candidate.importJobId || candidate.projectId}</small>
+                  </div>
+                  <div className="keymember-record-metrics">
+                    <span>{confidence !== null ? `${confidence}% confidence` : 'Confidence unavailable'}</span>
+                    <span>{completeness !== null ? `${completeness}% complete` : 'Completeness unavailable'}</span>
+                    <span>{errors.length > 0 ? `${errors.length} validation issue(s)` : 'No validation issue returned'}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
   );
 };
 
-// ─── Company Validation ───
-const VALIDATION_QUEUE = [
-  { id: 1, company: 'TechVision Ltd',      submittedBy: 'Hà ĐH',  date: '16/06/2026', completeness: 92, issues: [], },
-  { id: 2, company: 'Green Energy VN',     submittedBy: 'Phạm TL', date: '15/06/2026', completeness: 74, issues: ['Thiếu BCTC 2024', 'Địa chỉ không khớp ĐKKD'] },
-  { id: 3, company: 'Digital Payments JSC',submittedBy: 'Hà ĐH',  date: '14/06/2026', completeness: 88, issues: ['Số điện thoại sai định dạng'] },
-];
-
 export const CompanyValidation: React.FC = () => {
-  const [selected, setSelected] = useState<number | null>(null);
+  const { candidates, loading, refresh } = useProjectCandidates();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<Record<string, 'done' | 'loading' | 'error'>>({});
+
+  const actionable = candidates.filter((candidate) => candidate.status === 'DRAFT' || candidate.status === 'REJECTED' || candidate.status === 'CORRECTED');
+
+  const handleSubmit = async (id: string) => {
+    setProcessing((prev) => ({ ...prev, [id]: 'loading' }));
+    try {
+      await api.post(`/candidates/${id}/submit`);
+      setProcessing((prev) => ({ ...prev, [id]: 'done' }));
+      refresh();
+    } catch (err) {
+      console.error(err);
+      setProcessing((prev) => ({ ...prev, [id]: 'error' }));
+    }
+  };
+
+  const handleCorrect = async (id: string) => {
+    setProcessing((prev) => ({ ...prev, [id]: 'loading' }));
+    try {
+      await api.post(`/candidates/${id}/correct`);
+      setProcessing((prev) => ({ ...prev, [id]: 'done' }));
+      refresh();
+    } catch (err) {
+      console.error(err);
+      setProcessing((prev) => ({ ...prev, [id]: 'error' }));
+    }
+  };
+
+  const selectedCandidate = actionable.find((item) => item.id === selected) || null;
 
   return (
-    <section className="page active">
-      <div className="page-header">
-        <h1>Company Validation</h1>
-        <div className="page-header-actions">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Hàng đợi: {VALIDATION_QUEUE.length} hồ sơ</span>
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: 20 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {VALIDATION_QUEUE.map(v => (
-            <div key={v.id} className="card" style={{ cursor: 'pointer', borderColor: selected === v.id ? 'var(--accent)' : '' }}
-                 onClick={() => setSelected(selected === v.id ? null : v.id)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{v.company}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: v.completeness >= 90 ? '#10B981' : v.completeness >= 75 ? '#F59E0B' : '#EF4444' }}>
-                  {v.completeness}%
-                </div>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-                Gửi bởi {v.submittedBy} · {v.date}
-              </div>
-              <div style={{ width: '100%', background: 'var(--border-light)', borderRadius: 4, height: 6, overflow: 'hidden' }}>
-                <div style={{ width: `${v.completeness}%`, height: '100%', borderRadius: 4,
-                              background: v.completeness >= 90 ? '#10B981' : v.completeness >= 75 ? '#F59E0B' : '#EF4444' }} />
-              </div>
-              {v.issues.length > 0 && (
-                <div style={{ marginTop: 10, fontSize: 12, color: '#EF4444' }}>
-                  {v.issues.length} vấn đề cần xử lý
-                </div>
-              )}
+    <WorkspaceShell
+      pageId="page-company-validation"
+      breadcrumbs={<>Validation <span>/</span> Company Validation</>}
+      title="Company validation"
+      description="Validate candidate completeness and submit only records that are ready for manager review."
+      actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
+      sidebar={(
+        <>
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Validation queue</span>
+            <div className="workspace-detail-list">
+              <div><strong>Actionable</strong><span>{loading ? 'Loading' : actionable.length}</span></div>
+              <div><strong>Selected</strong><span>{selectedCandidate ? getCandidateName(selectedCandidate) : 'None'}</span></div>
+              <div><strong>Project</strong><span>{PROJECT_ID || 'Unavailable'}</span></div>
             </div>
-          ))}
+          </div>
+
+          <div className="workspace-side-card">
+            <span className="workspace-side-eyebrow">Checkpoint</span>
+            <ul className="workspace-bullet-list">
+              <li>Do not submit if key identity fields are still missing.</li>
+              <li>Use `Mark corrected` only after fixing rejected records.</li>
+              <li>Review backend validation issues before resubmission.</li>
+            </ul>
+          </div>
+        </>
+      )}
+    >
+      <div className="keymember-dual-grid">
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Actionable candidates</h3>
+              <p>Draft, rejected, and corrected candidates that still need senior validation.</p>
+            </div>
+          </div>
+          {actionable.length === 0 && !loading ? (
+            <div className="workspace-empty">No candidate is currently waiting for validation in the active project.</div>
+          ) : (
+            <div className="keymember-validation-list">
+              {actionable.map((candidate) => {
+                const completeness = getCompleteness(candidate) || 0;
+                const errors = getErrors(candidate);
+                const selectedState = selected === candidate.id;
+                return (
+                  <button key={candidate.id} className={`keymember-validation-card ${selectedState ? 'active' : ''}`} onClick={() => setSelected(selectedState ? null : candidate.id)}>
+                    <div className="keymember-validation-card-head">
+                      <strong>{getCandidateName(candidate)}</strong>
+                      <span>{completeness}%</span>
+                    </div>
+                    <p>Status: {STATUS_META[candidate.status].label}</p>
+                    <div className="workspace-progress">
+                      <div className="workspace-progress-bar compact">
+                        <div style={{ width: `${Math.min(100, completeness)}%` }} />
+                      </div>
+                    </div>
+                    <small>{errors.length > 0 ? `${errors.length} issue(s) returned by backend` : 'No validation issue returned'}</small>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {selected && (() => {
-          const v = VALIDATION_QUEUE.find(x => x.id === selected)!;
-          return (
-            <div className="card">
-              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{v.company} — Chi tiết xác thực</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                {['Tên công ty', 'Mã số thuế', 'Địa chỉ', 'Ngành nghề', 'Năm thành lập', 'Website', 'BCTC'].map((field, i) => {
-                  const ok = v.completeness >= 90 || i < 4;
-                  return (
-                    <div key={field} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-light)', fontSize: 13 }}>
-                      <span>{field}</span>
-                      <span style={{ fontWeight: 600, color: ok ? '#10B981' : '#EF4444' }}>{ok ? 'Hợp lệ' : 'Thiếu/Sai'}</span>
-                    </div>
-                  );
-                })}
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Validation detail</h3>
+              <p>Open a candidate from the left column to inspect backend fields and submit actions.</p>
+            </div>
+          </div>
+
+          {!selectedCandidate ? (
+            <div className="workspace-empty">Select a candidate to inspect validation detail.</div>
+          ) : (
+            <>
+              <div className="workspace-detail-list">
+                {[
+                  ['Company name', selectedCandidate.identity?.legalName || selectedCandidate.identity?.tradeName],
+                  ['Tax code', selectedCandidate.identity?.taxCode],
+                  ['Suggested relationship', getRelationshipLabel(selectedCandidate.suggestedRelationshipType)],
+                  ['Confidence', getConfidence(selectedCandidate) !== null ? `${getConfidence(selectedCandidate)}%` : null],
+                  ['Completeness', getCompleteness(selectedCandidate) !== null ? `${getCompleteness(selectedCandidate)}%` : null],
+                  ['Project', selectedCandidate.projectId],
+                ].map(([field, value]) => (
+                  <div key={field}>
+                    <strong>{field}</strong>
+                    <span>{value || 'Missing'}</span>
+                  </div>
+                ))}
               </div>
-              {v.issues.length > 0 && (
-                <div style={{ background: '#FEF3C7', borderRadius: 'var(--radius)', padding: 12, marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12, color: '#92400E', marginBottom: 6 }}>Vấn đề cần xử lý:</div>
-                  {v.issues.map((issue, i) => (
-                    <div key={i} style={{ fontSize: 12, color: '#92400E' }}>• {issue}</div>
+
+              {getErrors(selectedCandidate).length > 0 && (
+                <div className="workspace-ai-note" style={{ marginTop: 16 }}>
+                  <strong>Backend validation issues</strong>
+                  {getErrors(selectedCandidate).map((issue, index) => (
+                    <p key={index}>{typeof issue === 'string' ? issue : issue?.message || 'Unknown issue'}</p>
                   ))}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary">Xác nhận hợp lệ</button>
-                <button className="btn btn-outline" style={{ color: '#EF4444', borderColor: '#EF4444' }}>Yêu cầu bổ sung</button>
+
+              <div className="workspace-head-actions" style={{ marginTop: 16 }}>
+                <button className="btn btn-primary" disabled={processing[selectedCandidate.id] === 'loading' || processing[selectedCandidate.id] === 'done'} onClick={() => handleSubmit(selectedCandidate.id)}>
+                  {processing[selectedCandidate.id] === 'loading' ? 'Processing...' : 'Submit for review'}
+                </button>
+                <button className="btn btn-outline" disabled={processing[selectedCandidate.id] === 'loading' || processing[selectedCandidate.id] === 'done'} onClick={() => handleCorrect(selectedCandidate.id)}>
+                  Mark corrected
+                </button>
               </div>
-            </div>
-          );
-        })()}
+            </>
+          )}
+        </div>
       </div>
-    </section>
+    </WorkspaceShell>
   );
 };
 
-// ─── Partner & Competitor Classification ───
-const CLASSIFY_DATA = [
-  { id: 1, company: 'FPT Corporation',   aiClass: 'Strategic Partner', aiTier: 'Platinum', confidence: 95 },
-  { id: 2, company: 'VNPT Group',        aiClass: 'Strategic Partner', aiTier: 'Gold',     confidence: 88 },
-  { id: 3, company: 'Viettel Digital',   aiClass: 'Tech Partner',      aiTier: 'Gold',     confidence: 82 },
-  { id: 4, company: 'CMC Technology',    aiClass: 'Technology Partner',aiTier: 'Silver',   confidence: 77 },
-  { id: 5, company: 'MoMo',             aiClass: 'FinTech Partner',   aiTier: 'Silver',   confidence: 70 },
-];
+const ClassificationWorkspace: React.FC<{
+  pageId: string;
+  title: string;
+  description: string;
+  candidates: DashboardCandidate[];
+  emptyMessage: string;
+}> = ({ pageId, title, description, candidates, emptyMessage }) => {
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const options = ['Partner', 'Competitor', 'Supplier', 'Customer', 'Potential partner'];
 
-const COMP_CLASSIFY = [
-  { id: 1, company: 'Deloitte Vietnam', aiClass: 'Direct Competitor',   aiThreat: 'High',   confidence: 92 },
-  { id: 2, company: 'PwC Vietnam',      aiClass: 'Direct Competitor',   aiThreat: 'High',   confidence: 89 },
-  { id: 3, company: 'KPMG Vietnam',     aiClass: 'Indirect Competitor', aiThreat: 'Medium', confidence: 81 },
-  { id: 4, company: 'McKinsey VN',      aiClass: 'Indirect Competitor', aiThreat: 'Medium', confidence: 76 },
-];
-
-const ClassifyTable: React.FC<{ data: typeof CLASSIFY_DATA; mode: 'partner' }> = ({ data, mode }) => {
-  const [overrides, setOverrides] = useState<Record<number, string>>({});
-  const tiers = ['Platinum', 'Gold', 'Silver', 'Watch'];
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead>
-          <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-            {['Công ty', 'AI Phân loại', 'AI Đề xuất Tier', 'Tin cậy', 'Xác nhận Tier', 'Thao tác'].map(h => (
-              <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map(d => (
-            <tr key={d.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-              <td style={{ padding: '11px 14px', fontWeight: 600 }}>{d.company}</td>
-              <td style={{ padding: '11px 14px', fontSize: 12 }}>{d.aiClass}</td>
-              <td style={{ padding: '11px 14px' }}><span className="badge badge-blue" style={{ fontSize: 11 }}>{d.aiTier}</span></td>
-              <td style={{ padding: '11px 14px', fontWeight: 700, color: d.confidence >= 85 ? '#10B981' : '#F59E0B' }}>{d.confidence}%</td>
-              <td style={{ padding: '11px 14px' }}>
-                <select value={overrides[d.id] || d.aiTier}
-                        onChange={e => setOverrides(prev => ({ ...prev, [d.id]: e.target.value }))}
-                        style={{ padding: '4px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12 }}>
-                  {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+    <WorkspaceShell
+      pageId={pageId}
+      breadcrumbs={<>Validation <span>/</span> {title}</>}
+      title={title.toLowerCase()}
+      description={description}
+      sidebar={(
+        <div className="workspace-side-card">
+          <span className="workspace-side-eyebrow">Classification note</span>
+          <p style={{ color: '#64748b', fontSize: 12 }}>
+            These records only reflect relationship fields returned by the backend. Override controls here are display-only until a dedicated finalize endpoint exists.
+          </p>
+        </div>
+      )}
+    >
+      {candidates.length === 0 ? (
+        <EmptyPanel message={emptyMessage} />
+      ) : (
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Classification records</h3>
+              <p>All rows below are derived from current project candidates with relationship suggestions.</p>
+            </div>
+            <span className="workspace-badge neutral">{candidates.length} items</span>
+          </div>
+          <div className="keymember-table">
+            <div className="keymember-table-row keymember-table-head">
+              <span>Company</span>
+              <span>Suggested class</span>
+              <span>Confidence</span>
+              <span>Override</span>
+              <span>Status</span>
+            </div>
+            {candidates.map((candidate) => (
+              <div key={candidate.id} className="keymember-table-row">
+                <span>{getCandidateName(candidate)}</span>
+                <span>{getRelationshipLabel(candidate.relationshipTypeOverride || candidate.suggestedRelationshipType)}</span>
+                <span>{getConfidence(candidate) !== null ? `${getConfidence(candidate)}%` : 'Unavailable'}</span>
+                <select
+                  value={overrides[candidate.id] || getRelationshipLabel(candidate.relationshipTypeOverride || candidate.suggestedRelationshipType)}
+                  onChange={(event) => setOverrides((prev) => ({ ...prev, [candidate.id]: event.target.value }))}
+                >
+                  {options.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
-              </td>
-              <td style={{ padding: '11px 14px' }}>
-                <button className="btn btn-sm btn-primary">Xác nhận</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                <span>{STATUS_META[candidate.status].label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
   );
 };
 
-export const PartnerClassification: React.FC = () => (
-  <section className="page active">
-    <div className="page-header"><h1>Partner Classification</h1></div>
-    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>AI đã phân loại {CLASSIFY_DATA.length} đối tác. Xem xét và xác nhận hoặc điều chỉnh phân loại.</p>
-    <ClassifyTable data={CLASSIFY_DATA} mode="partner" />
-  </section>
-);
+export const PartnerClassification: React.FC = () => {
+  const { candidates } = useProjectCandidates();
+  const partnerCandidates = candidates.filter((candidate) => {
+    const relation = candidate.relationshipTypeOverride || candidate.suggestedRelationshipType;
+    return relation === 'PARTNER_WITH' || relation === 'SUPPLIER_OF' || relation === 'POTENTIAL_PARTNER_OF';
+  });
+
+  return (
+    <ClassificationWorkspace
+      pageId="page-partner-classification"
+      title="Partner Classification"
+      description="Compare partner-side relationship suggestions and inspect confidence before downstream approval."
+      candidates={partnerCandidates}
+      emptyMessage="No partner-side classification records are available from the backend."
+    />
+  );
+};
 
 export const CompetitorClassification: React.FC = () => {
-  const [overrides, setOverrides] = useState<Record<number, string>>({});
-  const threats = ['High', 'Medium', 'Low'];
+  const { candidates } = useProjectCandidates();
+  const competitorCandidates = candidates.filter((candidate) => {
+    const relation = candidate.relationshipTypeOverride || candidate.suggestedRelationshipType;
+    return relation === 'COMPETITOR_OF';
+  });
+
   return (
-    <section className="page active">
-      <div className="page-header"><h1>Competitor Classification</h1></div>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-              {['Công ty', 'AI Phân loại', 'AI Mức đe dọa', 'Tin cậy', 'Xác nhận Mức', 'Thao tác'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {COMP_CLASSIFY.map(d => (
-              <tr key={d.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td style={{ padding: '11px 14px', fontWeight: 600 }}>{d.company}</td>
-                <td style={{ padding: '11px 14px', fontSize: 12 }}>{d.aiClass}</td>
-                <td style={{ padding: '11px 14px' }}>
-                  <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                                 background: d.aiThreat === 'High' ? '#FEE2E2' : d.aiThreat === 'Medium' ? '#FEF3C7' : '#D1FAE5',
-                                 color: d.aiThreat === 'High' ? '#991B1B' : d.aiThreat === 'Medium' ? '#92400E' : '#065F46' }}>
-                    {d.aiThreat}
-                  </span>
-                </td>
-                <td style={{ padding: '11px 14px', fontWeight: 700, color: d.confidence >= 85 ? '#10B981' : '#F59E0B' }}>{d.confidence}%</td>
-                <td style={{ padding: '11px 14px' }}>
-                  <select value={overrides[d.id] || d.aiThreat}
-                          onChange={e => setOverrides(prev => ({ ...prev, [d.id]: e.target.value }))}
-                          style={{ padding: '4px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 12 }}>
-                    {threats.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </td>
-                <td style={{ padding: '11px 14px' }}><button className="btn btn-sm btn-primary">Xác nhận</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <ClassificationWorkspace
+      pageId="page-competitor-classification"
+      title="Competitor Classification"
+      description="Inspect competitor-side relationship suggestions returned for the active project."
+      candidates={competitorCandidates}
+      emptyMessage="No competitor classification records are available from the backend."
+    />
   );
 };
-
-// ─── AI Suggestion Review ───
-const AI_SUGGESTIONS = [
-  { id: 1, type: 'Partner Upgrade',  company: 'FPT Corporation', suggestion: 'Nâng cấp từ Gold → Platinum dựa trên tăng trưởng 12% và 8 hợp đồng thành công.', confidence: 94 },
-  { id: 2, type: 'Risk Alert',       company: 'MoMo',           suggestion: 'Theo dõi chặt — doanh thu Q1 giảm 3%, cần đánh giá lại khả năng thanh khoản.', confidence: 87 },
-  { id: 3, type: 'New Opportunity',  company: 'VinGroup',       suggestion: 'VinGroup đang tìm kiếm đối tác AI/Data — nên tiếp cận trong vòng 2 tuần.', confidence: 79 },
-  { id: 4, type: 'Data Enrichment',  company: 'Sacombank',      suggestion: 'Cập nhật thông tin lãnh đạo từ nguồn LinkedIn và BCTN 2025.', confidence: 82 },
-  { id: 5, type: 'Dedup Detection',  company: 'CMC Corp',       suggestion: 'Phát hiện trùng lặp với CMC Technology — đề xuất hợp nhất hồ sơ.', confidence: 96 },
-  { id: 6, type: 'Competitor Move',  company: 'Deloitte VN',    suggestion: 'Deloitte vừa ra mắt sản phẩm tương tự APMS — cần phân tích chiến lược đối phó.', confidence: 88 },
-];
 
 export const AISuggestionReview: React.FC = () => {
-  const [reviews, setReviews] = useState<Record<number, 'accepted' | 'rejected' | null>>({});
+  const { candidates, loading, refresh } = useProjectCandidates();
+  const suggestions = candidates.filter((candidate) => candidate.suggestedRelationshipType || getConfidence(candidate) !== null);
+  const confidenceValues = suggestions.map(getConfidence).filter((value): value is number => value !== null);
+  const averageConfidence = confidenceValues.length ? Math.round(confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length) : null;
 
-  const decide = (id: number, d: 'accepted' | 'rejected') =>
-    setReviews(prev => ({ ...prev, [id]: d }));
-
-  const TYPE_BADGE: Record<string, string> = {
-    'Partner Upgrade': 'badge-green',
-    'Risk Alert': 'badge-red',
-    'New Opportunity': 'badge-blue',
-    'Data Enrichment': 'badge-purple',
-    'Dedup Detection': 'badge-yellow',
-    'Competitor Move': 'badge-red',
-  };
+  const stats = [
+    { label: 'Suggestions', value: suggestions.length, note: 'Candidates exposing backend suggestion data' },
+    { label: 'High confidence', value: suggestions.filter((candidate) => (getConfidence(candidate) || 0) >= 85).length, note: 'Signals above the stronger confidence range' },
+    { label: 'Needs review', value: suggestions.filter((candidate) => candidate.status !== 'APPROVED').length, note: 'Not yet closed by approval state' },
+    { label: 'Average confidence', value: averageConfidence !== null ? `${averageConfidence}%` : '—', note: 'Computed from backend confidence values' },
+  ];
 
   return (
-    <section className="page active">
-      <div className="page-header">
-        <h1>AI Suggestion Review</h1>
-        <div className="page-header-actions">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{AI_SUGGESTIONS.filter(s => !reviews[s.id]).length} chờ xem xét</span>
+    <WorkspaceShell
+      pageId="page-ai-suggestion-review"
+      breadcrumbs={<>AI & Relationships <span>/</span> AI Suggestion Review</>}
+      title="AI suggestion review"
+      description="Inspect suggestion-bearing candidates and review relationship signals before they influence downstream approval."
+      actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
+      sidebar={(
+        <div className="workspace-side-card">
+          <span className="workspace-side-eyebrow">Review rule</span>
+          <p style={{ color: '#64748b', fontSize: 12 }}>
+            This screen now only reflects suggestion and confidence fields already returned by backend candidates. No local suggestion card is generated anymore.
+          </p>
         </div>
-      </div>
-      <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-        {[
-          { label: 'Tổng gợi ý',  value: AI_SUGGESTIONS.length },
-          { label: 'Đã chấp nhận',value: Object.values(reviews).filter(v => v === 'accepted').length },
-          { label: 'Đã từ chối',  value: Object.values(reviews).filter(v => v === 'rejected').length },
-          { label: 'Độ tin cậy TB',value: `${Math.round(AI_SUGGESTIONS.reduce((s,r) => s+r.confidence,0)/AI_SUGGESTIONS.length)}%` },
-        ].map(s => (
-          <div key={s.label} className="kpi-card">
-            <div className="kpi-value">{s.value}</div>
-            <div className="kpi-label">{s.label}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {AI_SUGGESTIONS.map(s => {
-          const r = reviews[s.id];
-          return (
-            <div key={s.id} className="card" style={{ opacity: r ? 0.65 : 1, transition: 'opacity 0.3s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <span className={`badge ${TYPE_BADGE[s.type] || 'badge-blue'}`} style={{ fontSize: 11 }}>{s.type}</span>
-                    <span className="badge badge-blue" style={{ fontSize: 11 }}>{s.company}</span>
-                  </div>
-                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 10 }}>{s.suggestion}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ flex: 1, maxWidth: 160, background: 'var(--border-light)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
-                      <div style={{ width: `${s.confidence}%`, background: s.confidence >= 85 ? '#10B981' : '#F59E0B', height: '100%', borderRadius: 4 }} />
-                    </div>
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tin cậy: <strong style={{ color: 'var(--text-primary)' }}>{s.confidence}%</strong></span>
-                  </div>
-                </div>
-                <div style={{ marginLeft: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                  {r ? (
-                    <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-                                   background: r === 'accepted' ? '#D1FAE5' : '#FEE2E2',
-                                   color: r === 'accepted' ? '#065F46' : '#991B1B' }}>
-                      {r === 'accepted' ? 'Chấp nhận' : 'Từ chối'}
-                    </span>
-                  ) : (
-                    <>
-                      <button className="btn btn-sm btn-primary" onClick={() => decide(s.id, 'accepted')}>Chấp nhận</button>
-                      <button className="btn btn-sm btn-outline" style={{ color: '#EF4444', borderColor: '#EF4444' }} onClick={() => decide(s.id, 'rejected')}>Từ chối</button>
-                    </>
-                  )}
-                </div>
-              </div>
+      )}
+    >
+      <WorkspaceStatCards items={stats} loading={loading} />
+
+      {!loading && suggestions.length === 0 ? (
+        <EmptyPanel message="No AI suggestion data is available from the backend for the current project." />
+      ) : (
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Suggestion-bearing candidates</h3>
+              <p>Suggestion rows come from candidate relationship fields and confidence scores only.</p>
             </div>
-          );
-        })}
-      </div>
-    </section>
+          </div>
+          <div className="keymember-record-list">
+            {suggestions.map((candidate) => (
+              <article key={candidate.id} className="keymember-record-card">
+                <div className="keymember-record-main">
+                  <div className="keymember-record-head">
+                    <strong>{getCandidateName(candidate)}</strong>
+                    <span className={`workspace-badge ${STATUS_META[candidate.status].tone}`}>{STATUS_META[candidate.status].label}</span>
+                  </div>
+                  <p>{getRelationshipLabel(candidate.suggestedRelationshipType)}</p>
+                  <small>Project: {candidate.projectId}</small>
+                </div>
+                <div className="keymember-record-metrics">
+                  <span>{getConfidence(candidate) !== null ? `${getConfidence(candidate)}% confidence` : 'Confidence unavailable'}</span>
+                  <span>{getCompleteness(candidate) !== null ? `${getCompleteness(candidate)}% complete` : 'Completeness unavailable'}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </WorkspaceShell>
   );
 };
 
-// ─── Relationship Updates ───
-const REL_UPDATES = [
-  { id: 1, from: 'FPT Corporation',  to: 'VinGroup',        type: 'Partnership', change: 'Mới',         date: '15/06/2026' },
-  { id: 2, from: 'VNPT Group',       to: 'Viettel Digital', type: 'Competition', change: 'Tăng cường',  date: '14/06/2026' },
-  { id: 3, from: 'CMC Technology',   to: 'FPT Corporation', type: 'Supply',      change: 'Cập nhật',    date: '12/06/2026' },
-  { id: 4, from: 'MoMo',            to: 'Sacombank',       type: 'Partnership', change: 'Chấm dứt',    date: '10/06/2026' },
-];
+export const RelationshipUpdates: React.FC = () => {
+  const { candidates, loading, refresh } = useProjectCandidates();
+  const relationshipCandidates = candidates.filter((candidate) => candidate.relationshipTypeOverride || candidate.suggestedRelationshipType);
 
-export const RelationshipUpdates: React.FC = () => (
-  <section className="page active">
-    <div className="page-header"><h1>Relationship Updates</h1></div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {REL_UPDATES.map(r => (
-        <div key={r.id} className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>{r.from}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {r.type === 'Competition' ? 'cạnh tranh với' : r.type === 'Supply' ? 'cung cấp cho' : 'hợp tác với'}
-                </span>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>{r.to}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.type}</span>
-                <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                               background: r.change === 'Mới' ? '#D1FAE5' : r.change === 'Chấm dứt' ? '#FEE2E2' : '#FEF3C7',
-                               color: r.change === 'Mới' ? '#065F46' : r.change === 'Chấm dứt' ? '#991B1B' : '#92400E' }}>
-                  {r.change}
-                </span>
-              </div>
+  return (
+    <WorkspaceShell
+      pageId="page-relationship-updates"
+      breadcrumbs={<>AI & Relationships <span>/</span> Relationship Updates</>}
+      title="Relationship updates"
+      description="Inspect candidate records that already contain relationship suggestion or override data."
+      actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
+      sidebar={(
+        <div className="workspace-side-card">
+          <span className="workspace-side-eyebrow">Update source</span>
+          <p style={{ color: '#64748b', fontSize: 12 }}>
+            There is no separate relationship-update endpoint yet, so this screen derives relationship change candidates from backend candidate fields.
+          </p>
+        </div>
+      )}
+    >
+      {!loading && relationshipCandidates.length === 0 ? (
+        <EmptyPanel message="No relationship updates are available from the backend for the active project." />
+      ) : (
+        <div className="workspace-panel">
+          <div className="workspace-section-head">
+            <div>
+              <h3>Relationship-bearing candidates</h3>
+              <p>Use this list to inspect what relationship data is already attached to active project candidates.</p>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.date}</div>
-              <button className="btn btn-sm btn-outline" style={{ marginTop: 6 }}>Xác nhận</button>
-            </div>
+          </div>
+          <div className="keymember-record-list">
+            {relationshipCandidates.map((candidate) => (
+              <article key={candidate.id} className="keymember-record-card">
+                <div className="keymember-record-main">
+                  <div className="keymember-record-head">
+                    <strong>{getCandidateName(candidate)}</strong>
+                    <span className="workspace-badge info">
+                      {candidate.relationshipTypeOverride ? 'Override applied' : 'AI suggested'}
+                    </span>
+                  </div>
+                  <p>{getRelationshipLabel(candidate.relationshipTypeOverride || candidate.suggestedRelationshipType)}</p>
+                  <small>{candidate.updatedAt || candidate.createdAt || 'Timestamp unavailable'}</small>
+                </div>
+                <div className="keymember-record-metrics">
+                  <span>Project {candidate.projectId}</span>
+                  <span>{STATUS_META[candidate.status].label}</span>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
-      ))}
-    </div>
-  </section>
-);
+      )}
+    </WorkspaceShell>
+  );
+};
 
-// ─── Onboarding Support ───
-const ONBOARDING_LIST = [
-  { id: 1, company: 'TechVision Ltd',      step: 4, totalSteps: 5, assignee: 'Hà ĐH',  startDate: '10/06/2026', status: 'on-track' },
-  { id: 2, company: 'Green Energy VN',     step: 2, totalSteps: 5, assignee: 'Phạm TL', startDate: '12/06/2026', status: 'delayed' },
-  { id: 3, company: 'Digital Payments JSC',step: 5, totalSteps: 5, assignee: 'Hà ĐH',  startDate: '05/06/2026', status: 'completed' },
-];
+export const OnboardingSupport: React.FC = () => {
+  const { candidates, loading, refresh } = useProjectCandidates();
 
-const STEPS = ['Hồ sơ ban đầu', 'Xác thực dữ liệu', 'Phân loại', 'Thẩm định', 'Hoàn tất'];
-
-export const OnboardingSupport: React.FC = () => (
-  <section className="page active">
-    <div className="page-header"><h1>Onboarding Support</h1></div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {ONBOARDING_LIST.map(o => {
-        const pct = Math.round((o.step / o.totalSteps) * 100);
-        const sc = o.status === 'completed' ? { bg: '#D1FAE5', color: '#065F46', label: 'Hoàn thành' }
-                 : o.status === 'on-track'  ? { bg: '#DBEAFE', color: '#1E40AF', label: 'Đúng tiến độ' }
-                 : { bg: '#FEE2E2', color: '#991B1B', label: 'Trễ tiến độ' };
-        return (
-          <div key={o.id} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{o.company}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Bắt đầu: {o.startDate} · Phụ trách: {o.assignee}</div>
-              </div>
-              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: sc.bg, color: sc.color, alignSelf: 'flex-start' }}>{sc.label}</span>
-            </div>
-            {/* Step indicator */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-              {STEPS.map((step, i) => (
-                <div key={step} style={{ flex: 1 }}>
-                  <div style={{
-                    height: 6, borderRadius: 3,
-                    background: i < o.step ? (o.status === 'completed' ? '#10B981' : '#2563EB') : 'var(--border-light)',
-                    marginBottom: 4,
-                  }} />
-                  <div style={{ fontSize: 9, color: i < o.step ? 'var(--text-secondary)' : 'var(--text-muted)', textAlign: 'center', lineHeight: 1.2 }}>{step}</div>
+  return (
+    <WorkspaceShell
+      pageId="page-onboarding-support"
+      breadcrumbs={<>AI & Relationships <span>/</span> Onboarding Support</>}
+      title="Onboarding support"
+      description="Track candidate movement through the validation-to-approval journey using backend candidate states."
+      actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
+      sidebar={(
+        <div className="workspace-side-card">
+          <span className="workspace-side-eyebrow">Progress logic</span>
+          <p style={{ color: '#64748b', fontSize: 12 }}>
+            Step progress here is inferred from candidate status because the backend does not currently expose a dedicated onboarding workflow model.
+          </p>
+        </div>
+      )}
+    >
+      {!loading && candidates.length === 0 ? (
+        <EmptyPanel message="No onboarding-support data is available because the current project has no backend candidates." />
+      ) : (
+        <div className="keymember-onboarding-list">
+          {candidates.map((candidate) => {
+            const step = getStepIndex(candidate.status);
+            const pct = Math.round((step / STEP_LABELS.length) * 100);
+            return (
+              <article key={candidate.id} className="workspace-panel">
+                <div className="workspace-section-head">
+                  <div>
+                    <h3>{getCandidateName(candidate)}</h3>
+                    <p>Project {candidate.projectId} · Candidate ID {candidate.id}</p>
+                  </div>
+                  <span className={`workspace-badge ${STATUS_META[candidate.status].tone}`}>{STATUS_META[candidate.status].label}</span>
                 </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-              Bước {o.step}/{o.totalSteps} — {pct}% hoàn thành
-            </div>
-            {o.status !== 'completed' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-sm btn-primary">Bước tiếp theo</button>
-                <button className="btn btn-sm btn-outline">Ghi chú</button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </section>
-);
+                <div className="keymember-stepper">
+                  {STEP_LABELS.map((label, index) => (
+                    <div key={label} className="keymember-step">
+                      <div className={`keymember-step-bar ${index < step ? 'active' : ''}`} />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="workspace-progress-meta" style={{ marginTop: 12 }}>
+                  <span>Step {step}/{STEP_LABELS.length}</span>
+                  <span>{pct}% complete</span>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </WorkspaceShell>
+  );
+};
