@@ -551,7 +551,29 @@ interface AiExtraction {
   sourceType?: string;
   extractedAt?: string;
   candidateId?: string;
+  evidenceText?: string;
+  pageNumber?: number;
+  validationStatus?: string;
+  reviewStatus?: string;
 }
+
+interface AiFieldResult {
+  id?: string;
+  fieldName?: string;
+  value?: unknown;
+  confidence?: number;
+  evidenceText?: string;
+  pageNumber?: number;
+  validationStatus?: string;
+  reviewStatus?: string;
+}
+
+const formatExtractedValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '--';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(formatExtractedValue).join(', ');
+  return JSON.stringify(value);
+};
 
 export const AIExtractedData: React.FC = () => {
   const [extractions, setExtractions] = useState<AiExtraction[]>([]);
@@ -581,9 +603,27 @@ export const AIExtractedData: React.FC = () => {
         setExtractionId(data.id || null);
 
         let fields: AiExtraction[] = [];
-        if (data.extractedData) {
+        const createdAt = data.createdAt ? new Date(data.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+        const fieldResults = data.fieldResults && typeof data.fieldResults === 'object'
+          ? Object.values(data.fieldResults as Record<string, AiFieldResult>)
+          : [];
+
+        if (fieldResults.length > 0) {
+          fields = fieldResults.map((field, index) => ({
+            id: field.id || field.fieldName || String(index),
+            companyName: data.extractedData?.tradeName || data.extractedData?.legalName || 'Unassigned',
+            fieldName: field.fieldName || `Field ${index + 1}`,
+            extractedValue: formatExtractedValue(field.value),
+            confidenceScore: typeof field.confidence === 'number' ? Math.round(field.confidence * 100) : 0,
+            sourceType: 'AI',
+            extractedAt: createdAt,
+            evidenceText: field.evidenceText,
+            pageNumber: field.pageNumber,
+            validationStatus: field.validationStatus,
+            reviewStatus: field.reviewStatus,
+          }));
+        } else if (data.extractedData) {
           const ext = data.extractedData;
-          const createdAt = data.createdAt ? new Date(data.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
           if (ext.tradeName) fields.push({ id: 'f1', companyName: ext.tradeName, fieldName: 'Trade name', extractedValue: ext.tradeName, confidenceScore: 90, sourceType: 'AI', extractedAt: createdAt });
           if (ext.businessModel) fields.push({ id: 'f2', companyName: ext.tradeName, fieldName: 'Business model', extractedValue: ext.businessModel, confidenceScore: 85, sourceType: 'AI', extractedAt: createdAt });
@@ -717,6 +757,16 @@ export const AIExtractedData: React.FC = () => {
                         </div>
                         <div className="ai-extraction-field">{item.fieldName || '--'}</div>
                         <div className="ai-extraction-value">{item.extractedValue || '--'}</div>
+                        {(item.evidenceText || item.validationStatus || item.reviewStatus) && (
+                          <div className="ai-extraction-evidence">
+                            {item.evidenceText && <p>{item.evidenceText}</p>}
+                            <small>
+                              {item.pageNumber ? `Page ${item.pageNumber}` : 'Source page unavailable'}
+                              {item.validationStatus ? ` · Validation: ${item.validationStatus}` : ''}
+                              {item.reviewStatus ? ` · Review: ${item.reviewStatus}` : ''}
+                            </small>
+                          </div>
+                        )}
                       </div>
 
                       <div className="ai-extraction-confidence">

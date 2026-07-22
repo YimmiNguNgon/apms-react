@@ -206,7 +206,7 @@ const MainApp: React.FC = () => {
 
       // ── Manager pages ──
       case 'partner-evaluation':         return <PartnerEvaluation />;
-      case 'company-assignment':         return <CompanyAssignment />;
+      case 'company-assignment':         return <CompanyAssignment setActivePage={setActivePage} />;
       case 'analysis-history':           return <AnalysisHistory />;
       case 'risk-monitoring':            return <RiskMonitoring />;
       case 'partner-status':             return <PartnerStatus />;
@@ -225,10 +225,12 @@ const MainApp: React.FC = () => {
       case 'onboarding-support':       return <OnboardingSupport />;
 
       // ── Staff pages ──
-      case 'upload-documents':    return <MyTasksWorkspace setActivePage={setActivePage} />;
+      case 'my-tasks':            return <MyTasksWorkspace setActivePage={setActivePage} />;
+      case 'upload-documents':    return <UploadDocuments setActivePage={setActivePage} />;
       case 'partner-management':  return <PartnerManagement />;
       case 'competitor-management':return <CompetitorWatchlist />;
       case 'ai-extracted-data':   return <AIExtractedData />;
+      case 'candidate-review':    return <CompanyValidation staffMode />;
       case 'search-companies':    return <SearchCompanies setActivePage={setActivePage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;

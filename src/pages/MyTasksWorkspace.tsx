@@ -1,204 +1,267 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { API_BASE_URL, api } from '../services/api';
-import type { ImportJobResponse, PageResult, ProjectResponse } from '../types/domain';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { api } from '../services/api';
+import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskPriority, TaskType } from '../types/domain';
 
-interface UploadFile {
-  id?: number;
-  name: string;
-  size: string;
-  type: string;
-  status: 'uploading' | 'done' | 'error' | 'extracting' | 'extracted';
-  progress: number;
-  importJobId?: number;
-  originalFile?: File;
-}
-
-const mapImportJobToFile = (job: ImportJobResponse): UploadFile => ({
-  id: job.id,
-  name: job.fileName || 'Uploaded document',
-  size: 'N/A',
-  type: (job.fileName || '').split('.').pop()?.toUpperCase() || 'FILE',
-  status: job.status === 'COMPLETED' ? 'extracted' : job.status === 'FAILED' ? 'error' : 'done',
-  progress: 100,
-  importJobId: job.id,
-});
-
-interface AiExtractionResultPayload {
-  importJobId?: number | null;
-  rawDocumentId?: string | null;
-  extractedData?: Record<string, unknown> | null;
-  rawAiOutput?: string | null;
+interface CompanyProfileItem {
+  id: string;
+  companyId: string;
+  identity?: {
+    legalName?: string;
+    tradeName?: string;
+  };
+  business?: {
+    industries?: string[];
+  };
 }
 
 export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void }> = ({ setActivePage }) => {
-  const [files, setFiles] = useState<UploadFile[]>([]);
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [projectLoading, setProjectLoading] = useState(true);
-  const [projectError, setProjectError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<ProjectTaskResponse[]>([]);
+  const [projectsMap, setProjectsMap] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchDocumentHistory = useCallback(async (projectId: string, signal?: AbortSignal) => {
-    const res = await api.get<PageResult<ImportJobResponse>>(`/projects/${projectId}/documents`, {
-      params: { page: 0, size: 10 },
-      signal,
-    });
+  // Task Detail Modal State
+  const [selectedTask, setSelectedTask] = useState<ProjectTaskResponse | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [attachedCompanyProfileId, setAttachedCompanyProfileId] = useState<string>('');
+  const [note, setNote] = useState<string>('');
+  const [taskStatus, setTaskStatus] = useState<TaskStatus>('TODO');
+  const [isDraft, setIsDraft] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftMessage, setDraftMessage] = useState<string>('');
 
-    if (!res?.success || !res.data?.content) return;
+  // Company Search State
+  const [companySearch, setCompanySearch] = useState('');
+  const [companies, setCompanies] = useState<CompanyProfileItem[]>([]);
+  const [searchingCompanies, setSearchingCompanies] = useState(false);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
 
-    const history = res.data.content.map(mapImportJobToFile);
-    setFiles((prev) => {
-      const currentIds = new Set(prev.map((item) => item.importJobId));
-      const newHistory = history.filter((item) => !currentIds.has(item.importJobId));
-      return [...prev, ...newHistory];
-    });
+  // Submission State
+  const [submitting, setSubmitting] = useState(false);
+
+  // Debounce ref for auto-saving drafts
+  const autoSaveTimerRef = useRef<any>(null);
+
+  // Initial Data Load
+  const fetchMyTasks = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get<PageResult<ProjectTaskResponse>>('/tasks/my', {
+        params: { page: 0, size: 100 }
+      });
+      if (res?.success && res.data?.content) {
+        setTasks(res.data.content);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load assigned tasks.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadActiveProject = useCallback(async (signal?: AbortSignal) => {
-    setProjectLoading(true);
-    setProjectError(null);
-
+  const loadProjectsMap = useCallback(async () => {
     try {
       const res = await api.get<PageResult<ProjectResponse>>('/projects', {
-        params: { page: 0, size: 100 },
-        signal,
+        params: { page: 0, size: 100 }
       });
-
-      const projects = res?.data?.content ?? [];
-      const stored = localStorage.getItem('apms-active-project');
-      const validProject = projects.find((project) => String(project.id) === stored) ?? projects[0] ?? null;
-
-      if (!validProject) {
-        setActiveProjectId(null);
-        setFiles([]);
-        setProjectError('No valid project is available for the task queue.');
-        return;
+      if (res?.success && res.data?.content) {
+        const pMap: Record<number, string> = {};
+        res.data.content.forEach((p) => {
+          pMap[p.id] = p.projectName;
+        });
+        setProjectsMap(pMap);
       }
-
-      const nextProjectId = String(validProject.id);
-      localStorage.setItem('apms-active-project', nextProjectId);
-      setActiveProjectId(nextProjectId);
-      await fetchDocumentHistory(nextProjectId, signal);
     } catch (err) {
-      if (signal?.aborted) return;
-      setActiveProjectId(null);
-      setFiles([]);
-      setProjectError(err instanceof Error ? err.message : 'Cannot load the active project.');
-    } finally {
-      if (!signal?.aborted) {
-        setProjectLoading(false);
-      }
+      console.warn('Failed to construct projects map:', err);
     }
-  }, [fetchDocumentHistory]);
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      void loadActiveProject(controller.signal);
-    }, 0);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [loadActiveProject]);
+    void loadProjectsMap();
+    void fetchMyTasks();
+  }, [fetchMyTasks, loadProjectsMap]);
 
-  const uploadFileToBackend = async (file: File, existingId?: number) => {
-    const projectId = activeProjectId;
-    if (!projectId) {
-      setProjectError('No valid project is available for file upload.');
-      return;
-    }
-
-    const fileId = existingId || (Date.now() + Math.random());
-
-    if (existingId) {
-      setFiles((prev) => prev.map((item) => item.id === existingId ? { ...item, status: 'uploading', progress: 0 } : item));
-    } else {
-      setFiles((prev) => [{
-        id: fileId,
-        name: file.name,
-        size: file.size < 1024 * 1024
-          ? `${(file.size / 1024).toFixed(1)} KB`
-          : `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-        type: file.name.split('.').pop()?.toUpperCase() || 'FILE',
-        status: 'uploading',
-        progress: 0,
-        originalFile: file,
-      }, ...prev]);
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const token = localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_BASE_URL}/projects/${projectId}/documents/upload`, true);
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    }
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, progress: percentComplete } : item));
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          const importJobId = res?.data?.id;
-          setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'done', progress: 100, importJobId } : item));
-        } catch (err) {
-          console.error('JSON parse error:', err);
-          setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'error', progress: 0 } : item));
-        }
-      } else {
-        setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'error', progress: 0 } : item));
-      }
-    };
-
-    xhr.onerror = () => {
-      setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'error', progress: 0 } : item));
-    };
-
-    xhr.send(formData);
-  };
-
-  const handleExtractAI = async (fileId: number, importJobId?: number) => {
-    if (!importJobId) return;
-    setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'extracting', progress: 50 } : item));
+  // Handle task status update via Drag and Drop or select dropdown
+  const handleUpdateTaskStatus = async (taskId: number, projectId: number, newStatus: TaskStatus) => {
+    const originalTasks = [...tasks];
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
     try {
-      const res = await api.post<AiExtractionResultPayload>(`/import-jobs/${importJobId}/ai-extractions`);
-      localStorage.setItem('apms-active-import-job', String(importJobId));
-
-      if (res?.data) {
-        localStorage.setItem(`apms-ai-data-${importJobId}`, JSON.stringify(res.data));
-      }
-
-      setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'extracted', progress: 100 } : item));
-    } catch {
-      setFiles((prev) => prev.map((item) => item.id === fileId ? { ...item, status: 'done', progress: 100 } : item));
+      await api.patch(`/projects/${projectId}/tasks/${taskId}`, { status: newStatus });
+    } catch (err: any) {
+      setTasks(originalTasks);
+      alert(err?.message || 'Failed to update task status.');
     }
   };
 
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    setDragging(false);
-    if (!activeProjectId || projectLoading) return;
-    Array.from(event.dataTransfer.files).forEach((file) => uploadFileToBackend(file));
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, taskId: number, projectId: number) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ taskId, projectId }));
   };
 
-  const handleSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!activeProjectId || projectLoading) return;
-    Array.from(event.target.files || []).forEach((file) => uploadFileToBackend(file));
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
-  const readyCount = files.filter((file) => file.status === 'done').length;
-  const extractedCount = files.filter((file) => file.status === 'extracted').length;
-  const errorCount = files.filter((file) => file.status === 'error').length;
-  const processingCount = files.filter((file) => file.status === 'uploading' || file.status === 'extracting').length;
+  const handleDrop = (e: React.DragEvent, targetStatus: TaskStatus) => {
+    e.preventDefault();
+    try {
+      const dataStr = e.dataTransfer.getData('text/plain');
+      if (!dataStr) return;
+      const { taskId, projectId } = JSON.parse(dataStr) as { taskId: number; projectId: number };
+      if (taskId && projectId) {
+        void handleUpdateTaskStatus(taskId, projectId, targetStatus);
+      }
+    } catch (err) {
+      console.error('Drop error:', err);
+    }
+  };
+
+  // Open Task Detail and Fetch Draft
+  const handleSelectTask = async (task: ProjectTaskResponse) => {
+    setSelectedTask(task);
+    setAttachedCompanyProfileId('');
+    setNote('');
+    setTaskStatus(task.status);
+    setIsDraft(false);
+    setDraftMessage('');
+    setDraftLoading(true);
+
+    try {
+      const res = await api.get<any>(`/projects/${task.projectId}/tasks/${task.id}/draft`);
+      if (res?.success && res.data) {
+        setAttachedCompanyProfileId(res.data.attachedCompanyProfileId || '');
+        setNote(res.data.note || '');
+        if (res.data.status) {
+          setTaskStatus(res.data.status);
+        }
+        setIsDraft(true);
+        setDraftMessage('Draft loaded');
+      }
+    } catch (err) {
+      console.warn('No active draft found or error fetching draft:', err);
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  // Search existing company profiles
+  const searchCompanyProfiles = useCallback(async (query: string) => {
+    setSearchingCompanies(true);
+    try {
+      const res = await api.get<PageResult<CompanyProfileItem>>('/profiles', {
+        params: { keyword: query, page: 0, size: 20 }
+      });
+      if (res?.success && res.data?.content) {
+        setCompanies(res.data.content);
+      }
+    } catch (err) {
+      console.error('Error searching company profiles:', err);
+    } finally {
+      setSearchingCompanies(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showCompanyDropdown) {
+      const timer = setTimeout(() => {
+        void searchCompanyProfiles(companySearch);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [companySearch, showCompanyDropdown, searchCompanyProfiles]);
+
+  // Auto-Save Draft Trigger (Debounced)
+  const triggerAutoSave = useCallback((attachedId: string, noteVal: string, statusVal: TaskStatus) => {
+    if (!selectedTask) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    setSavingDraft(true);
+    setDraftMessage('Changes detected. Saving draft...');
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        await api.put(`/projects/${selectedTask.projectId}/tasks/${selectedTask.id}/draft`, {
+          attachedCompanyProfileId: attachedId || null,
+          note: noteVal || null,
+          status: statusVal
+        });
+        setIsDraft(true);
+        setDraftMessage('Draft autosaved.');
+      } catch (err) {
+        setDraftMessage('Draft save failed.');
+        console.error('Auto-save draft failed:', err);
+      } finally {
+        setSavingDraft(false);
+      }
+    }, 2000);
+  }, [selectedTask]);
+
+  // Auto-save cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
+
+  // Form Field Change Handlers (Triggers Auto-Save)
+  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNote(val);
+    triggerAutoSave(attachedCompanyProfileId, val, taskStatus);
+  };
+
+  const handleStatusChange = (statusVal: TaskStatus) => {
+    setTaskStatus(statusVal);
+    triggerAutoSave(attachedCompanyProfileId, note, statusVal);
+  };
+
+  const handleSelectCompany = (companyId: string) => {
+    setAttachedCompanyProfileId(companyId);
+    setShowCompanyDropdown(false);
+    triggerAutoSave(companyId, note, taskStatus);
+  };
+
+  // Submit officially
+  const handleSubmitTask = async () => {
+    if (!selectedTask) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/projects/${selectedTask.projectId}/tasks/${selectedTask.id}/submissions`, {
+        submissionType: selectedTask.taskType === 'COMPANY_DATA_PREPARATION' ? 'COMPANY_CANDIDATE' : 'OTHER',
+        targetEntityType: 'CompanyProfile',
+        targetEntityId: attachedCompanyProfileId || null,
+        note: note || ''
+      });
+
+      // Update local task status to IN_REVIEW representing submission
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, status: 'IN_REVIEW' } : t));
+      alert('Task submitted successfully for manager review!');
+      setSelectedTask(null);
+      void fetchMyTasks();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to submit task.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // UI Helpers
+  const getPriorityClass = (priority: TaskPriority) => {
+    switch (priority) {
+      case 'URGENT': return 'danger';
+      case 'HIGH': return 'warning';
+      case 'MEDIUM': return 'info';
+      default: return 'neutral';
+    }
+  };
+
+  const columns: Array<{ status: TaskStatus; label: string }> = [
+    { status: 'TODO', label: 'Todo' },
+    { status: 'IN_PROGRESS', label: 'In Progress' },
+    { status: 'IN_REVIEW', label: 'Under Review' },
+    { status: 'DONE', label: 'Done' }
+  ];
 
   return (
     <section className="workspace-page" id="page-my-tasks">
@@ -207,174 +270,284 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
           <div className="workspace-breadcrumbs">Work Queue <span>/</span> My Tasks</div>
           <div className="workspace-page-head">
             <div>
-              <h1>My tasks</h1>
-              <p>Upload research documents, monitor extraction readiness, and hand off files to the AI processing queue.</p>
+              <h1>My Tasks</h1>
+              <p>Manage your assigned research tasks, update progress, and link profile outputs using the Kanban board.</p>
+            </div>
+            <div className="workspace-head-actions">
+              <button className="btn btn-outline" onClick={() => void fetchMyTasks()} disabled={loading}>Refresh</button>
             </div>
           </div>
 
-          {projectLoading && <div className="workspace-inline-note">Loading available project...</div>}
-          {projectError && <div className="workspace-inline-error">{projectError}</div>}
+          {error && <div className="workspace-inline-error">{error}</div>}
 
-          <div className="workspace-focus-card">
-            <div>
-              <span className="workspace-side-eyebrow">Active intake board</span>
-              <h3>{activeProjectId ? `Project #${activeProjectId} is receiving new source files` : 'No active project selected'}</h3>
-              <p>The upload queue, AI extraction run, and next-step review handoff all follow the active project selected in the project board.</p>
-            </div>
-            <div className="workspace-focus-metrics">
-              <article>
-                <strong>{files.length}</strong>
-                <span>Files in queue</span>
-              </article>
-              <article>
-                <strong>{processingCount}</strong>
-                <span>Processing now</span>
-              </article>
-              <article>
-                <strong>{extractedCount}</strong>
-                <span>Ready for review</span>
-              </article>
-            </div>
-          </div>
-
-          <div className="workspace-stats workspace-stats-compact">
-            {[
-              { label: 'Uploaded files', value: files.length, note: 'Current task queue volume' },
-              { label: 'Ready for AI', value: readyCount, note: 'Prepared for extraction' },
-              { label: 'Extracted', value: extractedCount, note: 'Ready for next review step' },
-              { label: 'Needs retry', value: errorCount, note: 'Upload or extraction errors' },
-            ].map((item) => (
-              <article key={item.label} className="workspace-stat-card">
-                <span className="workspace-stat-label">{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="workspace-stepper">
-            <div className="workspace-step active"><strong>1</strong><span>Upload file</span></div>
-            <div className="workspace-step"><strong>2</strong><span>AI processing</span></div>
-            <div className="workspace-step"><strong>3</strong><span>Review output</span></div>
-          </div>
-
-          <div
-            className={`workspace-upload-dropzone ${dragging ? 'dragging' : ''}`}
-            onClick={() => {
-              if (!activeProjectId || projectLoading) return;
-              inputRef.current?.click();
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            <div className="workspace-upload-icon">+</div>
-            <h3>Drop research files here</h3>
-            <p>Supported formats: PDF, DOCX, PPTX, XLSX, TXT up to 50MB per file.</p>
-            <button
-              className="btn btn-primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!activeProjectId || projectLoading) return;
-                inputRef.current?.click();
-              }}
-              disabled={!activeProjectId || projectLoading}
-            >
-              Choose file
-            </button>
-            <input ref={inputRef} type="file" multiple style={{ display: 'none' }} onChange={handleSelect} accept=".pdf,.docx,.pptx,.xlsx,.txt" />
-          </div>
-
-          <div className="workspace-panel">
-            <div className="workspace-section-head">
-              <div>
-                <h3>Uploaded files</h3>
-                <p>{files.length} files currently attached to the active task queue.</p>
+          {loading ? (
+            <div className="workspace-inline-note">Loading your tasks...</div>
+          ) : (
+            <div className="project-candidate-board" style={{ marginTop: 24 }}>
+              <div className="project-candidate-columns" style={{ gridTemplateColumns: 'repeat(4, minmax(210px, 1fr))' }}>
+                {columns.map((col) => {
+                  const columnTasks = tasks.filter((t) => t.status === col.status);
+                  return (
+                    <section
+                      key={col.status}
+                      className={`project-candidate-column ${col.status.toLowerCase()}`}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, col.status)}
+                    >
+                      <header>
+                        <span>{col.label}</span>
+                        <strong>{columnTasks.length}</strong>
+                      </header>
+                      <div className="project-candidate-list" style={{ minHeight: '60vh' }}>
+                        {columnTasks.map((task) => (
+                          <article
+                            key={task.id}
+                            className="project-candidate-card"
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, task.id, task.projectId)}
+                            onClick={() => void handleSelectTask(task)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="task-card-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <span className="workspace-badge neutral">#{task.id}</span>
+                              <span className={`workspace-badge ${getPriorityClass(task.priority)}`}>
+                                {task.priority}
+                              </span>
+                            </div>
+                            <strong style={{ display: 'block', marginBottom: 6 }}>{task.title}</strong>
+                            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 8 }}>
+                              {projectsMap[task.projectId] || `Project #${task.projectId}`}
+                            </p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+                              <span className="task-type-indicator">{task.taskType.replace(/_/g, ' ')}</span>
+                              {task.dueDate && (
+                                <span>Due: {new Date(task.dueDate).toLocaleDateString('vi-VN')}</span>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                        {columnTasks.length === 0 && (
+                          <div className="project-candidate-empty">Drag / click tasks here</div>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             </div>
-
-            <div className="workspace-table">
-              <div className="workspace-table-row workspace-table-head">
-                <span>File</span>
-                <span>Size</span>
-                <span>Status</span>
-                <span>Progress</span>
-                <span>Action</span>
-              </div>
-              {files.length === 0 ? (
-                <div className="workspace-empty">No files uploaded yet.</div>
-              ) : files.map((file, index) => (
-                <div key={file.id ?? index} className="workspace-table-row">
-                  <div>
-                    <strong>{file.name}</strong>
-                    <small>{file.type}</small>
-                  </div>
-                  <span>{file.size}</span>
-                  <span className={`workspace-badge ${file.status === 'error' ? 'danger' : file.status === 'extracted' ? 'success' : file.status === 'done' ? 'info' : 'neutral'}`}>
-                    {file.status === 'done' ? 'Ready' : file.status === 'extracted' ? 'Extracted' : file.status === 'error' ? 'Error' : file.status === 'extracting' ? 'Extracting' : 'Uploading'}
-                  </span>
-                  <div className="workspace-progress">
-                    <div className="workspace-progress-bar compact">
-                      <div style={{ width: `${file.progress}%` }} />
-                    </div>
-                    <span>{file.progress}%</span>
-                  </div>
-                  <div className="workspace-table-actions">
-                    {file.status === 'error' && file.originalFile && (
-                      <button
-                        className="btn btn-outline"
-                        onClick={() => {
-                          if (file.originalFile) {
-                            void uploadFileToBackend(file.originalFile, file.id as number);
-                          }
-                        }}
-                      >
-                        Retry
-                      </button>
-                    )}
-                    {file.status === 'done' && file.importJobId && (
-                      <button className="btn btn-primary" onClick={() => handleExtractAI(file.id as number, file.importJobId)}>Extract AI</button>
-                    )}
-                    {file.status === 'extracted' && (
-                      <button className="btn btn-outline" onClick={() => setActivePage?.('ai-extracted-data')}>View result</button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
-        <aside className="workspace-sidebar">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Task guidance</span>
-            <ul className="workspace-bullet-list">
-              <li>Search for an existing company record before uploading new documents.</li>
-              <li>Upload the clearest source file first to improve extraction quality.</li>
-              <li>Move extracted files into the AI extraction queue before opening company review.</li>
-            </ul>
-          </div>
+        {/* Task Detail Sidebar / Modal */}
+        {selectedTask && (
+          <aside className="workspace-sidebar" style={{ width: '450px', borderLeft: '1px solid var(--border-color)', paddingLeft: '24px', background: 'var(--bg-panel)' }}>
+            <div className="workspace-side-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span className="workspace-side-eyebrow">Task Details</span>
+                <button className="workspace-icon-btn" onClick={() => setSelectedTask(null)} style={{ fontSize: '16px' }}>&times;</button>
+              </div>
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Queue status</span>
-            <div className="workspace-detail-list">
-              <div><strong>Active project</strong><span>{activeProjectId ? `Project #${activeProjectId}` : 'No project selected'}</span></div>
-              <div><strong>Ready for AI</strong><span>{readyCount} files</span></div>
-              <div><strong>Completed extraction</strong><span>{extractedCount} files</span></div>
-            </div>
-          </div>
+              {draftLoading ? (
+                <div className="workspace-inline-note">Loading task draft...</div>
+              ) : (
+                <div className="workspace-form-stack" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  
+                  {isDraft && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'rgba(59,130,246,0.1)', color: '#3B82F6', borderRadius: 'var(--radius-md)', fontSize: '13px' }}>
+                      <span className="workspace-badge info">Draft</span>
+                      <span>{draftMessage || 'Draft profile attached.'}</span>
+                    </div>
+                  )}
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Next step</span>
-            <div className="workspace-ai-note">
-              <strong>After extraction</strong>
-              <p>Open the AI Extraction Queue to inspect parsed output and continue the staff review workflow.</p>
+                  <div>
+                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Project</label>
+                    <strong style={{ fontSize: '14px' }}>{projectsMap[selectedTask.projectId] || `Project #${selectedTask.projectId}`}</strong>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Task Title</label>
+                    <h3 style={{ margin: 0, fontSize: '18px' }}>{selectedTask.title}</h3>
+                  </div>
+
+                  {selectedTask.description && (
+                    <div>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Description</label>
+                      <p style={{ margin: 0, fontSize: '13px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: 'var(--radius-sm)' }}>
+                        {selectedTask.description}
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Priority</label>
+                      <span className={`workspace-badge ${getPriorityClass(selectedTask.priority)}`}>
+                        {selectedTask.priority}
+                      </span>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Task Type</label>
+                      <span className="workspace-badge neutral">{selectedTask.taskType.replace(/_/g, ' ')}</span>
+                    </div>
+                  </div>
+
+                  {selectedTask.dueDate && (
+                    <div>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Due Date</label>
+                      <span style={{ fontSize: '13px' }}>{new Date(selectedTask.dueDate).toLocaleString('vi-VN')}</span>
+                    </div>
+                  )}
+
+                  <hr style={{ border: 0, borderTop: '1px solid var(--border-color)', margin: '8px 0' }} />
+
+                  {/* Editable State */}
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>Task Progress</label>
+                    <select
+                      className="search-input"
+                      value={taskStatus}
+                      onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="TODO">To Do</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="IN_REVIEW">Under Review</option>
+                      <option value="DONE">Done</option>
+                      <option value="BLOCKED">Blocked</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </div>
+
+                  {/* Attach Company Profile search-select */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                      Linked Company Profile <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>(Attach existing company)</span>
+                    </label>
+                    
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        className="search-input"
+                        placeholder="Search existing companies by name..."
+                        value={companySearch}
+                        onChange={(e) => {
+                          setCompanySearch(e.target.value);
+                          setShowCompanyDropdown(true);
+                        }}
+                        onFocus={() => setShowCompanyDropdown(true)}
+                        style={{ flex: 1 }}
+                      />
+                      {attachedCompanyProfileId && (
+                        <button
+                          className="btn btn-outline"
+                          onClick={() => {
+                            setAttachedCompanyProfileId('');
+                            triggerAutoSave('', note, taskStatus);
+                          }}
+                          style={{ padding: '0 12px' }}
+                          title="Clear attached company"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {attachedCompanyProfileId && (
+                      <div style={{ marginTop: '8px', fontSize: '13px', color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>✓ Connected Profile ID:</span>
+                        <strong>{attachedCompanyProfileId}</strong>
+                      </div>
+                    )}
+
+                    {showCompanyDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 10,
+                        background: 'var(--bg-panel)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-md)',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        marginTop: '4px'
+                      }}>
+                        {searchingCompanies && <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>Searching...</div>}
+                        {!searchingCompanies && companies.length === 0 && (
+                          <div style={{ padding: '8px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>No profiles found.</div>
+                        )}
+                        {companies.map((company) => {
+                          const name = company.identity?.tradeName || company.identity?.legalName || 'Unresolved name';
+                          return (
+                            <div
+                              key={company.id}
+                              onClick={() => handleSelectCompany(company.companyId || company.id)}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid rgba(255,255,255,0.02)',
+                                transition: 'background 0.2s',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <strong>{name}</strong>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {company.business?.industries?.join(', ') || 'No industry'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>Task Notes</label>
+                    <textarea
+                      className="search-input"
+                      rows={4}
+                      placeholder="Add draft findings, source comments, or links here..."
+                      value={note}
+                      onChange={handleNoteChange}
+                      style={{ width: '100%', resize: 'vertical' }}
+                    />
+                  </div>
+
+                  {savingDraft && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Saving draft changes...
+                    </span>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => void handleSubmitTask()}
+                      disabled={submitting || selectedTask.status === 'DONE' || selectedTask.status === 'IN_REVIEW'}
+                      style={{ flex: 1 }}
+                    >
+                      {submitting ? 'Submitting...' : 'Submit to Manager'}
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      onClick={() => setSelectedTask(null)}
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  {(selectedTask.status === 'DONE' || selectedTask.status === 'IN_REVIEW') && (
+                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', fontStyle: 'italic' }}>
+                      This task is already completed or submitted for review.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        </aside>
+          </aside>
+        )}
       </div>
     </section>
   );

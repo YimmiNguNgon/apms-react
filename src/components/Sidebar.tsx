@@ -207,15 +207,15 @@ const STAFF_MENU: MenuSection[] = [
   {
     title: 'Work Queue',
     items: [
-      { id: 'upload-documents',    label: 'My Tasks' },
+      { id: 'my-tasks',            label: 'My Tasks' },
       { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
+      { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'Company Profiles' },
     ],
   },
   {
     title: 'Research Input',
     items: [
-      { id: 'add-company',           label: 'Create Company Profile' },
       { id: 'partner-management',    label: 'Partner Directory' },
       { id: 'competitor-management', label: 'Competitor Watchlist' },
     ],

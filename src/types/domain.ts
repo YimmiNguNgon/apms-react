@@ -7,7 +7,7 @@ export type Role =
   | 'ROLE_KEY_MEMBER'
   | 'ROLE_STAFF';
 
-export type ProjectStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED';
 export type ProjectType =
   | 'RESEARCH_NEW_COMPANY'
   | 'RESEARCH_MULTIPLE_COMPANIES'
@@ -156,6 +156,7 @@ export interface ProjectResponse {
   projectType: ProjectType;
   targetCompanyProfileId: string | null;
   targetCompanyName: string;
+  targetRelationshipType?: RelationshipType | null;
   description: string | null;
   status: ProjectStatus;
   createdBy: number | null;
@@ -169,6 +170,7 @@ export interface CreateProjectRequest {
   projectType: ProjectType;
   targetCompanyProfileId?: string | null;
   targetCompanyName: string;
+  targetRelationshipType?: RelationshipType | null;
   description?: string | null;
 }
 
@@ -222,6 +224,45 @@ export interface ImportJobResponse {
   completedAt?: string | null;
   errorMessage?: string | null;
   createdAt?: string | null;
+}
+
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
+export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'GENERAL_TASK';
+
+export interface ProjectTaskResponse {
+  id: number;
+  projectId: number;
+  title: string;
+  description?: string | null;
+  assignedToUserId?: number | null;
+  assignedToName?: string | null;
+  createdByUserId?: number | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  completedAt?: string | null;
+  taskType: TaskType;
+}
+
+export interface ProjectTaskDraftResponse {
+  id: number;
+  taskId: number;
+  attachedCompanyProfileId?: string | null;
+  note?: string | null;
+  status?: TaskStatus | null;
+  updatedAt?: string | null;
+}
+
+export interface CreateProjectTaskRequest {
+  title: string;
+  description?: string | null;
+  assignedToUserId: number;
+  priority: TaskPriority;
+  dueDate?: string | null;
+  taskType: TaskType;
 }
 
 export interface ManualInputRequest {

@@ -259,7 +259,7 @@ export const ReviewExtractedData: React.FC = () => {
   );
 };
 
-export const CompanyValidation: React.FC = () => {
+export const CompanyValidation: React.FC<{ staffMode?: boolean }> = ({ staffMode = false }) => {
   const { candidates, loading, refresh } = useProjectCandidates();
   const [selected, setSelected] = useState<string | null>(null);
   const [processing, setProcessing] = useState<Record<string, 'done' | 'loading' | 'error'>>({});
@@ -295,9 +295,9 @@ export const CompanyValidation: React.FC = () => {
   return (
     <WorkspaceShell
       pageId="page-company-validation"
-      breadcrumbs={<>Validation <span>/</span> Company Validation</>}
-      title="Company validation"
-      description="Validate candidate completeness and submit only records that are ready for manager review."
+      breadcrumbs={<>Validation <span>/</span> {staffMode ? 'Candidate Review' : 'Company Validation'}</>}
+      title={staffMode ? 'Candidate review' : 'Company validation'}
+      description={staffMode ? 'Review extracted company information and submit only complete candidates to the manager.' : 'Validate candidate completeness and submit only records that are ready for manager review.'}
       actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
       sidebar={(
         <>
@@ -314,7 +314,7 @@ export const CompanyValidation: React.FC = () => {
             <span className="workspace-side-eyebrow">Checkpoint</span>
             <ul className="workspace-bullet-list">
               <li>Do not submit if key identity fields are still missing.</li>
-              <li>Use `Mark corrected` only after fixing rejected records.</li>
+              {!staffMode && <li>Use `Mark corrected` only after fixing rejected records.</li>}
               <li>Review backend validation issues before resubmission.</li>
             </ul>
           </div>
@@ -326,7 +326,7 @@ export const CompanyValidation: React.FC = () => {
           <div className="workspace-section-head">
             <div>
               <h3>Actionable candidates</h3>
-              <p>Draft, rejected, and corrected candidates that still need senior validation.</p>
+              <p>Draft, rejected, and corrected candidates that still need review before manager handoff.</p>
             </div>
           </div>
           {actionable.length === 0 && !loading ? (
@@ -398,9 +398,7 @@ export const CompanyValidation: React.FC = () => {
                 <button className="btn btn-primary" disabled={processing[selectedCandidate.id] === 'loading' || processing[selectedCandidate.id] === 'done'} onClick={() => handleSubmit(selectedCandidate.id)}>
                   {processing[selectedCandidate.id] === 'loading' ? 'Processing...' : 'Submit for review'}
                 </button>
-                <button className="btn btn-outline" disabled={processing[selectedCandidate.id] === 'loading' || processing[selectedCandidate.id] === 'done'} onClick={() => handleCorrect(selectedCandidate.id)}>
-                  Mark corrected
-                </button>
+                {!staffMode && <button className="btn btn-outline" disabled={processing[selectedCandidate.id] === 'loading' || processing[selectedCandidate.id] === 'done'} onClick={() => handleCorrect(selectedCandidate.id)}>Mark corrected</button>}
               </div>
             </>
           )}

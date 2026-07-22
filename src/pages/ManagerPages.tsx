@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { DonutChart } from '../components/charts/Charts';
 
@@ -184,10 +184,12 @@ export const PartnerEvaluation: React.FC = () => {
 };
 
 // â”€â”€â”€ Company Assignment â”€â”€â”€
-export const CompanyAssignment: React.FC = () => {
+export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }> = ({ setActivePage }) => {
   const [projects, setProjects] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [viewingProject, setViewingProject] = useState<any>(null);
 
   useEffect(() => {
     api.get<any>('/projects', { params: { page: 0, size: 50 } })
@@ -203,6 +205,15 @@ export const CompanyAssignment: React.FC = () => {
     const label = `${project.projectName || ''} ${project.targetCompanyName || ''} ${project.projectType || ''}`.toLowerCase();
     return label.includes(search.toLowerCase());
   });
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [search]);
+
+  const totalElements = filtered.length;
+  const pageSize = 12;
+  const totalPages = Math.ceil(totalElements / pageSize);
+  const paginatedProjects = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const counts = {
     total: projects.length,
@@ -252,41 +263,214 @@ export const CompanyAssignment: React.FC = () => {
         <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading projects...</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-          {filtered.map(project => {
+          {paginatedProjects.map(project => {
             const tone = statusTone(project.status);
             const memberCount = (project.members || []).length || 0;
+            const createdDate = project.createdAt ? new Date(project.createdAt).toLocaleDateString('vi-VN') : 'N/A';
             return (
-              <div key={project.id} className="card">
+              <div key={project.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>{project.projectName}</div>
                     <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 12 }}>{project.targetCompanyName}</div>
                   </div>
-                  <span style={{ padding: '4px 10px', borderRadius: 999, background: tone.bg, color: tone.color, fontSize: 11, fontWeight: 700 }}>{tone.label}</span>
+                  <span style={{ padding: '4px 10px', borderRadius: 999, background: tone.bg, color: tone.color, fontSize: 11, fontWeight: 700, alignSelf: 'flex-start' }}>{tone.label}</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginBottom: 12 }}>
                   <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Type</div>
-                    <div style={{ fontWeight: 700, marginTop: 2 }}>{project.projectType}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Type & Created</div>
+                    <div style={{ fontWeight: 700, marginTop: 2, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {project.projectType || 'N/A'} &middot; {createdDate}
+                    </div>
                   </div>
                   <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Members</div>
-                    <div style={{ fontWeight: 700, marginTop: 2 }}>{memberCount}</div>
+                    <div style={{ fontWeight: 700, marginTop: 2, fontSize: 12 }}>{memberCount}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, flex: 1 }}>
                   {project.description || 'No description available for this project.'}
+                </div>
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button 
+                    className="btn btn-sm btn-outline" 
+                    onClick={() => setViewingProject(project)}
+                  >
+                    Chi tiết
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {!loading && totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 32, paddingBottom: 32 }}>
+          <button 
+            className="btn btn-outline" 
+            disabled={currentPage === 0} 
+            onClick={() => {
+              setCurrentPage(c => c - 1);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            Trang trước
+          </button>
+          
+          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+            Trang {currentPage + 1} / {totalPages}
+          </span>
+          
+          <button 
+            className="btn btn-outline" 
+            disabled={currentPage >= totalPages - 1} 
+            onClick={() => {
+              setCurrentPage(c => c + 1);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            Trang sau
+          </button>
+        </div>
+      )}
+      
+      {viewingProject && (
+        <div className="modal-overlay" onClick={() => setViewingProject(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-primary)' }}>{viewingProject.projectName}</h2>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Target: <strong style={{ color: 'var(--text-secondary)' }}>{viewingProject.targetCompanyName}</strong>
+                </div>
+              </div>
+              <span style={{ padding: '6px 14px', borderRadius: 999, background: statusTone(viewingProject.status).bg, color: statusTone(viewingProject.status).color, fontSize: 12, fontWeight: 700 }}>
+                {statusTone(viewingProject.status).label}
+              </span>
+            </div>
+            
+            <div className="modal-body" style={{ textAlign: 'left', margin: '20px 0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                <div style={{ padding: 16, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: 6 }}>Project Type</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{viewingProject.projectType || 'N/A'}</div>
+                </div>
+                <div style={{ padding: 16, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', marginBottom: 6 }}>Created Date</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{viewingProject.createdAt ? new Date(viewingProject.createdAt).toLocaleDateString('vi-VN') : 'N/A'}</div>
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>Assigned Members ({viewingProject.members?.length || 0})</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {viewingProject.members && viewingProject.members.length > 0 ? (
+                    viewingProject.members.map((m: any, idx: number) => (
+                      <div key={idx} style={{ padding: '6px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }}></div>
+                        {m.memberRole}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No members assigned yet.</div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ padding: 16, border: '1px solid var(--border-light)', borderRadius: 12, background: 'var(--surface)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Description</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {viewingProject.description || 'No description available for this project.'}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ paddingTop: 20, borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-outline" onClick={() => setViewingProject(null)} style={{ padding: '10px 24px' }}>Đóng</button>
+              <button 
+                className="btn btn-primary" 
+                style={{ padding: '10px 24px' }}
+                onClick={() => {
+                  localStorage.setItem('apms-active-project', String(viewingProject.id));
+                  if (setActivePage) setActivePage('project-management');
+                }}
+              >
+                Mở Workspace chi tiết
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
 
-// â”€â”€â”€ Risk Monitoring â”€â”€â”€
+// ─── Analysis History ───
+export const AnalysisHistory: React.FC = () => {
+  const [analyses, setAnalyses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get<any>('/analysis/history')
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) setAnalyses(res.data);
+        else if (res?.success && res.data?.content) setAnalyses(res.data.content);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <section className="page active manager-page role-dashboard role-dashboard-manager">
+      <div className="page-header">
+        <h1>Analysis History {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Đang tải...)</span>}</h1>
+      </div>
+      {!loading && analyses.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+          <div>Chưa có lịch sử phân tích nào.</div>
+        </div>
+      ) : (
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
+              {['Công ty', 'Loại phân tích', 'Ngày cập nhật', 'Trạng thái', 'Mô tả', ''].map(h => (
+                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {analyses.map((a: any) => (
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <td style={{ padding: '11px 14px', fontWeight: 600 }}>{a.companyName || 'N/A'}</td>
+                <td style={{ padding: '11px 14px' }}>
+                  <span className="badge badge-blue" style={{ fontSize: 11 }}>{a.analysisType}</span>
+                </td>
+                <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.date}</td>
+                <td style={{ padding: '11px 14px' }}>
+                  <span className={`badge ${a.status === 'COMPLETED' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: 11 }}>
+                    {a.status}
+                  </span>
+                </td>
+                <td style={{ padding: '11px 14px', color: 'var(--text-secondary)', fontSize: 13, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.summary}
+                </td>
+                <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                  <button className="btn btn-sm btn-outline">Chi tiết</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      )}
+    </section>
+  );
+};
+
+// ─── Risk Monitoring ───
 export const RiskMonitoring: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -880,61 +1064,6 @@ export const ManagerReports: React.FC = () => {
             </div>
           </div>
         ))}
-      </div>
-      )}
-    </section>
-  );
-};
-
-// ─── Analysis History ───
-export const AnalysisHistory: React.FC = () => {
-  const [analyses, setAnalyses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get<any>('/analysis/history')
-      .then(res => {
-        if (res?.success && Array.isArray(res.data)) setAnalyses(res.data);
-        else if (res?.success && res.data?.content) setAnalyses(res.data.content);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <section className="page active manager-page role-dashboard role-dashboard-manager">
-      <div className="page-header">
-        <h1>Analysis History {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Đang tải...)</span>}</h1>
-      </div>
-      {!loading && analyses.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-          <div>Chưa có lịch sử phân tích nào.</div>
-        </div>
-      ) : (
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
-              {['Công ty', 'Phân tích viên', 'Ngày', 'Loại phân tích', 'Thời gian', 'Kết quả', ''].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {analyses.map((a: any) => (
-              <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td style={{ padding: '11px 14px', fontWeight: 600 }}>{a.company}</td>
-                <td style={{ padding: '11px 14px', color: 'var(--text-secondary)' }}>{a.analyst}</td>
-                <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.date}</td>
-                <td style={{ padding: '11px 14px' }}><span className="badge badge-blue" style={{ fontSize: 11 }}>{a.type}</span></td>
-                <td style={{ padding: '11px 14px', color: 'var(--text-muted)', fontSize: 12 }}>{a.duration}</td>
-                <td style={{ padding: '11px 14px', fontSize: 13 }}>{a.result}</td>
-                <td style={{ padding: '11px 14px' }}><button className="btn btn-sm btn-outline">Chi tiết</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
       )}
     </section>
