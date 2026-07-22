@@ -77,73 +77,65 @@ const DEMO_SUMMARY: DashboardSummaryDto = {
   totalCandidates: 24,
   approvedCandidates: 14,
   pendingReviewCandidates: 8,
-  partnerCount: 12,
-  competitorCount: 5,
-  supplierCount: 4,
-  potentialPartnerCount: 3,
+  rejectedCandidates: 2,
 };
 
 const DEMO_CANDIDATES: DashboardCandidate[] = [
   {
     id: 'cand-101',
-    projectId: '1',
+    projectId: 1,
     companyName: 'FPT Software & Cloud Solutions',
     identity: { tradeName: 'FPT Software', legalName: 'FPT Software JSC' },
     status: 'PENDING_REVIEW',
-    suggestedRelationshipType: 'PARTNER_WITH',
+    suggestedRelationshipType: 'Strategic Tech Partner',
     relationshipConfidenceScore: 92,
     scorePreview: { completenessScore: 88 },
     rawDocumentId: 'doc-8812',
-    importJobId: 'job-101',
-  } as any,
+  },
   {
     id: 'cand-102',
-    projectId: '1',
+    projectId: 1,
     companyName: 'Viettel Cyber Security',
     identity: { tradeName: 'Viettel Security', legalName: 'Viettel Security Corp' },
     status: 'REJECTED',
-    suggestedRelationshipType: 'SUPPLIER_OF',
+    suggestedRelationshipType: 'Security Vendor',
     relationshipConfidenceScore: 64,
     scorePreview: { completenessScore: 72 },
     importJobId: 'job-402',
-    rawDocumentId: 'doc-8813',
-  } as any,
+  },
   {
     id: 'cand-103',
-    projectId: '2',
+    projectId: 2,
     companyName: 'CMC Technology & Solutions',
     identity: { tradeName: 'CMC TS', legalName: 'CMC Technology Corp' },
     status: 'CORRECTED',
-    suggestedRelationshipType: 'PARTNER_WITH',
+    suggestedRelationshipType: 'System Integrator',
     relationshipConfidenceScore: 85,
     scorePreview: { completenessScore: 95 },
     rawDocumentId: 'doc-9031',
-    importJobId: 'job-403',
-  } as any,
+  },
   {
     id: 'cand-104',
-    projectId: '2',
+    projectId: 2,
     companyName: 'MoMo E-Wallet & Fintech',
     identity: { tradeName: 'MoMo Fintech', legalName: 'M-Service JSC' },
     status: 'PENDING_REVIEW',
-    suggestedRelationshipType: 'PARTNER_WITH',
+    suggestedRelationshipType: 'Payment Gateway Partner',
     relationshipConfidenceScore: 78,
     scorePreview: { completenessScore: 81 },
     importJobId: 'job-512',
-    rawDocumentId: 'doc-9032',
-  } as any,
+  },
   {
     id: 'cand-105',
-    projectId: '3',
+    projectId: 3,
     companyName: 'VNG Cloud & Infrastructure',
     identity: { tradeName: 'VNG Cloud', legalName: 'VNG Corporation' },
     status: 'PENDING_REVIEW',
-    suggestedRelationshipType: 'SUPPLIER_OF',
+    suggestedRelationshipType: 'Cloud Infrastructure Supplier',
     relationshipConfidenceScore: 89,
     scorePreview: { completenessScore: 90 },
     rawDocumentId: 'doc-9102',
-    importJobId: 'job-513',
-  } as any,
+  },
 ];
 
 export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
@@ -158,10 +150,14 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
     const requests: Promise<unknown>[] = [
       api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
         if (res?.success && res.data && (res.data.totalCandidates || 0) > 0) {
+        if (res?.success && res.data && (res.data.totalCandidates || 0) > 0) {
           setSummary(res.data);
         } else {
           setSummary(DEMO_SUMMARY);
+        } else {
+          setSummary(DEMO_SUMMARY);
         }
+      }).catch(() => setSummary(DEMO_SUMMARY)),
       }).catch(() => setSummary(DEMO_SUMMARY)),
     ];
 
@@ -177,8 +173,15 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
             setCandidates(DEMO_CANDIDATES);
           }
         }).catch(() => setCandidates(DEMO_CANDIDATES)),
+          if (rows.length > 0) {
+            setCandidates(rows);
+          } else {
+            setCandidates(DEMO_CANDIDATES);
+          }
+        }).catch(() => setCandidates(DEMO_CANDIDATES)),
       );
     } else {
+      setCandidates(DEMO_CANDIDATES);
       setCandidates(DEMO_CANDIDATES);
     }
 
