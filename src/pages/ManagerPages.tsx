@@ -393,6 +393,7 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
                 style={{ padding: '10px 24px' }}
                 onClick={() => {
                   localStorage.setItem('apms-active-project', String(viewingProject.id));
+                  sessionStorage.setItem('apms-focus-workspace', 'true');
                   if (setActivePage) setActivePage('project-management');
                 }}
               >
@@ -474,6 +475,7 @@ export const AnalysisHistory: React.FC = () => {
 export const RiskMonitoring: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
     api.get<any>('/risk-monitoring')
@@ -523,43 +525,113 @@ export const RiskMonitoring: React.FC = () => {
       {loading ? (
         <div className="card" style={{ padding: 40, color: 'var(--text-muted)' }}>Loading risk data...</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
-          {items.map(item => {
-            const riskScore = Number(item?.riskScore) || 0;
-            const rowTone = tone(riskScore);
-            return (
-              <div key={item.companyId} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.tradeName || item.legalName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{item.industry}</div>
-                  </div>
-                  <span style={{ padding: '4px 10px', borderRadius: 999, background: rowTone.bg, color: rowTone.color, fontSize: 11, fontWeight: 700 }}>{rowTone.label}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--border-light)', overflow: 'hidden' }}>
-                    <div style={{ width: `${riskScore}%`, height: '100%', borderRadius: 'inherit', background: riskScore >= 60 ? '#ef4444' : riskScore >= 40 ? '#f59e0b' : '#10b981' }} />
-                  </div>
-                  <strong style={{ minWidth: 36, textAlign: 'right' }}>{riskScore}</strong>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 12 }}>
-                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status</div>
-                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.reviewStatus}</div>
-                  </div>
-                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tax code</div>
-                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.taxCode || '—'}</div>
-                  </div>
-                  <div style={{ padding: 10, borderRadius: 12, background: 'var(--surface)' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Risk label</div>
-                    <div style={{ fontWeight: 700, marginTop: 2 }}>{item.riskLevel}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead style={{ background: 'var(--bg-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                <tr>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>PARTNER</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>INDUSTRY</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>RISK LEVEL</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>RISK SCORE</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      No risk data available.
+                    </td>
+                  </tr>
+                ) : (
+                  (() => {
+                    const pageSize = 12;
+                    const totalPages = Math.ceil(items.length / pageSize);
+                    const paginatedItems = items.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+                    
+                    return paginatedItems.map((item, i) => {
+                      const riskScore = Number(item?.riskScore) || 0;
+                      const rowTone = tone(riskScore);
+                      return (
+                        <tr key={item.companyId || item.id || i} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {item.tradeName || item.legalName}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              {item.taxCode || 'No tax code'}
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle', color: 'var(--text-secondary)' }}>
+                            {item.industry || 'Unknown industry'}
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <span style={{ 
+                              display: 'inline-block', 
+                              padding: '2px 8px', 
+                              borderRadius: 4, 
+                              fontSize: 12, 
+                              fontWeight: 600, 
+                              background: rowTone.bg, 
+                              color: rowTone.color,
+                              border: `1px solid ${rowTone.color}30`
+                            }}>
+                              {rowTone.label}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle', width: 200 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--border-light)', overflow: 'hidden' }}>
+                                <div style={{ width: `${riskScore}%`, height: '100%', borderRadius: 'inherit', background: riskScore >= 60 ? '#ef4444' : riskScore >= 40 ? '#f59e0b' : '#10b981' }} />
+                              </div>
+                              <strong style={{ minWidth: 24, textAlign: 'right', fontSize: 13 }}>{riskScore}</strong>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                              {item.reviewStatus || item.status || '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {Math.ceil(items.length / 12) > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 32, paddingBottom: 32 }}>
+              <button 
+                className="btn btn-outline" 
+                disabled={currentPage === 0} 
+                onClick={() => {
+                  setCurrentPage(c => c - 1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Trang trước
+              </button>
+              
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                Trang {currentPage + 1} / {Math.ceil(items.length / 12)}
+              </span>
+              
+              <button 
+                className="btn btn-outline" 
+                disabled={currentPage >= Math.ceil(items.length / 12) - 1} 
+                onClick={() => {
+                  setCurrentPage(c => c + 1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -573,6 +645,7 @@ export const ApprovalsPage: React.FC = () => {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [projectSearch, setProjectSearch] = useState('');
 
   useEffect(() => {
     api.get<any>('/projects', { params: { page: 0, size: 50 } })
@@ -611,6 +684,8 @@ export const ApprovalsPage: React.FC = () => {
   const ready = candidates.filter(candidate => candidate.status === 'APPROVED').length;
   const rejected = candidates.filter(candidate => candidate.status === 'REJECTED').length;
   const pending = queue.length;
+
+  const filteredProjects = projects.filter(p => (p.projectName || '').toLowerCase().includes(projectSearch.toLowerCase()));
 
   const approveCandidate = async (candidateId: string) => {
     try {
@@ -673,8 +748,16 @@ export const ApprovalsPage: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
           <div className="card" style={{ padding: 16 }}>
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Projects</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {projects.map(project => (
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search projects..."
+              value={projectSearch}
+              onChange={e => setProjectSearch(e.target.value)}
+              style={{ width: '100%', marginBottom: 12, padding: '8px 12px', fontSize: 13 }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'calc(100vh - 350px)', minHeight: 200, overflowY: 'auto', paddingRight: 4 }}>
+              {filteredProjects.map(project => (
                 <button
                   key={project.id}
                   className="btn btn-outline"
@@ -741,6 +824,7 @@ export const ApprovalsPage: React.FC = () => {
 export const TeamKPI: React.FC = () => {
   const [kpiData, setKpiData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const loadTeamKpi = () => {
     setLoading(true);
@@ -823,49 +907,102 @@ export const TeamKPI: React.FC = () => {
       ) : (
         <div className="team-kpi-layout">
           <div className="team-kpi-list">
-            {rows.map((k: any, i: number) => {
-              const target = Math.max(1, Number(k?.target) || 1);
-              const reviewed = Number(k?.companiesReviewed) || 0;
-              const pct = Math.min(100, Math.round((reviewed / target) * 100));
-              const accuracy = Number(k?.accuracy) || 0;
-              const progressTone = pct >= 100 ? 'good' : pct >= 70 ? 'warn' : 'danger';
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ background: 'var(--bg-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                  <tr>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>RANK</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>MEMBER</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>OUTPUT</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>ACCURACY</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>PROGRESS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const pageSize = 10;
+                    const totalPages = Math.ceil(rows.length / pageSize);
+                    const paginatedRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+                    
+                    return paginatedRows.map((k: any, i: number) => {
+                      const absoluteRank = (currentPage * pageSize) + i + 1;
+                      const target = Math.max(1, Number(k?.target) || 1);
+                      const reviewed = Number(k?.companiesReviewed) || 0;
+                      const pct = Math.min(100, Math.round((reviewed / target) * 100));
+                      const accuracy = Number(k?.accuracy) || 0;
+                      const progressColor = pct >= 100 ? '#10b981' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
-              return (
-                <div key={`${k?.name || 'member'}-${i}`} className="card team-kpi-row">
-                  <div className="team-kpi-row-head">
-                    <div className="team-kpi-rank">#{i + 1}</div>
-                    <div className="team-kpi-identity">
-                      <div className="team-kpi-name">{k?.name || 'Unknown'}</div>
-                      <div className="team-kpi-role">{k?.role || 'Member'}</div>
-                    </div>
-                    {k?.bonus && <span className="team-kpi-badge">Bonus</span>}
-                  </div>
+                      return (
+                        <tr key={`${k?.name || 'member'}-${absoluteRank}`} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+                          <td style={{ padding: '16px', verticalAlign: 'middle', width: 60 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)' }}>#{absoluteRank}</div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{k?.name || 'Unknown'}</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{k?.role || 'Member'}</div>
+                              </div>
+                              {k?.bonus && (
+                                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700 }}>
+                                  Bonus
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <div style={{ fontWeight: 600 }}>{reviewed} / {target}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Companies</div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                            <div style={{ fontWeight: 600 }}>{accuracy}%</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{k?.aiReviewed || 0} AI reviewed</div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'middle', width: 220 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--border-light)', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 'inherit', background: progressColor }} />
+                              </div>
+                              <strong style={{ minWidth: 32, textAlign: 'right', fontSize: 13, color: progressColor }}>{pct}%</strong>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
 
-                  <div className="team-kpi-metrics">
-                    <div className="team-kpi-metric">
-                      <strong>{reviewed}/{target}</strong>
-                      <span>Companies</span>
-                    </div>
-                    <div className="team-kpi-metric">
-                      <strong>{accuracy}%</strong>
-                      <span>Accuracy</span>
-                    </div>
-                    <div className="team-kpi-metric">
-                      <strong>{k?.aiReviewed ?? '—'}</strong>
-                      <span>AI reviewed</span>
-                    </div>
-                  </div>
-
-                  <div className="team-kpi-progress">
-                    <div className={`team-kpi-progress-bar ${progressTone}`} style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="team-kpi-row-foot">
-                    <span>{pct}% of target</span>
-                    <span>{reviewed} reviewed</span>
-                  </div>
-                </div>
-              );
-            })}
+            {Math.ceil(rows.length / 10) > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 32, paddingBottom: 32 }}>
+                <button 
+                  className="btn btn-outline" 
+                  disabled={currentPage === 0} 
+                  onClick={() => {
+                    setCurrentPage(c => c - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  Trang trước
+                </button>
+                
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                  Trang {currentPage + 1} / {Math.ceil(rows.length / 10)}
+                </span>
+                
+                <button 
+                  className="btn btn-outline" 
+                  disabled={currentPage >= Math.ceil(rows.length / 10) - 1} 
+                  onClick={() => {
+                    setCurrentPage(c => c + 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  Trang sau
+                </button>
+              </div>
+            )}
           </div>
 
           <aside className="team-kpi-rail">
@@ -926,6 +1063,8 @@ export const ManagerReports: React.FC = () => {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [selectedReport, setSelectedReport] = useState<any>(null);
   const [reportDraft, setReportDraft] = useState({
     title: '',
     type: 'Weekly summary',
@@ -976,6 +1115,16 @@ export const ManagerReports: React.FC = () => {
     setReportFeedback('Draft report created in the current view.');
   };
 
+  const handleView = (r: any) => {
+    setSelectedReport(r);
+  };
+
+  const handlePublish = (r: any) => {
+    setReports(prev => prev.map(rep => rep.id === r.id ? { ...rep, status: 'published' } : rep));
+    setReportFeedback(`Báo cáo "${r.title}" đã được đăng thành công.`);
+    setTimeout(() => setReportFeedback(null), 4000);
+  };
+
   return (
     <section className="page active manager-page role-dashboard role-dashboard-manager">
       <div className="page-header">
@@ -987,55 +1136,126 @@ export const ManagerReports: React.FC = () => {
         </div>
       </div>
       {reportFeedback && <div className="workspace-inline-note" style={{ marginBottom: 16 }}>{reportFeedback}</div>}
-      {showCreateForm && (
-        <div className="workspace-panel" style={{ marginBottom: 18 }}>
+      
+      {selectedReport ? (
+        <div className="workspace-panel" style={{ padding: '24px 32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, borderBottom: '1px solid var(--border-color)', paddingBottom: 24 }}>
+            <div>
+              <button 
+                className="btn btn-outline btn-sm" 
+                style={{ marginBottom: 20 }} 
+                onClick={() => setSelectedReport(null)}
+              >
+                ← Quay lại danh sách
+              </button>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>{selectedReport.title}</h2>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="badge badge-blue">{selectedReport.type}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{selectedReport.date}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>• Tác giả: {selectedReport.author || 'System'}</span>
+                <span style={{
+                  padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  background: selectedReport.status === 'published' ? '#D1FAE5' : '#FEF3C7',
+                  color: selectedReport.status === 'published' ? '#065F46' : '#92400E',
+                }}>
+                  {selectedReport.status === 'published' ? 'Đã đăng' : 'Bản nháp'}
+                </span>
+              </div>
+            </div>
+            {selectedReport.status === 'draft' && (
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  handlePublish(selectedReport);
+                  setSelectedReport({ ...selectedReport, status: 'published' });
+                }}
+              >
+                Đăng báo cáo
+              </button>
+            )}
+          </div>
+          
+          <div style={{ fontSize: 15, lineHeight: 1.8, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', paddingBottom: 40 }}>
+            <h3 style={{ fontSize: 18, marginBottom: 16, color: 'var(--text-secondary)' }}>Nội dung báo cáo</h3>
+            {selectedReport.content || `Đây là bản tóm tắt tự động được tạo vào ${selectedReport.date}.\n\nKhông có nội dung chi tiết cho báo cáo này. Phạm vi dữ liệu: ${selectedReport.scope || 'Tất cả dự án hiện tại'}.`}
+          </div>
+        </div>
+      ) : (
+        <>
+          {showCreateForm && (
+            <div className="workspace-panel" style={{ marginBottom: 18 }}>
           <div className="workspace-section-head">
             <div>
               <h3>Create report draft</h3>
               <p>Create a draft report in the current session. Backend persistence is not wired yet.</p>
             </div>
           </div>
-          <div className="workspace-form-grid">
-            <label>
-              <span>Title</span>
-              <input
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: '16px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Report Title</span>
+                <input
+                  className="search-input"
+                  style={{ padding: '10px 14px', fontSize: 14 }}
+                  value={reportDraft.title}
+                  onChange={(e) => setReportDraft((current) => ({ ...current, title: e.target.value }))}
+                  placeholder="e.g. Q3 Partner Ecosystem Review"
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Report Type</span>
+                <select
+                  className="search-input"
+                  style={{ padding: '10px 14px', fontSize: 14, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
+                  value={reportDraft.type}
+                  onChange={(e) => setReportDraft((current) => ({ ...current, type: e.target.value }))}
+                >
+                  <option value="Weekly summary">Weekly summary</option>
+                  <option value="Monthly KPI Review">Monthly KPI Review</option>
+                  <option value="Risk Analysis">Risk Analysis</option>
+                  <option value="Ecosystem Overview">Ecosystem Overview</option>
+                </select>
+              </label>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Author / Lead</span>
+                <input
+                  className="search-input"
+                  style={{ padding: '10px 14px', fontSize: 14 }}
+                  value={reportDraft.author}
+                  onChange={(e) => setReportDraft((current) => ({ ...current, author: e.target.value }))}
+                  placeholder="Your name"
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Data Scope</span>
+                <select
+                  className="search-input"
+                  style={{ padding: '10px 14px', fontSize: 14, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
+                  defaultValue="All active projects"
+                >
+                  <option value="All active projects">All active projects</option>
+                  <option value="High risk profiles only">High risk profiles only</option>
+                  <option value="Platinum partners only">Platinum partners only</option>
+                  <option value="Custom selection">Custom selection...</option>
+                </select>
+              </label>
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Executive Summary / Context</span>
+              <textarea
                 className="search-input"
-                value={reportDraft.title}
-                onChange={(e) => setReportDraft((current) => ({ ...current, title: e.target.value }))}
-                placeholder="Weekly manager summary"
-              />
-            </label>
-            <label>
-              <span>Type</span>
-              <input
-                className="search-input"
-                value={reportDraft.type}
-                onChange={(e) => setReportDraft((current) => ({ ...current, type: e.target.value }))}
-                placeholder="Weekly summary"
-              />
-            </label>
-            <label>
-              <span>Author</span>
-              <input
-                className="search-input"
-                value={reportDraft.author}
-                onChange={(e) => setReportDraft((current) => ({ ...current, author: e.target.value }))}
-                placeholder="Manager name"
-              />
-            </label>
-            <label>
-              <span>Pages</span>
-              <input
-                className="search-input"
-                value={reportDraft.pages}
-                onChange={(e) => setReportDraft((current) => ({ ...current, pages: e.target.value }))}
-                inputMode="numeric"
+                style={{ padding: '12px 14px', fontSize: 14, minHeight: 120, resize: 'vertical', fontFamily: 'inherit', border: '1px solid var(--border-color)', borderRadius: 8, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                placeholder="Briefly describe the key findings, metrics, and recommendations for this report..."
               />
             </label>
           </div>
-          <div className="workspace-head-actions">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: '1px solid var(--border-color)', paddingTop: 20, marginTop: 12 }}>
             <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleCreateReport}>Create draft</button>
+            <button className="btn btn-primary" onClick={handleCreateReport}>Create Draft</button>
           </div>
         </div>
       )}
@@ -1045,26 +1265,87 @@ export const ManagerReports: React.FC = () => {
           <div>Chưa có báo cáo nào.</div>
         </div>
       ) : (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px,1fr))', gap: 16 }}>
-        {reports.map((r: any) => (
-          <div key={r.id} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.type}</span>
-              <span style={{
-                padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                background: r.status === 'published' ? '#D1FAE5' : '#FEF3C7',
-                color: r.status === 'published' ? '#065F46' : '#92400E',
-              }}>{r.status === 'published' ? 'Đã đăng' : 'Bản nháp'}</span>
-            </div>
-            <h3 style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.4, marginBottom: 10, color: 'var(--text-primary)' }}>{r.title}</h3>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>{r.date}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-outline btn-sm">Xem</button>
-              {r.status === 'draft' && <button className="btn btn-primary btn-sm">Đăng</button>}
-            </div>
+        <>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead style={{ background: 'var(--bg-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                <tr>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>REPORT TITLE</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>TYPE</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>DATE</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>STATUS</th>
+                  <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const pageSize = 10;
+                  const totalPages = Math.ceil(reports.length / pageSize);
+                  const paginatedReports = reports.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+                  
+                  return paginatedReports.map((r: any, i: number) => (
+                    <tr key={r.id || i} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+                      <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{r.title}</div>
+                      </td>
+                      <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                        <span className="badge badge-blue" style={{ fontSize: 11 }}>{r.type}</span>
+                      </td>
+                      <td style={{ padding: '16px', verticalAlign: 'middle', color: 'var(--text-secondary)' }}>
+                        {r.date}
+                      </td>
+                      <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                        <span style={{
+                          padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                          background: r.status === 'published' ? '#D1FAE5' : '#FEF3C7',
+                          color: r.status === 'published' ? '#065F46' : '#92400E',
+                        }}>{r.status === 'published' ? 'Đã đăng' : 'Bản nháp'}</span>
+                      </td>
+                      <td style={{ padding: '16px', verticalAlign: 'middle', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: 8 }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => handleView(r)}>Xem</button>
+                          {r.status === 'draft' && <button className="btn btn-primary btn-sm" onClick={() => handlePublish(r)}>Đăng</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
           </div>
-        ))}
-      </div>
+
+          {Math.ceil(reports.length / 10) > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 32, paddingBottom: 32 }}>
+              <button 
+                className="btn btn-outline" 
+                disabled={currentPage === 0} 
+                onClick={() => {
+                  setCurrentPage(c => c - 1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Trang trước
+              </button>
+              
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                Trang {currentPage + 1} / {Math.ceil(reports.length / 10)}
+              </span>
+              
+              <button 
+                className="btn btn-outline" 
+                disabled={currentPage >= Math.ceil(reports.length / 10) - 1} 
+                onClick={() => {
+                  setCurrentPage(c => c + 1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      </>
       )}
     </section>
   );
@@ -1075,6 +1356,11 @@ export const PartnerStatus: React.FC = () => {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [search]);
 
   const loadPartnerStatus = () => {
     setLoading(true);
@@ -1103,9 +1389,14 @@ export const PartnerStatus: React.FC = () => {
     return label.includes(search.toLowerCase());
   });
 
+  const pageSize = 12;
+  const totalPages = Math.ceil(rows.length / pageSize);
+  const paginatedRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
   const statusGroups = Object.entries(TIER_COLORS).map(([label, color]) => {
-    const companies = rows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
-    return { label, color, companies };
+    const totalCompanies = rows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
+    const companies = paginatedRows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
+    return { label, color, companies, totalCount: totalCompanies.length };
   });
 
   const summary = {
@@ -1162,45 +1453,96 @@ export const PartnerStatus: React.FC = () => {
       ) : (
         <div className="partner-status-layout">
           <div className="partner-status-list">
-            {statusGroups.map(group => (
-              <div key={group.label} className="card partner-status-group" style={{ borderTop: `3px solid ${group.color}` }}>
-                <div className="partner-status-group-head">
-                  <div>
-                    <div className="partner-status-group-title" style={{ color: group.color }}>{group.label}</div>
-                    <div className="partner-status-group-subtitle">{group.companies.length} partners</div>
-                  </div>
-                  <span className="partner-status-badge" style={{ background: group.color, color: '#fff' }}>
-                    {Math.round((group.companies.length / Math.max(1, rows.length)) * 100)}%
-                  </span>
-                </div>
-
-                {group.companies.length === 0 ? (
-                  <div className="partner-status-empty">No partners in this tier.</div>
-                ) : (
-                  <div className="partner-status-items">
-                    {group.companies.map(profile => {
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead style={{ background: 'var(--bg-muted, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                  <tr>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>PARTNER</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>INDUSTRY</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>TIER</th>
+                    <th style={{ padding: '12px 16px', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No partners found.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedRows.map((profile, i) => {
                       const tone = statusTone(profile.reviewStatus);
+                      const tier = profile.partnerTier || profile.tier || 'Silver';
+                      const tierColor = TIER_COLORS[tier] || TIER_COLORS.Silver;
                       return (
-                        <div key={profile.companyId || profile.id || profile.tradeName || profile.legalName} className="partner-status-item">
-                          <div className="partner-status-item-head">
-                            <div className="partner-status-item-title">
+                        <tr key={profile.companyId || profile.id || i} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+                          <td style={{ padding: '16px', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                               {profile.tradeName || profile.legalName || 'Doanh nghiệp'}
                             </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                              {profile.taxCode || 'No tax code'}
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'top', color: 'var(--text-secondary)' }}>
+                            {profile.industry || profile.business?.industries?.[0] || 'Unknown industry'}
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'top' }}>
+                            <span style={{ 
+                              display: 'inline-block', 
+                              padding: '2px 8px', 
+                              borderRadius: 4, 
+                              fontSize: 12, 
+                              fontWeight: 600, 
+                              background: `${tierColor}15`, 
+                              color: tierColor,
+                              border: `1px solid ${tierColor}30`
+                            }}>
+                              {tier}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px', verticalAlign: 'top' }}>
                             <span className="partner-status-chip" style={{ background: tone.bg, color: tone.color }}>
                               {tone.label}
                             </span>
-                          </div>
-                          <div className="partner-status-item-meta">
-                            <span>{profile.industry || profile.business?.industries?.[0] || 'Unknown industry'}</span>
-                            <span>{profile.taxCode || 'No tax code'}</span>
-                          </div>
-                        </div>
+                          </td>
+                        </tr>
                       );
-                    })}
-                  </div>
-                )}
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 32, paddingBottom: 32 }}>
+                <button 
+                  className="btn btn-outline" 
+                  disabled={currentPage === 0} 
+                  onClick={() => {
+                    setCurrentPage(c => c - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  Trang trước
+                </button>
+                
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+                  Trang {currentPage + 1} / {totalPages}
+                </span>
+                
+                <button 
+                  className="btn btn-outline" 
+                  disabled={currentPage >= totalPages - 1} 
+                  onClick={() => {
+                    setCurrentPage(c => c + 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                >
+                  Trang sau
+                </button>
               </div>
-            ))}
+            )}
           </div>
 
           <aside className="partner-status-rail">

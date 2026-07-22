@@ -159,6 +159,15 @@ export const ProjectManagement: React.FC = () => {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  useEffect(() => {
+    if (selectedProject && sessionStorage.getItem('apms-focus-workspace') === 'true') {
+      sessionStorage.removeItem('apms-focus-workspace');
+      setTimeout(() => {
+        document.getElementById('workspace-detail-sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
+  }, [selectedProject]);
+
   const selectedMembers = selectedProject?.members ?? [];
   const activeProjectStorage = selectedProjectId ? `Project #${selectedProjectId}` : 'No active board';
 
@@ -552,6 +561,9 @@ export const ProjectManagement: React.FC = () => {
           setShowMemberForm(false);
           setShowTaskForm(false);
           setTasks([]);
+          setTimeout(() => {
+            document.getElementById('workspace-detail-sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
         }}
       >
         <span><strong>{project.projectName}</strong><small>#{project.id}</small></span>
@@ -707,7 +719,7 @@ export const ProjectManagement: React.FC = () => {
             </div>
           )}
 
-          <aside className="workspace-sidebar">
+          <aside id="workspace-detail-sidebar" className="workspace-sidebar">
             <div className="workspace-side-card">
               {!selectedProject ? (
                 <div className="workspace-empty">Select a project card to inspect its detail.</div>

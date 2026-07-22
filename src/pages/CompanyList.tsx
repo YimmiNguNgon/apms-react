@@ -13,7 +13,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const pageSize = 20;
+  const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(totalElements / pageSize));
 
   const fetchProfiles = (query = '', page = 0) => {
