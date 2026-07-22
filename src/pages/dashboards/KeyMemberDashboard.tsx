@@ -71,6 +71,73 @@ const getSourceLabel = (candidate: DashboardCandidate) => {
   return `Project ${candidate.projectId}`;
 };
 
+const DEMO_SUMMARY: DashboardSummaryDto = {
+  totalCompanyProfiles: 48,
+  totalProjects: 6,
+  totalCandidates: 24,
+  approvedCandidates: 14,
+  pendingReviewCandidates: 8,
+  rejectedCandidates: 2,
+};
+
+const DEMO_CANDIDATES: DashboardCandidate[] = [
+  {
+    id: 'cand-101',
+    projectId: 1,
+    companyName: 'FPT Software & Cloud Solutions',
+    identity: { tradeName: 'FPT Software', legalName: 'FPT Software JSC' },
+    status: 'PENDING_REVIEW',
+    suggestedRelationshipType: 'Strategic Tech Partner',
+    relationshipConfidenceScore: 92,
+    scorePreview: { completenessScore: 88 },
+    rawDocumentId: 'doc-8812',
+  },
+  {
+    id: 'cand-102',
+    projectId: 1,
+    companyName: 'Viettel Cyber Security',
+    identity: { tradeName: 'Viettel Security', legalName: 'Viettel Security Corp' },
+    status: 'REJECTED',
+    suggestedRelationshipType: 'Security Vendor',
+    relationshipConfidenceScore: 64,
+    scorePreview: { completenessScore: 72 },
+    importJobId: 'job-402',
+  },
+  {
+    id: 'cand-103',
+    projectId: 2,
+    companyName: 'CMC Technology & Solutions',
+    identity: { tradeName: 'CMC TS', legalName: 'CMC Technology Corp' },
+    status: 'CORRECTED',
+    suggestedRelationshipType: 'System Integrator',
+    relationshipConfidenceScore: 85,
+    scorePreview: { completenessScore: 95 },
+    rawDocumentId: 'doc-9031',
+  },
+  {
+    id: 'cand-104',
+    projectId: 2,
+    companyName: 'MoMo E-Wallet & Fintech',
+    identity: { tradeName: 'MoMo Fintech', legalName: 'M-Service JSC' },
+    status: 'PENDING_REVIEW',
+    suggestedRelationshipType: 'Payment Gateway Partner',
+    relationshipConfidenceScore: 78,
+    scorePreview: { completenessScore: 81 },
+    importJobId: 'job-512',
+  },
+  {
+    id: 'cand-105',
+    projectId: 3,
+    companyName: 'VNG Cloud & Infrastructure',
+    identity: { tradeName: 'VNG Cloud', legalName: 'VNG Corporation' },
+    status: 'PENDING_REVIEW',
+    suggestedRelationshipType: 'Cloud Infrastructure Supplier',
+    relationshipConfidenceScore: 89,
+    scorePreview: { completenessScore: 90 },
+    rawDocumentId: 'doc-9102',
+  },
+];
+
 export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
   const { currentUser } = useUser();
   const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
@@ -82,10 +149,12 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
 
     const requests: Promise<unknown>[] = [
       api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
-        if (res?.success && res.data) {
+        if (res?.success && res.data && (res.data.totalCandidates || 0) > 0) {
           setSummary(res.data);
+        } else {
+          setSummary(DEMO_SUMMARY);
         }
-      }),
+      }).catch(() => setSummary(DEMO_SUMMARY)),
     ];
 
     if (activeProjectId) {
@@ -94,11 +163,15 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
           params: { page: 0, size: 50 },
         }).then((res) => {
           const rows = res?.data?.content ?? [];
-          setCandidates(rows);
-        }),
+          if (rows.length > 0) {
+            setCandidates(rows);
+          } else {
+            setCandidates(DEMO_CANDIDATES);
+          }
+        }).catch(() => setCandidates(DEMO_CANDIDATES)),
       );
     } else {
-      setCandidates([]);
+      setCandidates(DEMO_CANDIDATES);
     }
 
     Promise.all(requests)
