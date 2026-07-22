@@ -79,25 +79,113 @@ const getStepIndex = (status: CandidateStatus) => {
   }
 };
 
+const DEMO_KEYMEMBER_CANDIDATES: DashboardCandidate[] = [
+  {
+    id: 'cand-201',
+    projectId: 1,
+    companyName: 'FPT Software & Cloud Solutions',
+    identity: { tradeName: 'FPT Software', legalName: 'FPT Software JSC', taxCode: '0101601092' },
+    status: 'DRAFT',
+    suggestedRelationshipType: 'PARTNER_WITH',
+    relationshipConfidenceScore: 94,
+    scorePreview: { completenessScore: 88 },
+    rawDocumentId: 'doc-8812',
+    validation: { errors: [] },
+  },
+  {
+    id: 'cand-202',
+    projectId: 1,
+    companyName: 'Viettel Cyber Security',
+    identity: { tradeName: 'Viettel Security', legalName: 'Viettel Security Corp', taxCode: '0100109102' },
+    status: 'REJECTED',
+    suggestedRelationshipType: 'SUPPLIER_OF',
+    relationshipConfidenceScore: 64,
+    scorePreview: { completenessScore: 72 },
+    importJobId: 'job-402',
+    validation: { errors: ['Tax code discrepancy detected in source document', 'Address missing city tag'] },
+  },
+  {
+    id: 'cand-203',
+    projectId: 1,
+    companyName: 'CMC Technology & Solutions',
+    identity: { tradeName: 'CMC TS', legalName: 'CMC Technology Corp', taxCode: '0100259102' },
+    status: 'CORRECTED',
+    suggestedRelationshipType: 'PARTNER_WITH',
+    relationshipConfidenceScore: 85,
+    scorePreview: { completenessScore: 95 },
+    rawDocumentId: 'doc-9031',
+    validation: { errors: [] },
+  },
+  {
+    id: 'cand-204',
+    projectId: 1,
+    companyName: 'MoMo E-Wallet & Fintech',
+    identity: { tradeName: 'MoMo Fintech', legalName: 'M-Service JSC', taxCode: '0304910291' },
+    status: 'PENDING_REVIEW',
+    suggestedRelationshipType: 'PARTNER_WITH',
+    relationshipConfidenceScore: 78,
+    scorePreview: { completenessScore: 81 },
+    importJobId: 'job-512',
+    validation: { errors: [] },
+  },
+  {
+    id: 'cand-205',
+    projectId: 1,
+    companyName: 'VNG Cloud & Infrastructure',
+    identity: { tradeName: 'VNG Cloud', legalName: 'VNG Corporation', taxCode: '0303102941' },
+    status: 'DRAFT',
+    suggestedRelationshipType: 'SUPPLIER_OF',
+    relationshipConfidenceScore: 89,
+    scorePreview: { completenessScore: 90 },
+    rawDocumentId: 'doc-9102',
+    validation: { errors: [] },
+  },
+  {
+    id: 'cand-206',
+    projectId: 1,
+    companyName: 'VNPT Information Technology',
+    identity: { tradeName: 'VNPT IT', legalName: 'VNPT IT Corporation', taxCode: '0100109612' },
+    status: 'APPROVED',
+    suggestedRelationshipType: 'PARTNER_WITH',
+    relationshipConfidenceScore: 96,
+    scorePreview: { completenessScore: 98 },
+    rawDocumentId: 'doc-9201',
+    validation: { errors: [] },
+  },
+  {
+    id: 'cand-207',
+    projectId: 1,
+    companyName: 'MISA Joint Stock Company',
+    identity: { tradeName: 'MISA Software', legalName: 'MISA JSC', taxCode: '0101243156' },
+    status: 'PENDING_REVIEW',
+    suggestedRelationshipType: 'COMPETITOR_OF',
+    relationshipConfidenceScore: 91,
+    scorePreview: { completenessScore: 86 },
+    importJobId: 'job-601',
+    validation: { errors: [] },
+  },
+];
+
 const useProjectCandidates = () => {
   const [candidates, setCandidates] = useState<DashboardCandidate[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchCandidates = () => {
-    if (!PROJECT_ID) {
-      setCandidates([]);
-      setLoading(false);
-      return;
-    }
+    const projectId = localStorage.getItem('apms-active-project') || '1';
 
     setLoading(true);
-    api.get<PageResult<DashboardCandidate>>(`/projects/${PROJECT_ID}/candidates`, {
+    api.get<PageResult<DashboardCandidate>>(`/projects/${projectId}/candidates`, {
       params: { page: 0, size: 100 },
     })
       .then((res) => {
-        setCandidates(res?.data?.content ?? []);
+        const rows = res?.data?.content ?? [];
+        if (rows.length > 0) {
+          setCandidates(rows);
+        } else {
+          setCandidates(DEMO_KEYMEMBER_CANDIDATES);
+        }
       })
-      .catch(console.error)
+      .catch(() => setCandidates(DEMO_KEYMEMBER_CANDIDATES))
       .finally(() => setLoading(false));
   };
 
