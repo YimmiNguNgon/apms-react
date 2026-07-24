@@ -55,6 +55,7 @@ import {
   ManagerReports,
 } from './pages/ManagerPages';
 import { ProjectManagement } from './pages/ProjectManagement';
+import { ProjectDetailPage } from './pages/ProjectDetailPage';
 
 // ── Key Member pages ──
 import {
@@ -213,7 +214,8 @@ const MainApp: React.FC = () => {
       case 'suggested-actions-approval': return <ApprovalsPage />;
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
-      case 'project-management':         return <ProjectManagement />;
+      case 'project-management':         return <ProjectManagement setActivePage={setActivePage} />;
+      case 'project-detail':             return <ProjectDetailPage />;
 
       // ── Key Member pages ──
       case 'review-extracted-data':    return <ReviewExtractedData />;

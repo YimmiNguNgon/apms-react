@@ -142,54 +142,6 @@ export const Login: React.FC = () => {
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: -4, marginBottom: 4 }}>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '6px 10px', fontSize: 12 }}
-              onClick={() => fillDevAccount('owner')}
-              disabled={loading}
-            >
-              Owner demo
-            </button>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '6px 10px', fontSize: 12 }}
-              onClick={() => fillDevAccount('director')}
-              disabled={loading}
-            >
-              Director demo
-            </button>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '6px 10px', fontSize: 12 }}
-              onClick={() => fillDevAccount('manager')}
-              disabled={loading}
-            >
-              Manager demo
-            </button>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '6px 10px', fontSize: 12 }}
-              onClick={() => fillDevAccount('keymember')}
-              disabled={loading}
-            >
-              Key member
-            </button>
-            <button
-              type="button"
-              className="btn"
-              style={{ padding: '6px 10px', fontSize: 12 }}
-              onClick={() => fillDevAccount('staff')}
-              disabled={loading}
-            >
-              Staff demo
-            </button>
-          </div>
-
           {error && <div className="form-error">Warning: {error}</div>}
 
           <button

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { projectApi } from '../API/projectApi';
 import type {
   AddMemberRequest,
   CreateProjectRequest,
@@ -26,7 +27,7 @@ type ProjectFormState = {
   projectType: ProjectType;
   targetCompanyProfileId: string;
   targetCompanyName: string;
-  targetRelationshipType: RelationshipType;
+  targetRelationshipType: string;
   description: string;
 };
 
@@ -76,9 +77,20 @@ const candidateIndustry = (candidate: CandidateResponse) => {
 const profileName = (profile: ProfileResponse) =>
   profile.identity?.tradeName || profile.identity?.legalName || profile.companyId;
 
+const profileRoleLabel = (profile: ProfileResponse) => {
+  if (profile.tags?.length) return profile.tags.join(', ');
+  return profile.reviewStatus || 'Company profile';
+};
+
+const formatProjectDate = (value: string | null) => {
+  if (!value) return 'No date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No date';
+  return date.toLocaleDateString('vi-VN');
+};
+
 const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   RESEARCH_NEW_COMPANY: 'New company research',
-  RESEARCH_MULTIPLE_COMPANIES: 'Multi-company research',
   UPDATE_EXISTING_COMPANY: 'Update existing company',
 };
 
@@ -103,12 +115,45 @@ const MEMBER_ROLE_LABELS: Record<ProjectMemberRole, string> = {
   STAFF: 'Staff',
 };
 
+const RELATIONSHIP_OPTIONS: Array<{ value: RelationshipType; label: string }> = [
+  { value: 'PARTNER_WITH', label: 'Partner' },
+  { value: 'COMPETITOR_OF', label: 'Competitor' },
+  { value: 'SUPPLIER_OF', label: 'Supplier' },
+  { value: 'CUSTOMER_OF', label: 'Customer' },
+  { value: 'POTENTIAL_PARTNER_OF', label: 'Potential partner' },
+];
+
+const normalizeRelationshipInput = (input: string): RelationshipType | null => {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const aliases: Record<string, RelationshipType> = {
+    partner: 'PARTNER_WITH',
+    'partner with': 'PARTNER_WITH',
+    competitor: 'COMPETITOR_OF',
+    'competitor of': 'COMPETITOR_OF',
+    supplier: 'SUPPLIER_OF',
+    'supplier of': 'SUPPLIER_OF',
+    customer: 'CUSTOMER_OF',
+    'customer of': 'CUSTOMER_OF',
+    'potential partner': 'POTENTIAL_PARTNER_OF',
+    'potential partner of': 'POTENTIAL_PARTNER_OF',
+  };
+  if (aliases[normalized]) return aliases[normalized];
+
+  const matched = RELATIONSHIP_OPTIONS.find((option) =>
+    option.label.toLowerCase() === normalized || option.value.toLowerCase() === normalized
+  );
+
+  return matched?.value ?? null;
+};
+
 const initialProjectForm = (): ProjectFormState => ({
   projectName: '',
   projectType: 'RESEARCH_NEW_COMPANY',
   targetCompanyProfileId: '',
   targetCompanyName: '',
-  targetRelationshipType: 'PARTNER_WITH',
+  targetRelationshipType: 'Partner',
   description: '',
 });
 
@@ -127,7 +172,11 @@ const initialEditForm = (): EditProjectFormState => ({
   status: 'DRAFT',
 });
 
-export const ProjectManagement: React.FC = () => {
+type ProjectManagementProps = {
+  setActivePage?: (page: string) => void;
+};
+
+export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActivePage }) => {
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [projectSearch, setProjectSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
@@ -148,6 +197,8 @@ export const ProjectManagement: React.FC = () => {
   const [detailTab, setDetailTab] = useState<'board' | 'companies'>('board');
   const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
   const [approvedProfiles, setApprovedProfiles] = useState<ProfileResponse[]>([]);
+  const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
+  const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -204,6 +255,28 @@ export const ProjectManagement: React.FC = () => {
     }
   }, []);
 
+  const reloadCompanyOptions = useCallback(async (signal?: AbortSignal) => {
+    setCompanyOptionsLoading(true);
+    try {
+      const res = await api.get<PageResult<ProfileResponse>>('/profiles', {
+        params: { page: 0, size: 100, excludeOwner: true },
+        signal,
+      });
+
+      if (!signal?.aborted) {
+        setCompanyOptions(res.data?.content ?? []);
+      }
+    } catch {
+      if (!signal?.aborted) {
+        setCompanyOptions([]);
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setCompanyOptionsLoading(false);
+      }
+    }
+  }, []);
+
   const reloadProjectDetail = useCallback(async (projectId: number, signal?: AbortSignal) => {
     setDetailLoading(true);
     setDetailError(null);
@@ -243,55 +316,7 @@ export const ProjectManagement: React.FC = () => {
         api.get<ProfileResponse[]>(`/projects/${projectId}/company-profiles`, { signal }),
       ]);
       if (signal?.aborted) return;
-      
-      let loadedCandidates = candidateRes.data?.content ?? [];
-      // --- DEMO DATA INJECTION ---
-      if (loadedCandidates.length === 0) {
-        loadedCandidates = [
-          {
-            id: 'mock-1',
-            projectId: String(projectId),
-            importJobId: 'job-1',
-            rawDocumentId: 'doc-1',
-            status: 'DRAFT',
-            identity: { tradeName: 'Alpha Tech Corp' },
-            business: { industries: ['Công nghệ', 'AI'] },
-            relationshipConfidenceScore: 0.85
-          },
-          {
-            id: 'mock-2',
-            projectId: String(projectId),
-            importJobId: 'job-2',
-            rawDocumentId: 'doc-2',
-            status: 'CORRECTED',
-            identity: { tradeName: 'VinaLogistics LLC' },
-            business: { industries: ['Vận tải', 'Logistics'] },
-            relationshipConfidenceScore: 0.92
-          },
-          {
-            id: 'mock-3',
-            projectId: String(projectId),
-            importJobId: 'job-3',
-            rawDocumentId: 'doc-3',
-            status: 'PENDING_REVIEW',
-            identity: { tradeName: 'Green Energy Group' },
-            business: { industries: ['Năng lượng sạch'] },
-            relationshipConfidenceScore: 0.78
-          },
-          {
-            id: 'mock-4',
-            projectId: String(projectId),
-            importJobId: 'job-4',
-            rawDocumentId: 'doc-4',
-            status: 'APPROVED',
-            identity: { tradeName: 'HealthPlus Hospital' },
-            business: { industries: ['Y tế', 'Chăm sóc sức khỏe'] },
-            relationshipConfidenceScore: 0.95
-          }
-        ];
-      }
-      
-      setCandidates(loadedCandidates);
+      setCandidates(candidateRes.data?.content ?? []);
       setApprovedProfiles(profileRes.data ?? []);
     } catch (err) {
       if (!signal?.aborted) {
@@ -304,15 +329,28 @@ export const ProjectManagement: React.FC = () => {
     }
   }, []);
 
+  const reloadProjectTasks = useCallback(async (projectId: number, signal?: AbortSignal) => {
+    try {
+      const res = await api.get<PageResult<ProjectTaskResponse>>(`/projects/${projectId}/tasks`, {
+        params: { page: 0, size: 100 },
+        signal,
+      });
+
+      if (!signal?.aborted) {
+        setTasks(res.data?.content ?? []);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setTasks([]);
+        setDetailError(err instanceof Error ? err.message : 'Cannot load project tasks.');
+      }
+    }
+  }, []);
+
   const moveCandidate = async (candidateId: string, status: CandidateStatus) => {
     if (!selectedProjectId) return;
     const before = candidates;
     setCandidates((current) => current.map((candidate) => candidate.id === candidateId ? { ...candidate, status } : candidate));
-    
-    // --- DEMO MODE BYPASS ---
-    if (candidateId.startsWith('mock-')) {
-      return;
-    }
     
     try {
       const response = await api.patch<CandidateResponse>(`/projects/${selectedProjectId}/candidates/${candidateId}/stage`, { status });
@@ -338,6 +376,13 @@ export const ProjectManagement: React.FC = () => {
   }, [projectSearch]);
 
   useEffect(() => {
+    if (!showCreateForm) return;
+    const controller = new AbortController();
+    void reloadCompanyOptions(controller.signal);
+    return () => controller.abort();
+  }, [reloadCompanyOptions, showCreateForm]);
+
+  useEffect(() => {
     const controller = new AbortController();
     if (!selectedProjectId) {
       setSelectedProject(null);
@@ -354,14 +399,17 @@ export const ProjectManagement: React.FC = () => {
 
     void reloadProjectDetail(selectedProjectId, controller.signal);
     void reloadProjectBoard(selectedProjectId, controller.signal);
+    void reloadProjectTasks(selectedProjectId, controller.signal);
     return () => controller.abort();
-  }, [projects, reloadProjectBoard, reloadProjectDetail, selectedProjectId]);
+  }, [projects, reloadProjectBoard, reloadProjectDetail, reloadProjectTasks, selectedProjectId]);
 
   const refreshAll = async () => {
     const controller = new AbortController();
     await reloadProjects(controller.signal);
     if (selectedProjectId) {
       await reloadProjectDetail(selectedProjectId, controller.signal);
+      await reloadProjectBoard(selectedProjectId, controller.signal);
+      await reloadProjectTasks(selectedProjectId, controller.signal);
     }
   };
 
@@ -369,22 +417,30 @@ export const ProjectManagement: React.FC = () => {
     if (!selectedProjectId) return;
     const controller = new AbortController();
     await reloadProjectDetail(selectedProjectId, controller.signal);
+    await reloadProjectBoard(selectedProjectId, controller.signal);
+    await reloadProjectTasks(selectedProjectId, controller.signal);
     await reloadProjects(controller.signal);
   };
 
   const handleCreateProject = async () => {
     const projectName = projectForm.projectName.trim();
-    const targetCompanyName = projectForm.targetCompanyName.trim();
     const targetCompanyProfileId = projectForm.targetCompanyProfileId.trim();
     const description = projectForm.description.trim();
+    const selectedCompany = companyOptions.find((profile) => profile.companyId === targetCompanyProfileId || profile.id === targetCompanyProfileId);
+    const targetRelationshipType = normalizeRelationshipInput(projectForm.targetRelationshipType);
 
-    if (!projectName || !targetCompanyName) {
-      setFeedback({ kind: 'error', message: 'Project name and target company are required.' });
+    if (!projectName) {
+      setFeedback({ kind: 'error', message: 'Project name is required.' });
       return;
     }
 
-    if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && !targetCompanyProfileId) {
-      setFeedback({ kind: 'error', message: 'Target company profile id is required for update projects.' });
+    if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (!targetCompanyProfileId || !selectedCompany)) {
+      setFeedback({ kind: 'error', message: 'Please select an existing company.' });
+      return;
+    }
+
+    if (!targetRelationshipType) {
+      setFeedback({ kind: 'error', message: 'Please enter a valid target relationship.' });
       return;
     }
 
@@ -395,13 +451,13 @@ export const ProjectManagement: React.FC = () => {
       const payload: CreateProjectRequest = {
         projectName,
         projectType: projectForm.projectType,
-        targetCompanyProfileId: targetCompanyProfileId || null,
-        targetCompanyName,
-        targetRelationshipType: projectForm.targetRelationshipType,
+        targetCompanyProfileId: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? targetCompanyProfileId : null,
+        targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectName,
+        targetRelationshipType,
         description: description || null,
       };
 
-      const res = await api.post<ProjectResponse>('/projects', payload);
+      const res = await projectApi.createProject(payload);
       const created = res?.data;
 
       setProjectForm(initialProjectForm());
@@ -546,32 +602,39 @@ export const ProjectManagement: React.FC = () => {
     }
   };
 
-  const renderProjectRow = (project: ProjectResponse) => {
+  const openProjectDetail = (project: ProjectResponse) => {
+    const projectId = project.id;
+    localStorage.setItem('apms-active-project', String(projectId));
+    sessionStorage.setItem('apms-selected-project', JSON.stringify(project));
+    setSelectedProjectId(projectId);
+    setShowEditForm(false);
+    setShowMemberForm(false);
+    setShowTaskForm(false);
+    setTasks([]);
+    setActivePage?.('project-detail');
+  };
+
+  const renderProjectRow = (project: ProjectResponse, index: number) => {
     const isSelected = selectedProjectId === project.id;
     const tone = PROJECT_STATUS_TONES[project.status];
+    const rowNumber = currentPage * pageSize + index + 1;
 
     return (
-      <button
+      <div
         key={project.id}
         className={`project-list-row ${isSelected ? 'selected' : ''}`}
-        onClick={() => {
-          localStorage.setItem('apms-active-project', String(project.id));
-          setSelectedProjectId(project.id);
-          setShowEditForm(false);
-          setShowMemberForm(false);
-          setShowTaskForm(false);
-          setTasks([]);
-          setTimeout(() => {
-            document.getElementById('workspace-detail-sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }, 100);
-        }}
+        role="row"
       >
-        <span><strong>{project.projectName}</strong><small>#{project.id}</small></span>
-        <span>{PROJECT_TYPE_LABELS[project.projectType]}</span>
-        <span>{project.targetCompanyName}</span>
-        <span>{project.members?.length ?? 0} members</span>
+        <span className="project-list-index">{rowNumber}</span>
+        <span className="project-list-name"><strong>{project.projectName}</strong></span>
+        <span className="project-list-muted">{PROJECT_TYPE_LABELS[project.projectType]}</span>
+        <span className="project-list-target">{project.targetCompanyName}</span>
+        <span className="project-list-date">{formatProjectDate(project.createdAt)}</span>
         <span className={`workspace-badge ${tone}`}>{PROJECT_STATUS_LABELS[project.status]}</span>
-      </button>
+        <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
+          View detail
+        </button>
+      </div>
     );
   };
   const filteredProjectsAll = projects.filter((p) => {
@@ -588,6 +651,9 @@ export const ProjectManagement: React.FC = () => {
   const pageSize = 10;
   const totalPages = Math.ceil(totalElements / pageSize);
   const filteredProjects = filteredProjectsAll.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const pageStart = totalElements === 0 ? 0 : currentPage * pageSize + 1;
+  const pageEnd = Math.min((currentPage + 1) * pageSize, totalElements);
+  const pageCount = Math.max(totalPages, 1);
 
   return (
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page" id="page-project-management">
@@ -608,57 +674,100 @@ export const ProjectManagement: React.FC = () => {
         {projectsError && <div className="workspace-inline-error">{projectsError}</div>}
 
         {showCreateForm && (
-          <div className="workspace-panel workspace-form-panel">
-            <div className="workspace-section-head">
+          <div className="modal-overlay project-modal-overlay" onClick={() => setShowCreateForm(false)}>
+          <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()}>
+            <div className="project-modal-head">
               <div>
-                <h3>Create project</h3>
+                <span className="workspace-side-eyebrow">New workspace</span>
+                <h3 id="create-project-title">Create project</h3>
                 <p>Add a new research board and assign the target company context.</p>
               </div>
+              <button className="project-modal-close" type="button" aria-label="Close create project modal" onClick={() => setShowCreateForm(false)}>&times;</button>
             </div>
+            {feedback?.kind === 'error' && (
+              <div className="project-modal-feedback workspace-inline-error">{feedback.message}</div>
+            )}
             <div className="workspace-form-grid">
               <label>
                 <span>Project name</span>
-                <input className="search-input" value={projectForm.projectName} onChange={(event) => setProjectForm((current) => ({ ...current, projectName: event.target.value }))} />
+                <input
+                  className="search-input"
+                  placeholder="Example: CMC cloud partnership review Q3"
+                  value={projectForm.projectName}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, projectName: event.target.value }))}
+                />
               </label>
               <label>
                 <span>Project type</span>
-                <select className="search-input" value={projectForm.projectType} onChange={(event) => setProjectForm((current) => ({ ...current, projectType: event.target.value as ProjectType }))}>
+                <select
+                  className="search-input"
+                  value={projectForm.projectType}
+                  onChange={(event) => {
+                    const projectType = event.target.value as ProjectType;
+                    setProjectForm((current) => ({
+                      ...current,
+                      projectType,
+                      targetCompanyName: '',
+                      targetCompanyProfileId: '',
+                    }));
+                  }}
+                >
                   <option value="RESEARCH_NEW_COMPANY">New company research</option>
                   <option value="UPDATE_EXISTING_COMPANY">Update existing company</option>
-                  <option value="RESEARCH_MULTIPLE_COMPANIES">Multi-company research</option>
                 </select>
               </label>
-              <label>
-                <span>Target company</span>
-                <input className="search-input" value={projectForm.targetCompanyName} onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyName: event.target.value }))} />
-              </label>
+              {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
+                <label>
+                  <span>Existing company</span>
+                  <select
+                    className="search-input"
+                    value={projectForm.targetCompanyProfileId}
+                    onChange={(event) => {
+                      const selectedId = event.target.value;
+                      const profile = companyOptions.find((item) => item.companyId === selectedId || item.id === selectedId);
+                      setProjectForm((current) => ({
+                        ...current,
+                        targetCompanyProfileId: selectedId,
+                        targetCompanyName: profile ? profileName(profile) : '',
+                      }));
+                    }}
+                  >
+                    <option value="">{companyOptionsLoading ? 'Loading companies...' : 'Select an existing company'}</option>
+                    {companyOptions.map((profile) => (
+                      <option key={profile.companyId || profile.id} value={profile.companyId}>
+                        {profileName(profile)} - {profileRoleLabel(profile)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <span>Target relationship</span>
-                <select className="search-input" value={projectForm.targetRelationshipType} onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value as RelationshipType }))}>
-                  <option value="PARTNER_WITH">Partner with</option>
-                  <option value="COMPETITOR_OF">Competitor of</option>
-                  <option value="SUPPLIER_OF">Supplier of</option>
-                  <option value="CUSTOMER_OF">Customer of</option>
-                  <option value="POTENTIAL_PARTNER_OF">Potential partner of</option>
-                </select>
+                <input
+                  className="search-input"
+                  list="project-relationship-options"
+                  placeholder="Example: Partner"
+                  value={projectForm.targetRelationshipType}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}
+                />
+                <datalist id="project-relationship-options">
+                  {RELATIONSHIP_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.label} />
+                  ))}
+                </datalist>
               </label>
               <label>
                 <span>Description</span>
                 <input className="search-input" value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} />
               </label>
-              {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
-                <label className="workspace-form-span">
-                  <span>Target company profile id</span>
-                  <input className="search-input" value={projectForm.targetCompanyProfileId} onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyProfileId: event.target.value }))} />
-                </label>
-              )}
             </div>
             <div className="workspace-head-actions">
               <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={() => void handleCreateProject()} disabled={createLoading}>
-                {createLoading ? 'Saving...' : 'Save project'}
+                {createLoading ? 'Creating...' : 'Create project'}
               </button>
             </div>
+          </div>
           </div>
         )}
 
@@ -696,235 +805,28 @@ export const ProjectManagement: React.FC = () => {
                 style={{ width: '100%', maxWidth: '320px' }}
               />
             </div>
-            <div className="project-list-row project-list-head" role="row"><span>Project</span><span>Type</span><span>Target company</span><span>Team</span><span>Status</span></div>
+            <div className="project-list-row project-list-head" role="row"><span>No.</span><span>Project</span><span>Type</span><span>Target company</span><span>Created</span><span>Status</span><span>Action</span></div>
             {filteredProjects.length === 0 ? <div className="workspace-empty">No projects found.</div> : filteredProjects.map(renderProjectRow)}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="workspace-pagination">
-              <span>Showing {filteredProjects.length} of {totalElements} projects</span>
+            <div className="project-table-pagination">
+              <span>Showing {pageStart}-{pageEnd} of {totalElements} projects</span>
               <div>
-                <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => setCurrentPage((c) => c - 1)}>Prev</button>
-                {Array.from({ length: totalPages }, (_, index) => (
+                <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => setCurrentPage(0)}>First</button>
+                <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => setCurrentPage((c) => Math.max(c - 1, 0))}>Prev</button>
+                {Array.from({ length: pageCount }, (_, index) => (
                   <button
                     key={index}
                     className={`workspace-page-btn ${currentPage === index ? 'active' : ''}`}
                     onClick={() => setCurrentPage(index)}
+                    disabled={totalElements === 0}
                   >
                     {index + 1}
                   </button>
                 ))}
-                <button className="workspace-page-btn" disabled={currentPage >= totalPages - 1} onClick={() => setCurrentPage((c) => c + 1)}>Next</button>
+                <button className="workspace-page-btn" disabled={currentPage >= pageCount - 1} onClick={() => setCurrentPage((c) => Math.min(c + 1, pageCount - 1))}>Next</button>
+                <button className="workspace-page-btn" disabled={currentPage >= pageCount - 1} onClick={() => setCurrentPage(pageCount - 1)}>Last</button>
               </div>
             </div>
-          )}
-
-          <aside id="workspace-detail-sidebar" className="workspace-sidebar">
-            <div className="workspace-side-card">
-              {!selectedProject ? (
-                <div className="workspace-empty">Select a project card to inspect its detail.</div>
-              ) : (
-                <>
-                  <div className="workspace-section-head">
-                    <div>
-                      <h3>{selectedProject.projectName}</h3>
-                      <p>ID #{selectedProject.id} • {PROJECT_TYPE_LABELS[selectedProject.projectType]}</p>
-                    </div>
-                    <span className={`workspace-badge ${PROJECT_STATUS_TONES[selectedProject.status]}`}>{PROJECT_STATUS_LABELS[selectedProject.status]}</span>
-                  </div>
-
-                  <div className="workspace-detail-list">
-                    <div><strong>Target</strong><span>{selectedProject.targetCompanyName}</span></div>
-                    <div><strong>Relationship</strong><span>{selectedProject.targetRelationshipType || 'Not set'}</span></div>
-                    <div><strong>Description</strong><span>{selectedProject.description || 'No description'}</span></div>
-                    <div><strong>Status</strong><span>{selectedProject.status}</span></div>
-                  </div>
-
-                  <div className="workspace-head-actions">
-                    <button className="btn btn-outline" onClick={handleOpenEdit}>Edit</button>
-                    <button className="btn btn-outline" onClick={() => setShowMemberForm((current) => !current)}>Add member</button>
-                    <button className="btn btn-primary" onClick={() => setShowTaskForm((current) => !current)}>Assign task</button>
-                  </div>
-
-                  <div className="project-detail-tabs" role="tablist" aria-label="Project detail views">
-                    <button className={detailTab === 'board' ? 'active' : ''} role="tab" aria-selected={detailTab === 'board'} onClick={() => setDetailTab('board')}>Board</button>
-                    <button className={detailTab === 'companies' ? 'active' : ''} role="tab" aria-selected={detailTab === 'companies'} onClick={() => setDetailTab('companies')}>Companies <span>{approvedProfiles.length}</span></button>
-                  </div>
-
-                  {detailTab === 'board' ? (
-                    <div className="project-candidate-board" aria-label="Candidate pipeline">
-                      <div className="project-board-title"><div><h4>Candidate pipeline</h4><p>Drag a company candidate between workflow stages.</p></div>{boardLoading && <span>Refreshing...</span>}</div>
-                      <div className="project-candidate-columns">
-                        {CANDIDATE_COLUMNS.map((column) => {
-                          const items = candidates.filter((candidate) => candidate.status === column.status);
-                          return (
-                            <section
-                              key={column.status}
-                              className={`project-candidate-column ${column.status.toLowerCase()}`}
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={(event) => {
-                                event.preventDefault();
-                                const candidateId = event.dataTransfer.getData('text/plain');
-                                if (candidateId) void moveCandidate(candidateId, column.status);
-                              }}
-                            >
-                              <header><span>{column.label}</span><strong>{items.length}</strong></header>
-                              <div className="project-candidate-list">
-                                {items.map((candidate) => (
-                                  <article
-                                    key={candidate.id}
-                                    className="project-candidate-card"
-                                    draggable={candidate.status !== 'APPROVED' && candidate.status !== 'REJECTED'}
-                                    onDragStart={(event) => event.dataTransfer.setData('text/plain', candidate.id)}
-                                  >
-                                    <strong>{candidateName(candidate)}</strong>
-                                    <p>{candidateIndustry(candidate)}</p>
-                                    <div><span>#{candidate.id.slice(-6)}</span><span>{candidate.relationshipConfidenceScore ? `${Math.round(candidate.relationshipConfidenceScore * 100)}% match` : 'Unscored'}</span></div>
-                                  </article>
-                                ))}
-                                {items.length === 0 && <div className="project-candidate-empty">Drop candidate here</div>}
-                              </div>
-                            </section>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="project-company-list">
-                      <div className="project-board-title"><div><h4>Approved company profiles</h4><p>Profiles verified from candidates belonging to this project.</p></div>{boardLoading && <span>Refreshing...</span>}</div>
-                      {approvedProfiles.length === 0 ? <div className="workspace-empty">No approved company profiles are linked to this project yet.</div> : approvedProfiles.map((profile) => (
-                        <article key={profile.id} className="project-company-card">
-                          <div><strong>{profileName(profile)}</strong><p>{profile.business?.industries?.join(', ') || 'Industry not specified'}</p></div>
-                          <div><span className="workspace-badge success">{profile.reviewStatus || 'VERIFIED'}</span><small>{profile.companyId}</small></div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-
-                  {detailError && <div className="workspace-inline-error">{detailError}</div>}
-
-                  {showEditForm && (
-                    <div className="workspace-form-stack">
-                      <label>
-                        <span>Project name</span>
-                        <input className="search-input" value={editForm.projectName} onChange={(event) => setEditForm((current) => ({ ...current, projectName: event.target.value }))} />
-                      </label>
-                      <label>
-                        <span>Description</span>
-                        <input className="search-input" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} />
-                      </label>
-                      <label>
-                        <span>Status</span>
-                        <select className="search-input" value={editForm.status} onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value as ProjectStatus }))}>
-                          <option value="DRAFT">DRAFT</option>
-                          <option value="ACTIVE">ACTIVE</option>
-                          <option value="COMPLETED">COMPLETED</option>
-                          <option value="CANCELLED">CANCELLED</option>
-                          <option value="ARCHIVED">ARCHIVED</option>
-                        </select>
-                      </label>
-                      <div className="workspace-head-actions">
-                        <button className="btn btn-outline" onClick={() => setShowEditForm(false)}>Cancel</button>
-                        <button className="btn btn-primary" onClick={() => void handleUpdateProject()} disabled={updateLoading}>
-                          {updateLoading ? 'Saving...' : 'Save update'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {showMemberForm && (
-                    <div className="workspace-form-stack">
-                      <label>
-                        <span>Account id</span>
-                        <input className="search-input" value={memberForm.accountId} onChange={(event) => setMemberForm((current) => ({ ...current, accountId: event.target.value }))} inputMode="numeric" />
-                      </label>
-                      <label>
-                        <span>Member role</span>
-                        <select className="search-input" value={memberForm.memberRole} onChange={(event) => setMemberForm((current) => ({ ...current, memberRole: event.target.value as ProjectMemberRole }))}>
-                          <option value="MANAGER">Manager</option>
-                          <option value="STAFF">Staff</option>
-                        </select>
-                      </label>
-                      <div className="workspace-head-actions">
-                        <button className="btn btn-outline" onClick={() => setShowMemberForm(false)}>Cancel</button>
-                        <button className="btn btn-primary" onClick={() => void handleAddMember()} disabled={memberLoading}>
-                          {memberLoading ? 'Saving...' : 'Save member'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {showTaskForm && (
-                    <div className="workspace-form-stack">
-                      <label>
-                        <span>Task title</span>
-                        <input className="search-input" value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} />
-                      </label>
-                      <label>
-                        <span>Description</span>
-                        <textarea className="search-input" rows={3} value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} />
-                      </label>
-                      <label>
-                        <span>Assign to staff</span>
-                        <select className="search-input" value={taskForm.assignedToUserId} onChange={(event) => setTaskForm((current) => ({ ...current, assignedToUserId: event.target.value }))}>
-                          <option value="">Select staff</option>
-                          {selectedMembers.filter((member) => member.memberRole === 'STAFF').map((member) => <option key={member.id} value={member.accountId}>Staff #{member.accountId}</option>)}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Priority</span>
-                        <select className="search-input" value={taskForm.priority} onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value as TaskPriority }))}>
-                          <option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>Due date</span>
-                        <input className="search-input" type="datetime-local" value={taskForm.dueDate} onChange={(event) => setTaskForm((current) => ({ ...current, dueDate: event.target.value }))} />
-                      </label>
-                      <label>
-                        <span>Task type</span>
-                        <select className="search-input" value={taskForm.taskType} onChange={(event) => setTaskForm((current) => ({ ...current, taskType: event.target.value as TaskType }))}>
-                          <option value="DOCUMENT_COLLECTION">Document collection</option><option value="COMPANY_DATA_PREPARATION">Company data preparation</option><option value="ROLE_EVALUATION">Role evaluation</option><option value="GENERAL_TASK">General task</option>
-                        </select>
-                      </label>
-                      <div className="workspace-head-actions">
-                        <button className="btn btn-outline" onClick={() => setShowTaskForm(false)}>Cancel</button>
-                        <button className="btn btn-primary" onClick={() => void handleCreateTask()} disabled={taskLoading}>{taskLoading ? 'Assigning...' : 'Assign task'}</button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="workspace-member-list">
-                    <div className="workspace-side-eyebrow">Project tasks</div>
-                    {tasks.length === 0 && <div className="workspace-empty">Newly assigned tasks will appear here in this session.</div>}
-                    {tasks.map((task) => (
-                      <div key={task.id} className="workspace-member-card">
-                        <div><strong>{task.title}</strong><p>{task.taskType} · {task.priority}</p><small>{task.assignedToName || `Staff #${task.assignedToUserId ?? 'Unassigned'}`}</small></div>
-                        <span className="workspace-badge info">{task.status}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="workspace-member-list">
-                    <div className="workspace-side-eyebrow">Project members</div>
-                    {detailLoading && <div className="workspace-inline-note">Loading project detail...</div>}
-                    {selectedMembers.length === 0 ? (
-                      <div className="workspace-empty">No members assigned yet.</div>
-                    ) : selectedMembers.map((member) => (
-                      <div key={member.id} className="workspace-member-card">
-                        <div>
-                          <strong>Account #{member.accountId}</strong>
-                          <p>{MEMBER_ROLE_LABELS[member.memberRole] ?? member.memberRole}</p>
-                          <small>{member.joinedAt ? new Date(member.joinedAt).toLocaleString('vi-VN') : 'No join date'}</small>
-                        </div>
-                        <button className="workspace-icon-btn danger" onClick={() => void handleRemoveMember(member)} disabled={memberLoading}>Remove</button>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </aside>
+          </div>
         </div>
       </div>
     </section>

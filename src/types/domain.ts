@@ -10,7 +10,6 @@ export type Role =
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED';
 export type ProjectType =
   | 'RESEARCH_NEW_COMPANY'
-  | 'RESEARCH_MULTIPLE_COMPANIES'
   | 'UPDATE_EXISTING_COMPANY';
 export type CandidateStatus = 'DRAFT' | 'PENDING_REVIEW' | 'REJECTED' | 'CORRECTED' | 'APPROVED';
 export type ImportJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -146,6 +145,8 @@ export interface ProfileSourcesResponse {
 export interface ProjectMemberResponse {
   id: number;
   accountId: number;
+  email?: string | null;
+  fullName?: string | null;
   memberRole: 'MANAGER' | 'STAFF';
   joinedAt: string | null;
 }
@@ -181,7 +182,8 @@ export interface UpdateProjectRequest {
 }
 
 export interface AddMemberRequest {
-  accountId: number;
+  accountId?: number | null;
+  email?: string | null;
   memberRole: 'MANAGER' | 'STAFF';
 }
 
@@ -226,7 +228,7 @@ export interface ImportJobResponse {
   createdAt?: string | null;
 }
 
-export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
 export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'GENERAL_TASK';
 
@@ -245,6 +247,7 @@ export interface ProjectTaskResponse {
   updatedAt?: string | null;
   completedAt?: string | null;
   taskType: TaskType;
+  availableActions?: string[];
 }
 
 export interface ProjectTaskDraftResponse {
@@ -322,6 +325,15 @@ export interface AccountAdminResponse {
   active: boolean;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export interface UserSearchResponse {
+  id: number;
+  email: string;
+  fullName: string;
+  roles: string[];
+  enabled: boolean;
+  createdAt: string | null;
 }
 
 export interface CreateAccountRequest {

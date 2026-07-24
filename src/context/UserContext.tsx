@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api, clearAuthSession, storeAuthSession } from '../services/api';
+import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../services/api';
+import { loginApi } from '../API/loginApi';
 
 export const ROLES = {
   ADMIN: 'ROLE_ADMIN',
@@ -12,9 +13,9 @@ export const ROLES = {
 export type Role = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management'],
-  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-detail', 'news', 'profile', 'project-management'],
-  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-detail', 'verify', 'news', 'profile', 'project-management'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail'],
+  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
+  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail'],
   [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-detail', 'validate', 'profile'],
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
 };
@@ -121,12 +122,24 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token =
+      localStorage.getItem(STORAGE_KEYS.accessToken) ||
+      localStorage.getItem(STORAGE_KEYS.legacyAccessToken);
     const stored = localStorage.getItem('apms-user');
+
+    if (!token) {
+      clearAuthSession();
+      setCurrentUser(null);
+      setLoading(false);
+      return;
+    }
+
     if (stored) {
       try {
         setCurrentUser(JSON.parse(stored));
       } catch {
         clearAuthSession();
+        setCurrentUser(null);
       }
     }
     setLoading(false);
@@ -134,13 +147,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     try {
-      const res = await api.post<LoginPayload>('/auth/login', { email, password: password || '' }, { skipAuthRedirect: true });
-      if (!res?.success || !res.data) return false;
+      const payload: LoginPayload | null = await loginApi.login(email, password || '');
 
-      storeAuthSession({
-        accessToken: res.data.accessToken,
-        refreshToken: res.data.refreshToken,
-      });
+      if (!payload || !payload.accessToken) return false;
+
+      storeAuthSession({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
 
       try {
         const projRes = await api.get<any>('/projects', { params: { page: 0, size: 1 } });
@@ -149,7 +160,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch {}
 
-      const user = mapBackendRoles(res.data.email, res.data.roles);
+      const user = mapBackendRoles(payload.email || email, Array.isArray((payload as any).roles) ? (payload as any).roles : []);
       setCurrentUser(user);
       localStorage.setItem('apms-user', JSON.stringify(user));
       return true;

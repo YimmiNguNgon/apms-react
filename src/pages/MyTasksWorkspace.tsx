@@ -249,7 +249,6 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
   // UI Helpers
   const getPriorityClass = (priority: TaskPriority) => {
     switch (priority) {
-      case 'URGENT': return 'danger';
       case 'HIGH': return 'warning';
       case 'MEDIUM': return 'info';
       default: return 'neutral';
