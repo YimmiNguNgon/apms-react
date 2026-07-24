@@ -14,10 +14,10 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_PAGES: Record<Role, string[]> = {
   [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail'],
-  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
-  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail'],
-  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-detail', 'validate', 'profile'],
-  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
+  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
+  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail'],
+  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile'],
+  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
 };
 
 export const ROLE_DEFAULT_PAGE: Record<Role, string> = {
@@ -29,6 +29,7 @@ export const ROLE_DEFAULT_PAGE: Record<Role, string> = {
 };
 
 export interface User {
+  id: number;
   username: string;
   email: string;
   name: string;
@@ -65,7 +66,7 @@ const toAvatar = (name: string) =>
     .join('')
     .toUpperCase() || 'U';
 
-const mapBackendRoles = (email: string, backendRoles: string[]): User => {
+const mapBackendRoles = (id: number, email: string, backendRoles: string[]): User => {
   const roles = backendRoles.join(',').toUpperCase();
   const role = roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN') || roles.includes('OWNER')
     ? ROLES.ADMIN
@@ -89,6 +90,7 @@ const mapBackendRoles = (email: string, backendRoles: string[]): User => {
   const name = toDisplayName(email);
 
   return {
+    id,
     username: email.split('@')[0] || email,
     email,
     name,
@@ -136,7 +138,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (stored) {
       try {
-        setCurrentUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored) as User;
+        const normalized = {
+          ...parsed,
+          id: Number((parsed as any).id ?? 0),
+          allowedPages: ROLE_PAGES[parsed.role] ?? parsed.allowedPages,
+        };
+        setCurrentUser(normalized);
+        localStorage.setItem('apms-user', JSON.stringify(normalized));
       } catch {
         clearAuthSession();
         setCurrentUser(null);
@@ -160,7 +169,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch {}
 
-      const user = mapBackendRoles(payload.email || email, Array.isArray((payload as any).roles) ? (payload as any).roles : []);
+      const user = mapBackendRoles(payload.id, payload.email || email, Array.isArray((payload as any).roles) ? (payload as any).roles : []);
       setCurrentUser(user);
       localStorage.setItem('apms-user', JSON.stringify(user));
       return true;

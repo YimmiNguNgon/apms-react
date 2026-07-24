@@ -18,6 +18,8 @@ interface SharedProps {
   setActivePage: (page: string) => void;
 }
 
+const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
+
 // ── Existing pages ──
 import { CompanyList }     from './pages/CompanyList';
 import { CompanyDetail }   from './pages/CompanyDetail';
@@ -91,17 +93,27 @@ const MainApp: React.FC = () => {
   const { currentUser, loading } = useUser();
   useTheme();
 
-  const [activePage, setActivePage] = useState<string>('');
+  const [activePage, setActivePage] = useState<string>(() => localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || '');
 
   useEffect(() => {
-    if (currentUser) {
-      if (!currentUser.allowedPages.includes(activePage)) {
-        setActivePage(ROLE_DEFAULT_PAGE[currentUser.role]);
-      }
-    } else {
+    if (!currentUser) {
+      localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
       setActivePage('');
+      return;
     }
-  }, [currentUser]);
+
+    if (!activePage || !currentUser.allowedPages.includes(activePage)) {
+      const defaultPage = ROLE_DEFAULT_PAGE[currentUser.role];
+      setActivePage(defaultPage);
+      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, defaultPage);
+    }
+  }, [activePage, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !activePage) return;
+    if (!currentUser.allowedPages.includes(activePage)) return;
+    localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, activePage);
+  }, [activePage, currentUser]);
 
   // Loading splash
   if (loading) {
@@ -143,7 +155,7 @@ const MainApp: React.FC = () => {
     switch (currentUser.role) {
       case ROLES.ADMIN:      return <AdminDashboard />;
       case ROLES.DIRECTOR:   return <DirectorDashboard />;
-      case ROLES.MANAGER:    return <ManagerDashboard />;
+      case ROLES.MANAGER:    return <ManagerDashboard setActivePage={setActivePage} />;
       case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={setActivePage} />;
       case ROLES.STAFF:      return <StaffDashboard setActivePage={setActivePage} />;
       default:               return <DirectorDashboard />;
@@ -174,14 +186,14 @@ const MainApp: React.FC = () => {
     switch (activePage) {
       // ── Existing pages ──
       case 'companies':        return <CompanyList setActivePage={setActivePage} />;
-      case 'company-detail':   return <CompanyDetail />;
+      case 'company-detail':   return <CompanyDetail setActivePage={setActivePage} />;
       case 'company-profiles': return <CompanyList setActivePage={setActivePage} />;
       case 'verify':           return <VerifyQueue />;
       case 'validate':         return <ValidationQueue />;
       case 'add-company':      return <AddCompany />;
       case 'admin-panel':      return <AdminPanel />;
       case 'ai-agent':
-      case 'personal-ai-agent':return <AIAgent />;
+      case 'personal-ai-agent':return renderDashboard();
       case 'news':             return <News />;
 
       // ── Profile (shared) ──
@@ -215,7 +227,7 @@ const MainApp: React.FC = () => {
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
       case 'project-management':         return <ProjectManagement setActivePage={setActivePage} />;
-      case 'project-detail':             return <ProjectDetailPage />;
+      case 'project-detail':             return <ProjectDetailPage setActivePage={setActivePage} />;
 
       // ── Key Member pages ──
       case 'review-extracted-data':    return <ReviewExtractedData />;
@@ -264,6 +276,7 @@ const MainApp: React.FC = () => {
           {renderPage()}
         </div>
       </div>
+      <AIAgent />
     </div>
   );
 };

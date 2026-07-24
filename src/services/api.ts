@@ -41,7 +41,7 @@ interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined | null>;
   skipAuthRedirect?: boolean;
   retryOn401?: boolean;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -164,7 +164,9 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
   const url = buildUrl(endpoint, params);
   const headers = new Headers(inputHeaders);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = timeoutMs && timeoutMs > 0
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
 
   if (inputSignal) {
     if (inputSignal.aborted) {
@@ -192,14 +194,17 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       signal: controller.signal,
     });
   } catch (error: any) {
-    clearTimeout(timeoutId);
+    if (timeoutId) window.clearTimeout(timeoutId);
     if (error?.name === 'AbortError') {
-      throw new ApiError(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, 408);
+      const message = timeoutMs
+        ? `Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`
+        : 'Request was aborted.';
+      throw new ApiError(message, 408);
     }
     throw error;
   }
 
-  clearTimeout(timeoutId);
+  if (timeoutId) window.clearTimeout(timeoutId);
 
   if (response.status === 401 && !skipAuthRedirect && !retryOn401) {
     const refreshed = await refreshSession();

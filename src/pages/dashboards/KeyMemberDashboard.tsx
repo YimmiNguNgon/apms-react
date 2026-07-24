@@ -158,14 +158,10 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
     const requests: Promise<unknown>[] = [
       api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
         if (res?.success && res.data && (res.data.totalCandidates || 0) > 0) {
-        if (res?.success && res.data && (res.data.totalCandidates || 0) > 0) {
           setSummary(res.data);
         } else {
           setSummary(DEMO_SUMMARY);
-        } else {
-          setSummary(DEMO_SUMMARY);
         }
-      }).catch(() => setSummary(DEMO_SUMMARY)),
       }).catch(() => setSummary(DEMO_SUMMARY)),
     ];
 
@@ -181,15 +177,8 @@ export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {
             setCandidates(DEMO_CANDIDATES);
           }
         }).catch(() => setCandidates(DEMO_CANDIDATES)),
-          if (rows.length > 0) {
-            setCandidates(rows);
-          } else {
-            setCandidates(DEMO_CANDIDATES);
-          }
-        }).catch(() => setCandidates(DEMO_CANDIDATES)),
       );
     } else {
-      setCandidates(DEMO_CANDIDATES);
       setCandidates(DEMO_CANDIDATES);
     }
 

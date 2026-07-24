@@ -129,32 +129,31 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'Operations',
     items: [
       { id: 'project-management',      label: 'Project Management' },
-      { id: 'partner-evaluation',      label: 'Partner Evaluation' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
-      { id: 'company-assignment',      label: 'Company Assignment' },
-      { id: 'analysis-history',        label: 'Analysis History' },
+      // { id: 'analysis-history',        label: 'Analysis History' },
     ],
   },
   {
-    title: 'Monitoring',
+    // title: 'Monitoring',
     items: [
-      { id: 'risk-monitoring',             label: 'Risk Monitoring', badge: 4, badgeType: 'danger' },
-      { id: 'partner-status',              label: 'Partner Status' },
-      { id: 'suggested-actions-approval',  label: 'Approvals',      badge: 5, badgeType: 'warning' },
+      // { id: 'risk-monitoring',             label: 'Risk Monitoring', badge: 4, badgeType: 'danger' },
+      // { id: 'partner-status',              label: 'Partner Status' },
+      // { id: 'suggested-actions-approval',  label: 'Approvals',      badge: 5, badgeType: 'warning' },
     ],
   },
-  {
-    title: 'Performance',
-    items: [
-      { id: 'team-kpi', label: 'Team KPI' },
-      { id: 'reports',  label: 'Reports' },
-    ],
-  },
+  // {
+  //   title: 'Performance',
+  //   items: [
+  //     { id: 'team-kpi', label: 'Team KPI' },
+  //     { id: 'reports',  label: 'Reports' },
+  //   ],
+  // },
   {
     title: 'Data',
     items: [
       { id: 'companies', label: 'Companies' },
-      { id: 'verify',    label: 'Verify Queue' },
+      { id: 'news',      label: 'Crawler Articles' },
+      // { id: 'verify',    label: 'Verify Queue' },
     ],
   },
   {
@@ -207,34 +206,36 @@ const STAFF_MENU: MenuSection[] = [
   {
     title: 'Work Queue',
     items: [
-      { id: 'my-tasks',            label: 'My Tasks' },
-      { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
-      { id: 'candidate-review',    label: 'Candidate Review' },
+      // { id: 'my-tasks',            label: 'My Tasks' },
+      { id: 'project-management',  label: 'Project Management' },
+      // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
+      // { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'Company Profiles' },
+      { id: 'news',                label: 'Crawler Articles' },
     ],
   },
-  {
-    title: 'Research Input',
-    items: [
-      { id: 'partner-management',    label: 'Partner Directory' },
-      { id: 'competitor-management', label: 'Competitor Watchlist' },
-    ],
-  },
-  {
-    title: 'Intelligence',
-    items: [
-      { id: 'search-companies',  label: 'Search Companies' },
-      { id: 'personal-ai-agent', label: 'Research AI Assistant' },
-      { id: 'news',              label: 'News & Intel' },
-    ],
-  },
-  {
-    title: 'Development',
-    items: [
-      { id: 'ai-training-mode', label: 'Training Mode' },
-      { id: 'learning-center',  label: 'Learning Center' },
-    ],
-  },
+  // {
+  //   title: 'Research Input',
+  //   items: [
+  //     { id: 'partner-management',    label: 'Partner Directory' },
+  //     { id: 'competitor-management', label: 'Competitor Watchlist' },
+  //   ],
+  // },
+  // {
+  //   title: 'Intelligence',
+  //   items: [
+  //     { id: 'search-companies',  label: 'Search Companies' },
+  //     { id: 'personal-ai-agent', label: 'Research AI Assistant' },
+  //     { id: 'news',              label: 'News & Intel' },
+  //   ],
+  // },
+  // {
+  //   title: 'Development',
+  //   items: [
+  //     { id: 'ai-training-mode', label: 'Training Mode' },
+  //     { id: 'learning-center',  label: 'Learning Center' },
+  //   ],
+  // },
 ];
 
 const MENU_BY_ROLE = {

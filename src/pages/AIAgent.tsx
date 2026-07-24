@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  Bot,
+  FileSearch,
+  MessageSquarePlus,
+  Send,
+  User,
+  X,
+} from 'lucide-react';
 import { api } from '../services/api';
 import { useUser, ROLES } from '../context/UserContext';
 import type { PageResult, ProjectResponse } from '../types/domain';
+import styles from './AIAgent.module.css';
 
 export interface AiSourceReference {
   documentId: string;
@@ -25,57 +34,60 @@ interface Message {
   isLoading?: boolean;
 }
 
+const formatTime = () =>
+  new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+
 export const AIAgent: React.FC = () => {
   const { currentUser } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [summary, setSummary] = useState<any>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   useEffect(() => {
-    api.get<any>('/dashboard/summary').then((res) => {
-      if (res?.success) setSummary(res.data);
-    }).catch(() => setSummary(null));
-  }, []);
-
-  useEffect(() => {
-    if (currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR) return;
+    if (isOwnerMode) return;
 
     const controller = new AbortController();
     void api.get<PageResult<ProjectResponse>>('/projects', {
       params: { page: 0, size: 100 },
       signal: controller.signal,
     }).then((res) => {
-      const projects = res?.data?.content ?? [];
+      const rows = res?.data?.content ?? [];
       const stored = localStorage.getItem('apms-active-project');
-      const validProject = projects.find((project) => String(project.id) === stored) ?? projects[0] ?? null;
+      const validProject = rows.find((project) => String(project.id) === stored) ?? rows[0] ?? null;
       setProjectId(validProject ? String(validProject.id) : null);
-    }).catch(() => setProjectId(null));
+    }).catch(() => {
+      setProjectId(null);
+    });
 
     return () => controller.abort();
-  }, [currentUser?.role]);
+  }, [isOwnerMode]);
 
-  const sendMessage = async () => {
-    const msg = input.trim();
-    if (!msg) return;
+  const sendMessage = async (override?: string) => {
+    const msg = (override ?? input).trim();
+    if (!msg || isSending) return;
 
     setMessages((prev) => [...prev, { role: 'user', content: msg }, { role: 'ai', content: '', isLoading: true }]);
     setInput('');
+    setIsSending(true);
 
     try {
-      const isOwner = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR;
-      const endpoint = isOwner ? '/owner/ai-assistant/chat' : '/ai-assistant/chat';
+      const endpoint = isOwnerMode ? '/owner/ai-assistant/chat' : '/ai-assistant/chat';
 
-      if (!isOwner && !projectId) {
+      if (!isOwnerMode && !projectId) {
         setMessages((prev) => {
           const next = [...prev];
-          next[next.length - 1] = { role: 'ai', content: 'No valid project is available for the staff AI assistant.' };
+          next[next.length - 1] = { role: 'ai', content: 'No valid project is available for the AI assistant.' };
           return next;
         });
         return;
@@ -83,7 +95,7 @@ export const AIAgent: React.FC = () => {
 
       const payload: { question: string; sessionId?: string; projectId?: number } = { question: msg };
       if (sessionId) payload.sessionId = sessionId;
-      if (!isOwner && projectId) payload.projectId = Number(projectId);
+      if (!isOwnerMode && projectId) payload.projectId = Number(projectId);
 
       const res = await api.post<AiChatResponse>(endpoint, payload);
       setSessionId(res?.data?.sessionId || null);
@@ -106,105 +118,120 @@ export const AIAgent: React.FC = () => {
         };
         return next;
       });
+    } finally {
+      setIsSending(false);
+      textareaRef.current?.focus();
     }
   };
 
-  return (
-    <section className="workspace-page" id="page-ai-agent">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Intelligence <span>/</span> Research AI Assistant</div>
-          <div className="workspace-page-head">
-            <div>
-              <h1>Research AI assistant</h1>
-              <p>This assistant now starts without seeded prompts or sample answers and only renders live backend responses.</p>
-            </div>
-          </div>
+  const startNewChat = () => {
+    setMessages([]);
+    setSessionId(null);
+    setInput('');
+  };
 
-          <div className="workspace-panel ai-workspace-panel">
-            <div className="ai-workspace-header">
-              <div className="ai-workspace-mark">AI</div>
+  return (
+    <section className={styles.widget} id="page-ai-agent" aria-live="polite">
+      {isOpen && (
+        <div className={styles.panel}>
+          <header className={styles.chatHeader}>
+            <div className={styles.chatTitle}>
+              <span><Bot size={18} /></span>
               <div>
-                <h3>APMS research assistant</h3>
-                <p>Ask about partners, competitors, and company context using the active workspace data.</p>
+                <h1>APMS AI</h1>
+                <p>{isSending ? 'Đang trả lời...' : 'Sẵn sàng hỗ trợ'}</p>
               </div>
             </div>
-
-            <div className="ai-thread">
-              {messages.length === 0 ? (
-                <div className="workspace-empty">No conversation yet. Send a question to start a backend-driven AI session.</div>
-              ) : messages.map((message, index) => (
-                <div key={index} className={`ai-thread-item ${message.role}`}>
-                  <div className="ai-thread-avatar">{message.role === 'ai' ? 'AI' : 'You'}</div>
-                  <div className={`ai-thread-bubble ${message.role}`}>
-                    {message.isLoading ? (
-                      <div className="ai-loading-dots"><span /><span /><span /></div>
-                    ) : (
-                      <p>{message.content}</p>
-                    )}
-
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="ai-source-list">
-                        <strong>Sources</strong>
-                        {message.sources.map((source, sourceIndex) => (
-                          <div key={sourceIndex} className="ai-source-item">
-                            <span>[{sourceIndex + 1}]</span>
-                            <div>
-                              <strong>{source.documentTitle}</strong>
-                              <p>{Math.round(source.relevanceScore * 100)}% relevance</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {message.suggestedActions && message.suggestedActions.length > 0 && (
-                      <div className="ai-action-row">
-                        {message.suggestedActions.map((action, actionIndex) => (
-                          <button key={actionIndex} className="btn btn-outline" onClick={() => setInput(action)}>{action}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            <div className={styles.headerActions}>
+              <button className={styles.newChatButton} type="button" onClick={startNewChat} title="New chat">
+                <MessageSquarePlus size={16} />
+              </button>
+              <button className={styles.iconButton} type="button" onClick={() => setIsOpen(false)} title="Close chat">
+                <X size={18} />
+              </button>
+            </div>
+          </header>
+        <section className={styles.thread}>
+          {messages.length === 0 ? (
+            <div className={styles.emptyState}>
+              <Bot size={30} />
+              <h2>Xin chào</h2>
+              <p>Bạn có thể hỏi về project, candidate, company profile hoặc task.</p>
+            </div>
+          ) : messages.map((message, index) => (
+            <article key={index} className={`${styles.messageRow} ${message.role === 'user' ? styles.userRow : styles.aiRow}`}>
+              <div className={styles.avatar}>{message.role === 'ai' ? <Bot size={17} /> : <User size={17} />}</div>
+              <div className={styles.messageBlock}>
+                <div className={styles.messageMeta}>
+                  <strong>{message.role === 'ai' ? 'APMS AI' : currentUser?.name || 'You'}</strong>
+                  <span>{formatTime()}</span>
                 </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
+                <div className={`${styles.bubble} ${message.role === 'user' ? styles.userBubble : styles.aiBubble}`}>
+                  {message.isLoading ? (
+                    <div className={styles.loadingDots}><i /><i /><i /></div>
+                  ) : (
+                    <p>{message.content}</p>
+                  )}
+                </div>
 
-            <div className="ai-input-row">
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Ask about partners, competitors, or relationship context..."
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => event.key === 'Enter' && sendMessage()}
-              />
-              <button className="btn btn-primary" onClick={sendMessage}>Send</button>
-            </div>
-          </div>
+                {message.sources && message.sources.length > 0 && (
+                  <div className={styles.sources}>
+                    <strong><FileSearch size={15} /> Sources</strong>
+                    {message.sources.map((source, sourceIndex) => (
+                      <article key={`${source.documentId}-${sourceIndex}`}>
+                        <span>{sourceIndex + 1}</span>
+                        <div>
+                          <strong>{source.documentTitle}</strong>
+                          <p>{source.snippet || `${Math.round(source.relevanceScore * 100)}% relevance`}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {message.suggestedActions && message.suggestedActions.length > 0 && (
+                  <div className={styles.actions}>
+                    {message.suggestedActions.map((action, actionIndex) => (
+                      <button key={actionIndex} type="button" onClick={() => setInput(action)}>{action}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+          <div ref={chatEndRef} />
+        </section>
+
+        <form
+          className={styles.composer}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void sendMessage();
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={input}
+            placeholder="Ask about candidate approval, company profile quality, project risks..."
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                void sendMessage();
+              }
+            }}
+          />
+          <button type="submit" disabled={isSending || !input.trim()}>
+            <Send size={17} />
+          </button>
+        </form>
         </div>
+      )}
 
-        <aside className="workspace-sidebar">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Workspace context</span>
-            <div className="workspace-detail-list">
-              <div><strong>Company profiles</strong><span>{summary?.totalCompanyProfiles ?? 'Not available'}</span></div>
-              <div><strong>Projects</strong><span>{summary?.totalProjects ?? 'Not available'}</span></div>
-              <div><strong>Pending candidates</strong><span>{summary?.pendingReviewCandidates ?? 'Not available'}</span></div>
-              <div><strong>Partners</strong><span>{summary?.partnerCount ?? 'Not available'}</span></div>
-            </div>
-          </div>
-
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Assistant status</span>
-            <div className="workspace-ai-note">
-              <strong>{projectId ? 'Project context loaded' : 'Waiting for project context'}</strong>
-              <p>{projectId ? `Using project #${projectId} for staff-scoped answers.` : 'The assistant needs a valid project assignment for staff mode.'}</p>
-            </div>
-          </div>
-        </aside>
-      </div>
+      <button className={styles.launcher} type="button" onClick={() => setIsOpen((value) => !value)}>
+        <Bot size={24} />
+        {!isOpen && <span>AI</span>}
+      </button>
     </section>
   );
 };

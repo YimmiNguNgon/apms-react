@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { projectApi } from '../API/projectApi';
+import { ROLES, useUser } from '../context/UserContext';
 import type {
   AddMemberRequest,
   CreateProjectRequest,
@@ -52,6 +53,11 @@ type TaskFormState = {
 };
 
 type FeedbackState = {
+  kind: 'success' | 'error';
+  message: string;
+} | null;
+
+type ToastState = {
   kind: 'success' | 'error';
   message: string;
 } | null;
@@ -177,6 +183,8 @@ type ProjectManagementProps = {
 };
 
 export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActivePage }) => {
+  const { currentUser } = useUser();
+  const isStaffView = currentUser?.role === ROLES.STAFF;
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [projectSearch, setProjectSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
@@ -209,6 +217,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   useEffect(() => {
     if (selectedProject && sessionStorage.getItem('apms-focus-workspace') === 'true') {
@@ -422,6 +437,39 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     await reloadProjects(controller.signal);
   };
 
+  const requireActiveProject = (action: string) => {
+    if (selectedProject?.status !== 'DRAFT') return true;
+    setToast({
+      kind: 'error',
+      message: `Project is still Draft. Please activate it before ${action}.`,
+    });
+    return false;
+  };
+
+  const handleActivateProject = async (project: ProjectResponse) => {
+    setFeedback(null);
+    setToast(null);
+
+    try {
+      const payload = await projectApi.updateProjectStatus(project.id, {
+        status: 'ACTIVE',
+        note: 'Activate project from project management',
+      });
+      const updatedProject = payload?.data;
+      setProjects((current) => current.map((item) => (
+        item.id === project.id ? { ...item, ...(updatedProject ?? {}), status: 'ACTIVE' } : item
+      )));
+      if (selectedProjectId === project.id) {
+        setSelectedProject((current) => (
+          current ? { ...current, ...(updatedProject ?? {}), status: 'ACTIVE' } : current
+        ));
+      }
+      setToast({ kind: 'success', message: 'Project activated successfully.' });
+    } catch (err) {
+      setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to activate project.' });
+    }
+  };
+
   const handleCreateProject = async () => {
     const projectName = projectForm.projectName.trim();
     const targetCompanyProfileId = projectForm.targetCompanyProfileId.trim();
@@ -522,6 +570,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       setFeedback({ kind: 'error', message: 'Select a project before adding members.' });
       return;
     }
+    if (!requireActiveProject('adding staff')) return;
 
     const accountId = Number(memberForm.accountId);
     if (!Number.isFinite(accountId) || accountId <= 0) {
@@ -570,6 +619,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
   const handleCreateTask = async () => {
     if (!selectedProject) return;
+    if (!requireActiveProject('assigning tasks to employees')) return;
     const title = taskForm.title.trim();
     const assignedToUserId = Number(taskForm.assignedToUserId);
     if (!title || !Number.isFinite(assignedToUserId) || assignedToUserId <= 0) {
@@ -595,8 +645,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       setTaskForm(initialTaskForm());
       setShowTaskForm(false);
       setFeedback({ kind: 'success', message: 'Task assigned successfully.' });
+      setToast({ kind: 'success', message: 'Task created successfully.' });
     } catch (err) {
       setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to assign task.' });
+      setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to assign task.' });
     } finally {
       setTaskLoading(false);
     }
@@ -631,9 +683,16 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         <span className="project-list-target">{project.targetCompanyName}</span>
         <span className="project-list-date">{formatProjectDate(project.createdAt)}</span>
         <span className={`workspace-badge ${tone}`}>{PROJECT_STATUS_LABELS[project.status]}</span>
-        <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
-          View detail
-        </button>
+        <span className="project-row-actions">
+          {!isStaffView && project.status === 'DRAFT' && (
+            <button className="project-activate-btn" type="button" onClick={() => void handleActivateProject(project)}>
+              Activate
+            </button>
+          )}
+          <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
+            View detail
+          </button>
+        </span>
       </div>
     );
   };
@@ -648,7 +707,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   });
 
   const totalElements = filteredProjectsAll.length;
-  const pageSize = 10;
+  const pageSize = 5;
   const totalPages = Math.ceil(totalElements / pageSize);
   const filteredProjects = filteredProjectsAll.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const pageStart = totalElements === 0 ? 0 : currentPage * pageSize + 1;
@@ -657,6 +716,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
   return (
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page" id="page-project-management">
+      {toast && <div className={`apms-toast ${toast.kind}`}>{toast.message}</div>}
       <div className="workspace-main-full">
         <div className="workspace-page-head">
           <div>
@@ -666,7 +726,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           </div>
           <div className="workspace-head-actions">
             <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button>
-            <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>Create project</button>
+            {!isStaffView && (
+              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>Create project</button>
+            )}
           </div>
         </div>
 

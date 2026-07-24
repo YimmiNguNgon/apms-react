@@ -1,254 +1,224 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Building2, Eye, FileText, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
-import { resolveScoreRole, SCORE_RULES, type ScoreRole } from '../constants/scoreRules';
+import type { PageResult, ProfileResponse } from '../types/domain';
+import styles from './CompanyProfiles.module.css';
 
 interface CompanyListProps {
   setActivePage: (page: string) => void;
 }
 
+const PAGE_SIZE = 10;
+
+const profileName = (profile: ProfileResponse) =>
+  profile.identity?.tradeName || profile.identity?.legalName || profile.companyId || profile.id || 'Company profile';
+
+const profileLegalName = (profile: ProfileResponse) =>
+  profile.identity?.legalName || profileName(profile);
+
+const profileIndustry = (profile: ProfileResponse) =>
+  profile.business?.industries?.filter(Boolean).join(', ') || 'Unclassified';
+
+const profileCountry = (profile: ProfileResponse) =>
+  profile.contact?.addresses?.[0]?.country || profile.contact?.addresses?.[0]?.city || 'No location';
+
+const profileRelationship = (profile: ProfileResponse) =>
+  profile.tags?.[0] || 'PROFILE';
+
+const formatDate = (value?: string | null) => {
+  if (!value) return 'No update';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
+
+const statusTone = (status?: string) => {
+  if (status === 'APPROVED' || status === 'VERIFIED') return styles.success;
+  if (status === 'PENDING_REVIEW' || status === 'NEEDS_UPDATE') return styles.warning;
+  if (status === 'REJECTED' || status === 'UNVERIFIED') return styles.danger;
+  return styles.neutral;
+};
+
 export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
-  const [profileList, setProfileList] = useState<any[]>([]);
-  const [totalElements, setTotalElements] = useState(47);
+  const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [relationshipFilter, setRelationshipFilter] = useState('');
 
-  const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(totalElements / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
-  const fetchProfiles = (query = '', page = 0) => {
+  const fetchProfiles = async (page = 0) => {
     setLoading(true);
-    const endpoint = query ? '/profiles/search' : '/profiles';
-    const params: Record<string, string | number> = { page, size: pageSize };
-    if (query) {
-      params.name = query;
-    }
+    setError(null);
 
-    api.get<any>(endpoint, { params })
-      .then((res) => {
-        if (res?.success && res?.data) {
-          const content = res.data.content || [];
-          setProfileList(content);
-          setTotalElements(res.data.totalElements || content.length);
-          setCurrentPage(page);
-        }
-      })
-      .catch((err) => {
-        console.warn('Could not load company profiles from API:', err);
-        setProfileList([]);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const res = await api.get<PageResult<ProfileResponse>>('/profiles', {
+        params: {
+          keyword: searchQuery.trim() || undefined,
+          reviewStatus: statusFilter || undefined,
+          relationshipType: relationshipFilter || undefined,
+          page,
+          size: PAGE_SIZE,
+        },
+      });
+
+      const content = res.data?.content ?? [];
+      setProfiles(content);
+      setTotalElements(res.data?.totalElements ?? content.length);
+      setCurrentPage(page);
+    } catch (err) {
+      setProfiles([]);
+      setTotalElements(0);
+      setError(err instanceof Error ? err.message : 'Cannot load company profiles.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchProfiles();
+    void fetchProfiles(0);
   }, []);
 
-  const mappedProfiles = profileList.map((profile, index) => {
-    const name = profile.identity?.tradeName || profile.identity?.legalName || 'New company';
-    const industry = profile.business?.industries?.[0] || 'Unclassified';
-    const country = profile.contact?.addresses?.[0]?.country || profile.contact?.addresses?.[0]?.city || 'Vietnam';
-    const relationship = resolveScoreRole(profile.relationshipType, profile.reviewStatus, index % 3 === 0 ? 'PARTNER' : index % 3 === 1 ? 'SUPPLIER' : 'CUSTOMER') ?? 'PARTNER';
-    const score = 62 + ((name.length + index * 7) % 32);
+  const metrics = useMemo(() => {
+    const verified = profiles.filter((profile) => ['APPROVED', 'VERIFIED'].includes(profile.reviewStatus || '')).length;
+    const needsUpdate = profiles.filter((profile) => ['PENDING_REVIEW', 'NEEDS_UPDATE'].includes(profile.reviewStatus || '')).length;
+    const withWebsite = profiles.filter((profile) => Boolean(profile.contact?.website)).length;
+    const industries = new Set(profiles.flatMap((profile) => profile.business?.industries ?? []));
 
-    return {
-      companyId: profile.companyId || profile.id,
-      name,
-      website: profile.contact?.website || profile.identity?.website || 'apms.local',
-      industry,
-      country,
-      relationship,
-      score,
-      reviewStatus: profile.reviewStatus || 'UNVERIFIED',
-      updatedAt: profile.updatedAt ? new Date(profile.updatedAt).toLocaleDateString('vi-VN') : '12/07/2026',
-    };
-  });
+    return [
+      { label: 'Profiles', value: totalElements || profiles.length, note: 'Official company records', icon: Building2 },
+      { label: 'Verified', value: verified, note: 'Approved and ready to use', icon: ShieldCheck },
+      { label: 'Need update', value: needsUpdate, note: 'Waiting review or enrichment', icon: RefreshCw },
+      { label: 'Industries', value: industries.size, note: `${withWebsite} profiles include website`, icon: FileText },
+    ];
+  }, [profiles, totalElements]);
 
-  const [activeRoleModel, setActiveRoleModel] = useState<ScoreRole>('PARTNER');
-  const activeScoreModel = SCORE_RULES[activeRoleModel];
-
-  const kpis = [
-    { label: 'Total companies', value: totalElements || mappedProfiles.length, note: 'Profiles stored in the workspace' },
-    { label: 'Active partners', value: mappedProfiles.filter((item) => item.relationship === 'PARTNER').length, note: 'Confirmed active relations' },
-    { label: 'Potential partners', value: mappedProfiles.filter((item) => item.reviewStatus !== 'VERIFIED' || item.relationship === 'POTENTIAL_PARTNER').length, note: 'Waiting verification or outreach' },
-    { label: 'Suppliers', value: mappedProfiles.filter((item) => item.relationship === 'SUPPLIER').length, note: 'Verified supply-side organizations' },
-    { label: 'Customers', value: mappedProfiles.filter((item) => item.relationship === 'CUSTOMER').length, note: 'Tracked end users and clients' },
-  ];
-
-  const handleSelectCompany = (companyId?: string) => {
-    if (companyId) {
-      localStorage.setItem('apms-selected-company', companyId);
-    }
+  const openProfile = (profile: ProfileResponse) => {
+    const id = profile.companyId || profile.id;
+    if (id) localStorage.setItem('apms-selected-company', id);
     setActivePage('company-detail');
   };
 
   return (
-    <section className="workspace-page" id="page-company-profiles">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Projects <span>/</span> AI Strategy Research <span>/</span> Company Profiles</div>
-          <div className="workspace-page-head">
-            <div>
-              <h1>Company profile management</h1>
-              <p>Manage approved company profiles and partnership information across the workspace.</p>
-            </div>
-            <div className="workspace-head-actions">
-              <button className="btn btn-outline" onClick={() => fetchProfiles(searchQuery, currentPage)} disabled={loading}>Refresh</button>
-              <button className="btn btn-primary" onClick={() => setActivePage('add-company')}>New profile</button>
-            </div>
-          </div>
+    <section className={styles.page}>
+      <div className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Company intelligence</span>
+          <h1>Company Profiles</h1>
+          <p>Search approved company profiles, review business facts, and open the official company record created from candidate approval.</p>
+        </div>
+        <div className={styles.actions}>
+        </div>
+      </div>
 
-          <div className="workspace-stats workspace-stats-compact">
-            {kpis.map((item) => (
-              <article key={item.label} className="workspace-stat-card">
-                <span className="workspace-stat-label">{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </article>
-            ))}
-          </div>
+      {error && <div className={styles.error}>{error}</div>}
 
-          <div className="workspace-filter-row">
-            <div className="workspace-search">
-              <input
-                type="text"
-                placeholder="Search company..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    fetchProfiles(searchQuery, 0);
-                  }
-                }}
-              />
-            </div>
-            <div className="workspace-filter-chips">
-              <button className="workspace-chip">Status: all</button>
-              <button className="workspace-chip">Industry: technology</button>
-              <button className="workspace-chip">Country</button>
-              <button className="workspace-chip">Relationship</button>
-            </div>
-          </div>
+      <div className={styles.metricGrid}>
+        {metrics.map((item) => {
+          const Icon = item.icon;
+          return (
+            <article className={styles.metricCard} key={item.label}>
+              <span><Icon size={18} />{item.label}</span>
+              <strong>{loading ? '...' : item.value}</strong>
+              <p>{item.note}</p>
+            </article>
+          );
+        })}
+      </div>
 
-          <div className="workspace-score-callout">
-            <div>
-              <span className="workspace-side-eyebrow">Score rule reference</span>
-              <h3>{activeScoreModel.title}</h3>
-              <p>{activeScoreModel.summary}</p>
-            </div>
-            <div className="workspace-filter-chips">
-              {(['PARTNER', 'POTENTIAL_PARTNER', 'COMPETITOR', 'CUSTOMER', 'SUPPLIER'] as ScoreRole[]).map((role) => (
-                <button
-                  key={role}
-                  className={`workspace-chip ${activeRoleModel === role ? 'workspace-chip-active' : ''}`}
-                  onClick={() => setActiveRoleModel(role)}
-                >
-                  {role.replaceAll('_', ' ')}
-                </button>
-              ))}
-            </div>
-            <div className="workspace-score-grid">
-              {activeScoreModel.criteria.map((criterion) => (
-                <article key={criterion.key} className="workspace-score-card">
-                  <strong>{criterion.label}</strong>
-                  <span>{criterion.weight}%{criterion.inverse ? ' inverse risk' : ''}</span>
-                  <p>{criterion.description}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="workspace-panel">
-            <div className="workspace-table">
-              <div className="workspace-table-row workspace-table-head">
-                <span>Company</span>
-                <span>Industry</span>
-                <span>Country</span>
-                <span>Relationship</span>
-                <span>Score</span>
-                <span>Last updated</span>
-                <span>Action</span>
-              </div>
-              {mappedProfiles.length === 0 && !loading ? (
-                <div className="workspace-empty">No company profiles found.</div>
-              ) : mappedProfiles.map((profile) => (
-                <div key={profile.companyId} className="workspace-table-row">
-                  <div>
-                    <strong>{profile.name}</strong>
-                    <small>{profile.website}</small>
-                  </div>
-                  <span>{profile.industry}</span>
-                  <span>{profile.country}</span>
-                  <span className={`workspace-badge ${profile.relationship === 'PARTNER' ? 'success' : profile.relationship === 'SUPPLIER' ? 'info' : profile.relationship === 'COMPETITOR' ? 'danger' : 'neutral'}`}>
-                    {profile.relationship.replaceAll('_', ' ')}
-                  </span>
-                  <span className="workspace-confidence">{profile.score}</span>
-                  <span>{profile.updatedAt}</span>
-                  <button className="workspace-icon-btn" onClick={() => handleSelectCompany(profile.companyId)}>View</button>
-                </div>
-              ))}
-            </div>
-
-            <div className="workspace-pagination">
-              <span>Showing {mappedProfiles.length} of {totalElements} companies</span>
-              <div>
-                <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => fetchProfiles(searchQuery, currentPage - 1)}>Prev</button>
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => (
-                  <button
-                    key={index}
-                    className={`workspace-page-btn ${currentPage === index ? 'active' : ''}`}
-                    onClick={() => fetchProfiles(searchQuery, index)}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-                <button className="workspace-page-btn" disabled={currentPage >= totalPages - 1} onClick={() => fetchProfiles(searchQuery, currentPage + 1)}>Next</button>
-              </div>
-            </div>
-          </div>
+      <section className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.searchBox}>
+            <Search size={17} />
+            <input
+              value={searchQuery}
+              placeholder="Search by company name, tax ID, website..."
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void fetchProfiles(0);
+              }}
+            />
+          </label>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">All status</option>
+            <option value="APPROVED">Approved</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="NEEDS_UPDATE">Needs update</option>
+            <option value="PENDING_REVIEW">Pending review</option>
+          </select>
+          <select value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
+            <option value="">All relationships</option>
+            <option value="PARTNER_WITH">Partner</option>
+            <option value="COMPETITOR_OF">Competitor</option>
+            <option value="SUPPLIER_OF">Supplier</option>
+            <option value="CUSTOMER_OF">Customer</option>
+            <option value="POTENTIAL_PARTNER_OF">Potential partner</option>
+          </select>
+          <button className={styles.primaryButton} type="button" onClick={() => void fetchProfiles(0)}>
+            Search
+          </button>
         </div>
 
-        <aside className="workspace-sidebar">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Current model</span>
-            <div className="workspace-ai-note">
-              <strong>{activeScoreModel.outcomeLabel}</strong>
-              <p>Use the role model that matches the company context before interpreting a profile score.</p>
-            </div>
-          </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Industry</th>
+                <th>Status</th>
+                <th>Last updated</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={7}><div className={styles.empty}>Loading company profiles...</div></td>
+                </tr>
+              )}
+              {!loading && profiles.length === 0 && (
+                <tr>
+                  <td colSpan={7}><div className={styles.empty}>No company profiles found.</div></td>
+                </tr>
+              )}
+              {!loading && profiles.map((profile) => (
+                <tr key={profile.companyId || profile.id}>
+                  <td>
+                    <div className={styles.companyCell}>
+                      <span>{profileName(profile).slice(0, 2).toUpperCase()}</span>
+                      <div>
+                        <strong>{profileName(profile)}</strong>
+                        <small>{profileLegalName(profile)}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{profileIndustry(profile)}</td>
+                  <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{profile.reviewStatus || 'UNVERIFIED'}</span></td>
+                  <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
+                  <td>
+                    <button className={styles.iconButton} type="button" onClick={() => openProfile(profile)} title="View profile">
+                      <Eye size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="workspace-side-card">
-            <div className="workspace-side-header">
-              <span className="workspace-side-eyebrow">Filters</span>
-            </div>
-            <div className="workspace-checklist">
-              <div>
-                <strong>Industry</strong>
-                <label><input type="checkbox" defaultChecked /> Technology</label>
-                <label><input type="checkbox" /> Finance</label>
-                <label><input type="checkbox" /> Healthcare</label>
-              </div>
-              <div>
-                <strong>Relationship</strong>
-                <label><input type="checkbox" /> Partner</label>
-                <label><input type="checkbox" /> Vendor</label>
-                <label><input type="checkbox" /> Customer</label>
-              </div>
-            </div>
+        <div className={styles.pagination}>
+          <span>Showing {profiles.length} of {totalElements} profiles</span>
+          <div>
+            <button type="button" disabled={currentPage === 0 || loading} onClick={() => void fetchProfiles(currentPage - 1)}>Prev</button>
+            <strong>{currentPage + 1} / {totalPages}</strong>
+            <button type="button" disabled={currentPage >= totalPages - 1 || loading} onClick={() => void fetchProfiles(currentPage + 1)}>Next</button>
           </div>
-
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">AI research assistant</span>
-            <div className="workspace-ai-thread">
-              <div className="workspace-ai-bubble user">How is Samsung positioned right now?</div>
-              <div className="workspace-ai-bubble assistant">
-                Samsung remains strong in premium devices and continues to diversify manufacturing footprints across Asia.
-              </div>
-            </div>
-            <button className="btn btn-outline" onClick={() => setActivePage('personal-ai-agent')}>Open AI assistant</button>
-          </div>
-        </aside>
-      </div>
+        </div>
+      </section>
     </section>
   );
 };

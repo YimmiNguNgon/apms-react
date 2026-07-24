@@ -1,216 +1,321 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowRight,
+  BriefcaseBusiness,
+  CheckCircle2,
+  Clock,
+  FileText,
+  KanbanSquare,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react';
 import { api } from '../../services/api';
 import { useUser } from '../../context/UserContext';
+import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskType } from '../../types/domain';
 
 interface Props {
   setActivePage?: (page: string) => void;
 }
 
+type StaffTaskRow = ProjectTaskResponse & {
+  projectName: string;
+  projectStatus?: string | null;
+};
+
+const statusLabel: Record<TaskStatus, string> = {
+  TODO: 'To do',
+  IN_PROGRESS: 'In progress',
+  IN_REVIEW: 'Waiting manager',
+  DONE: 'Done',
+  BLOCKED: 'Blocked',
+  CANCELLED: 'Cancelled',
+};
+
+const taskTypeLabel: Record<TaskType, string> = {
+  DOCUMENT_COLLECTION: 'Document collection',
+  COMPANY_DATA_PREPARATION: 'AI company preparation',
+  ROLE_EVALUATION: 'Role evaluation',
+  GENERAL_TASK: 'General task',
+};
+
+const taskTypeHint: Record<TaskType, string> = {
+  DOCUMENT_COLLECTION: 'Upload evidence documents, then submit the package.',
+  COMPANY_DATA_PREPARATION: 'Select project documents, run AI extract, create candidate, and submit.',
+  ROLE_EVALUATION: 'Evaluate relationship, risk, evidence, and recommendation.',
+  GENERAL_TASK: 'Complete the assigned request and submit a clear result note.',
+};
+
+const dueLabel = (value?: string | null) => {
+  if (!value) return 'No due date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No due date';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit' }).format(date);
+};
+
+const isOverdue = (value?: string | null) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getTime() < new Date().setHours(0, 0, 0, 0);
+};
+
+const statusClass = (status: TaskStatus) => {
+  if (status === 'DONE') return 'success';
+  if (status === 'IN_REVIEW') return 'warning';
+  if (status === 'IN_PROGRESS') return 'info';
+  return 'neutral';
+};
+
 export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
   const { currentUser } = useUser();
-  const [summary, setSummary] = useState<any>(null);
-  const [companies, setCompanies] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
+  const [tasks, setTasks] = useState<StaffTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadStaffWorkspace = async (signal?: AbortSignal, options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoading(true);
+    setError(null);
+
+    try {
+      const projectRes = await api.get<PageResult<ProjectResponse>>('/projects', {
+        params: { page: 0, size: 50 },
+        signal,
+      });
+
+      const projectRows = projectRes.data?.content ?? [];
+      if (signal?.aborted) return;
+
+      setProjects(projectRows);
+
+      const taskResults = await Promise.allSettled(
+        projectRows.map(async (project) => {
+          const taskRes = await api.get<PageResult<ProjectTaskResponse>>(`/projects/${project.id}/tasks`, {
+            params: { page: 0, size: 100 },
+            signal,
+          });
+
+          return (taskRes.data?.content ?? []).map((task) => ({
+            ...task,
+            projectName: project.projectName,
+            projectStatus: project.status,
+          }));
+        })
+      );
+
+      if (signal?.aborted) return;
+
+      const assignedTasks = taskResults.flatMap((result) => (
+        result.status === 'fulfilled' ? result.value : []
+      ));
+      setTasks(assignedTasks);
+    } catch (err) {
+      if (!signal?.aborted) {
+        setProjects([]);
+        setTasks([]);
+        setError(err instanceof Error ? err.message : 'Cannot load your staff workspace.');
+      }
+    } finally {
+      if (!signal?.aborted && !options.silent) setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    Promise.all([
-      api.get<any>('/dashboard/summary'),
-      api.get<any>('/profiles'),
-    ])
-      .then(([summaryRes, profilesRes]) => {
-        if (summaryRes?.success && summaryRes?.data) {
-          setSummary(summaryRes.data);
-        }
-
-        if (profilesRes?.success && profilesRes?.data) {
-          const rows = Array.isArray(profilesRes.data) ? profilesRes.data : (profilesRes.data.content || []);
-          setCompanies(rows.slice(0, 5));
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    const controller = new AbortController();
+    void loadStaffWorkspace(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  const stats = [
-    { label: 'Assigned', value: summary?.totalProjects ?? 0, note: '+2 from yesterday' },
-    { label: 'In progress', value: summary?.pendingReviewCandidates ?? 0, note: 'Review queue' },
-    { label: 'Waiting review', value: companies.length, note: 'Profiles ready' },
-    { label: 'Completed', value: summary?.totalCandidates ?? 0, note: '15% improvement' },
-    { label: 'Uploaded', value: summary?.totalCompanyProfiles ?? 0, note: 'Active records' },
-  ];
+  useEffect(() => {
+    const refreshSilently = () => {
+      const controller = new AbortController();
+      void loadStaffWorkspace(controller.signal, { silent: true });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
 
-  const priorityCompany = companies[0];
-  const priorityLabel = priorityCompany?.identity?.tradeName || priorityCompany?.identity?.legalName || 'Research workspace';
-  const recentItems = companies.slice(0, 4);
+    const interval = window.setInterval(refreshSilently, 8000);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
+
+  const stats = useMemo(() => {
+    const active = tasks.filter((task) => task.status === 'TODO' || task.status === 'IN_PROGRESS').length;
+    const review = tasks.filter((task) => task.status === 'IN_REVIEW').length;
+    const done = tasks.filter((task) => task.status === 'DONE').length;
+    const overdue = tasks.filter((task) => task.status !== 'DONE' && isOverdue(task.dueDate)).length;
+
+    return [
+      { label: 'My projects', value: projects.length, note: 'Projects you joined', icon: BriefcaseBusiness },
+      { label: 'Active tasks', value: active, note: 'To do and in progress', icon: KanbanSquare },
+      { label: 'Waiting review', value: review, note: 'Submitted to manager', icon: Clock },
+      { label: 'Completed', value: done, note: 'Approved work', icon: CheckCircle2 },
+      { label: 'Overdue', value: overdue, note: 'Needs attention', icon: AlertCircle },
+    ];
+  }, [projects.length, tasks]);
+
+  const sortedTasks = useMemo(() => {
+    const weight: Record<TaskStatus, number> = {
+      IN_PROGRESS: 0,
+      TODO: 1,
+      IN_REVIEW: 2,
+      DONE: 3,
+      BLOCKED: 4,
+      CANCELLED: 5,
+    };
+
+    return [...tasks].sort((a, b) => {
+      const statusDiff = weight[a.status] - weight[b.status];
+      if (statusDiff !== 0) return statusDiff;
+      return new Date(a.dueDate || '2999-12-31').getTime() - new Date(b.dueDate || '2999-12-31').getTime();
+    });
+  }, [tasks]);
+
+  const nextTask = sortedTasks.find((task) => task.status === 'IN_PROGRESS')
+    ?? sortedTasks.find((task) => task.status === 'TODO')
+    ?? sortedTasks[0];
+
+  const openProject = (projectId: number, taskId?: number) => {
+    const project = projects.find((item) => item.id === projectId);
+    localStorage.setItem('apms-active-project', String(projectId));
+    if (project) sessionStorage.setItem('apms-selected-project', JSON.stringify(project));
+    if (taskId) sessionStorage.setItem('apms-open-task-id', String(taskId));
+    setActivePage?.('project-detail');
+  };
 
   return (
-    <section className="workspace-page role-dashboard role-dashboard-staff" id="page-staff-dashboard">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Execution <span>/</span> Research staff workspace</div>
-          <div className="workspace-page-head">
-            <div>
-              <span className="workspace-side-eyebrow">Research flow</span>
-              <h1>Research staff dashboard</h1>
-              <p>Track assigned work, keep profiles moving, and hand off clean records without losing evidence quality.</p>
-            </div>
-            <div className="workspace-head-actions">
-              <button className="btn btn-outline" onClick={() => setActivePage?.('company-profiles')}>View profiles</button>
-              <button className="btn btn-primary" onClick={() => setActivePage?.('upload-documents')}>Upload documents</button>
-            </div>
+    <section className="workspace-page role-dashboard role-dashboard-staff staff-workspace-page" id="page-staff-dashboard">
+      <div className="workspace-main-full">
+        <div className="workspace-page-head staff-dashboard-head">
+          <div>
+            <div className="workspace-breadcrumbs">Execution <span>/</span> Staff workspace</div>
+            <span className="workspace-side-eyebrow">My assigned work</span>
+            <h1>Staff Dashboard</h1>
+            <p>
+              {loading
+                ? 'Loading your projects and assigned tasks from APMS.'
+                : `${currentUser?.name || 'Staff'}, you have ${tasks.filter((task) => task.status !== 'DONE').length} open task(s) across ${projects.length} project(s).`}
+            </p>
           </div>
-
-          <div className="workspace-hero role-focus-card staff">
-            <div className="workspace-hero-copy">
-              <span className="workspace-chip workspace-chip-inverse">Research execution flow</span>
-              <h2>Good morning, {currentUser?.name}.</h2>
-              <p>
-                {loading
-                  ? 'Preparing your assignment queue and profile activity.'
-                  : `You have ${summary?.pendingReviewCandidates ?? 0} items waiting review and ${summary?.totalProjects ?? 0} active projects in motion.`}
-              </p>
-              <div className="workspace-hero-stats">
-                <div>
-                  <strong>{summary?.totalProjects ?? 0}</strong>
-                  <span>Assigned</span>
-                </div>
-                <div>
-                  <strong>{summary?.pendingReviewCandidates ?? 0}</strong>
-                  <span>Reviewing</span>
-                </div>
-                <div>
-                  <strong>{companies.length}</strong>
-                  <span>Due today</span>
-                </div>
-              </div>
-              <div className="workspace-head-actions">
-                <button className="btn btn-light" onClick={() => setActivePage?.('upload-documents')}>Continue working</button>
-                <button className="btn btn-ghost-light" onClick={() => setActivePage?.('company-profiles')}>View my tasks</button>
-              </div>
-            </div>
+          <div className="workspace-head-actions">
+            <button className="btn btn-outline" onClick={() => void loadStaffWorkspace()} disabled={loading}>
+              {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
+            </button>
+            <button className="btn btn-primary" onClick={() => nextTask && openProject(nextTask.projectId, nextTask.id)} disabled={!nextTask}>
+              Continue work <ArrowRight size={16} />
+            </button>
           </div>
+        </div>
 
-          <div className="workspace-stats">
-            {stats.map((stat) => (
+        {error && <div className="workspace-inline-error">{error}</div>}
+
+        <div className="workspace-stats staff-task-stats">
+          {stats.map((stat) => {
+            const Icon = stat.icon;
+            return (
               <article key={stat.label} className="workspace-stat-card">
+                <Icon size={20} />
                 <span className="workspace-stat-label">{stat.label}</span>
                 <strong>{stat.value}</strong>
                 <p>{stat.note}</p>
               </article>
-            ))}
-          </div>
-
-          <div className="workspace-panel">
-            <div className="workspace-section-head">
-              <div>
-                <h3>Today&apos;s focus</h3>
-                <p>Priority research and profile review you should finish first.</p>
-              </div>
-              <button className="workspace-link-btn" onClick={() => setActivePage?.('company-profiles')}>View all tasks</button>
-            </div>
-            <div className="workspace-focus-card">
-              <div className="workspace-focus-icon">Q</div>
-              <div className="workspace-focus-copy">
-                <div className="workspace-focus-title">
-                  Research {priorityLabel}
-                  <span className="workspace-badge danger">High priority</span>
-                </div>
-                <p>Due today. Keep the profile complete before handing it to final review.</p>
-                <div className="workspace-progress">
-                  <div className="workspace-progress-bar">
-                    <div style={{ width: '75%' }} />
-                  </div>
-                  <div className="workspace-progress-meta">
-                    <span>75% complete</span>
-                    <span>2h 15m remaining</span>
-                  </div>
-                </div>
-              </div>
-              <button className="btn btn-primary" onClick={() => setActivePage?.('company-profiles')}>Continue</button>
-            </div>
-          </div>
-
-          <div className="workspace-panel">
-            <div className="workspace-section-head">
-              <div>
-                <h3>Recent company profiles</h3>
-                <p>Profiles you touched most recently.</p>
-              </div>
-            </div>
-            <div className="workspace-table">
-              <div className="workspace-table-row workspace-table-head">
-                <span>Company</span>
-                <span>Industry</span>
-                <span>Status</span>
-                <span>AI confidence</span>
-                <span>Action</span>
-              </div>
-              {recentItems.length === 0 ? (
-                <div className="workspace-empty">No company profile activity yet.</div>
-              ) : recentItems.map((company, index) => {
-                const name = company.identity?.tradeName || company.identity?.legalName || 'Business profile';
-                const industry = company.business?.industries?.[0] || 'Unclassified';
-                const reviewStatus = company.reviewStatus || 'PENDING';
-                const confidence = 82 + index * 4;
-
-                return (
-                  <div key={`${name}-${index}`} className="workspace-table-row">
-                    <div>
-                      <strong>{name}</strong>
-                      <small>{company.contact?.addresses?.[0]?.city || 'Vietnam'}</small>
-                    </div>
-                    <span>{industry}</span>
-                    <span className={`workspace-badge ${reviewStatus === 'VERIFIED' ? 'success' : 'neutral'}`}>
-                      {reviewStatus}
-                    </span>
-                    <span className="workspace-confidence">{confidence}%</span>
-                    <button className="workspace-icon-btn" onClick={() => setActivePage?.('company-profiles')}>View</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+            );
+          })}
         </div>
 
-        <aside className="workspace-sidebar">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Contextual AI</span>
-            <h3>Active session</h3>
-            <div className="workspace-ai-note">
-              <strong>AI insight</strong>
-              <p>Based on your recent company research, there are related profiles that can be merged before review.</p>
-              <button className="workspace-link-btn" onClick={() => setActivePage?.('ai-extracted-data')}>Review extraction</button>
+        <div className="staff-dashboard-grid">
+          <main className="workspace-panel staff-task-panel">
+            <div className="workspace-section-head">
+              <div>
+                <h3>My task queue</h3>
+                <p>Only tasks assigned to your staff account are shown here.</p>
+              </div>
+              <button className="workspace-link-btn" onClick={() => nextTask && openProject(nextTask.projectId)} disabled={!nextTask}>
+                Open board
+              </button>
             </div>
-          </div>
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Urgent tasks</span>
-            <div className="workspace-alert-list">
-              <article className="workspace-alert danger">
-                <strong>Missing tax code</strong>
-                <p>{priorityLabel} candidate profile requires regional tax ID verification.</p>
-              </article>
-              <article className="workspace-alert success">
-                <strong>Data enrichment</strong>
-                <p>One profile is missing official website validation info.</p>
-              </article>
-            </div>
-          </div>
+            {loading && <div className="workspace-empty">Loading assigned tasks...</div>}
+            {!loading && sortedTasks.length === 0 && (
+              <div className="workspace-empty">No assigned tasks yet. When your manager assigns work, it will appear here.</div>
+            )}
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Recent activity</span>
-            <div className="workspace-activity-list">
-              <article>
-                <strong>Edited company profile</strong>
-                <p>14 minutes ago</p>
-              </article>
-              <article>
-                <strong>Submitted for review</strong>
-                <p>2 hours ago</p>
-              </article>
+            <div className="staff-task-list">
+              {sortedTasks.slice(0, 8).map((task) => (
+                <article key={task.id} className={`staff-task-card ${task.status === 'DONE' ? 'done' : ''}`}>
+                  <div className="staff-task-icon">
+                    {task.taskType === 'COMPANY_DATA_PREPARATION' ? <Sparkles size={18} /> : <FileText size={18} />}
+                  </div>
+                  <div className="staff-task-body">
+                    <div className="staff-task-title">
+                      <strong>{task.title}</strong>
+                      <span className={`workspace-badge ${statusClass(task.status)}`}>{statusLabel[task.status]}</span>
+                    </div>
+                    <p>{taskTypeHint[task.taskType]}</p>
+                    <div className="staff-task-meta">
+                      <span>{task.projectName}</span>
+                      <span>{taskTypeLabel[task.taskType]}</span>
+                      <span className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'danger-text' : ''}>
+                        {dueLabel(task.dueDate)}
+                      </span>
+                      <span>{task.priority}</span>
+                    </div>
+                  </div>
+                  <button className="workspace-icon-btn" onClick={() => openProject(task.projectId, task.id)}>
+                    Open
+                  </button>
+                </article>
+              ))}
             </div>
-          </div>
-        </aside>
+          </main>
+
+          <aside className="staff-side-stack">
+            <section className="workspace-side-card">
+              <span className="workspace-side-eyebrow">Next best action</span>
+              {nextTask ? (
+                <div className="staff-next-task">
+                  <span className={`workspace-badge ${statusClass(nextTask.status)}`}>{statusLabel[nextTask.status]}</span>
+                  <h3>{nextTask.title}</h3>
+                  <p>{taskTypeHint[nextTask.taskType]}</p>
+                  <div className="staff-task-meta compact">
+                    <span>{nextTask.projectName}</span>
+                    <span>{dueLabel(nextTask.dueDate)}</span>
+                  </div>
+                  <button className="btn btn-primary" onClick={() => openProject(nextTask.projectId, nextTask.id)}>
+                    Start from here
+                  </button>
+                </div>
+              ) : (
+                <div className="workspace-empty">Your queue is clear.</div>
+              )}
+            </section>
+
+            <section className="workspace-side-card">
+              <span className="workspace-side-eyebrow">My projects</span>
+              <div className="staff-project-list">
+                {projects.slice(0, 6).map((project) => {
+                  const openTasks = tasks.filter((task) => task.projectId === project.id && task.status !== 'DONE').length;
+                  return (
+                    <button key={project.id} type="button" onClick={() => openProject(project.id)}>
+                      <strong>{project.projectName}</strong>
+                      <span>{openTasks} open task(s)</span>
+                    </button>
+                  );
+                })}
+                {!loading && projects.length === 0 && <div className="workspace-empty">No joined projects yet.</div>}
+              </div>
+            </section>
+          </aside>
+        </div>
       </div>
     </section>
   );

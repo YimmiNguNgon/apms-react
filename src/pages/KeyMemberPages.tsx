@@ -179,10 +179,8 @@ const useProjectCandidates = () => {
 
   const fetchCandidates = () => {
     const projectId = localStorage.getItem('apms-active-project') || '1';
-    const projectId = localStorage.getItem('apms-active-project') || '1';
 
     setLoading(true);
-    api.get<PageResult<DashboardCandidate>>(`/projects/${projectId}/candidates`, {
     api.get<PageResult<DashboardCandidate>>(`/projects/${projectId}/candidates`, {
       params: { page: 0, size: 100 },
     })
@@ -193,14 +191,7 @@ const useProjectCandidates = () => {
         } else {
           setCandidates(DEMO_KEYMEMBER_CANDIDATES);
         }
-        const rows = res?.data?.content ?? [];
-        if (rows.length > 0) {
-          setCandidates(rows);
-        } else {
-          setCandidates(DEMO_KEYMEMBER_CANDIDATES);
-        }
       })
-      .catch(() => setCandidates(DEMO_KEYMEMBER_CANDIDATES))
       .catch(() => setCandidates(DEMO_KEYMEMBER_CANDIDATES))
       .finally(() => setLoading(false));
   };

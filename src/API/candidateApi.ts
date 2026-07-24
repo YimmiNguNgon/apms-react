@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { ApproveCandidateRequest, CandidateResponse, PageResult, RejectCandidateRequest } from "../types/domain";
+import type { ApproveCandidateRequest, CandidateResponse, PageResult, RejectCandidateRequest, UpdateCandidateRequest } from "../types/domain";
 
 const getAuthHeader = () => {
   const token = localStorage.getItem("accessToken") || localStorage.getItem("apms-token");
@@ -36,6 +36,41 @@ export const candidateApi = {
 
   getCandidateById: async (candidateId: string) => {
     const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}`, {
+      headers: {
+        ...getAuthHeader(),
+      },
+    });
+
+    return readPayload<CandidateResponse>(response);
+  },
+
+  createCandidateFromExtraction: async (extractionId: string) => {
+    const response = await fetch(`${API_BASE_URL}/ai-extractions/${extractionId}/candidate`, {
+      method: "POST",
+      headers: {
+        ...getAuthHeader(),
+      },
+    });
+
+    return readPayload<CandidateResponse>(response);
+  },
+
+  updateCandidate: async (candidateId: string, data: UpdateCandidateRequest) => {
+    const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    return readPayload<CandidateResponse>(response);
+  },
+
+  submitCandidate: async (candidateId: string) => {
+    const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}/submit`, {
+      method: "POST",
       headers: {
         ...getAuthHeader(),
       },

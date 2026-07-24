@@ -43,8 +43,8 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
   const autoSaveTimerRef = useRef<any>(null);
 
   // Initial Data Load
-  const fetchMyTasks = useCallback(async () => {
-    setLoading(true);
+  const fetchMyTasks = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) setLoading(true);
     setError(null);
     try {
       const res = await api.get<PageResult<ProjectTaskResponse>>('/tasks/my', {
@@ -56,7 +56,7 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     } catch (err: any) {
       setError(err?.message || 'Failed to load assigned tasks.');
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, []);
 
@@ -80,6 +80,26 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
   useEffect(() => {
     void loadProjectsMap();
     void fetchMyTasks();
+  }, [fetchMyTasks, loadProjectsMap]);
+
+  useEffect(() => {
+    const refreshSilently = () => {
+      void fetchMyTasks({ silent: true });
+      void loadProjectsMap();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
+    const interval = window.setInterval(refreshSilently, 8000);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [fetchMyTasks, loadProjectsMap]);
 
   // Handle task status update via Drag and Drop or select dropdown

@@ -181,6 +181,12 @@ export interface UpdateProjectRequest {
   status?: ProjectStatus | null;
 }
 
+export interface UpdateProjectStatusRequest {
+  status: ProjectStatus;
+  note?: string | null;
+  force?: boolean;
+}
+
 export interface AddMemberRequest {
   accountId?: number | null;
   email?: string | null;
@@ -211,6 +217,104 @@ export interface RejectCandidateRequest {
 
 export interface UpdateCandidateRequest {
   [key: string]: unknown;
+}
+
+export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED';
+export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'OTHER';
+
+export interface WorkbenchDocumentResponse extends ImportJobResponse {
+  latestExtractionId?: string | null;
+  extractionQualityStatus?: string | null;
+  evidenceCoverageRate?: number | null;
+  completenessRate?: number | null;
+  warningFields?: number | null;
+  failedFields?: number | null;
+  canGenerateDraft?: boolean;
+}
+
+export interface CandidateDraftSummary {
+  candidateId: string;
+  status: CandidateStatus;
+  taskId?: number | null;
+  extractionIds?: string[];
+  sourceDocumentIds?: string[];
+  createdAt?: string | null;
+  hasConflicts?: boolean | null;
+  conflictCount?: number | null;
+  isUnderReview?: boolean | null;
+  isApproved?: boolean | null;
+  linkedSubmissionId?: number | null;
+}
+
+export interface ProjectTaskSubmissionResponse {
+  id: number;
+  projectTaskId: number;
+  projectId: number;
+  submittedByUserId?: number | null;
+  submissionType: SubmissionType;
+  targetEntityType?: string | null;
+  targetEntityId?: string | null;
+  status: SubmissionStatus;
+  note?: string | null;
+  submittedAt?: string | null;
+  reviewedByUserId?: number | null;
+  reviewedAt?: string | null;
+  reviewComment?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ProjectTaskWorkbenchResponse {
+  projectId: number;
+  taskId: number;
+  taskTitle: string;
+  taskType: TaskType;
+  taskStatus: TaskStatus;
+  projectType: ProjectType;
+  projectStatus: ProjectStatus;
+  targetCompanyName?: string | null;
+  targetCompanyProfileId?: string | null;
+  targetRelationshipType?: RelationshipType | null;
+  availableActions?: string[];
+  documents?: WorkbenchDocumentResponse[];
+  candidateDrafts?: CandidateDraftSummary[];
+  profileUpdateProposalDrafts?: unknown[];
+  submissions?: ProjectTaskSubmissionResponse[];
+}
+
+export interface CreateProjectTaskSubmissionRequest {
+  submissionType: SubmissionType;
+  targetEntityType?: string | null;
+  targetEntityId?: string | null;
+  note?: string | null;
+}
+
+export type ReviewDecision = 'APPROVE' | 'REJECT' | 'REQUEST_REVISION';
+
+export interface ReviewTaskSubmissionRequest {
+  decision: ReviewDecision;
+  comment?: string | null;
+}
+
+export interface AiExtractionResult {
+  id?: string;
+  extractionId?: string;
+  importJobId?: number;
+  [key: string]: unknown;
+}
+
+export interface MergeCandidateResponse {
+  candidateId: string;
+  identity?: Record<string, unknown>;
+  business?: Record<string, unknown>;
+  contact?: Record<string, unknown>;
+  insights?: Record<string, unknown>;
+  fieldEvidence?: unknown[];
+  hasConflicts?: boolean;
+  conflictCount?: number;
+  sourceDocumentIds?: string[];
+  importJobIds?: string[];
+  extractionIds?: string[];
 }
 
 export interface ImportJobResponse {

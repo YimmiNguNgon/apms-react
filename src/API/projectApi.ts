@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse } from "../types/domain";
+import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse, UpdateProjectStatusRequest } from "../types/domain";
 
 const BASE_URL = `${API_BASE_URL}/projects`;
 const getAuthHeader = () => {
@@ -96,6 +96,29 @@ export const projectApi = {
       return payload as ApiResponse<ProjectMemberResponse>;
     } catch (error) {
       console.error("Error adding member:", error);
+      throw error;
+    }
+  },
+  updateProjectStatus: async (projectId: number, statusData: UpdateProjectStatusRequest) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify(statusData),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Update project status failed:", { status: response.status, payload, projectId, statusData });
+        throw new Error(payload?.message || "Failed to update project status");
+      }
+
+      return payload as ApiResponse<ProjectResponse>;
+    } catch (error) {
+      console.error("Error updating project status:", error);
       throw error;
     }
   }

@@ -1,6 +1,15 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { CreateProjectTaskRequest, PageResult, ProjectTaskResponse, TaskStatus } from "../types/domain";
+import type {
+  CreateProjectTaskRequest,
+  CreateProjectTaskSubmissionRequest,
+  PageResult,
+  ProjectTaskResponse,
+  ProjectTaskSubmissionResponse,
+  ProjectTaskWorkbenchResponse,
+  ReviewTaskSubmissionRequest,
+  TaskStatus,
+} from "../types/domain";
 
 const getAuthHeader = () => {
   const token = localStorage.getItem("accessToken") || localStorage.getItem("apms-token");
@@ -22,10 +31,13 @@ const readPayload = async <T>(response: Response) => {
 };
 
 export const taskApi = {
-  getProjectTasks: async (projectId: number) => {
+  getProjectTasks: async (projectId: number, params?: { assignedToUserId?: number }) => {
     const url = new URL(projectTasksUrl(projectId));
     url.searchParams.set("page", "0");
     url.searchParams.set("size", "100");
+    if (params?.assignedToUserId) {
+      url.searchParams.set("assignedToUserId", String(params.assignedToUserId));
+    }
     const response = await fetch(url.toString(), {
       headers: {
         ...getAuthHeader(),
@@ -59,5 +71,52 @@ export const taskApi = {
     });
 
     return readPayload<ProjectTaskResponse>(response);
+  },
+
+  deleteProjectTask: async (projectId: number, taskId: number) => {
+    const response = await fetch(`${projectTasksUrl(projectId)}/${taskId}`, {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeader(),
+      },
+    });
+
+    return readPayload<void>(response);
+  },
+
+  getTaskWorkbench: async (projectId: number, taskId: number) => {
+    const response = await fetch(`${projectTasksUrl(projectId)}/${taskId}/workbench`, {
+      headers: {
+        ...getAuthHeader(),
+      },
+    });
+
+    return readPayload<ProjectTaskWorkbenchResponse>(response);
+  },
+
+  submitTask: async (projectId: number, taskId: number, data: CreateProjectTaskSubmissionRequest) => {
+    const response = await fetch(`${projectTasksUrl(projectId)}/${taskId}/submissions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    return readPayload<ProjectTaskSubmissionResponse>(response);
+  },
+
+  reviewSubmission: async (projectId: number, taskId: number, submissionId: number, data: ReviewTaskSubmissionRequest) => {
+    const response = await fetch(`${projectTasksUrl(projectId)}/${taskId}/submissions/${submissionId}/review`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(data),
+    });
+
+    return readPayload<ProjectTaskSubmissionResponse>(response);
   },
 };
