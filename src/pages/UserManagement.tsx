@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
+import { useUser } from '../context/UserContext';
 
 type Tab = 'users' | 'roles' | 'permissions';
 
@@ -17,17 +18,38 @@ const ROLE_BADGE: Record<string, string> = {
   ROLE_BUSINESS_DEVELOPMENT_STAFF: 'badge-blue',
 };
 
-const ROLE_OPTIONS = [
-  { value: 'ROLE_SYSTEM_ADMIN', label: 'System Administrator' },
+const ALL_ROLE_OPTIONS = [
+  { value: 'ROLE_SYSTEM_ADMIN', label: 'System Administrator (Admin)' },
+  { value: 'ROLE_BUSINESS_OWNER', label: 'Business Owner (Owner)' },
   { value: 'ROLE_BUSINESS_DIRECTOR', label: 'Business Director' },
   { value: 'ROLE_BUSINESS_DEVELOPMENT_MANAGER', label: 'BD Manager' },
   { value: 'ROLE_KEY_MEMBER', label: 'Key Member' },
   { value: 'ROLE_RESEARCH_STAFF', label: 'Research Staff' },
 ];
 
-const Check: React.FC<{ yes: boolean }> = ({ yes }) => (
-  <span className={`admin-check ${yes ? 'on' : ''}`}>{yes ? 'Allow' : 'Deny'}</span>
-);
+const ROLE_RANKS: Record<string, number> = {
+  ROLE_SYSTEM_ADMIN: 6,
+  ROLE_ADMIN: 6,
+  SYSTEM_ADMIN: 6,
+  ADMIN: 6,
+  ROLE_BUSINESS_OWNER: 5,
+  ROLE_OWNER: 5,
+  BUSINESS_OWNER: 5,
+  OWNER: 5,
+  ROLE_BUSINESS_DIRECTOR: 4,
+  BUSINESS_DIRECTOR: 4,
+  DIRECTOR: 4,
+  ROLE_BUSINESS_DEVELOPMENT_MANAGER: 3,
+  BUSINESS_DEVELOPMENT_MANAGER: 3,
+  MANAGER: 3,
+  ROLE_KEY_MEMBER: 2,
+  KEY_MEMBER: 2,
+  ROLE_RESEARCH_STAFF: 1,
+  ROLE_BUSINESS_DEVELOPMENT_STAFF: 1,
+  RESEARCH_STAFF: 1,
+  BUSINESS_DEVELOPMENT_STAFF: 1,
+  STAFF: 1,
+};
 
 const roleAccent = (role: string) => {
   const value = role.toUpperCase();
@@ -39,14 +61,23 @@ const roleAccent = (role: string) => {
 };
 
 const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: number }) => void }> = ({ onStats }) => {
+  const { currentUser } = useUser();
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [showModal, setShowModal] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize] = useState(10);
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editUser, setEditUser] = useState<any | null>(null);
+  const [roleUser, setRoleUser] = useState<any | null>(null);
+
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
@@ -55,9 +86,21 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
     role: 'ROLE_RESEARCH_STAFF',
   });
 
+  const currentUserRank = useMemo(() => {
+    if (!currentUser) return 1;
+    return ROLE_RANKS[currentUser.role] || 1;
+  }, [currentUser]);
+
+  const availableRoleOptions = useMemo(() => {
+    if (currentUserRank >= 6) {
+      return ALL_ROLE_OPTIONS;
+    }
+    return ALL_ROLE_OPTIONS.filter((opt) => (ROLE_RANKS[opt.value] || 0) < currentUserRank);
+  }, [currentUserRank]);
+
   const fetchUsers = () => {
     setLoading(true);
-    api.get<any>('/accounts?page=0&size=100')
+    api.get<any>('/accounts?page=0&size=200')
       .then((res) => {
         const rows = res?.success && res.data?.content
           ? res.data.content
@@ -67,16 +110,16 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
         setUsers(rows);
         onStats({
           totalUsers: rows.length,
-          activeUsers: rows.filter((u: any) => (u.status || (u.active ? 'active' : 'inactive')) === 'active').length,
+          activeUsers: rows.filter((u: any) => u.active || u.status === 'active' || u.isActive).length,
         });
       })
-      .catch((err) => setError(err?.message || 'Could not load accounts.'))
+      .catch((err) => setError(err?.message || 'Could not load accounts directory.'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     fetchUsers();
-    api.get<any>('/roles')
+    api.get<any>('/admin/roles')
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) setRoles(res.data);
       })
@@ -91,34 +134,117 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       return;
     }
 
+    setActionLoading(true);
     try {
       await api.post('/accounts', newUser);
-      setShowModal(false);
+      setShowCreateModal(false);
       setNewUser({ name: '', email: '', username: '', password: '', role: 'ROLE_RESEARCH_STAFF' });
-      setNotice('Account created. Refreshing user directory.');
+      setNotice('Account created successfully.');
       fetchUsers();
     } catch (err: any) {
       setError(err?.message || 'Could not create account.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const filtered = users.filter((u) => {
-    const name = String(u.name || u.fullName || u.email || '').toLowerCase();
-    const username = String(u.username || u.email || '').toLowerCase();
-    const status = u.status || (u.active ? 'active' : 'inactive');
-    return (name.includes(search.toLowerCase()) || username.includes(search.toLowerCase())) &&
-      (filter === 'all' || status === filter);
-  });
+  const handleUpdate = async () => {
+    if (!editUser) return;
+    setError('');
+    setNotice('');
+    setActionLoading(true);
+    try {
+      await api.put(`/accounts/${editUser.id}`, {
+        email: editUser.email,
+        username: editUser.username,
+        name: editUser.name,
+        password: editUser.password || undefined,
+        role: editUser.role,
+      });
+      setEditUser(null);
+      setNotice(`Account #${editUser.id} updated successfully.`);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err?.message || 'Could not update account.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAssignRole = async () => {
+    if (!roleUser) return;
+    setError('');
+    setNotice('');
+    setActionLoading(true);
+    try {
+      await api.post(`/users/${roleUser.id}/roles`, {
+        roles: [roleUser.selectedRole],
+      });
+      setRoleUser(null);
+      setNotice(`Updated roles for account #${roleUser.id}.`);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err?.message || 'Could not assign role.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleStatus = async (user: any) => {
+    setError('');
+    setNotice('');
+    const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
+    if (isSelf) {
+      setError('Không thể tự khóa tài khoản của chính mình');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await api.patch(`/accounts/${user.id}/status`);
+      setNotice(`Updated status for ${user.email || user.username}.`);
+      fetchUsers();
+    } catch (err: any) {
+      setError(err?.message || 'Could not change account status.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return users.filter((u) => {
+      const name = String(u.name || u.fullName || u.email || '').toLowerCase();
+      const username = String(u.username || u.email || '').toLowerCase();
+      const email = String(u.email || '').toLowerCase();
+      const isActive = u.active ?? u.isActive ?? (u.status === 'active');
+      const statusStr = isActive ? 'active' : 'inactive';
+      
+      const matchesSearch = name.includes(search.toLowerCase()) || 
+                            username.includes(search.toLowerCase()) || 
+                            email.includes(search.toLowerCase());
+      const matchesFilter = filter === 'all' || statusStr === filter;
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [users, search, filter]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginated = useMemo(() => {
+    const start = page * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
 
   return (
     <div className="admin-users-view">
       <div className="admin-users-header">
         <div>
           <span className="workspace-side-eyebrow">Account directory</span>
-          <h2>People with platform access</h2>
-          <p>Operational list for creating, locking, and reviewing user accounts.</p>
+          <h2>Account Management</h2>
+          <p>Create, inspect, modify roles, and toggle access for system users.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create account</button>
+        <button className="btn btn-primary" onClick={() => { setError(''); setNotice(''); setShowCreateModal(true); }}>
+          + Create account
+        </button>
       </div>
 
       <div className="admin-users-layout">
@@ -129,12 +255,12 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
               className="admin-input"
               placeholder="Name, username, or email"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             />
           </label>
           <label>
             <span>Status filter</span>
-            <select className="admin-select" value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <select className="admin-select" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0); }}>
               <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="inactive">Disabled</option>
@@ -149,7 +275,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
         <div className="admin-directory-main">
           {notice && <div className="workspace-inline-note">{notice}</div>}
-          {error && <div className="workspace-inline-error">{error}</div>}
+          {error && <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>❌ {error}</div>}
           {loading ? (
             <div className="admin-skeleton">Loading account directory...</div>
           ) : (
@@ -161,75 +287,202 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((user) => {
-                    const status = user.status || (user.active ? 'active' : 'inactive');
-                    const role = user.role || user.roleName || user.roles?.[0] || 'Unassigned';
+                  {paginated.map((user) => {
+                    const isActive = user.active ?? user.isActive ?? (user.status === 'active');
+                    const role = user.role || user.roleName || (user.roles && user.roles[0]) || 'ROLE_RESEARCH_STAFF';
+                    const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
+
                     return (
                       <tr key={user.id || user.email}>
                         <td className="admin-mono">#{user.id ?? '-'}</td>
                         <td>
-                          <strong>{user.name || user.fullName || user.username || 'Unnamed user'}</strong>
+                          <strong>{user.name || user.fullName || user.username || 'Unnamed user'} {isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(You)</span>}</strong>
                           <small>{user.username || 'No username'}</small>
                         </td>
                         <td>{user.email || '-'}</td>
-                        <td><span className={`badge ${ROLE_BADGE[role] || 'badge-blue'}`}>{role}</span></td>
-                        <td><span className={`admin-status ${status === 'active' ? 'active' : ''}`}>{status === 'active' ? 'Active' : 'Disabled'}</span></td>
                         <td>
-                          <div className="admin-row-actions">
-                            <button className="btn btn-sm btn-outline">Edit</button>
-                            <button className="btn btn-sm btn-outline">{status === 'active' ? 'Lock' : 'Unlock'}</button>
+                          <span className={`badge ${ROLE_BADGE[role] || 'badge-blue'}`}>
+                            {user.roleName || role.replace('ROLE_', '')}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`admin-status ${isActive ? 'active' : ''}`}>
+                            {isActive ? 'Active' : 'Disabled'}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="admin-row-actions" style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => {
+                                setError('');
+                                setEditUser({
+                                  id: user.id,
+                                  name: user.name || user.fullName || '',
+                                  username: user.username || '',
+                                  email: user.email || '',
+                                  role: role,
+                                });
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => {
+                                setError('');
+                                setRoleUser({
+                                  id: user.id,
+                                  name: user.name || user.email,
+                                  currentRole: role,
+                                  selectedRole: role,
+                                });
+                              }}
+                            >
+                              Role
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              disabled={isSelf || actionLoading}
+                              title={isSelf ? 'Không thể tự khóa tài khoản của chính mình' : isActive ? 'Lock account' : 'Unlock account'}
+                              style={isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                              onClick={() => handleToggleStatus(user)}
+                            >
+                              {isActive ? 'Lock' : 'Unlock'}
+                            </button>
                           </div>
                         </td>
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && (
+                  {paginated.length === 0 && (
                     <tr><td colSpan={6}><div className="workspace-empty">No accounts match the current filter.</div></td></tr>
                   )}
                 </tbody>
               </table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Page {page + 1} of {totalPages} ({filtered.length} total)
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
+                    <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {showModal && (
-        <div className="admin-modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
+      {/* CREATE MODAL */}
+      {showCreateModal && (
+        <div className="admin-modal-backdrop" onClick={() => setShowCreateModal(false)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
             <div className="workspace-section-head">
               <div>
-                <h3>Create account</h3>
-                <p>Provision a user with one system role.</p>
+                <h3>Create Account</h3>
+                <p>Provision a new system user with a single role.</p>
               </div>
             </div>
             <div className="admin-form-grid">
-              {[
-                { label: 'Full name', key: 'name', type: 'text' },
-                { label: 'Email', key: 'email', type: 'email' },
-                { label: 'Username', key: 'username', type: 'text' },
-                { label: 'Password', key: 'password', type: 'password' },
-              ].map((field) => (
-                <label key={field.key}>
-                  <span>{field.label}</span>
-                  <input
-                    className="admin-input"
-                    type={field.type}
-                    value={(newUser as any)[field.key]}
-                    onChange={(event) => setNewUser((prev) => ({ ...prev, [field.key]: event.target.value }))}
-                  />
-                </label>
-              ))}
+              <label>
+                <span>Full name *</span>
+                <input className="admin-input" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} />
+              </label>
+              <label>
+                <span>Email *</span>
+                <input className="admin-input" type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+              </label>
+              <label>
+                <span>Username</span>
+                <input className="admin-input" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
+              </label>
+              <label>
+                <span>Password *</span>
+                <input className="admin-input" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+              </label>
               <label className="admin-form-span">
                 <span>Role</span>
-                <select className="admin-select" value={newUser.role} onChange={(event) => setNewUser((prev) => ({ ...prev, role: event.target.value }))}>
-                  {(roles.length > 0 ? roles.map((role) => ({ value: role.key || role.name, label: role.displayName || role.name || role.key })) : ROLE_OPTIONS)
-                    .map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                <select className="admin-select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+                  {availableRoleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                 </select>
               </label>
             </div>
             <div className="admin-modal-actions">
-              <button className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreate}>Create account</button>
+              <button className="btn btn-outline" onClick={() => setShowCreateModal(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={actionLoading} onClick={handleCreate}>
+                {actionLoading ? 'Creating...' : 'Create account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MODAL */}
+      {editUser && (
+        <div className="admin-modal-backdrop" onClick={() => setEditUser(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="workspace-section-head">
+              <div>
+                <h3>Edit Account #{editUser.id}</h3>
+                <p>Update profile information and identity.</p>
+              </div>
+            </div>
+            <div className="admin-form-grid">
+              <label>
+                <span>Full name</span>
+                <input className="admin-input" value={editUser.name} onChange={(e) => setEditUser({ ...editUser, name: e.target.value })} />
+              </label>
+              <label>
+                <span>Email</span>
+                <input className="admin-input" type="email" value={editUser.email} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} />
+              </label>
+              <label>
+                <span>Username</span>
+                <input className="admin-input" value={editUser.username} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} />
+              </label>
+              <label>
+                <span>New password (leave blank to keep current)</span>
+                <input className="admin-input" type="password" placeholder="••••••••" value={editUser.password || ''} onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} />
+              </label>
+            </div>
+            <div className="admin-modal-actions">
+              <button className="btn btn-outline" onClick={() => setEditUser(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={actionLoading} onClick={handleUpdate}>
+                {actionLoading ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ROLE ASSIGN MODAL */}
+      {roleUser && (
+        <div className="admin-modal-backdrop" onClick={() => setRoleUser(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="workspace-section-head">
+              <div>
+                <h3>Assign Role for {roleUser.name}</h3>
+                <p>Select a new system role. Hierarchy rules strictly enforced.</p>
+              </div>
+            </div>
+            <div className="admin-form-grid">
+              <label className="admin-form-span">
+                <span>Role selection</span>
+                <select className="admin-select" value={roleUser.selectedRole} onChange={(e) => setRoleUser({ ...roleUser, selectedRole: e.target.value })}>
+                  {availableRoleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="admin-modal-actions">
+              <button className="btn btn-outline" onClick={() => setRoleUser(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={actionLoading} onClick={handleAssignRole}>
+                {actionLoading ? 'Assigning...' : 'Assign role'}
+              </button>
             </div>
           </div>
         </div>
@@ -243,7 +496,7 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<any>('/roles')
+    api.get<any>('/admin/roles')
       .then((res) => {
         const rows = res?.success && Array.isArray(res.data)
           ? res.data
@@ -328,7 +581,7 @@ const PermissionsTab: React.FC = () => {
         <div>
           <span className="workspace-side-eyebrow">Permission matrix</span>
           <h2>Module access by action</h2>
-          <p>Unlike the user directory, this view is grouped by module so administrators can scan policy coverage.</p>
+          <p>Scan policy coverage across system roles.</p>
         </div>
         <div className="permission-legend">
           <span><i className="allow" /> Allow</span>
@@ -394,12 +647,12 @@ export const UserManagement: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'u
     roles: {
       eyebrow: 'RBAC architecture',
       title: 'Roles',
-      desc: 'Inspect the five operating lanes that define APMS workspace responsibility.',
-      meter: stats.totalRoles || '5',
+      desc: 'Inspect the operating lanes that define APMS workspace responsibility.',
+      meter: stats.totalRoles || '6',
       meterLabel: 'role lanes',
       skin: 'roles',
       stats: [
-        { label: 'Role lanes', value: stats.totalRoles || '5' },
+        { label: 'Role lanes', value: stats.totalRoles || '6' },
         { label: 'Admin role', value: 'Full' },
         { label: 'Business roles', value: '3' },
         { label: 'Research role', value: '1' },
@@ -414,7 +667,7 @@ export const UserManagement: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'u
       skin: 'permissions',
       stats: [
         { label: 'Matrix mode', value: 'Module' },
-        { label: 'Role columns', value: '5' },
+        { label: 'Role columns', value: '6' },
         { label: 'Policy state', value: 'Live' },
         { label: 'Review cadence', value: 'Monthly' },
       ],

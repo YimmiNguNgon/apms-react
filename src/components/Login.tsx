@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 
 const DEV_ACCOUNT_ALIASES: Record<string, string> = {
+  admin: 'admin@apms.com',
+  sysadmin: 'admin@apms.com',
   owner: 'owner@apms.com',
   director: 'director@apms.com',
   manager: 'manager@apms.com',

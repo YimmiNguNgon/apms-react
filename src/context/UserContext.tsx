@@ -4,6 +4,7 @@ import { loginApi } from '../API/loginApi';
 
 export const ROLES = {
   ADMIN: 'ROLE_ADMIN',
+  OWNER: 'ROLE_BUSINESS_OWNER',
   DIRECTOR: 'ROLE_DIRECTOR',
   MANAGER: 'ROLE_MANAGER',
   KEY_MEMBER: 'ROLE_KEY_MEMBER',
@@ -14,14 +15,16 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_PAGES: Record<Role, string[]> = {
   [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail'],
-  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
+  [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'project-management', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'audit-logs', 'system-settings', 'news', 'profile'],
+  [ROLES.DIRECTOR]: ['director-dashboard', 'risk-monitoring', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'score-rules', 'audit-logs', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
   [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail'],
-  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile'],
+  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile', 'project-management', 'project-detail'],
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
 };
 
 export const ROLE_DEFAULT_PAGE: Record<Role, string> = {
   [ROLES.ADMIN]: 'admin-dashboard',
+  [ROLES.OWNER]: 'owner-dashboard',
   [ROLES.DIRECTOR]: 'director-dashboard',
   [ROLES.MANAGER]: 'manager-dashboard',
   [ROLES.KEY_MEMBER]: 'keymember-dashboard',
@@ -42,6 +45,7 @@ export interface User {
 
 const ROLE_COLORS: Record<Role, string> = {
   [ROLES.ADMIN]: 'linear-gradient(135deg, #64748b, #475569)',
+  [ROLES.OWNER]: 'linear-gradient(135deg, #A855F7, #7E22CE)',
   [ROLES.DIRECTOR]: 'linear-gradient(135deg, #10B981, #059669)',
   [ROLES.MANAGER]: 'linear-gradient(135deg, #F59E0B, #D97706)',
   [ROLES.KEY_MEMBER]: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
@@ -68,20 +72,21 @@ const toAvatar = (name: string) =>
 
 const mapBackendRoles = (id: number, email: string, backendRoles: string[]): User => {
   const roles = backendRoles.join(',').toUpperCase();
-  const role = roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN') || roles.includes('OWNER')
+  const role = roles.includes('SYSTEM_ADMIN')
     ? ROLES.ADMIN
-    : roles.includes('DIRECTOR')
-      ? ROLES.DIRECTOR
-      : roles.includes('MANAGER')
-        ? ROLES.MANAGER
-        : roles.includes('KEY_MEMBER')
-          ? ROLES.KEY_MEMBER
-          : roles.includes('RESEARCH_STAFF') || roles.includes('BUSINESS_DEVELOPMENT_STAFF')
-            ? ROLES.STAFF
+    : roles.includes('BUSINESS_OWNER') || roles.includes('OWNER')
+      ? ROLES.OWNER
+      : roles.includes('DIRECTOR')
+        ? ROLES.DIRECTOR
+        : roles.includes('MANAGER')
+          ? ROLES.MANAGER
+          : roles.includes('KEY_MEMBER')
+            ? ROLES.KEY_MEMBER
             : ROLES.STAFF;
 
   const roleName =
     role === ROLES.ADMIN ? 'System Administrator' :
+    role === ROLES.OWNER ? 'Business Owner' :
     role === ROLES.DIRECTOR ? 'Business Director' :
     role === ROLES.MANAGER ? 'BD Manager' :
     role === ROLES.KEY_MEMBER ? 'Key Member' :
