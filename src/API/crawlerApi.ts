@@ -1,5 +1,22 @@
 import { api } from '../services/api';
 
+export class CrawlerNotAvailableError extends Error {
+  constructor() {
+    super('Crawler backend not available');
+    this.name = 'CrawlerNotAvailableError';
+  }
+}
+
+function isAxios404(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'response' in err &&
+    typeof (err as { response?: unknown }).response === 'object' &&
+    (err as { response?: { status?: number } }).response?.status === 404
+  );
+}
+
 export interface CompanyMatch {
   companyId?: string | null;
   companyName?: string | null;
@@ -77,28 +94,48 @@ export interface ArticleQuery {
 }
 
 export const crawlerApi = {
-  getTrackedCompanies: async () => {
-    const response = await api.get<TrackedCompany[]>('/tracked-companies', {
-      params: { activeOnly: true },
-    });
-    return Array.isArray(response.data) ? response.data : [];
+  getTrackedCompanies: async (): Promise<TrackedCompany[]> => {
+    try {
+      const response = await api.get<TrackedCompany[]>('/tracked-companies', {
+        params: { activeOnly: true },
+      });
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (err) {
+      if (isAxios404(err)) throw new CrawlerNotAvailableError();
+      return [];
+    }
   },
 
-  getArticles: async (query: ArticleQuery) => {
-    const response = await api.get<CrawlerPage<CrawledArticle>>('/crawler/articles', {
-      params: { ...query },
-    });
-    return response.data;
+  getArticles: async (query: ArticleQuery): Promise<CrawlerPage<CrawledArticle>> => {
+    try {
+      const response = await api.get<CrawlerPage<CrawledArticle>>('/crawler/articles', {
+        params: { ...query },
+      });
+      return response.data;
+    } catch (err) {
+      if (isAxios404(err)) throw new CrawlerNotAvailableError();
+      return { content: [], totalElements: 0, totalPages: 0 };
+    }
   },
 
-  getArticleById: async (articleId: string) => {
-    const response = await api.get<CrawledArticle>(`/crawler/articles/${articleId}`);
-    return response.data;
+  getArticleById: async (articleId: string): Promise<CrawledArticle | null> => {
+    try {
+      const response = await api.get<CrawledArticle>(`/crawler/articles/${articleId}`);
+      return response.data;
+    } catch (err) {
+      if (isAxios404(err)) throw new CrawlerNotAvailableError();
+      return null;
+    }
   },
 
-  getStats: async () => {
-    const response = await api.get<CrawlerStats>('/crawler/stats');
-    return response.data;
+  getStats: async (): Promise<CrawlerStats | null> => {
+    try {
+      const response = await api.get<CrawlerStats>('/crawler/stats');
+      return response.data;
+    } catch (err) {
+      if (isAxios404(err)) throw new CrawlerNotAvailableError();
+      return null;
+    }
   },
 
 };

@@ -11,7 +11,6 @@ export interface RiskItem {
   reviewStatus?: string;
   riskLevel?: string;
   riskScore?: number | string;
-  [key: string]: any;
 }
 
 interface DirectorRiskMonitoringProps {
@@ -31,7 +30,7 @@ export const DirectorRiskMonitoring: React.FC<DirectorRiskMonitoringProps> = ({ 
     api.get<RiskItem[]>('/risk-monitoring')
       .then((res) => {
         if (!isMounted) return;
-        const list = Array.isArray(res?.data) ? res.data : (res as any)?.content ?? [];
+        const list = Array.isArray(res?.data) ? res.data : (res as { data?: RiskItem[] })?.data ?? [];
         setData(list);
         setError(null);
       })
@@ -51,13 +50,13 @@ export const DirectorRiskMonitoring: React.FC<DirectorRiskMonitoringProps> = ({ 
   }, []);
 
   // Safe helper to extract and normalize string fields
-  const safeStr = (val: any, fallback: string = 'Chưa có dữ liệu'): string => {
+  const safeStr = (val: unknown, fallback: string = 'Chưa có dữ liệu'): string => {
     if (val === null || val === undefined || val === '') return fallback;
     return String(val).trim();
   };
 
   // Safe helper to parse risk score
-  const safeScore = (scoreRaw: any): number => {
+  const safeScore = (scoreRaw: unknown): number => {
     if (scoreRaw === null || scoreRaw === undefined) return 0;
     const num = Number(scoreRaw);
     return isNaN(num) ? 0 : num;

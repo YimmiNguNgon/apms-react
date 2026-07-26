@@ -21,8 +21,8 @@ export const ForgotPassword: React.FC<{ onBackToLogin: () => void }> = ({ onBack
       if (res?.success) {
         setMessage('Nếu email này tồn tại trong hệ thống, chúng tôi sẽ gửi hướng dẫn khôi phục mật khẩu. Vui lòng kiểm tra hộp thư của bạn.');
       }
-    } catch (err: any) {
-      setError('Lỗi: ' + (err.message || 'Không thể kết nối đến máy chủ.'));
+    } catch (err: unknown) {
+      setError('Lỗi: ' + (err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ.'));
     } finally {
       setLoading(false);
     }

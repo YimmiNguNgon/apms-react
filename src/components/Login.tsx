@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 
-const DEV_ACCOUNT_ALIASES: Record<string, string> = {
-  admin: 'admin@apms.com',
-  sysadmin: 'admin@apms.com',
-  owner: 'owner@apms.com',
-  director: 'director@apms.com',
-  manager: 'manager@apms.com',
-  keymember: 'keymember@apms.com',
-  staff: 'staff@apms.com',
-};
+const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
+  ? {
+      admin: 'admin@apms.com',
+      sysadmin: 'admin@apms.com',
+      owner: 'owner@apms.com',
+      director: 'director@apms.com',
+      manager: 'manager@apms.com',
+      keymember: 'keymember@apms.com',
+      staff: 'staff@apms.com',
+    }
+  : {};
 
 export const Login: React.FC = () => {
   const { login } = useUser();
@@ -45,17 +47,11 @@ export const Login: React.FC = () => {
       if (!ok) {
         setError('Sign-in failed. Please verify your credentials.');
       }
-    } catch (err: any) {
-      setError(`Connection error: ${err?.message || 'Cannot reach the server.'}`);
+    } catch (err: unknown) {
+      setError(`Connection error: ${err instanceof Error ? err.message : 'Cannot reach the server.'}`);
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDevAccount = (identity: string) => {
-    setEmail(identity);
-    setPassword('123456');
-    setError('');
   };
 
   return (

@@ -2,6 +2,89 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE_URL, api } from '../services/api';
 import type { ImportJobResponse, PageResult, ProjectResponse } from '../types/domain';
 
+interface PartnerListItem {
+  id?: number | string;
+  tradeName?: string;
+  legalName?: string;
+  name?: string;
+  keyContact?: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  tier?: string;
+  partnerTier?: string;
+  lastContactDate?: string;
+}
+
+interface PartnerRow {
+  id: number | string;
+  company: string;
+  contact: string;
+  phone: string;
+  email: string;
+  tier: string;
+  lastContact: string;
+}
+
+interface CompetitorListItem {
+  tradeName?: string;
+  legalName?: string;
+  name?: string;
+  industry?: string;
+  segment?: string;
+  threatLevel?: string;
+  riskLevel?: string;
+  recentActivity?: string;
+  latestNews?: string;
+  updatedAt?: string;
+}
+
+interface CompetitorRow {
+  id: number | string;
+  company: string;
+  segment: string;
+  threat: string;
+  lastActivity: string;
+  date: string;
+}
+
+interface AiExtractionApiResponse {
+  id?: string;
+  createdAt?: string;
+  extractedData?: Record<string, unknown>;
+  fieldResults?: Record<string, AiFieldResult>;
+  extractedFields?: Array<Record<string, unknown>>;
+  fields?: Array<Record<string, unknown>>;
+  companyName?: string;
+  sourceType?: string;
+}
+
+interface TrainingSession {
+  id?: string | number;
+  score?: number;
+  topic?: string;
+  title?: string;
+  date?: string;
+  time?: string;
+}
+
+interface TrainingQuestion {
+  id?: string | number;
+  q?: string;
+  question?: string;
+  options?: string[];
+  correct?: number;
+}
+
+interface LearningCourse {
+  id?: string | number;
+  title?: string;
+  level?: string;
+  lessons?: number;
+  duration?: string;
+  progress?: number;
+}
+
 // â”€â”€â”€ Upload Documents â”€â”€â”€
 interface UploadFile {
   id?: number;
@@ -328,17 +411,17 @@ export const UploadDocuments: React.FC<{ setActivePage?: (page: string) => void 
 const TIER_CLR: Record<string, string> = { Platinum: '#8B5CF6', Gold: '#F59E0B', Silver: '#64748B' };
 
 export const PartnerManagement: React.FC = () => {
-  const [partners, setPartners] = useState<any[]>([]);
+  const [partners, setPartners] = useState<PartnerRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const filtered = partners.filter(p => p.company.toLowerCase().includes(search.toLowerCase()) || p.contact.toLowerCase().includes(search.toLowerCase()));
 
   useEffect(() => {
     setLoading(true);
-    api.get<any>('/dashboard/partners')
+    api.get<PartnerListItem[]>('/dashboard/partners')
       .then(res => {
         if (res?.success && Array.isArray(res?.data)) {
-          const mapped = res.data.map((c: any, i: number) => ({
+          const mapped = res.data.map((c: PartnerListItem, i: number) => ({
             id: i + 1,
             company: c.tradeName || c.legalName || c.name || 'Doanh nghiá»‡p',
             contact: c.keyContact || c.contactPerson || 'ChÆ°a cáº­p nháº­t',
@@ -476,16 +559,16 @@ export const PartnerManagement: React.FC = () => {
 // â”€â”€â”€ Competitor Management (Staff) â”€â”€â”€
 
 export const CompetitorManagement: React.FC = () => {
-  const [competitors, setCompetitors] = useState<any[]>([]);
+  const [competitors, setCompetitors] = useState<CompetitorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const TH_CLR = { High: '#EF4444', Medium: '#F59E0B', Low: '#10B981' };
 
   useEffect(() => {
     setLoading(true);
-    api.get<any>('/dashboard/competitors')
+    api.get<CompetitorListItem[]>('/dashboard/competitors')
       .then(res => {
         if (res?.success && Array.isArray(res?.data)) {
-          const mapped = res.data.map((c: any, i: number) => ({
+          const mapped = res.data.map((c: CompetitorListItem, i: number) => ({
             id: i + 1,
             company: c.tradeName || c.legalName || c.name || 'Äá»‘i thá»§',
             segment: c.industry || c.segment || 'ChÆ°a phĂ¢n loáº¡i',
@@ -591,7 +674,7 @@ export const AIExtractedData: React.FC = () => {
       return;
     }
     setLoading(true);
-    api.get<any>(`/import-jobs/${IMPORT_JOB_ID}/ai-extractions/latest`)
+    api.get<AiExtractionApiResponse>(`/import-jobs/${IMPORT_JOB_ID}/ai-extractions/latest`)
       .then((res) => {
         if (!res?.success || !res?.data) {
           setExtractions([]);
@@ -609,9 +692,9 @@ export const AIExtractedData: React.FC = () => {
           : [];
 
         if (fieldResults.length > 0) {
-          fields = fieldResults.map((field, index) => ({
+          fields = fieldResults.map((field, index): AiExtraction => ({
             id: field.id || field.fieldName || String(index),
-            companyName: data.extractedData?.tradeName || data.extractedData?.legalName || 'Unassigned',
+            companyName: String(data.extractedData?.tradeName || data.extractedData?.legalName || 'Unassigned'),
             fieldName: field.fieldName || `Field ${index + 1}`,
             extractedValue: formatExtractedValue(field.value),
             confidenceScore: typeof field.confidence === 'number' ? Math.round(field.confidence * 100) : 0,
@@ -623,31 +706,35 @@ export const AIExtractedData: React.FC = () => {
             reviewStatus: field.reviewStatus,
           }));
         } else if (data.extractedData) {
-          const ext = data.extractedData;
+          const ext = data.extractedData as Record<string, string | number | boolean | Record<string, unknown> | undefined>;
+          const tradeName = String(ext.tradeName || '');
 
-          if (ext.tradeName) fields.push({ id: 'f1', companyName: ext.tradeName, fieldName: 'Trade name', extractedValue: ext.tradeName, confidenceScore: 90, sourceType: 'AI', extractedAt: createdAt });
-          if (ext.businessModel) fields.push({ id: 'f2', companyName: ext.tradeName, fieldName: 'Business model', extractedValue: ext.businessModel, confidenceScore: 85, sourceType: 'AI', extractedAt: createdAt });
-          if (ext.employeeTier) fields.push({ id: 'f3', companyName: ext.tradeName, fieldName: 'Scale', extractedValue: ext.employeeTier, confidenceScore: 80, sourceType: 'AI', extractedAt: createdAt });
-          if (ext.website) fields.push({ id: 'f4', companyName: ext.tradeName, fieldName: 'Website', extractedValue: ext.website, confidenceScore: 95, sourceType: 'AI', extractedAt: createdAt });
-          if (ext.relationshipSuggestion) fields.push({
-            id: 'f5',
-            companyName: ext.tradeName,
-            fieldName: 'Suggested role',
-            extractedValue: ext.relationshipSuggestion.suggestedType,
-            confidenceScore: Math.round(ext.relationshipSuggestion.confidence * 100),
-            sourceType: 'AI',
-            extractedAt: createdAt,
-          });
+          if (ext.tradeName) fields.push({ id: 'f1', companyName: tradeName, fieldName: 'Trade name', extractedValue: String(ext.tradeName), confidenceScore: 90, sourceType: 'AI', extractedAt: createdAt });
+          if (ext.businessModel) fields.push({ id: 'f2', companyName: tradeName, fieldName: 'Business model', extractedValue: String(ext.businessModel), confidenceScore: 85, sourceType: 'AI', extractedAt: createdAt });
+          if (ext.employeeTier) fields.push({ id: 'f3', companyName: tradeName, fieldName: 'Scale', extractedValue: String(ext.employeeTier), confidenceScore: 80, sourceType: 'AI', extractedAt: createdAt });
+          if (ext.website) fields.push({ id: 'f4', companyName: tradeName, fieldName: 'Website', extractedValue: String(ext.website), confidenceScore: 95, sourceType: 'AI', extractedAt: createdAt });
+          if (ext.relationshipSuggestion) {
+            const rs = ext.relationshipSuggestion as Record<string, unknown>;
+            fields.push({
+              id: 'f5',
+              companyName: tradeName,
+              fieldName: 'Suggested role',
+              extractedValue: String(rs.suggestedType || ''),
+              confidenceScore: Math.round(Number(rs.confidence || 0) * 100),
+              sourceType: 'AI',
+              extractedAt: createdAt,
+            });
+          }
         } else {
-          fields = (data.extractedFields || data.fields || []).map((f: any, idx: number) => ({
+          fields = (data.extractedFields || data.fields || []).map((f: Record<string, unknown>, idx: number): AiExtraction => ({
             id: String(f.id || idx),
-            companyName: data.companyName || f.companyName || 'Unassigned',
-            fieldName: f.fieldName || f.name || '--',
-            extractedValue: f.extractedValue || f.value || '--',
-            confidenceScore: f.confidenceScore ?? f.confidence ?? 0,
-            sourceType: f.sourceType || data.sourceType || 'AI',
-            extractedAt: f.extractedAt || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-            candidateId: f.candidateId,
+            companyName: String(data.companyName || f.companyName || 'Unassigned'),
+            fieldName: String(f.fieldName || f.name || '--'),
+            extractedValue: String(f.extractedValue || f.value || '--'),
+            confidenceScore: Number(f.confidenceScore ?? f.confidence ?? 0),
+            sourceType: String(f.sourceType || data.sourceType || 'AI'),
+            extractedAt: String(f.extractedAt || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+            candidateId: f.candidateId != null ? String(f.candidateId) : undefined,
           }));
         }
 
@@ -675,10 +762,10 @@ export const AIExtractedData: React.FC = () => {
       await api.post(`/ai-extractions/${extractionId}/candidate`);
       setSubmittingToCandidate('done');
       alert('Candidate created successfully. Review it in Company Validation.');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setSubmittingToCandidate('error');
-      alert(`Candidate creation failed: ${err.message}`);
+      alert(`Candidate creation failed: ${(err as Error).message}`);
     }
   };
 
@@ -884,14 +971,20 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
   const [loading, setLoading] = useState(false);
 
   // Map backend CompanyProfile â†’ CompanySearchItem
-  const mapProfile = (p: any): CompanySearchItem => ({
-    companyId: p.companyId || p.id || String(Math.random()),
-    name: p.identity?.tradeName || p.identity?.legalName || 'Doanh nghiá»‡p',
-    industry: p.business?.industries?.join(', ') || 'ChÆ°a phĂ¢n loáº¡i',
-    city: p.contact?.addresses?.[0]?.city || 'â€”',
-    employeeCount: p.companySize?.employeeCount ? String(p.companySize.employeeCount) : 'â€”',
-    reviewStatus: p.reviewStatus || 'UNVERIFIED',
-  });
+  const mapProfile = (p: Record<string, unknown>): CompanySearchItem => {
+    const identity = p.identity as { tradeName?: string; legalName?: string } | undefined;
+    const business = p.business as { industries?: string[] } | undefined;
+    const contact = p.contact as { addresses?: Array<{ city?: string }> } | undefined;
+    const companySize = p.companySize as { employeeCount?: number | string } | undefined;
+    return {
+      companyId: (p.companyId as string) || (p.id as string) || String(Math.random()),
+      name: identity?.tradeName || identity?.legalName || '\u0110\u1ED3\u0111\u1EA1n nghi\u1EC7p',
+      industry: business?.industries?.join(', ') || 'Ch\u01B0a ph\u00E2n lo\u1EA1i',
+      city: contact?.addresses?.[0]?.city || '\u2014',
+      employeeCount: companySize?.employeeCount ? String(companySize.employeeCount) : '\u2014',
+      reviewStatus: (p.reviewStatus as string) || 'UNVERIFIED',
+    };
+  };
 
   const fetchCompanies = (page: number, search: string) => {
     setLoading(true);
@@ -899,7 +992,7 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
     const params: Record<string, string | number | boolean> = { page, size: PAGE_SIZE_SEARCH };
     if (search.trim()) params.name = search.trim();
 
-    api.get<any>(endpoint, { params })
+    api.get<PageResult<Record<string, unknown>>>(endpoint, { params })
       .then(res => {
         if (res?.success && res?.data) {
           const content: CompanySearchItem[] = (res.data.content || []).map(mapProfile);
@@ -924,10 +1017,9 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
     fetchCompanies(page, query);
   };
 
-  const STATUS_CLR: Record<string, string> = { VERIFIED: '#10B981', PENDING: '#F59E0B', UNVERIFIED: '#64748B' };
   const STATUS_LBL: Record<string, string> = { VERIFIED: 'ÄĂ£ xĂ¡c thá»±c', PENDING: 'Chá» duyá»‡t', UNVERIFIED: 'ChÆ°a xĂ¡c thá»±c' };
 
-  // Filter tráº¡ng thĂ¡i phĂ­a client (backend chÆ°a há»— trá»£ query param nĂ y)
+  // Filter tráº¡ng thĂ¡i phĂ­a client (backend chÆ°a há»— trá»£ query param nĂ y)
   const displayList = statusF === 'all' ? companies : companies.filter(c => c.reviewStatus === statusF);
 
   const summary = [
@@ -1035,11 +1127,18 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
               <span>Page {currentPage + 1} / {totalPages}</span>
               <div>
                 <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => goToPage(currentPage - 1)}>Prev</button>
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i).map((page) => (
-                  <button key={page} className={`workspace-page-btn ${currentPage === page ? 'active' : ''}`} onClick={() => goToPage(page)}>
-                    {page + 1}
-                  </button>
-                ))}
+                {(() => {
+                  const maxVisible = 5;
+                  const half = Math.floor(maxVisible / 2);
+                  let start = Math.max(0, currentPage - half);
+                  const end = Math.min(totalPages, start + maxVisible);
+                  start = Math.max(0, end - maxVisible);
+                  return Array.from({ length: end - start }, (_, i) => start + i).map((page) => (
+                    <button key={page} className={`workspace-page-btn ${currentPage === page ? 'active' : ''}`} onClick={() => goToPage(page)}>
+                      {page + 1}
+                    </button>
+                  ));
+                })()}
                 <button className="workspace-page-btn" disabled={currentPage >= totalPages - 1} onClick={() => goToPage(currentPage + 1)}>Next</button>
               </div>
             </div>
@@ -1082,8 +1181,8 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
 // â”€â”€â”€ AI Training Mode â”€â”€â”€
 
 export const AITrainingMode: React.FC = () => {
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [questions, setQuestions] = useState<TrainingQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [started, setStarted] = useState(false);
   const [current, setCurrent] = useState(0);
@@ -1093,8 +1192,8 @@ export const AITrainingMode: React.FC = () => {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      api.get<any>('/training/sessions').catch(() => null),
-      api.get<any>('/training/questions').catch(() => null),
+      api.get<TrainingSession[]>('/training/sessions').catch(() => null),
+      api.get<TrainingQuestion[]>('/training/questions').catch(() => null),
     ]).then(([sessRes, qRes]) => {
       if (sessRes?.success && Array.isArray(sessRes.data)) setSessions(sessRes.data);
       if (qRes?.success && Array.isArray(qRes.data)) setQuestions(qRes.data);
@@ -1108,9 +1207,9 @@ export const AITrainingMode: React.FC = () => {
     ? Math.round((((submitted ? questions.length : current + 1) / questions.length) * 100))
     : 0;
   const averageScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum: number, item: any) => sum + (item.score || 0), 0) / sessions.length)
+    ? Math.round(sessions.reduce((sum: number, item: TrainingSession) => sum + (item.score || 0), 0) / sessions.length)
     : null;
-  const bestScore = sessions.length > 0 ? Math.max(...sessions.map((item: any) => item.score || 0)) : null;
+  const bestScore = sessions.length > 0 ? Math.max(...sessions.map((item: TrainingSession) => item.score || 0)) : null;
   const latestSession = sessions[0] || null;
   const currentQuestion = questions[current];
   const currentOptions = currentQuestion?.options || [];
@@ -1263,7 +1362,7 @@ export const AITrainingMode: React.FC = () => {
                     </div>
                   ) : (
                     <div className="training-history-list">
-                      {sessions.map((session: any, index: number) => (
+                      {sessions.map((session: TrainingSession, index: number) => (
                         <article key={session.id || index} className="training-history-card">
                           <div>
                             <strong>{session.topic || session.title || `Assessment ${index + 1}`}</strong>
@@ -1422,7 +1521,7 @@ export const AITrainingMode: React.FC = () => {
             <span className="workspace-side-eyebrow">{started && !submitted ? 'Question navigator' : 'How to use'}</span>
             {started && !submitted ? (
               <div className="training-question-nav">
-                {questions.map((_: any, index: number) => (
+                {questions.map((_: TrainingQuestion, index: number) => (
                   <button
                     key={index}
                     className={`training-question-dot ${index === current ? 'active' : ''} ${answers[index] !== undefined ? 'answered' : ''}`}
@@ -1477,14 +1576,14 @@ export const AITrainingMode: React.FC = () => {
 const LEVEL_CLR: Record<string, string> = { Beginner: '#10B981', Intermediate: '#F59E0B', Advanced: '#EF4444' };
 
 export const LearningCenter: React.FC = () => {
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<LearningCourse[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<any>('/learning/courses')
+    api.get<LearningCourse[]>('/learning/courses')
       .then(res => {
         if (res?.success && Array.isArray(res.data)) setCourses(res.data);
-        else if (res?.success && res.data?.content) setCourses(res.data.content);
+        else if (res?.success && res.data && typeof res.data === 'object' && 'content' in res.data) setCourses((res.data as { content: LearningCourse[] }).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -1493,7 +1592,7 @@ export const LearningCenter: React.FC = () => {
   const summary = [
     { label: 'Courses', value: courses.length, note: 'Available learning modules' },
     { label: 'Completed', value: courses.filter((course) => course.progress === 100).length, note: 'Finished by the current staff profile' },
-    { label: 'In progress', value: courses.filter((course) => course.progress > 0 && course.progress < 100).length, note: 'Modules currently being studied' },
+    { label: 'In progress', value: courses.filter((course) => (course.progress ?? 0) > 0 && (course.progress ?? 0) < 100).length, note: 'Modules currently being studied' },
   ];
 
   return (
@@ -1529,10 +1628,10 @@ export const LearningCenter: React.FC = () => {
             </div>
           ) : (
             <div className="learning-card-grid">
-              {courses.map((course: any) => (
+              {courses.map((course: LearningCourse) => (
                 <article key={course.id} className="learning-card">
                   <div className="learning-card-head">
-                    <span className="workspace-badge neutral" style={{ color: LEVEL_CLR[course.level] || '#64748B' }}>
+                    <span className="workspace-badge neutral" style={{ color: course.level ? (LEVEL_CLR[course.level] || '#64748B') : '#64748B' }}>
                       {course.level}
                     </span>
                     {course.progress === 100 && <span className="workspace-badge success">Completed</span>}
@@ -1567,7 +1666,7 @@ export const LearningCenter: React.FC = () => {
           <div className="workspace-side-card">
             <span className="workspace-side-eyebrow">Recommended next</span>
             <div className="workspace-activity-list">
-              {courses.slice(0, 3).map((course: any) => (
+              {courses.slice(0, 3).map((course: LearningCourse) => (
                 <article key={`rec-${course.id}`}>
                   <strong>{course.title}</strong>
                   <p>{course.progress || 0}% progress</p>

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../services/api';
+import { api, type PageResponse } from '../services/api';
+
+type PageOrData<T> = PageResponse<T> | T[];
 
 const STATUS_COLOR: Record<string, { bg: string; color: string; label: string }> = {
   ACTIVE: { bg: '#D1FAE5', color: '#065F46', label: 'Active' },
@@ -101,7 +103,7 @@ type ReportRow = {
   status: string;
 };
 
-const mapPartner = (item: any, index: number): PartnerRow => ({
+const mapPartner = (item: Record<string, unknown>, index: number): PartnerRow => ({
   id: readValue(item.companyId, item.id, index) as string | number,
   name: String(readValue(item.name, item.tradeName, item.legalName, 'Unnamed partner')),
   type: String(readValue(item.industry, item.segment, 'Not available')),
@@ -114,7 +116,7 @@ const mapPartner = (item: any, index: number): PartnerRow => ({
   deals: String(readValue(item.deals, item.activeDeals, item.projectCount, 'Not available')),
 });
 
-const mapCompetitor = (item: any, index: number): CompetitorRow => {
+const mapCompetitor = (item: Record<string, unknown>, index: number): CompetitorRow => {
   const rawThreat = readValue(item.threatScore, item.competitionLevel, item.riskLevel);
   const parsedThreat = typeof rawThreat === 'number' ? rawThreat : Number(rawThreat);
   const threatLabel = String(readValue(item.threatLevel, item.threat, item.level, 'Unknown'));
@@ -130,7 +132,7 @@ const mapCompetitor = (item: any, index: number): CompetitorRow => {
   };
 };
 
-const mapRecommendation = (item: any, index: number): RecommendationRow => {
+const mapRecommendation = (item: Record<string, unknown>, index: number): RecommendationRow => {
   const rawConfidence = readValue(item.confidence, item.confidenceScore, item.score);
   const parsedConfidence = typeof rawConfidence === 'number' ? rawConfidence : Number(rawConfidence);
 
@@ -144,7 +146,7 @@ const mapRecommendation = (item: any, index: number): RecommendationRow => {
   };
 };
 
-const mapReport = (item: any, index: number): ReportRow => ({
+const mapReport = (item: Record<string, unknown>, index: number): ReportRow => ({
   id: readValue(item.id, item.reportId, index) as string | number,
   title: String(readValue(item.title, 'Untitled report')),
   date: String(readValue(item.date, item.createdAt, item.updatedAt, 'Not available')),
@@ -161,23 +163,23 @@ const useDirectorData = () => {
   const [reports, setReports] = useState<ReportRow[]>([]);
 
   useEffect(() => {
-    api.get<any>('/dashboard/partners').then((res) => {
-      const rows = Array.isArray(res?.data) ? res.data : res?.data?.content ?? [];
+    api.get<PageOrData<Record<string, unknown>>>('/dashboard/partners').then((res) => {
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<Record<string, unknown>>).content : []);
       setPartners(rows.map(mapPartner));
     }).catch(() => setPartners([]));
 
-    api.get<any>('/dashboard/competitors').then((res) => {
-      const rows = Array.isArray(res?.data) ? res.data : res?.data?.content ?? [];
+    api.get<PageOrData<Record<string, unknown>>>('/dashboard/competitors').then((res) => {
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<Record<string, unknown>>).content : []);
       setCompetitors(rows.map(mapCompetitor));
     }).catch(() => setCompetitors([]));
 
-    api.get<any>('/dashboard/recommendations').then((res) => {
-      const rows = Array.isArray(res?.data) ? res.data : res?.data?.content ?? [];
+    api.get<PageOrData<Record<string, unknown>>>('/dashboard/recommendations').then((res) => {
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<Record<string, unknown>>).content : []);
       setRecommendations(rows.map(mapRecommendation));
     }).catch(() => setRecommendations([]));
 
-    api.get<any>('/reports').then((res) => {
-      const rows = Array.isArray(res?.data) ? res.data : res?.data?.content ?? [];
+    api.get<PageOrData<Record<string, unknown>>>('/reports').then((res) => {
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<Record<string, unknown>>).content : []);
       setReports(rows.map(mapReport));
     }).catch(() => setReports([]));
   }, []);
@@ -274,7 +276,6 @@ export const CompetitorIntelligence: React.FC = () => {
     return competitors.filter((c) => {
       const text = (c.name + ' ' + c.segment + ' ' + c.intel).toLowerCase();
       const matchSearch = text.includes(search.toLowerCase());
-      const threat = c.threatLabel.toLowerCase();
       const matchThreat =
         filterThreat === 'ALL' ||
         (filterThreat === 'HIGH' && (c.threatValue !== null && c.threatValue >= 70)) ||

@@ -46,8 +46,8 @@ export const ResetPassword: React.FC<{ onBackToLogin: () => void }> = ({ onBackT
       if (res?.success) {
         setMessage('Đổi mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.');
       }
-    } catch (err: any) {
-      setError('Lỗi: ' + (err.message || 'Không thể kết nối đến máy chủ.'));
+    } catch (err: unknown) {
+      setError('Lỗi: ' + (err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ.'));
     } finally {
       setLoading(false);
     }

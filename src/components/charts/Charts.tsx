@@ -204,14 +204,14 @@ export const DonutChart: React.FC<DonutChartProps> = ({
   const circumference = 2 * Math.PI * r;
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
 
-  let cumulative = 0;
-  const slices = data.map(d => {
+  const slices = data.reduce<Array<{ color: string; offset: number; dash: number }>>((acc, d) => {
     const pct    = d.value / total;
-    const offset = circumference * (1 - cumulative);
+    const prevPct = acc.reduce((sum, s) => sum + s.dash / circumference, 0);
+    const offset = circumference * (1 - prevPct);
     const dash   = circumference * pct;
-    cumulative  += pct;
-    return { ...d, offset, dash };
-  });
+    acc.push({ color: d.color, offset, dash });
+    return acc;
+  }, []);
 
   return (
     <svg viewBox="0 0 140 140" style={{ width: size, height: size, display: 'block', margin: '0 auto' }}>

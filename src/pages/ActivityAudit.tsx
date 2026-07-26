@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, API_BASE_URL } from '../services/api';
+import type { AuditLogDto, PageResult } from '../types/domain';
 
 type Tab = 'activity' | 'audit';
 
@@ -32,7 +33,7 @@ const getActionTypePill = (actionStr: string) => {
 
 export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'audit' }) => {
   const [tab, setTab] = useState<Tab>(defaultTab);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
@@ -58,7 +59,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     setLoading(true);
     setError('');
 
-    const params: Record<string, any> = {
+    const params: Record<string, string | number> = {
       page,
       size: pageSize,
     };
@@ -67,7 +68,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     if (fromDate) params.fromDate = new Date(fromDate).toISOString();
     if (toDate) params.toDate = new Date(toDate).toISOString();
 
-    api.get<any>('/audit-logs', { params })
+    api.get<PageResult<AuditLogDto>>('/audit-logs', { params })
       .then((res) => {
         if (res?.success && res.data) {
           const content = res.data.content || (Array.isArray(res.data) ? res.data : []);
@@ -80,7 +81,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       })
       .catch((err) => {
         // Fallback to /admin/audit-logs if endpoint not filtered
-        api.get<any>(`/admin/audit-logs?page=${page}&size=${pageSize}`)
+          api.get<PageResult<AuditLogDto>>(`/admin/audit-logs?page=${page}&size=${pageSize}`)
           .then((fallbackRes) => {
             if (fallbackRes?.success && fallbackRes.data) {
               const content = fallbackRes.data.content || [];
@@ -127,8 +128,8 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
-    } catch (err: any) {
-      setError(err?.message || 'CSV export failed.');
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'CSV export failed.');
     } finally {
       setExporting(false);
     }
@@ -139,8 +140,8 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     const query = searchUser.toLowerCase();
     return auditLogs.filter((log) => {
       const email = String(log.actorEmail || '').toLowerCase();
-      const userId = String(log.actorUserId || '').toLowerCase();
-      const details = String(log.detail || log.details || '').toLowerCase();
+      const userId = String(log.actorAccountId || '').toLowerCase();
+      const details = String(log.detail || '').toLowerCase();
       return email.includes(query) || userId.includes(query) || details.includes(query);
     });
   }, [auditLogs, searchUser]);
@@ -148,9 +149,9 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
   const userActivityPulse = useMemo(() => {
     const map = new Map<string, { user: string; count: number; lastSeen: string }>();
     auditLogs.forEach((log) => {
-      const user = log.actorEmail || `User #${log.actorUserId || 'System'}`;
+      const user = log.actorEmail || `User #${log.actorAccountId || 'System'}`;
       const existing = map.get(user);
-      const timeStr = log.createdAt ? new Date(log.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
+      const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
       map.set(user, {
         user,
         count: (existing?.count || 0) + 1,
@@ -281,8 +282,8 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                   <tbody>
                     {filteredLogs.map((log, index) => {
                       const pill = getActionTypePill(log.action);
-                      const timeStr = log.createdAt 
-                        ? new Date(log.createdAt).toLocaleString('vi-VN')
+                      const timeStr = log.timestamp 
+                        ? new Date(log.timestamp).toLocaleString('vi-VN')
                         : log.timestamp 
                           ? new Date(log.timestamp).toLocaleString('vi-VN') 
                           : '-';
@@ -293,8 +294,8 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                             {timeStr}
                           </td>
                           <td>
-                            <strong>{log.actorEmail || `User #${log.actorUserId || 'System'}`}</strong>
-                            {log.actorUserId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorUserId}</small>}
+                            <strong>{log.actorEmail || `User #${log.actorAccountId || 'System'}`}</strong>
+                            {log.actorAccountId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorAccountId}</small>}
                           </td>
                           <td>
                             <span className={`admin-event-pill ${pill.className}`} style={{ marginRight: '6px' }}>{pill.label}</span>
@@ -305,7 +306,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                             {log.entityId && <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>#{log.entityId}</span>}
                           </td>
                           <td style={{ fontSize: '13px', color: 'var(--text-color)' }}>
-                            {log.detail || log.details || '-'}
+                            {log.detail || '-'}
                           </td>
                         </tr>
                       );

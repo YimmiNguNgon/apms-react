@@ -29,6 +29,7 @@ interface CompanyDetailDrawerProps {
   onClose: () => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();

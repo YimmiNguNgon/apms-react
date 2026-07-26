@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
 import { useUser } from '../../context/UserContext';
+import type { DashboardSummaryDto, AuditLogDto, RoleDto } from '../../types/domain';
 import { AreaChart, BarChart, DonutChart } from '../../components/charts/Charts';
 
 const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
@@ -9,23 +10,23 @@ const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
 
 export const OwnerDashboard: React.FC = () => {
   const { currentUser } = useUser();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activityData, setActivityData] = useState<any[]>([]);
-  const [userRegData, setUserRegData] = useState<any[]>([]);
-  const [loginActivity, setLoginActivity] = useState<any[]>([]);
-  const [systemHealth, setSystemHealth] = useState<any[]>([]);
-  const [roleDistribution, setRoleDistribution] = useState<any[]>([]);
+  const [activityData, setActivityData] = useState<AuditLogDto[]>([]);
+  const [userRegData, setUserRegData] = useState<{ period: string; count: number }[]>([]);
+  const [loginActivity, setLoginActivity] = useState<{ day: string; logins: number }[]>([]);
+  const [systemHealth, setSystemHealth] = useState<{ metric: string; value: number }[]>([]);
+  const [roleDistribution, setRoleDistribution] = useState<RoleDto[]>([]);
 
   useEffect(() => {
     setLoading(true);
     Promise.allSettled([
-      api.get<any>('/dashboard/summary'),
-      api.get<any>('/dashboard/activity'),
-      api.get<any>('/dashboard/user-registration'),
-      api.get<any>('/dashboard/login-activity'),
-      api.get<any>('/dashboard/system-health'),
-      api.get<any>('/dashboard/role-distribution'),
+      api.get<DashboardSummaryDto>('/dashboard/summary'),
+      api.get<AuditLogDto[]>('/dashboard/activity'),
+      api.get<{ period: string; count: number }[]>('/dashboard/user-registration'),
+      api.get<{ day: string; logins: number }[]>('/dashboard/login-activity'),
+      api.get<{ metric: string; value: number }[]>('/dashboard/system-health'),
+      api.get<RoleDto[]>('/dashboard/role-distribution'),
     ])
       .then(([summaryRes, activityRes, userRegRes, loginRes, healthRes, roleRes]) => {
         if (summaryRes.status === 'fulfilled' && summaryRes.value?.success) {
@@ -51,7 +52,7 @@ export const OwnerDashboard: React.FC = () => {
   }, []);
 
   const totalUsers = useMemo(
-    () => roleDistribution.reduce((sum, item) => sum + Number(item.count || 0), 0),
+    () => roleDistribution.reduce((sum, item) => sum + Number(item.userCount || 0), 0),
     [roleDistribution]
   );
 
@@ -105,7 +106,7 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               {userRegData.length > 0 ? (
-                <AreaChart data={userRegData.map((d: any) => ({ label: String(d.period || ''), value: Number(d.count || 0) }))} height={240} />
+                <AreaChart data={userRegData.map((d) => ({ label: String(d.period || ''), value: Number(d.count || 0) }))} height={240} />
               ) : (
                 <EmptyPanel message="No registration series data available." />
               )}
@@ -119,7 +120,7 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               {roleDistribution.length > 0 ? (
-                <DonutChart data={roleDistribution.map((d: any, idx: number) => ({ label: String(d.role || ''), value: Number(d.count || 0), color: ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'][idx % 5] }))} size={180} />
+                <DonutChart data={roleDistribution.map((d, idx) => ({ label: String(d.name || ''), value: Number(d.userCount || 0), color: ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'][idx % 5] }))} size={180} />
               ) : (
                 <EmptyPanel message="No role distribution data recorded." />
               )}
@@ -136,7 +137,7 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               {loginActivity.length > 0 ? (
-                <BarChart data={loginActivity.map((d: any) => ({ label: String(d.day || ''), value: Number(d.logins || 0) }))} height={220} />
+                <BarChart data={loginActivity.map((d) => ({ label: String(d.day || ''), value: Number(d.logins || 0) }))} height={220} />
               ) : (
                 <EmptyPanel message="No authentication telemetry captured today." />
               )}
@@ -150,7 +151,7 @@ export const OwnerDashboard: React.FC = () => {
                 </div>
               </div>
               {systemHealth.length > 0 ? (
-                <BarChart data={systemHealth.map((d: any) => ({ label: String(d.metric || ''), value: Number(d.value || 0) }))} height={220} />
+                <BarChart data={systemHealth.map((d) => ({ label: String(d.metric || ''), value: Number(d.value || 0) }))} height={220} />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>

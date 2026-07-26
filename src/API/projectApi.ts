@@ -1,125 +1,30 @@
-import { API_BASE_URL } from "../services/api";
-import type { ApiResponse } from "../services/api";
+import { api } from "../services/api";
 import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse, UpdateProjectStatusRequest } from "../types/domain";
 
-const BASE_URL = `${API_BASE_URL}/projects`;
-const getAuthHeader = () => {
-  const token = localStorage.getItem("accessToken") || localStorage.getItem("apms-token");
-  const headers: HeadersInit = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-  return headers;
-};
 export const projectApi = {
   getAllProjects: async () => {
-
-    try{
-        const response = await fetch(BASE_URL, {
-            headers: {
-                ...getAuthHeader(),
-            },
-        });
-    if(!response.ok){
-        throw new Error("Failed to fetch projects");
-    }
-    return await response.json() as ApiResponse<PageResult<ProjectResponse>>;
-    }
-    catch(error){
-        console.error("Error fetching projects:", error);
-        throw error;
-    }
+    return api.get<PageResult<ProjectResponse>>("/projects");
   },
+
   createProject: async (projectData: CreateProjectRequest) => {
-    try {
-      const response = await fetch(BASE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify(projectData),
-      });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        console.error("Create project failed:", { status: response.status, payload, projectData });
-        throw new Error(payload?.message || "Failed to create project");
-      }
-
-      return payload as ApiResponse<ProjectResponse>;
-    } catch (error) {
-      console.error("Error creating project:", error);
-      throw error;
-    }
+    return api.post<ProjectResponse>("/projects", projectData);
   },
+
   getProjectById: async (projectId: number) => {
-    try {
-      const response = await fetch(`${BASE_URL}/${projectId}`, {
-        headers: {
-          ...getAuthHeader(),
-        },
-      }); 
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        console.error("Get project by ID failed:", { status: response.status, payload, projectId });
-        throw new Error(payload?.message || "Failed to fetch project");
-      }
-
-      return payload as ApiResponse<ProjectResponse>;
-    }
-    catch (error) {
-      console.error("Error fetching project by ID:", error);
-      throw error;
-    }
+    return api.get<ProjectResponse>(`/projects/${projectId}`);
   },
+
   addMember: async (projectId: number, memberData: AddMemberRequest) => {
-    try {
-      const response = await fetch(`${BASE_URL}/${projectId}/members`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify(memberData),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        console.error("Add member failed:", { status: response.status, payload, projectId, memberData });
-        throw new Error(payload?.message || "Failed to add member");
-      }
-
-      return payload as ApiResponse<ProjectMemberResponse>;
-    } catch (error) {
-      console.error("Error adding member:", error);
-      throw error;
-    }
+    return api.post<ProjectMemberResponse>(
+      `/projects/${projectId}/members`,
+      memberData
+    );
   },
+
   updateProjectStatus: async (projectId: number, statusData: UpdateProjectStatusRequest) => {
-    try {
-      const response = await fetch(`${BASE_URL}/${projectId}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify(statusData),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        console.error("Update project status failed:", { status: response.status, payload, projectId, statusData });
-        throw new Error(payload?.message || "Failed to update project status");
-      }
-
-      return payload as ApiResponse<ProjectResponse>;
-    } catch (error) {
-      console.error("Error updating project status:", error);
-      throw error;
-    }
-  }
+    return api.patch<ProjectResponse>(
+      `/projects/${projectId}/status`,
+      statusData
+    );
+  },
 };

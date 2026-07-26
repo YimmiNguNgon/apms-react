@@ -18,8 +18,6 @@ interface DashboardCandidate extends CandidateResponse {
   createdAt?: string;
 }
 
-const PROJECT_ID = localStorage.getItem('apms-active-project') || '';
-
 const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
   DRAFT: { label: 'Draft', tone: 'neutral' },
   PENDING_REVIEW: { label: 'Pending review', tone: 'success' },
@@ -27,8 +25,6 @@ const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'i
   CORRECTED: { label: 'Corrected', tone: 'info' },
   APPROVED: { label: 'Approved', tone: 'success' },
 };
-
-const STEP_LABELS = ['Extracted', 'Reviewed', 'Classified', 'Submitted', 'Approved'];
 
 const getCandidateName = (candidate: DashboardCandidate) =>
   candidate.identity?.tradeName ||
@@ -295,10 +291,11 @@ export const ReviewExtractedData: React.FC = () => {
           taxCode: editValues.taxCode || selectedCandidate?.identity?.taxCode,
         },
       });
-      alert('Đã cập nhật thông tin đính chính cho Ứng viên!');
+      alert('\u0110\u00E3 c\u1EADp nh\u1EADt th\u00F4ng tin \u0111\u00EDnh ch\u00EDnh cho \u1EE8ng vi\u00EAn!');
       refresh();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Lỗi khi cập nhật ứng viên');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'L\u1ED7i khi c\u1EADp nh\u1EADt \u1EE8ng vi\u00EAn');
     } finally {
       setSubmitting(false);
     }
@@ -311,8 +308,9 @@ export const ReviewExtractedData: React.FC = () => {
       alert('Đã trình nộp Ứng viên lên Manager phê duyệt!');
       refresh();
       setSelectedCandidate(null);
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Lỗi khi nộp ứng viên');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi nộp ứng viên');
     } finally {
       setSubmitting(false);
     }
@@ -501,6 +499,7 @@ export const CompanyValidation: React.FC<{ staffMode?: boolean }> = ({ staffMode
   const { candidates, loading, refresh } = useProjectCandidates();
   const [selected, setSelected] = useState<string | null>(null);
   const [processing, setProcessing] = useState<Record<string, 'done' | 'loading' | 'error'>>({});
+  const projectId = localStorage.getItem('apms-active-project') || '';
 
   const actionable = candidates.filter((candidate) => candidate.status === 'DRAFT' || candidate.status === 'REJECTED' || candidate.status === 'CORRECTED');
 
@@ -544,7 +543,7 @@ export const CompanyValidation: React.FC<{ staffMode?: boolean }> = ({ staffMode
             <div className="workspace-detail-list">
               <div><strong>Actionable</strong><span>{loading ? 'Loading' : actionable.length}</span></div>
               <div><strong>Selected</strong><span>{selectedCandidate ? getCandidateName(selectedCandidate) : 'None'}</span></div>
-              <div><strong>Project</strong><span>{PROJECT_ID || 'Unavailable'}</span></div>
+              <div><strong>Project</strong><span>{projectId || 'Unavailable'}</span></div>
             </div>
           </div>
 
@@ -684,8 +683,9 @@ const ClassificationWorkspace: React.FC<{
         suggestedRelationshipType: relEnum,
       });
       if (refresh) refresh();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Lỗi khi lưu phân loại đối tác/đối thủ');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi lưu phân loại đối tác/đối thủ');
     } finally {
       setSavingId(null);
     }
@@ -697,8 +697,9 @@ const ClassificationWorkspace: React.FC<{
       await api.post(`/candidates/${candidateId}/submit`);
       alert('Đã trình nộp kết quả phân loại lên Manager phê duyệt!');
       if (refresh) refresh();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Lỗi khi nộp lên Manager');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi nộp lên Manager');
     } finally {
       setSubmittingId(null);
     }

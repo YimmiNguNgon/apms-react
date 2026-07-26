@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Sliders, Search, CheckCircle, XCircle, Code, Info } from 'lucide-react';
+import { Search, CheckCircle, XCircle } from 'lucide-react';
 import { api } from '../services/api';
 
 export interface ScoreRuleDto {
@@ -11,7 +11,6 @@ export interface ScoreRuleDto {
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: any;
 }
 
 const DEFAULT_SCORE_RULES: ScoreRuleDto[] = [
@@ -31,7 +30,7 @@ export const ScoreRulesViewer: React.FC = () => {
     setLoading(true);
     api.get<ScoreRuleDto[]>('/score-rules')
       .then((res) => {
-        const list = Array.isArray(res?.data) ? res.data : (res as any)?.content ?? [];
+        const list = Array.isArray(res?.data) ? res.data : (res as { data?: ScoreRuleDto[] })?.data ?? [];
         if (list.length > 0) {
           setRules(list);
         } else {
@@ -47,7 +46,24 @@ export const ScoreRulesViewer: React.FC = () => {
       });
   }, []);
 
-  const safeStr = (v: any, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
+  const safeStr = (v: unknown, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
+
+  const formatConditionJson = (raw: string | null | undefined): string => {
+    if (!raw || raw.trim() === '' || raw.trim() === '{}') return 'Không có điều kiện';
+    try {
+      const parsed = JSON.parse(raw);
+      return Object.entries(parsed)
+        .map(([key, value]) => {
+          const label = key
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, (s) => s.toUpperCase());
+          return `${label}: ${String(value)}`;
+        })
+        .join(' · ');
+    } catch {
+      return raw;
+    }
+  };
 
   const filteredRules = useMemo(() => {
     return rules.filter((rule) => {
@@ -70,7 +86,7 @@ export const ScoreRulesViewer: React.FC = () => {
           Quy tắc Chấm điểm Đánh giá (Score Rules)
         </h1>
         <p style={{ fontSize: '14px', color: '#6B7280', marginTop: '4px', margin: 0 }}>
-          Xem danh sách các quy tắc, trọng số và công thức chấm điểm AI/Ecosystem được cấu hình trong hệ thống APMS.
+          Danh sách các quy tắc chấm điểm, trọng số (trọng số quyết định mức độ ảnh hưởng của từng quy tắc) và điều kiện ngưỡng (dùng để giới hạn điểm đầu vào, không phải công thức tính toán đầy đủ).
         </p>
       </div>
 
@@ -80,7 +96,7 @@ export const ScoreRulesViewer: React.FC = () => {
           <Search size={18} color="#9CA3AF" />
           <input
             type="text"
-            placeholder="Tìm theo tên quy tắc, danh mục hoặc công thức..."
+            placeholder="Tìm theo tên quy tắc, danh mục hoặc điều kiện..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '14px', color: '#1F2937' }}
@@ -129,7 +145,7 @@ export const ScoreRulesViewer: React.FC = () => {
                 <th style={{ padding: '14px 20px' }}>Tên Quy tắc</th>
                 <th style={{ padding: '14px 20px' }}>Danh mục (Category)</th>
                 <th style={{ padding: '14px 20px' }}>Trọng số</th>
-                <th style={{ padding: '14px 20px' }}>Điều kiện / Biểu thức JSON</th>
+                <th style={{ padding: '14px 20px' }}>Điều kiện ngưỡng (ruleConditionJson)</th>
                 <th style={{ padding: '14px 20px' }}>Trạng thái</th>
               </tr>
             </thead>
@@ -138,7 +154,7 @@ export const ScoreRulesViewer: React.FC = () => {
                 const ruleName = safeStr(rule.ruleName, 'Quy tắc chấm điểm');
                 const category = safeStr(rule.ruleCategory, 'GENERAL');
                 const weight = rule.weight !== undefined && rule.weight !== null ? `${rule.weight}%` : '20%';
-                const condition = safeStr(rule.ruleConditionJson, '{}');
+                const condition = formatConditionJson(rule.ruleConditionJson);
                 const active = rule.isActive !== false;
 
                 return (
@@ -158,7 +174,7 @@ export const ScoreRulesViewer: React.FC = () => {
                       {weight}
                     </td>
                     <td style={{ padding: '14px 20px' }}>
-                      <span style={{ fontFamily: 'monospace', backgroundColor: '#F3F4F6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', color: '#374151', display: 'inline-block', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ fontSize: '13px', color: '#374151', display: 'inline-block', maxWidth: '350px', lineHeight: '1.4' }}>
                         {condition}
                       </span>
                     </td>

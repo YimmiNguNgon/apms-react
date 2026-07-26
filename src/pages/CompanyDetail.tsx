@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -10,9 +10,7 @@ import {
   Award,
   Hash,
   Database,
-  CheckCircle2,
   Info,
-  ExternalLink,
   ShieldAlert,
 } from 'lucide-react';
 import { api } from '../services/api';

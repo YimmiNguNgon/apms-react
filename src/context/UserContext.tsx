@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../services/api';
+import type { PageResponse } from '../services/api';
 import { loginApi } from '../API/loginApi';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ROLES = {
   ADMIN: 'ROLE_ADMIN',
   OWNER: 'ROLE_BUSINESS_OWNER',
@@ -13,6 +15,7 @@ export const ROLES = {
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_PAGES: Record<Role, string[]> = {
   [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail'],
   [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'project-management', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'audit-logs', 'system-settings', 'news', 'profile'],
@@ -22,6 +25,7 @@ export const ROLE_PAGES: Record<Role, string[]> = {
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_DEFAULT_PAGE: Record<Role, string> = {
   [ROLES.ADMIN]: 'admin-dashboard',
   [ROLES.OWNER]: 'owner-dashboard',
@@ -72,6 +76,11 @@ const toAvatar = (name: string) =>
 
 const mapBackendRoles = (id: number, email: string, backendRoles: string[]): User => {
   const roles = backendRoles.join(',').toUpperCase();
+
+  if (roles === '' || backendRoles.length === 0) {
+    console.error('[UserContext] No roles provided for user:', email, '— defaulting to STAFF. Contact admin if this is unexpected.');
+  }
+
   const role = roles.includes('SYSTEM_ADMIN')
     ? ROLES.ADMIN
     : roles.includes('BUSINESS_OWNER') || roles.includes('OWNER')
@@ -83,6 +92,11 @@ const mapBackendRoles = (id: number, email: string, backendRoles: string[]): Use
           : roles.includes('KEY_MEMBER')
             ? ROLES.KEY_MEMBER
             : ROLES.STAFF;
+
+  if (!roles.includes('SYSTEM_ADMIN') && !roles.includes('BUSINESS_OWNER') && !roles.includes('OWNER') &&
+      !roles.includes('DIRECTOR') && !roles.includes('MANAGER') && !roles.includes('KEY_MEMBER')) {
+    console.error('[UserContext] Unrecognized role(s) for user:', email, '— received:', backendRoles, '— defaulting to STAFF. Contact admin.');
+  }
 
   const roleName =
     role === ROLES.ADMIN ? 'System Administrator' :
@@ -103,7 +117,7 @@ const mapBackendRoles = (id: number, email: string, backendRoles: string[]): Use
     roleName,
     avatar: toAvatar(name),
     avatarColor: ROLE_COLORS[role],
-    allowedPages: ROLE_PAGES[role],
+    allowedPages: [...ROLE_PAGES[role]],
   };
 };
 
@@ -146,8 +160,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsed = JSON.parse(stored) as User;
         const normalized = {
           ...parsed,
-          id: Number((parsed as any).id ?? 0),
-          allowedPages: ROLE_PAGES[parsed.role] ?? parsed.allowedPages,
+          id: Number(parsed.id ?? 0),
+          allowedPages: [...(ROLE_PAGES[parsed.role] ?? [])],
         };
         setCurrentUser(normalized);
         localStorage.setItem('apms-user', JSON.stringify(normalized));
@@ -168,18 +182,18 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       storeAuthSession({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
 
       try {
-        const projRes = await api.get<any>('/projects', { params: { page: 0, size: 1 } });
+        const projRes = await api.get<PageResponse<{ id: number }>>('/projects', { params: { page: 0, size: 1 } });
         if (projRes?.success && projRes.data?.content?.length > 0) {
           localStorage.setItem('apms-active-project', String(projRes.data.content[0].id));
         }
-      } catch {}
+      } catch { /* non-critical */ }
 
-      const user = mapBackendRoles(payload.id, payload.email || email, Array.isArray((payload as any).roles) ? (payload as any).roles : []);
+      const user = mapBackendRoles(payload.id, payload.email || email, Array.isArray(payload.roles) ? payload.roles : []);
       setCurrentUser(user);
       localStorage.setItem('apms-user', JSON.stringify(user));
       return true;
-    } catch (err: any) {
-      throw new Error(err?.message || 'Cannot connect to the server.');
+    } catch (err: unknown) {
+      throw new Error(err instanceof Error ? err.message : 'Cannot connect to the server.', { cause: err });
     }
   };
 
@@ -197,12 +211,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useUser = () => {
   const ctx = useContext(UserContext);
   if (!ctx) throw new Error('useUser must be used within UserProvider');
   return ctx;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function canAccess(user: User | null, page: string): boolean {
   if (!user) return false;
   return user.allowedPages.includes(page);

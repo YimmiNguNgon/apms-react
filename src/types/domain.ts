@@ -2,6 +2,7 @@ import type { PageResponse } from '../services/api';
 
 export type Role =
   | 'ROLE_ADMIN'
+  | 'ROLE_BUSINESS_OWNER'
   | 'ROLE_DIRECTOR'
   | 'ROLE_MANAGER'
   | 'ROLE_KEY_MEMBER'
@@ -54,6 +55,10 @@ export interface DashboardSummaryDto {
   competitorCount: number;
   supplierCount: number;
   potentialPartnerCount: number;
+  totalUsers?: number;
+  systemHealth?: number;
+  securityAlerts?: number;
+  activitiesToday?: number;
 }
 
 export interface GraphRelationship {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FolderKanban, Users, Building2, Calendar, ShieldCheck, Tag, Hash, FileText } from 'lucide-react';
-import type { CandidateResponse, ProjectMemberResponse, ProjectResponse } from '../types/domain';
+import { ArrowLeft, FolderKanban, Users, Building2, Tag, Hash, FileText } from 'lucide-react';
+import type { CandidateResponse, CompanyProfileIdentity, ProjectMemberResponse, ProjectResponse } from '../types/domain';
 
 interface ProjectInspectionDrawerProps {
   projectId: number | null;
@@ -543,7 +543,7 @@ export const ProjectInspectionDrawer: React.FC<ProjectInspectionDrawerProps> = (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
                   {candidates.map((c) => {
                     const candidateName =
-                      (c.identity as any)?.tradeName || (c.identity as any)?.legalName || c.id;
+                      (c.identity as CompanyProfileIdentity)?.tradeName || (c.identity as CompanyProfileIdentity)?.legalName || c.id;
                     return (
                       <div
                         key={c.id}

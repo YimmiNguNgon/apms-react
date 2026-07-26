@@ -6,6 +6,8 @@ export const ProfilePage: React.FC = () => {
   const { currentUser } = useUser();
   const [editMode, setEditMode] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [form, setForm] = useState({
     name: currentUser?.name || '',
     email: currentUser?.email || '',
@@ -23,10 +25,19 @@ export const ProfilePage: React.FC = () => {
 
   if (!currentUser) return null;
 
-  const handleSave = () => {
-    setEditMode(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleSave = async () => {
+    setSaveError('');
+    setSaving(true);
+    try {
+      await api.patch('/users/me', { fullName: form.name, email: form.email });
+      setEditMode(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -58,8 +69,8 @@ export const ProfilePage: React.FC = () => {
         setNewPassword('');
         setConfirmNewPassword('');
       }
-    } catch (err: any) {
-      setPwdError(err?.message || 'Could not update password.');
+    } catch (err: unknown) {
+      setPwdError(err instanceof Error ? err.message : 'Could not update password.');
     } finally {
       setPwdLoading(false);
     }
@@ -84,12 +95,13 @@ export const ProfilePage: React.FC = () => {
         </div>
         <div className="workspace-head-actions">
           {saved && <span className="admin-save-state">Changes saved</span>}
+          {saveError && <span className="admin-save-state" style={{ color: '#ef4444' }}>{saveError}</span>}
           {!editMode ? (
             <button className="btn btn-primary" onClick={() => setEditMode(true)}>Edit profile</button>
           ) : (
             <>
-              <button className="btn btn-outline" onClick={() => setEditMode(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave}>Save changes</button>
+              <button className="btn btn-outline" onClick={() => { setEditMode(false); setSaveError(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</button>
             </>
           )}
         </div>

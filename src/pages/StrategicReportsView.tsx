@@ -1,25 +1,55 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, History, Users, Download, Eye, Award, X, Building2, Calendar, CheckCircle2, FileCode } from 'lucide-react';
+import { FileText, History, Users, Download, Eye, Award, X, FileCode } from 'lucide-react';
 import { api } from '../services/api';
 
 type TabType = 'reports' | 'history' | 'kpi';
 
+interface StrategicReport {
+  id?: string | number;
+  title?: string;
+  date?: string;
+  status?: string;
+  reviewCount?: number;
+  companiesReviewed?: number;
+  highRiskCount?: number;
+  newPartners?: number;
+}
+
+interface AnalysisHistoryItem {
+  id?: string | number;
+  companyName?: string;
+  analysisType?: string;
+  status?: string;
+  date?: string;
+  summary?: string;
+}
+
+interface TeamKpiItem {
+  id?: string | number;
+  name?: string;
+  role?: string;
+  companiesReviewed?: number;
+  target?: number;
+  accuracy?: number;
+  bonus?: boolean;
+}
+
 export const StrategicReportsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('reports');
-  const [reports, setReports] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [kpis, setKpis] = useState<any[]>([]);
+  const [reports, setReports] = useState<StrategicReport[]>([]);
+  const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [kpis, setKpis] = useState<TeamKpiItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // State for selected report modal / drawer
-  const [selectedReport, setSelectedReport] = useState<any | null>(null);
+  const [selectedReport, setSelectedReport] = useState<StrategicReport | null>(null);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      api.get<any[]>('/reports').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
-      api.get<any[]>('/analysis/history').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
-      api.get<any[]>('/kpi/team').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+      api.get<StrategicReport[]>('/reports').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+      api.get<AnalysisHistoryItem[]>('/analysis/history').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+      api.get<TeamKpiItem[]>('/kpi/team').then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
     ]).then(([repData, histData, kpiData]) => {
       setReports(repData);
       setHistory(histData);
@@ -28,9 +58,9 @@ export const StrategicReportsView: React.FC = () => {
     });
   }, []);
 
-  const safeVal = (v: any, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
+  const safeVal = (v: unknown, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
 
-  const handleOpenReport = (report: any) => {
+  const handleOpenReport = (report: StrategicReport) => {
     setSelectedReport(report);
   };
 
@@ -348,7 +378,7 @@ export const StrategicReportsView: React.FC = () => {
                     <FileCode size={18} color="#4F46E5" /> Tóm tắt Điều hành (Executive Summary)
                   </h3>
                   <p style={{ fontSize: '14px', color: '#374151', lineHeight: '1.7', backgroundColor: '#F9FAFB', padding: '18px', borderRadius: '10px', border: '1px solid #E5E7EB', margin: 0 }}>
-                    Báo cáo tổng hợp đánh giá thế posture kinh doanh, rủi ro chuỗi cung ứng và định hướng mở rộng hệ sinh thái đối tác. Dữ liệu được trích xuất và kiểm định từ cơ sở dữ liệu doanh nghiệp APMS. Kết quả phân tích dựa trên {(selectedReport as any)?.reviewCount ?? 'toàn bộ'} hồ sơ doanh nghiệp trong chu kỳ báo cáo.
+                    Báo cáo tổng hợp đánh giá thế posture kinh doanh, rủi ro chuỗi cung ứng và định hướng mở rộng hệ sinh thái đối tác. Dữ liệu được trích xuất và kiểm định từ cơ sở dữ liệu doanh nghiệp APMS.                     Kết quả phân tích dựa trên {selectedReport?.reviewCount ?? 'toàn bộ'} hồ sơ doanh nghiệp trong chu kỳ báo cáo.
                   </p>
                 </div>
 
@@ -359,9 +389,9 @@ export const StrategicReportsView: React.FC = () => {
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {[
-                      { label: 'Hồ sơ được đánh giá', value: (selectedReport as any)?.companiesReviewed ?? '—' },
-                      { label: 'Rủi ro cấp High', value: (selectedReport as any)?.highRiskCount ?? '—' },
-                      { label: 'Đối tác mới tiềm năng', value: (selectedReport as any)?.newPartners ?? '—' },
+                      { label: 'Hồ sơ được đánh giá', value: selectedReport?.companiesReviewed ?? '—' },
+                      { label: 'Rủi ro cấp High', value: selectedReport?.highRiskCount ?? '—' },
+                      { label: 'Đối tác mới tiềm năng', value: selectedReport?.newPartners ?? '—' },
                     ].map(({ label, value }) => (
                       <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#F9FAFB', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
                         <span style={{ fontSize: '14px', color: '#6B7280' }}>{label}</span>

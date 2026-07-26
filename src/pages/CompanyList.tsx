@@ -19,12 +19,6 @@ const profileLegalName = (profile: ProfileResponse) =>
 const profileIndustry = (profile: ProfileResponse) =>
   profile.business?.industries?.filter(Boolean).join(', ') || 'Unclassified';
 
-const profileCountry = (profile: ProfileResponse) =>
-  profile.contact?.addresses?.[0]?.country || profile.contact?.addresses?.[0]?.city || 'No location';
-
-const profileRelationship = (profile: ProfileResponse) =>
-  profile.tags?.[0] || 'PROFILE';
-
 const formatDate = (value?: string | null) => {
   if (!value) return 'No update';
   const date = new Date(value);

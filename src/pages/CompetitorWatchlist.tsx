@@ -1,18 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
+interface CompetitorWatchlistItem {
+  tradeName?: string;
+  legalName?: string;
+  name?: string;
+  industry?: string;
+  segment?: string;
+  threatLevel?: string;
+  riskLevel?: string;
+  recentActivity?: string;
+  latestNews?: string;
+  updatedAt?: string;
+}
+
+interface CompetitorDisplayRow {
+  id: number | string;
+  company: string;
+  segment: string;
+  threat: string;
+  lastActivity: string;
+  date: string;
+}
+
 export const CompetitorWatchlist: React.FC = () => {
-  const [competitors, setCompetitors] = useState<any[]>([]);
+  const [competitors, setCompetitors] = useState<CompetitorDisplayRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const threatColors = { High: '#EF4444', Medium: '#F59E0B', Low: '#10B981' };
 
   useEffect(() => {
     setLoading(true);
-    api.get<any>('/dashboard/competitors')
+    api.get<CompetitorWatchlistItem[]>('/dashboard/competitors')
       .then((res) => {
         if (res?.success && Array.isArray(res?.data)) {
-          const mapped = res.data.map((item: any, index: number) => ({
+          const mapped = res.data.map((item: CompetitorWatchlistItem, index: number) => ({
             id: index + 1,
             company: item.tradeName || item.legalName || item.name || 'Competitor',
             segment: item.industry || item.segment || 'Unclassified',

@@ -15,10 +15,6 @@ import { ManagerDashboard }   from './pages/dashboards/ManagerDashboard';
 import { KeyMemberDashboard } from './pages/dashboards/KeyMemberDashboard';
 import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
 
-interface SharedProps {
-  setActivePage: (page: string) => void;
-}
-
 const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
 
 // ── Existing pages ──
@@ -82,7 +78,6 @@ import {
 import {
   UploadDocuments,
   PartnerManagement,
-  CompetitorManagement,
   AIExtractedData,
   SearchCompanies,
   AITrainingMode,

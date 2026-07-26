@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Network, Search, Filter, ExternalLink, ArrowRight, Building, Download, X } from 'lucide-react';
+import { Search, Filter, ExternalLink, ArrowRight, Building, Download, X } from 'lucide-react';
 import { api } from '../services/api';
+import type { GraphCompanyDto, GraphRelationship } from '../types/domain';
 
 type RelationshipType = 'PARTNER_WITH' | 'COMPETITOR_OF' | 'SUPPLIER_OF' | 'CUSTOMER_OF' | 'POTENTIAL_PARTNER_OF' | string;
 
@@ -29,26 +30,27 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   useEffect(() => {
     setLoading(true);
-    api.get<any>('/graph/network')
+    api.get<GraphCompanyDto[]>('/graph/network')
       .then((res) => {
-        const list = Array.isArray(res?.data) ? res.data : res?.data?.content ?? [];
+        const list = Array.isArray(res?.data) ? res.data : (res as { data?: GraphCompanyDto[] })?.data ?? [];
         const extracted: RelationshipRow[] = [];
 
-        list.forEach((item: any, idx: number) => {
-          const sourceId = String(item.companyId || item.id || `COMP-${idx}`);
-          const sourceName = String(item.name || item.tradeName || item.legalName || sourceId);
-          const industry = item.industry || item.primaryIndustry;
+        list.forEach((item: GraphCompanyDto, idx: number) => {
+          const sourceId = String(item.companyId || `COMP-${idx}`);
+          const sourceName = String(item.name || sourceId);
+          const industry = item.industry;
 
           if (item.relationships && Array.isArray(item.relationships) && item.relationships.length > 0) {
-            item.relationships.forEach((rel: any, rIdx: number) => {
+            item.relationships.forEach((rel, rIdx) => {
+              const r = rel as GraphRelationship & Record<string, unknown>;
               extracted.push({
                 id: `REL-${sourceId}-${rel.targetCompanyId || rIdx}`,
                 sourceId,
                 sourceName,
-                targetId: String(rel.targetCompanyId || rel.target || `TARGET-${rIdx}`),
-                targetName: String(rel.targetCompanyName || rel.targetName || rel.targetCompanyId || 'Doanh nghiệp liên kết'),
+                targetId: String(rel.targetCompanyId || r.target || `TARGET-${rIdx}`),
+                targetName: String(r.targetCompanyName || r.targetName || rel.targetCompanyId || 'Doanh nghiệp liên kết'),
                 relationshipType: String(rel.relationshipType || item.relationshipType || 'PARTNER_WITH'),
-                establishedDate: String(rel.establishedDate || rel.createdAt || 'Mới cập nhật'),
+                establishedDate: String(r.establishedDate || r.createdAt || 'Mới cập nhật'),
                 industry,
                 confidence: typeof rel.confidenceScore === 'number' ? rel.confidenceScore : undefined,
               });
@@ -73,7 +75,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       .finally(() => setLoading(false));
   }, []);
 
-  const safeStr = (v: any, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
+  const safeStr = (v: unknown, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {

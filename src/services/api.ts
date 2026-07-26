@@ -141,12 +141,13 @@ const buildUrl = (endpoint: string, params?: FetchOptions['params']) => {
   return url.toString();
 };
 
-const parseErrorMessage = (payload: any, fallback: string) => {
+const parseErrorMessage = (payload: Record<string, unknown> | ApiResponse<unknown> | null | undefined, fallback: string) => {
   if (!payload) return fallback;
-  if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
-  if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
-  if (typeof payload.detail === 'string' && payload.detail.trim()) return payload.detail;
-  if (typeof payload.title === 'string' && payload.title.trim()) return payload.title;
+  const p = payload as Record<string, unknown>;
+  if (typeof p.message === 'string' && (p.message as string).trim()) return p.message as string;
+  if (typeof p.error === 'string' && (p.error as string).trim()) return p.error as string;
+  if (typeof p.detail === 'string' && (p.detail as string).trim()) return p.detail as string;
+  if (typeof p.title === 'string' && (p.title as string).trim()) return p.title as string;
   return fallback;
 };
 
@@ -193,9 +194,9 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       body,
       signal: controller.signal,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (timeoutId) window.clearTimeout(timeoutId);
-    if (error?.name === 'AbortError') {
+    if (error instanceof Error && error.name === 'AbortError') {
       const message = timeoutMs
         ? `Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`
         : 'Request was aborted.';

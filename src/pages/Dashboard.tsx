@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useUser } from '../context/UserContext';
+import type { DashboardSummaryDto } from '../types/domain';
 import { api } from '../services/api';
 
 export const Dashboard: React.FC = () => {
   const { currentUser } = useUser();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    api.get<any>('/dashboard/summary')
+    api.get<DashboardSummaryDto>('/dashboard/summary')
       .then((res) => {
         if (res?.success) setSummary(res.data);
       })

@@ -37,6 +37,12 @@ const DEFAULT_SECURITY: SecurityState = {
   audit: true,
 };
 
+interface SystemSettingsResponse {
+  system?: Partial<SystemState>;
+  security?: Partial<SecurityState>;
+  trustedIps?: string[];
+}
+
 const DEFAULT_IPS = ['192.168.1.0/24', '10.0.0.0/8', '103.72.96.0/21'];
 
 const IP_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/([0-9]|[1-2][0-9]|3[0-2]))?$/;
@@ -76,7 +82,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
   const fetchSettings = () => {
     setLoading(true);
     setError('');
-    api.get<any>('/admin/settings')
+    api.get<SystemSettingsResponse>('/admin/settings')
       .then((res) => {
         if (res?.success && res.data) {
           if (res.data.system) setSystem((prev) => ({ ...prev, ...res.data.system }));
@@ -154,7 +160,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
       trustedIps,
     };
 
-    api.put<any>('/admin/settings', payload)
+    api.put<SystemSettingsResponse>('/admin/settings', payload)
       .then((res) => {
         if (res?.success) {
           setSuccess('System settings updated successfully!');

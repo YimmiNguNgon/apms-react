@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useUser, ROLES, ROLE_DEFAULT_PAGE } from '../context/UserContext';
+import { useUser, ROLES } from '../context/UserContext';
 import { LogoutModal } from './LogoutModal';
 
 interface SidebarProps {

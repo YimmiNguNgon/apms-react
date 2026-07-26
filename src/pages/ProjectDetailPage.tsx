@@ -610,21 +610,21 @@ const candidateToEditForm = (candidate: CandidateResponse | null): StaffCandidat
   };
 };
 
-const extractionToEditForm = (extraction: Record<string, any>): StaffCandidateEditForm => {
-  const data = extraction.extractedData ?? extraction;
+const extractionToEditForm = (extraction: Record<string, unknown>): StaffCandidateEditForm => {
+  const data = (extraction.extractedData as Record<string, unknown>) ?? extraction;
   return {
-    legalName: data?.legalName || '',
-    tradeName: data?.tradeName || '',
-    taxId: data?.taxCode || data?.taxId || '',
-    website: data?.website || '',
-    email: Array.isArray(data?.email) ? data.email[0] || '' : data?.email || '',
-    phone: Array.isArray(data?.phone) ? data.phone[0] || '' : data?.phone || '',
-    industry: Array.isArray(data?.industries) ? data.industries.join(', ') : data?.industries || '',
-    businessModel: data?.businessModel || '',
-    strengths: Array.isArray(data?.strengths) ? data.strengths.join('\n') : data?.strengths || '',
-    weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses.join('\n') : data?.weaknesses || '',
-    opportunities: Array.isArray(data?.opportunities) ? data.opportunities.join('\n') : data?.opportunities || '',
-    threats: Array.isArray(data?.threats) ? data.threats.join('\n') : data?.threats || '',
+    legalName: String(data?.legalName || ''),
+    tradeName: String(data?.tradeName || ''),
+    taxId: String(data?.taxCode || data?.taxId || ''),
+    website: String(data?.website || ''),
+    email: Array.isArray(data?.email) ? String(data.email[0] || '') : String(data?.email || ''),
+    phone: Array.isArray(data?.phone) ? String(data.phone[0] || '') : String(data?.phone || ''),
+    industry: Array.isArray(data?.industries) ? (data.industries as string[]).join(', ') : String(data?.industries || ''),
+    businessModel: String(data?.businessModel || ''),
+    strengths: Array.isArray(data?.strengths) ? (data.strengths as string[]).join('\n') : String(data?.strengths || ''),
+    weaknesses: Array.isArray(data?.weaknesses) ? (data.weaknesses as string[]).join('\n') : String(data?.weaknesses || ''),
+    opportunities: Array.isArray(data?.opportunities) ? (data.opportunities as string[]).join('\n') : String(data?.opportunities || ''),
+    threats: Array.isArray(data?.threats) ? (data.threats as string[]).join('\n') : String(data?.threats || ''),
   };
 };
 
@@ -787,7 +787,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const currentEmail = currentUser?.email?.toLowerCase();
     const matchedMember = apiProject?.members?.find((member) => member.email?.toLowerCase() === currentEmail);
     return matchedMember?.accountId ?? null;
-  }, [apiProject?.members, currentUser?.email, currentUser?.id, isStaffView]);
+  }, [currentUser, apiProject?.members, isStaffView]);
 
   useEffect(() => {
     if (!toast) return;
@@ -967,15 +967,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     targetCompanyName: apiProject?.targetCompanyName,
     description: apiProject?.description,
   }), [apiProject]);
-
-  const metrics = useMemo(() => {
-    const completed = tasks.filter((task) => task.status === 'done').length;
-    return {
-      completed,
-      remaining: tasks.length - completed,
-      deadlines: [...tasks].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 3),
-    };
-  }, [tasks]);
 
   const projectMembers = useMemo(() => {
     const rows = apiProject?.members ?? [];
@@ -1480,6 +1471,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const handleCancelStaffTask = async () => {
+    if (!selectedStaffTask) return;
+    if (!window.confirm('Are you sure you want to cancel this task? This action cannot be undone.')) return;
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      const payload = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'CANCELLED');
+      updateTaskInState(payload.data);
+      setWorkbench((current) => current ? { ...current, taskStatus: 'CANCELLED' } : current);
+      setWorkbenchMessage('Task has been cancelled.');
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot cancel this task.');
+    }
+  };
+
   const handleDeleteTask = async (task: ProjectTask) => {
     if (isStaffView) return;
     const taskId = Number(task.id.replace('APMS-', ''));
@@ -1544,40 +1551,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const handleRunAiExtraction = async (document: WorkbenchDocumentResponse) => {
-    if (!selectedStaffTask) return;
-    setExtractingImportJobId(document.id);
-    setWorkbenchError(null);
-    setWorkbenchMessage(null);
-
-    try {
-      const payload = await api.post<AiExtractionResult>(
-        `/import-jobs/${document.id}/ai-extractions`,
-        undefined,
-        { timeoutMs: null }
-      );
-      const extractionId = payload.data?.id || payload.data?.extractionId;
-      setWorkbenchMessage('AI extraction completed. Create a candidate draft from the extraction.');
-      await loadStaffWorkbench(selectedStaffTask);
-
-      if (extractionId) {
-        setWorkbench((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            documents: current.documents?.map((item) => (
-              item.id === document.id ? { ...item, latestExtractionId: extractionId, canGenerateDraft: true } : item
-            )),
-          };
-        });
-      }
-    } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'AI extraction failed.');
-    } finally {
-      setExtractingImportJobId(null);
-    }
-  };
-
   const toggleProjectDocumentSelection = (documentId: number) => {
     setSelectedProjectDocumentIds((current) => (
       current.includes(documentId)
@@ -1629,8 +1602,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             importJobId: document.id,
             rawDocumentId: document.rawDocumentId || undefined,
             fileName: document.fileName || `Import job #${document.id}`,
-            qualityStatus: (latestPayload.data as any)?.qualityStatus,
-            edit: extractionToEditForm(latestPayload.data as Record<string, any>),
+            qualityStatus: (latestPayload.data as Record<string, unknown>)?.qualityStatus as string | null | undefined,
+            edit: extractionToEditForm(latestPayload.data as Record<string, unknown>),
           });
         }
       }
@@ -1715,25 +1688,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleExtractSelectedProjectDocuments = async () => {
     await extractProjectDocumentsForReview(projectDocuments.filter((document) => selectedProjectDocumentIds.includes(document.id)));
-  };
-
-  const handleCreateStaffCandidate = async (extractionId: string) => {
-    if (!selectedStaffTask) return;
-    setStaffCandidateLoading(true);
-    setWorkbenchError(null);
-    setWorkbenchMessage(null);
-
-    try {
-      const payload = await candidateApi.createCandidateFromExtraction(extractionId);
-      setStaffCandidate(payload.data);
-      setStaffCandidateEdit(candidateToEditForm(payload.data));
-      setWorkbenchMessage('Candidate draft created. Review and correct fields before submitting.');
-      await loadStaffWorkbench(selectedStaffTask);
-    } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot create candidate from extraction.');
-    } finally {
-      setStaffCandidateLoading(false);
-    }
   };
 
   const handleOpenStaffCandidate = async (candidateId: string) => {
@@ -2595,6 +2549,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 >
                   <Clock size={16} />{selectedStaffTask.status === 'TODO' ? 'Start task' : 'Task started'}
                 </button>
+                {selectedStaffTask.status !== 'DONE' && selectedStaffTask.status !== 'CANCELLED' && (
+                  <button
+                    className={`${styles.button}`}
+                    type="button"
+                    onClick={() => void handleCancelStaffTask()}
+                    style={{ color: '#B91C1C', borderColor: '#FECACA' }}
+                  >
+                    <X size={16} />Cancel task
+                  </button>
+                )}
                 <span>
                   {selectedStaffTask.status === 'TODO'
                     ? 'Start this task to move it from To Do to In Progress.'

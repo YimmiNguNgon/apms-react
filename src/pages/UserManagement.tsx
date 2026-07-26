@@ -1,6 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../services/api';
+import { api, type PageResponse } from '../services/api';
 import { useUser } from '../context/UserContext';
+import type { AccountAdminResponse, RoleDto, PermissionDto } from '../types/domain';
+
+type PageOrData<T> = PageResponse<T> | T[];
+
+interface UserRow extends AccountAdminResponse {
+  fullName?: string;
+  isActive?: boolean;
+  status?: string;
+}
+
+interface EditUserForm {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  role: string;
+  password?: string;
+}
+
+interface RoleUserForm {
+  id: number;
+  name: string;
+  currentRole: string;
+  selectedRole: string;
+}
 
 type Tab = 'users' | 'roles' | 'permissions';
 
@@ -62,8 +87,8 @@ const roleAccent = (role: string) => {
 
 const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: number }) => void }> = ({ onStats }) => {
   const { currentUser } = useUser();
-  const [users, setUsers] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [, setRoles] = useState<RoleDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -71,8 +96,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
   const [pageSize] = useState(10);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editUser, setEditUser] = useState<any | null>(null);
-  const [roleUser, setRoleUser] = useState<any | null>(null);
+  const [editUser, setEditUser] = useState<EditUserForm | null>(null);
+  const [roleUser, setRoleUser] = useState<RoleUserForm | null>(null);
 
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -100,17 +125,17 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
   const fetchUsers = () => {
     setLoading(true);
-    api.get<any>('/accounts?page=0&size=200')
+    api.get<PageOrData<UserRow>>('/accounts?page=0&size=200')
       .then((res) => {
-        const rows = res?.success && res.data?.content
-          ? res.data.content
+        const rows = res?.success && res.data && typeof res.data === 'object' && 'content' in res.data
+          ? (res.data as PageResponse<UserRow>).content
           : res?.success && Array.isArray(res.data)
             ? res.data
             : [];
         setUsers(rows);
         onStats({
           totalUsers: rows.length,
-          activeUsers: rows.filter((u: any) => u.active || u.status === 'active' || u.isActive).length,
+          activeUsers: rows.filter((u) => u.active || u.status === 'active' || u.isActive).length,
         });
       })
       .catch((err) => setError(err?.message || 'Could not load accounts directory.'))
@@ -119,7 +144,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
   useEffect(() => {
     fetchUsers();
-    api.get<any>('/admin/roles')
+    api.get<PageOrData<RoleDto>>('/admin/roles')
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) setRoles(res.data);
       })
@@ -141,8 +166,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       setNewUser({ name: '', email: '', username: '', password: '', role: 'ROLE_RESEARCH_STAFF' });
       setNotice('Account created successfully.');
       fetchUsers();
-    } catch (err: any) {
-      setError(err?.message || 'Could not create account.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not create account.');
     } finally {
       setActionLoading(false);
     }
@@ -164,8 +189,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       setEditUser(null);
       setNotice(`Account #${editUser.id} updated successfully.`);
       fetchUsers();
-    } catch (err: any) {
-      setError(err?.message || 'Could not update account.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not update account.');
     } finally {
       setActionLoading(false);
     }
@@ -183,14 +208,14 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       setRoleUser(null);
       setNotice(`Updated roles for account #${roleUser.id}.`);
       fetchUsers();
-    } catch (err: any) {
-      setError(err?.message || 'Could not assign role.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not assign role.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleToggleStatus = async (user: any) => {
+  const handleToggleStatus = async (user: UserRow) => {
     setError('');
     setNotice('');
     const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
@@ -204,8 +229,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       await api.patch(`/accounts/${user.id}/status`);
       setNotice(`Updated status for ${user.email || user.username}.`);
       fetchUsers();
-    } catch (err: any) {
-      setError(err?.message || 'Could not change account status.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not change account status.');
     } finally {
       setActionLoading(false);
     }
@@ -492,16 +517,16 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 };
 
 const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) => {
-  const [roles, setRoles] = useState<any[]>([]);
+  const [roles, setRoles] = useState<RoleDto[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<any>('/admin/roles')
+    api.get<PageOrData<RoleDto>>('/admin/roles')
       .then((res) => {
         const rows = res?.success && Array.isArray(res.data)
           ? res.data
-          : res?.success && res.data?.content
-            ? res.data.content
+          : res?.success && res.data && typeof res.data === 'object' && 'content' in res.data
+            ? (res.data as PageResponse<RoleDto>).content
             : [];
         setRoles(rows);
         onCount(rows.length);
@@ -533,7 +558,7 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
                 </div>
                 <h3>{role.displayName || role.name}</h3>
                 <code>{key}</code>
-                <p>{role.description || role.desc || 'No description is configured for this role.'}</p>
+                <p>{role.description || (role as unknown as Record<string, unknown>).desc as string || 'No description is configured for this role.'}</p>
                 <div className="admin-role-scope">
                   <div><strong>{role.userCount ?? '-'}</strong><span>users</span></div>
                   <div><strong>{role.permissionCount ?? '-'}</strong><span>permissions</span></div>
@@ -549,16 +574,16 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
 };
 
 const PermissionsTab: React.FC = () => {
-  const [permissions, setPermissions] = useState<any[]>([]);
+  const [permissions, setPermissions] = useState<PermissionDto[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<any>('/permissions')
+    api.get<PageOrData<PermissionDto>>('/permissions')
       .then((res) => {
         const rows = res?.success && Array.isArray(res.data)
           ? res.data
-          : res?.success && res.data?.content
-            ? res.data.content
+          : res?.success && res.data && typeof res.data === 'object' && 'content' in res.data
+            ? (res.data as PageResponse<PermissionDto>).content
             : [];
         setPermissions(rows);
       })
@@ -569,7 +594,7 @@ const PermissionsTab: React.FC = () => {
   if (loading) return <div className="admin-skeleton">Loading permission matrix...</div>;
   if (permissions.length === 0) return <div className="workspace-empty">No permission matrix is available from the backend.</div>;
 
-  const grouped = permissions.reduce<Record<string, any[]>>((acc, permission) => {
+  const grouped = permissions.reduce<Record<string, PermissionDto[]>>((acc, permission) => {
     const module = permission.module || 'General';
     acc[module] = [...(acc[module] || []), permission];
     return acc;

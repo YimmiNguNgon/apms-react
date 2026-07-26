@@ -4,8 +4,6 @@ import type {
   CandidateResponse,
   ProjectMemberResponse,
   ProjectResponse,
-  ProjectStatus,
-  ProjectType,
 } from '../types/domain';
 import { ProjectInspectionDrawer } from '../components/ProjectInspectionDrawer';
 
@@ -49,13 +47,13 @@ export const ProjectsOverview: React.FC = () => {
   const [projectDetail, setProjectDetail] = useState<ProjectResponse | null>(null);
   const [members, setMembers] = useState<ProjectMemberResponse[]>([]);
   const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
-  const [detailTab, setDetailTab] = useState<'overview' | 'members' | 'candidates'>('overview');
+  const [, setDetailTab] = useState<'overview' | 'members' | 'candidates'>('overview');
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Fetch Projects List
   useEffect(() => {
     setLoading(true);
-    const params: Record<string, any> = { page, size: 10 };
+    const params: Record<string, string | number | boolean | undefined | null> = { page, size: 10 };
     if (statusFilter !== 'ALL') params.status = statusFilter;
     if (typeFilter !== 'ALL') params.type = typeFilter;
 
@@ -170,10 +168,10 @@ export const ProjectsOverview: React.FC = () => {
                   >
                     <option value="ALL">All Statuses</option>
                     <option value="DRAFT">DRAFT</option>
-                    <option value="IN_PROGRESS">IN_PROGRESS</option>
-                    <option value="NEEDS_APPROVAL">NEEDS_APPROVAL</option>
+                    <option value="ACTIVE">ACTIVE</option>
                     <option value="COMPLETED">COMPLETED</option>
                     <option value="CANCELLED">CANCELLED</option>
+                    <option value="ARCHIVED">ARCHIVED</option>
                   </select>
                 </div>
 
@@ -186,9 +184,9 @@ export const ProjectsOverview: React.FC = () => {
                     style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                   >
                     <option value="ALL">All Types</option>
-                    <option value="PARTNER_EVALUATION">PARTNER_EVALUATION</option>
-                    <option value="COMPETITOR_ANALYSIS">COMPETITOR_ANALYSIS</option>
-                    <option value="MARKET_RESEARCH">MARKET_RESEARCH</option>
+                    <option value="RESEARCH_NEW_COMPANY">RESEARCH_NEW_COMPANY</option>
+                    <option value="UPDATE_EXISTING_COMPANY">UPDATE_EXISTING_COMPANY</option>
+                    <option value="RESEARCH_MULTIPLE_COMPANIES">RESEARCH_MULTIPLE_COMPANIES</option>
                   </select>
                 </div>
               </div>
