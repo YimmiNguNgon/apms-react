@@ -2,19 +2,43 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../hooks/useTheme';
 import { LogoutModal } from './LogoutModal';
+import { api, type PageResponse } from '../services/api';
 
 interface TopbarProps {
   activePage: string;
   setActivePage: (page: string) => void;
 }
 
-const NOTIFICATIONS = [
-  { id: 1, title: 'AI surfaced 3 new potential partners', time: '5 minutes ago', color: '#2563EB' },
-  { id: 2, title: 'FPT Software profile needs manager review', time: '20 minutes ago', color: '#F59E0B' },
-  { id: 3, title: 'June strategic report is ready', time: '1 hour ago', color: '#10B981' },
-  { id: 4, title: 'Risk alert: new competitor activity detected', time: '2 hours ago', color: '#EF4444' },
-  { id: 5, title: 'Approval request from Ha Duc Huy', time: '3 hours ago', color: '#8B5CF6' },
-];
+type NotificationItem = {
+  id: number;
+  title: string;
+  message?: string | null;
+  type: 'SYSTEM' | 'TASK' | 'DOCUMENT' | 'AI' | 'REPORT' | 'RISK';
+  isRead: boolean;
+  createdAt?: string | null;
+};
+
+const notificationColor: Record<NotificationItem['type'], string> = {
+  SYSTEM: '#2563EB',
+  TASK: '#10B981',
+  DOCUMENT: '#7C3AED',
+  AI: '#0EA5E9',
+  REPORT: '#F59E0B',
+  RISK: '#EF4444',
+};
+
+const formatNotificationTime = (value?: string | null) => {
+  if (!value) return 'Just now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Just now';
+  const seconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return date.toLocaleDateString();
+};
 
 const PAGE_LABELS: Record<string, string> = {
   'admin-dashboard': 'Platform Command Center',
@@ -67,6 +91,7 @@ const PAGE_LABELS: Record<string, string> = {
   'add-company': 'Create Company Profile',
   'ai-agent': 'AI Agent',
   news: 'News & Intelligence',
+  'system-chat': 'System Chat',
   profile: 'My Profile',
 };
 
@@ -77,6 +102,8 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
   const [showProfile, setShowProfile] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
   const [searchVal, setSearchVal] = useState('');
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -94,9 +121,44 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const fetchNotifications = async () => {
+    if (!currentUser) return;
+    setNotificationsLoading(true);
+    try {
+      const res = await api.get<PageResponse<NotificationItem>>('/notifications', {
+        params: { page: 0, size: 8 },
+      });
+      setNotifications(res.data?.content ?? []);
+    } catch (error) {
+      console.warn('Cannot load notifications:', error);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    void fetchNotifications();
+    const timer = window.setInterval(() => {
+      void fetchNotifications();
+    }, 30000);
+
+    const handleFcmMessage = () => {
+      void fetchNotifications();
+    };
+    window.addEventListener('apms-fcm-message', handleFcmMessage);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('apms-fcm-message', handleFcmMessage);
+    };
+  }, [currentUser?.id]);
+
   if (!currentUser) return null;
 
   const pageLabel = PAGE_LABELS[activePage] || 'Dashboard';
+  const unreadCount = notifications.filter((item) => !item.isRead).length;
 
   return (
     <>
@@ -141,7 +203,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                   strokeLinejoin="round"
                 />
               </svg>
-              <span className="notif-badge" />
+              {unreadCount > 0 && <span className="notif-badge" />}
             </button>
 
             {showNotif && (
@@ -151,23 +213,30 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                     <div className="notif-title-line">Notifications</div>
                     <div className="notif-subtitle">Recent workspace updates</div>
                   </div>
-                  <span className="notif-count">{NOTIFICATIONS.length}</span>
+                  <span className="notif-count">{unreadCount}</span>
                 </div>
                 <div className="notif-list">
-                  {NOTIFICATIONS.map((item) => (
-                    <div key={item.id} className="notif-item">
-                      <div className="notif-dot" style={{ background: item.color }} />
+                  {notificationsLoading && notifications.length === 0 && (
+                    <div className="notif-empty">Loading notifications...</div>
+                  )}
+                  {!notificationsLoading && notifications.length === 0 && (
+                    <div className="notif-empty">No notifications yet.</div>
+                  )}
+                  {notifications.map((item) => (
+                    <div key={item.id} className={`notif-item ${item.isRead ? '' : 'unread'}`}>
+                      <div className="notif-dot" style={{ background: notificationColor[item.type] ?? '#2563EB' }} />
                       <div className="notif-content">
                         <div className="notif-title">{item.title}</div>
-                        <div className="notif-time">{item.time}</div>
+                        {item.message && <div className="notif-message">{item.message}</div>}
+                        <div className="notif-time">{formatNotificationTime(item.createdAt)}</div>
                       </div>
                       <span className="notif-chevron">›</span>
                     </div>
                   ))}
                 </div>
                 <div className="notif-footer">
-                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}>
-                    View all notifications
+                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }} onClick={() => void fetchNotifications()}>
+                    Refresh notifications
                   </button>
                 </div>
               </div>

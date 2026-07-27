@@ -6,6 +6,7 @@ import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
 import { ForgotPassword } from './components/ForgotPassword';
 import { ResetPassword } from './components/ResetPassword';
+import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
 
 // ── Role dashboards ──
 import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
@@ -29,6 +30,7 @@ import { AddCompany }      from './pages/AddCompany';
 import { AdminPanel }      from './pages/AdminPanel';
 import { AIAgent }         from './pages/AIAgent';
 import { News }            from './pages/News';
+import { SystemChat }      from './pages/SystemChat';
 
 // ── Admin pages ──
 import { UserManagement }    from './pages/UserManagement';
@@ -94,6 +96,7 @@ const MainApp: React.FC = () => {
   useTheme();
 
   const [activePage, setActivePage] = useState<string>(() => localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || '');
+  const [notificationToast, setNotificationToast] = useState<{ title: string; body: string } | null>(null);
 
   useEffect(() => {
     if (!currentUser) {
@@ -114,6 +117,35 @@ const MainApp: React.FC = () => {
     if (!currentUser.allowedPages.includes(activePage)) return;
     localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, activePage);
   }, [activePage, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    setupFirebaseNotifications().catch((error) => {
+      console.warn('Firebase notification setup skipped:', error);
+    });
+
+    const handleMessage = (event: Event) => {
+      const detail = (event as CustomEvent<{ title?: string; body?: string }>).detail;
+      setNotificationToast({
+        title: detail?.title || 'APMS notification',
+        body: detail?.body || '',
+      });
+    };
+
+    window.addEventListener('apms-fcm-message', handleMessage);
+
+    return () => {
+      window.removeEventListener('apms-fcm-message', handleMessage);
+      unregisterFirebaseNotifications().catch(() => undefined);
+    };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!notificationToast) return;
+    const timer = window.setTimeout(() => setNotificationToast(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notificationToast]);
 
   // Loading splash
   if (loading) {
@@ -195,6 +227,7 @@ const MainApp: React.FC = () => {
       case 'ai-agent':
       case 'personal-ai-agent':return renderDashboard();
       case 'news':             return <News />;
+      case 'system-chat':      return <SystemChat />;
 
       // ── Profile (shared) ──
       case 'profile':          return <ProfilePage />;
@@ -277,6 +310,12 @@ const MainApp: React.FC = () => {
         </div>
       </div>
       <AIAgent />
+      {notificationToast && (
+        <div className="apms-toast success">
+          <strong>{notificationToast.title}</strong>
+          {notificationToast.body && <span>{notificationToast.body}</span>}
+        </div>
+      )}
     </div>
   );
 };

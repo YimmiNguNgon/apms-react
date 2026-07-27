@@ -21,6 +21,11 @@ export type RelationshipType =
   | 'CUSTOMER_OF'
   | 'POTENTIAL_PARTNER_OF';
 
+export interface RelationshipTypeOption {
+  value: RelationshipType;
+  label: string;
+}
+
 export interface JwtResponse {
   accessToken: string;
   refreshToken: string;
@@ -234,6 +239,8 @@ export interface WorkbenchDocumentResponse extends ImportJobResponse {
 
 export interface CandidateDraftSummary {
   candidateId: string;
+  candidateName?: string | null;
+  candidateIndustry?: string | null;
   status: CandidateStatus;
   taskId?: number | null;
   extractionIds?: string[];
@@ -326,6 +333,11 @@ export interface ImportJobResponse {
   fileName?: string;
   status: ImportJobStatus;
   uploadedBy?: number | null;
+  uploadedByName?: string | null;
+  mimeType?: string | null;
+  fileSizeBytes?: number | null;
+  taskId?: string | null;
+  uploadedAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
   errorMessage?: string | null;

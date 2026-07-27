@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse, UpdateProjectStatusRequest } from "../types/domain";
+import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest } from "../types/domain";
 
 const BASE_URL = `${API_BASE_URL}/projects`;
 const getAuthHeader = () => {
@@ -12,6 +12,26 @@ const getAuthHeader = () => {
   return headers;
 };
 export const projectApi = {
+  getTargetRelationshipTypes: async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/relationship-types`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Get target relationship types failed:", { status: response.status, payload });
+        throw new Error(payload?.message || "Failed to fetch target relationship types");
+      }
+
+      return payload as ApiResponse<RelationshipTypeOption[]>;
+    } catch (error) {
+      console.error("Error fetching target relationship types:", error);
+      throw error;
+    }
+  },
   getAllProjects: async () => {
 
     try{
@@ -119,6 +139,27 @@ export const projectApi = {
       return payload as ApiResponse<ProjectResponse>;
     } catch (error) {
       console.error("Error updating project status:", error);
+      throw error;
+    }
+  },
+  deleteProject: async (projectId: number) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Delete project failed:", { status: response.status, payload, projectId });
+        throw new Error(payload?.message || "Failed to delete project");
+      }
+
+      return payload as ApiResponse<void>;
+    } catch (error) {
+      console.error("Error deleting project:", error);
       throw error;
     }
   }

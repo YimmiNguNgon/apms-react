@@ -2,17 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
+  AlertTriangle,
   ArrowLeft,
   Bot,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Copy,
   Download,
   Edit3,
   ExternalLink,
   FileText,
   Filter,
+  Globe2,
   Image as ImageIcon,
   MessageSquare,
   MoreHorizontal,
@@ -62,7 +65,7 @@ import type {
   UpdateCandidateRequest,
 } from '../types/domain';
 
-const tabs = ['Kanban Board', 'Candidates', 'Members'];
+const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Members'];
 const SELECTED_PROJECT_STORAGE_KEY = 'apms-selected-project';
 
 const priorityClass: Record<TaskPriority, string> = {
@@ -80,6 +83,31 @@ const formatOptionalDate = (value: string | null | undefined) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'No date';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).format(date);
+};
+
+const formatDateTime = (value: string | null | undefined) => {
+  if (!value) return 'No date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No date';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
+const formatFileSize = (value: number | null | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 'N/A';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 10 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
 };
 
 const formatMemberDate = (value: string | null | undefined) => {
@@ -186,6 +214,24 @@ const candidateStatusClass: Record<CandidateStatus, string> = {
   APPROVED: styles.candidateAPPROVED,
 };
 
+const visibleCandidateStatuses = new Set<CandidateStatus>(['PENDING_REVIEW', 'APPROVED', 'REJECTED']);
+
+type CandidateReviewTab = 'profile' | 'swot' | 'evidence';
+type ManagerCandidateTab = 'overview' | 'swot' | 'evidence' | 'decision';
+
+const candidateReviewTabs: Array<{ id: CandidateReviewTab; label: string; helper: string }> = [
+  { id: 'profile', label: 'Profile', helper: 'Identity and contact' },
+  { id: 'swot', label: 'SWOT', helper: 'AI insight items' },
+  { id: 'evidence', label: 'Evidence', helper: 'Business fields' },
+];
+
+const managerCandidateTabs: Array<{ id: ManagerCandidateTab; label: string; helper: string }> = [
+  { id: 'overview', label: 'Overview', helper: 'Identity and contact' },
+  { id: 'swot', label: 'SWOT', helper: 'AI signals' },
+  { id: 'evidence', label: 'Evidence', helper: 'Charts and validation' },
+  { id: 'decision', label: 'Decision', helper: 'Approve or reject' },
+];
+
 const candidateName = (candidate: CandidateResponse) => {
   const identity = candidate.identity as { tradeName?: string; legalName?: string } | undefined;
   return identity?.tradeName || identity?.legalName || `Candidate ${candidate.id.slice(-6)}`;
@@ -212,9 +258,9 @@ const candidateContact = (candidate: CandidateResponse) => {
   };
 };
 
-const candidateField = (value: unknown, fallback = 'No data') => {
+const candidateField = (value: unknown, fallback = 'No data'): string => {
   if (value === null || value === undefined || value === '') return fallback;
-  if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback;
+  if (Array.isArray(value)) return value.map((item) => candidateField(item, '')).filter(Boolean).join(', ') || fallback;
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
   return String(value);
 };
@@ -237,6 +283,74 @@ const toInsightItems = (value: unknown): string[] => {
   return [String(value)];
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+const formatPanelValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '';
+  if (Array.isArray(value)) return value.map((item) => candidateField(item)).filter(Boolean).join(', ');
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+};
+
+const formatAddressValue = (value: unknown) => {
+  if (!value) return '';
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .map((item) => {
+      if (!item || typeof item !== 'object') return formatPanelValue(item);
+      const address = item as { fullAddress?: unknown; city?: unknown; country?: unknown; type?: unknown };
+      return [address.fullAddress, address.city, address.country]
+        .map((part) => formatPanelValue(part))
+        .filter(Boolean)
+        .join(', ') || formatPanelValue(address.type);
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const formatCompanySizeValue = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return formatPanelValue(value);
+  const size = value as { employeeTier?: unknown; employeeCount?: unknown; revenueTier?: unknown };
+  return [
+    formatPanelValue(size.employeeTier),
+    size.employeeCount ? `${formatPanelValue(size.employeeCount)} employees` : '',
+    size.revenueTier ? `Revenue tier: ${formatPanelValue(size.revenueTier)}` : '',
+  ].filter(Boolean).join('\n');
+};
+
+const CandidateProductPanel: React.FC<{ title: string; data: unknown }> = ({ title, data }) => {
+  const items = Array.isArray(data) ? data : [];
+
+  return (
+    <section className={styles.structuredPanel}>
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <div className={styles.insightEmpty}>No data</div>
+      ) : (
+        <div className={styles.productCardList}>
+          {items.map((item, index) => {
+            const product: Record<string, unknown> = isRecord(item) ? item : { name: item };
+            const name = formatPanelValue(product.name) || `Item ${index + 1}`;
+            const category = formatPanelValue(product.category);
+            const description = formatPanelValue(product.description);
+
+            return (
+              <article className={styles.productReviewCard} key={`${title}-${index}`}>
+                <div className={styles.productReviewHead}>
+                  <strong>{name}</strong>
+                  {category && <span>{category}</span>}
+                </div>
+                {description && <p>{description}</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const CandidateInfoPanel: React.FC<{ title: string; data: unknown; preferredOrder?: string[] }> = ({ title, data, preferredOrder }) => {
   const source = data && typeof data === 'object' && !Array.isArray(data)
     ? data as Record<string, unknown>
@@ -250,24 +364,609 @@ const CandidateInfoPanel: React.FC<{ title: string; data: unknown; preferredOrde
     : [['summary', data] as const];
 
   const visibleEntries = entries
-    .map(([key, value]) => ({ key, items: toInsightItems(value) }))
-    .filter((entry) => entry.items.length > 0);
+    .map(([key, value]) => ({
+      key,
+      value: formatPanelValue(value),
+      items: Array.isArray(value) ? value.map((item) => formatPanelValue(item)).filter(Boolean) : [],
+    }))
+    .filter((entry) => entry.value || entry.items.length > 0);
 
   return (
-    <section>
+    <section className={styles.structuredPanel}>
       <h3>{title}</h3>
       {visibleEntries.length === 0 ? (
         <div className={styles.insightEmpty}>No data</div>
       ) : (
-        <div className={styles.insightSections}>
+        <dl className={styles.keyValueList}>
           {visibleEntries.map((entry) => (
-            <article className={styles.insightBlock} key={entry.key}>
-              <h4>{formatInsightTitle(entry.key)}</h4>
-              <ul>
-                {entry.items.map((item, index) => (
-                  <li key={`${entry.key}-${index}`}>{item}</li>
-                ))}
-              </ul>
+            <div className={styles.keyValueRow} key={entry.key}>
+              <dt>{entry.key === 'summary' ? title : formatInsightTitle(entry.key)}</dt>
+              <dd>
+                {entry.items.length > 0 ? (
+                  <span className={styles.valueChipList}>
+                    {entry.items.map((item, index) => (
+                      <i key={`${entry.key}-${index}`}>{item}</i>
+                    ))}
+                  </span>
+                ) : entry.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+};
+
+const splitNarrativeSentences = (value: string) =>
+  value
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+const businessModelSegments = [
+  'B2C',
+  'B2B',
+  'B2G',
+  'Infrastructure',
+  'Construction',
+  'IT',
+  'Technical services',
+  'Government',
+  'Enterprise',
+  'Integrated solutions',
+  'Investment',
+  'Operation',
+];
+
+const LongTextInsightCard: React.FC<{ title: string; value?: string; emptyText?: string }> = ({ title, value, emptyText = 'No data' }) => {
+  const text = value?.trim();
+  if (!text) {
+    return (
+      <article className={styles.longTextInsightCard}>
+        <div className={styles.longTextInsightHead}>
+          <span>{title}</span>
+          <strong>{emptyText}</strong>
+        </div>
+      </article>
+    );
+  }
+
+  const chips = businessModelSegments.filter((segment) => text.toLowerCase().includes(segment.toLowerCase()));
+  const fallbackChips = splitNarrativeSentences(text)
+    .flatMap((sentence) => sentence.split(/,|;|\band\b|\bas well as\b/i))
+    .map((item) => item.trim().replace(/[.]+$/, ''))
+    .filter((item) => item.length > 1 && item.length <= 42);
+  const displayChips = chips.length > 0 ? chips : fallbackChips.slice(0, 12);
+
+  return (
+    <article className={styles.longTextInsightCard}>
+      <div className={styles.longTextInsightHead}>
+        <span>{title}</span>
+        <strong>{displayChips.length} signal(s)</strong>
+      </div>
+      {displayChips.length > 0 ? (
+        <div className={styles.longTextChipList}>
+          {displayChips.map((chip) => <i key={chip}>{chip}</i>)}
+        </div>
+      ) : (
+        <div className={styles.insightEmpty}>No readable signals</div>
+      )}
+    </article>
+  );
+};
+
+const chipFieldKeys = new Set<StaffCandidateEditKey>(['industry', 'markets', 'targetCustomers', 'email', 'phone']);
+const editableListFieldKeys = new Set<StaffCandidateEditKey>([
+  'industry',
+  'markets',
+  'targetCustomers',
+  'email',
+  'phone',
+  'strengths',
+  'weaknesses',
+  'opportunities',
+  'threats',
+]);
+const swotFieldKeys = new Set<StaffCandidateEditKey>(['strengths', 'weaknesses', 'opportunities', 'weaknesses', 'threats']);
+const urlFieldKeys = new Set<StaffCandidateEditKey>(['website']);
+const listJoinValue = (items: string[]) => items.map((item) => item.trim()).filter(Boolean).join('\n');
+
+const stripListMarker = (value: string) =>
+  value
+    .replace(/^\s*[-*•]\s+/, '')
+    .replace(/^\s*\d+[\).\-\s]+/, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
+
+const normalizeExtractedListValue = (value: unknown, splitCommas = false): string[] => {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => normalizeExtractedListValue(item, splitCommas))
+      .map(stripListMarker)
+      .filter(Boolean);
+  }
+  if (typeof value === 'object') return [candidateField(value, '')].filter(Boolean);
+
+  const raw = String(value).trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return normalizeExtractedListValue(parsed);
+  } catch {
+    // Continue with tolerant text parsing for AI output that is not strict JSON.
+  }
+
+  const withoutBrackets = raw
+    .replace(/^\[\s*/, '')
+    .replace(/\s*\]$/, '')
+    .replace(/^["']|["']$/g, '');
+  const lineItems = withoutBrackets
+    .split(/\r?\n/)
+    .map(stripListMarker)
+    .filter(Boolean);
+
+  if (lineItems.length > 1) return lineItems;
+  if (splitCommas && withoutBrackets.includes(',')) {
+    return withoutBrackets.split(',').map(stripListMarker).filter(Boolean);
+  }
+
+  return lineItems;
+};
+
+const normalizeUrlItems = (value: unknown): string[] => {
+  const text = normalizeExtractedListValue(value).join('\n') || String(value ?? '');
+  const matches = text.match(/(?:https?:\/\/|www\.)[^\s,\]\["']+/gi);
+  if (matches?.length) {
+    return Array.from(new Set(matches.map((item) => item.replace(/[).;]+$/g, '').trim()).filter(Boolean)));
+  }
+  return normalizeExtractedListValue(value);
+};
+
+const urlDomainLabel = (value: string) => {
+  try {
+    const normalized = value.startsWith('http') ? value : `https://${value}`;
+    const url = new URL(normalized);
+    return `${url.hostname.replace(/^www\./, '')}${url.pathname !== '/' ? url.pathname.replace(/\/$/, '') : ''}`;
+  } catch {
+    return value;
+  }
+};
+
+const fieldVariantClass = (key: StaffCandidateEditKey) => {
+  if (key === 'strengths') return styles.extractedListStrengths;
+  if (key === 'weaknesses') return styles.extractedListWeaknesses;
+  if (key === 'opportunities') return styles.extractedListOpportunities;
+  if (key === 'threats') return styles.extractedListThreats;
+  return '';
+};
+
+const listEmptyText = (label: string) => `No ${label.toLowerCase()} were extracted`;
+
+const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evidence }) => {
+  const [open, setOpen] = useState(false);
+  if (!evidence) return null;
+
+  const score = evidenceScoreLabel(evidence.confidenceScore);
+  const hasEvidence = Boolean(evidence.evidenceText?.trim());
+  const messages = Array.isArray(evidence.validationMessages)
+    ? evidence.validationMessages.join(', ')
+    : evidence.validationMessages;
+
+  return (
+    <div className={styles.itemEvidencePanel}>
+      <button type="button" onClick={() => setOpen((current) => !current)}>
+        <FileText size={14} />
+        {open ? 'Hide evidence' : 'View evidence'}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            className={styles.itemEvidenceCard}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <div>
+              <span>Source evidence</span>
+              <p>{hasEvidence ? evidence.evidenceText : 'No source quote returned for this field.'}</p>
+            </div>
+            <footer>
+              <small>{evidence.pageNumber ? `Page ${evidence.pageNumber}` : 'Page unavailable'}</small>
+              <small>Confidence: {score}</small>
+              {evidence.validationStatus && <small>Validation: {evidence.validationStatus}</small>}
+              {evidence.reviewStatus && <small>Review: {evidence.reviewStatus}</small>}
+            </footer>
+            {messages && <strong>{messages}</strong>}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const ExtractedListItem: React.FC<{
+  item: string;
+  index: number;
+  evidence?: StaffExtractionEvidence;
+  editable?: boolean;
+  onEdit: (value: string) => void;
+  onDelete: () => void;
+}> = ({ item, index, evidence, editable = true, onEdit, onDelete }) => {
+  const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState(item);
+  const isLong = item.length > 180;
+
+  const save = () => {
+    onEdit(draft.trim());
+    setEditing(false);
+  };
+
+  return (
+    <motion.article className={styles.extractedListItem} layout whileHover={{ y: -2 }}>
+      <div className={styles.extractedListItemIndex}>{index + 1}</div>
+      <div className={styles.extractedListItemBody}>
+        {editing ? (
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} />
+        ) : (
+          <>
+            <p className={expanded || !isLong ? '' : styles.extractedListItemClamp}>{item}</p>
+            {isLong && (
+              <button className={styles.inlineTextButton} type="button" onClick={() => setExpanded((current) => !current)}>
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
+            )}
+          </>
+        )}
+        <EvidencePanel evidence={evidence} />
+      </div>
+      {editable && (
+        <div className={styles.extractedListItemActions}>
+          <span className={styles.reviewStatusBadge}>{editing ? 'EDITED' : 'PENDING'}</span>
+          {editing ? (
+            <>
+              <button type="button" onClick={save}><CheckCircle2 size={14} />Save</button>
+              <button type="button" onClick={() => { setDraft(item); setEditing(false); }}><X size={14} />Cancel</button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={() => setEditing(true)}><Edit3 size={14} />Edit</button>
+              <button type="button" onClick={onDelete}><Trash2 size={14} />Delete</button>
+            </>
+          )}
+        </div>
+      )}
+    </motion.article>
+  );
+};
+
+const ExtractedListField: React.FC<{
+  label: string;
+  fieldKey: StaffCandidateEditKey;
+  value: string;
+  evidence?: StaffExtractionEvidence;
+  editable?: boolean;
+  showMeta?: boolean;
+  onChange: (value: string) => void;
+}> = ({ label, fieldKey, value, evidence, editable = true, showMeta = false, onChange }) => {
+  const items = normalizeExtractedListValue(value, !swotFieldKeys.has(fieldKey));
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const replaceItem = (index: number, nextValue: string) => {
+    const next = items.map((item, itemIndex) => itemIndex === index ? nextValue : item).filter(Boolean);
+    onChange(listJoinValue(next));
+  };
+  const deleteItem = (index: number) => onChange(listJoinValue(items.filter((_, itemIndex) => itemIndex !== index)));
+  const addItem = () => {
+    const next = draft.trim();
+    if (!next) return;
+    onChange(listJoinValue([...items, next]));
+    setDraft('');
+    setAdding(false);
+  };
+
+  return (
+    <div className={`${styles.extractedListField} ${fieldVariantClass(fieldKey)}`}>
+      <div className={styles.extractedListFieldHead}>
+        <div>
+          <span>{label}</span>
+          <strong>{items.length} extracted item(s)</strong>
+        </div>
+        {showMeta && <small>{evidenceScoreLabel(evidence?.confidenceScore)} confidence</small>}
+      </div>
+      {items.length === 0 ? (
+        <div className={styles.extractedEmptyState}>
+          <span>{listEmptyText(label)}</span>
+          {editable && <button type="button" onClick={() => setAdding(true)}><Plus size={14} />Add manually</button>}
+        </div>
+      ) : (
+        <div className={styles.extractedListItems}>
+          <AnimatePresence initial={false}>
+            {items.map((item, index) => (
+              <ExtractedListItem
+                key={`${fieldKey}-${index}-${item.slice(0, 20)}`}
+                item={item}
+                index={index}
+                evidence={evidence}
+                editable={editable}
+                onEdit={(nextValue) => replaceItem(index, nextValue)}
+                onDelete={() => deleteItem(index)}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+      {editable && adding ? (
+        <div className={styles.extractedAddRow}>
+          <textarea value={draft} placeholder={`Add new ${label.toLowerCase()}`} onChange={(event) => setDraft(event.target.value)} />
+          <button type="button" onClick={addItem}><CheckCircle2 size={14} />Save</button>
+          <button type="button" onClick={() => { setDraft(''); setAdding(false); }}><X size={14} />Cancel</button>
+        </div>
+      ) : (
+        editable && items.length > 0 && <button className={styles.extractedAddButton} type="button" onClick={() => setAdding(true)}><Plus size={14} />Add new {label.toLowerCase()}</button>
+      )}
+    </div>
+  );
+};
+
+const WebsiteListField: React.FC<{
+  label: string;
+  value: string;
+  evidence?: StaffExtractionEvidence;
+  editable?: boolean;
+  showMeta?: boolean;
+  onChange: (value: string) => void;
+}> = ({ label, value, evidence, editable = true, showMeta = false, onChange }) => {
+  const items = normalizeUrlItems(value);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const editItem = (index: number) => {
+    setEditingIndex(index);
+    setDraft(items[index] || '');
+  };
+  const saveItem = () => {
+    if (editingIndex === null) return;
+    const next = items.map((item, index) => index === editingIndex ? draft.trim() : item).filter(Boolean);
+    onChange(listJoinValue(next));
+    setEditingIndex(null);
+    setDraft('');
+  };
+  const deleteItem = (index: number) => onChange(listJoinValue(items.filter((_, itemIndex) => itemIndex !== index)));
+  const addItem = () => {
+    setEditingIndex(items.length);
+    setDraft('');
+  };
+
+  return (
+    <div className={styles.websiteListField}>
+      <div className={styles.extractedListFieldHead}>
+        <div>
+          <span>{label}</span>
+          <strong>{items.length} URL(s)</strong>
+        </div>
+        {showMeta && <small>{evidenceScoreLabel(evidence?.confidenceScore)} confidence</small>}
+      </div>
+      {items.length === 0 && editingIndex === null ? (
+        <div className={styles.extractedEmptyState}>
+          <span>No websites were extracted</span>
+          {editable && <button type="button" onClick={addItem}><Plus size={14} />Add website manually</button>}
+        </div>
+      ) : (
+        <div className={styles.websiteListItems}>
+          {items.map((item, index) => {
+            const href = item.startsWith('http') ? item : `https://${item}`;
+            const isEditing = editingIndex === index;
+            return (
+              <motion.article className={styles.websiteListItem} key={`${item}-${index}`} layout whileHover={{ y: -2 }}>
+                <Globe2 size={18} />
+                <div>
+                  {isEditing ? (
+                    <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+                  ) : (
+                    <>
+                      <strong>{urlDomainLabel(item)}</strong>
+                      <a href={href} target="_blank" rel="noreferrer">{item}</a>
+                    </>
+                  )}
+                  <EvidencePanel evidence={evidence} />
+                </div>
+                <div className={styles.websiteActions}>
+                  {isEditing ? (
+                    <>
+                      <button type="button" onClick={saveItem}><CheckCircle2 size={14} />Save</button>
+                      <button type="button" onClick={() => setEditingIndex(null)}><X size={14} />Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <a href={href} target="_blank" rel="noreferrer"><ExternalLink size={14} />Open</a>
+                      <button type="button" onClick={() => void navigator.clipboard?.writeText(item)}><Copy size={14} />Copy</button>
+                      {editable && <button type="button" onClick={() => editItem(index)}><Edit3 size={14} />Edit</button>}
+                      {editable && <button type="button" onClick={() => deleteItem(index)}><Trash2 size={14} />Delete</button>}
+                    </>
+                  )}
+                </div>
+              </motion.article>
+            );
+          })}
+          {editable && editingIndex === items.length && (
+            <article className={styles.websiteListItem}>
+              <Globe2 size={18} />
+              <div><input value={draft} placeholder="https://example.com" onChange={(event) => setDraft(event.target.value)} /></div>
+              <div className={styles.websiteActions}>
+                <button type="button" onClick={() => { onChange(listJoinValue([...items, draft.trim()].filter(Boolean))); setEditingIndex(null); setDraft(''); }}><CheckCircle2 size={14} />Save</button>
+                <button type="button" onClick={() => setEditingIndex(null)}><X size={14} />Cancel</button>
+              </div>
+            </article>
+          )}
+        </div>
+      )}
+      {editable && editingIndex === null && <button className={styles.extractedAddButton} type="button" onClick={addItem}><Plus size={14} />Add website</button>}
+    </div>
+  );
+};
+
+const ParsedProductsPreview: React.FC<{ value: string }> = ({ value }) => {
+  const parsed = parseProductsText(value);
+  const items = Array.isArray(parsed) ? parsed as Array<{ name?: unknown; category?: unknown; description?: unknown }> : [];
+
+  if (items.length === 0) {
+    return <div className={styles.insightEmpty}>No products / services</div>;
+  }
+
+  return (
+    <div className={styles.extractionProductGrid}>
+      {items.map((product, index) => {
+        const name = formatPanelValue(product.name) || `Item ${index + 1}`;
+        const category = formatPanelValue(product.category);
+        const description = formatPanelValue(product.description);
+
+        return (
+          <article className={styles.extractionProductCard} key={`${name}-${index}`}>
+            <div className={styles.extractionProductHead}>
+              <strong>{name}</strong>
+              {category && <span>{category}</span>}
+            </div>
+            {description && <p>{description}</p>}
+          </article>
+        );
+      })}
+    </div>
+  );
+};
+
+const ExtractionCurrentValue: React.FC<{
+  field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string };
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ field, value, onChange }) => {
+  const trimmedValue = value.trim();
+
+  if (urlFieldKeys.has(field.key)) {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <WebsiteListField label={field.label} value={value} onChange={onChange} />
+      </div>
+    );
+  }
+
+  if (editableListFieldKeys.has(field.key)) {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <ExtractedListField label={field.label} fieldKey={field.key} value={value} onChange={onChange} />
+      </div>
+    );
+  }
+
+  if (field.key === 'businessModel') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <LongTextInsightCard title="Business model summary" value={value} />
+        <details className={styles.rawValueEditor}>
+          <summary>Edit raw text</summary>
+          <textarea
+            value={value}
+            placeholder={field.placeholder}
+            aria-label={`${field.label} current value`}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </details>
+      </div>
+    );
+  }
+
+  if (field.key === 'products') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <EditableProductList value={value} onChange={onChange} />
+      </div>
+    );
+  }
+
+  if (field.key === 'financial') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <MetricChartPanel title="Financial" value={value} tone="blue" />
+        <details className={styles.rawValueEditor}>
+          <summary>Edit financial values</summary>
+          <textarea
+            value={value}
+            placeholder={field.placeholder}
+            aria-label={`${field.label} current value`}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </details>
+      </div>
+    );
+  }
+
+  if (chipFieldKeys.has(field.key) && trimmedValue) {
+    const items = splitComma(value);
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <div className={styles.currentValueChipBox}>
+          {items.map((item, index) => <i key={`${field.key}-${index}`}>{item}</i>)}
+        </div>
+        <details className={styles.rawValueEditor}>
+          <summary>Edit list</summary>
+          <input
+            value={value}
+            placeholder={field.placeholder}
+            aria-label={`${field.label} current value`}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </details>
+      </div>
+    );
+  }
+
+  return (
+    <label className={styles.extractionEditField}>
+      <span>Current value</span>
+      {field.multiline ? (
+        <textarea
+          value={value}
+          placeholder={field.placeholder}
+          aria-label={`${field.label} current value`}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <input
+          value={value}
+          placeholder={field.placeholder}
+          aria-label={`${field.label} current value`}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </label>
+  );
+};
+
+const CandidateInsightField: React.FC<{ title: string; data: unknown }> = ({ title, data }) => {
+  const items = toInsightItems(data);
+
+  return (
+    <section className={styles.signalPanel}>
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <div className={styles.insightEmpty}>No data</div>
+      ) : (
+        <div className={styles.signalCardList}>
+          {items.map((item, index) => (
+            <article className={styles.signalCard} key={`${title}-${index}`}>
+              <b>{index + 1}</b>
+              <p>{item}</p>
             </article>
           ))}
         </div>
@@ -276,28 +975,82 @@ const CandidateInfoPanel: React.FC<{ title: string; data: unknown; preferredOrde
   );
 };
 
-const CandidateInsightField: React.FC<{ title: string; data: unknown }> = ({ title, data }) => {
-  const items = toInsightItems(data);
+const CandidatePeoplePanel: React.FC<{ title?: string; data: unknown }> = ({ title = 'Key people', data }) => {
+  const people = toInsightItems(data);
 
   return (
-    <section>
+    <section className={styles.peoplePanel}>
       <h3>{title}</h3>
-      {items.length === 0 ? (
+      {people.length === 0 ? (
         <div className={styles.insightEmpty}>No data</div>
       ) : (
-        <ul className={styles.insightList}>
-          {items.map((item, index) => (
-            <li key={`${title}-${index}`}>{item}</li>
-          ))}
-        </ul>
+        <div className={styles.peopleGrid}>
+          {people.map((person, index) => {
+            const roleMatch = person.match(/^(.*?)\s*\((.*?)\)\s*$/);
+            const name = roleMatch ? roleMatch[1].trim() : person;
+            const role = roleMatch ? roleMatch[2].trim() : '';
+
+            return (
+              <article className={styles.peopleCard} key={`${person}-${index}`}>
+                <b>{name.slice(0, 1).toUpperCase()}</b>
+                <div>
+                  <strong>{name}</strong>
+                  {role && <span>{role}</span>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
     </section>
   );
 };
 
+const CandidateAdvancedPreview: React.FC<{ candidate: CandidateResponse }> = ({ candidate }) => {
+  const business = candidate.business as {
+    industries?: unknown;
+    businessModel?: string;
+    products?: unknown;
+    markets?: unknown;
+    targetCustomers?: unknown;
+  } | undefined;
+  const identity = candidate.identity as { legalName?: unknown; taxCode?: unknown; taxId?: unknown } | undefined;
+  const companySize = candidate.companySize as { employeeTier?: unknown; employeeCount?: unknown; revenueTier?: unknown } | undefined;
+  const contact = candidate.contact as { website?: unknown; emails?: unknown; phones?: unknown; addresses?: unknown } | undefined;
+  const insights = candidate.insights as Record<string, unknown> | undefined;
+  const candidateExtra = candidate as CandidateResponse & { keyPeople?: unknown };
+
+  return (
+    <div className={styles.candidateInsightGrid}>
+      <CandidateInfoPanel title="Identity" data={{ legalName: identity?.legalName, taxCode: identity?.taxCode ?? identity?.taxId }} />
+      <CandidateInfoPanel title="Business scope" data={{ industries: business?.industries, markets: business?.markets, targetCustomers: business?.targetCustomers }} />
+      <LongTextInsightCard title="Business model" value={formatPanelValue(business?.businessModel)} />
+      <CandidateProductPanel title="Products" data={business?.products} />
+      <CandidateInfoPanel title="Company facts" data={{
+        employeeTier: companySize?.employeeTier,
+        companySize: formatCompanySizeValue(companySize),
+        website: contact?.website,
+        email: contact?.emails,
+        phone: contact?.phones,
+        address: formatAddressValue(contact?.addresses),
+      }} />
+      <CandidatePeoplePanel data={candidateExtra.keyPeople} />
+      <CandidateInsightField title="Strengths" data={insights?.strengths} />
+      <CandidateInsightField title="Opportunities" data={insights?.opportunities} />
+      <CandidateInsightField title="Weaknesses" data={insights?.weaknesses} />
+      <CandidateInsightField title="Threats" data={insights?.threats} />
+      <MetricChartPanel title="Financial" value={objectToText(candidate.financial, Object.values(financialKeyMap))} tone="blue" />
+      <div className={styles.visualEditorStack}>
+        <MetricChartPanel title="Innovation" value={objectToText(candidate.innovation, Object.values(innovationKeyMap))} tone="green" />
+        <CandidateInfoPanel title="Innovation details" data={innovationDetailData(candidate.innovation)} />
+      </div>
+    </div>
+  );
+};
+
 const candidateTaxId = (candidate: CandidateResponse) => {
-  const identity = candidate.identity as { taxId?: string; registrationNumber?: string } | undefined;
-  return identity?.taxId || identity?.registrationNumber || 'No tax ID';
+  const identity = candidate.identity as { taxCode?: string; taxId?: string; registrationNumber?: string } | undefined;
+  return identity?.taxCode || identity?.taxId || identity?.registrationNumber || 'No tax ID';
 };
 
 const isCandidateIncomplete = (candidate: CandidateResponse) => {
@@ -549,12 +1302,38 @@ interface StaffCandidateEditForm {
   website: string;
   email: string;
   phone: string;
+  address: string;
   industry: string;
   businessModel: string;
+  products: string;
+  markets: string;
+  targetCustomers: string;
+  employeeTier: string;
+  companySize: string;
+  keyPeople: string;
+  financial: string;
+  market: string;
+  innovation: string;
+  risk: string;
+  compliance: string;
+  validation: string;
   strengths: string;
   weaknesses: string;
   opportunities: string;
   threats: string;
+}
+
+type StaffCandidateEditKey = keyof StaffCandidateEditForm;
+
+interface StaffExtractionEvidence {
+  fieldName: string;
+  extractedValue?: string;
+  confidenceScore?: number | null;
+  evidenceText?: string | null;
+  pageNumber?: number | null;
+  validationStatus?: string | null;
+  validationMessages?: string | string[] | null;
+  reviewStatus?: string | null;
 }
 
 interface StaffExtractionReview {
@@ -563,8 +1342,58 @@ interface StaffExtractionReview {
   rawDocumentId?: string;
   fileName: string;
   qualityStatus?: string | null;
+  evidenceCoverageRate?: number | null;
+  evidence: Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>>;
   edit: StaffCandidateEditForm;
 }
+
+const staffReviewFields: Array<{ key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }> = [
+  { key: 'legalName', label: 'Legal name' },
+  { key: 'taxId', label: 'Tax code' },
+  { key: 'industry', label: 'Industries' },
+  { key: 'businessModel', label: 'Business model' },
+  { key: 'products', label: 'Products / services', multiline: true, placeholder: 'One item per line: Name | Category | Description' },
+  { key: 'markets', label: 'Markets' },
+  { key: 'targetCustomers', label: 'Target customers' },
+  { key: 'employeeTier', label: 'Employee tier' },
+  { key: 'website', label: 'Website' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Hotline' },
+  { key: 'address', label: 'Address', multiline: true },
+  { key: 'companySize', label: 'Company size' },
+  { key: 'strengths', label: 'Strengths', multiline: true, placeholder: 'One item per line' },
+  { key: 'opportunities', label: 'Opportunities', multiline: true, placeholder: 'One item per line' },
+  { key: 'weaknesses', label: 'Weaknesses', multiline: true, placeholder: 'One item per line' },
+  { key: 'threats', label: 'Threats', multiline: true, placeholder: 'One item per line' },
+];
+
+const extractionEvidenceAliases: Record<StaffCandidateEditKey, string[]> = {
+  legalName: ['legalName', 'identity.legalName'],
+  tradeName: ['tradeName', 'identity.tradeName'],
+  taxId: ['taxCode', 'taxId', 'identity.taxCode', 'identity.taxId'],
+  website: ['website', 'contact.website'],
+  email: ['email', 'emails', 'contact.email', 'contact.emails'],
+  phone: ['phone', 'phones', 'contact.phone', 'contact.phones'],
+  address: ['address', 'contact.address', 'contact.addresses'],
+  industry: ['industries', 'industry', 'business.industries', 'business.industry'],
+  businessModel: ['businessModel', 'business.businessModel'],
+  products: ['products', 'productsServices', 'services', 'business.products', 'business.services'],
+  markets: ['markets', 'targetMarkets', 'business.markets'],
+  targetCustomers: ['targetCustomers', 'business.targetCustomers'],
+  employeeTier: ['employeeTier', 'companySize.employeeTier'],
+  companySize: ['companySize', 'companySize.employeeTier'],
+  keyPeople: ['keyPeople'],
+  financial: ['financial'],
+  market: ['market'],
+  innovation: ['innovation'],
+  risk: ['risk'],
+  compliance: ['compliance'],
+  validation: ['validation'],
+  strengths: ['strengths', 'insights.strengths'],
+  weaknesses: ['weaknesses', 'insights.weaknesses'],
+  opportunities: ['opportunities', 'insights.opportunities'],
+  threats: ['threats', 'insights.threats'],
+};
 
 const emptyStaffCandidateEdit: StaffCandidateEditForm = {
   legalName: '',
@@ -573,8 +1402,21 @@ const emptyStaffCandidateEdit: StaffCandidateEditForm = {
   website: '',
   email: '',
   phone: '',
+  address: '',
   industry: '',
   businessModel: '',
+  products: '',
+  markets: '',
+  targetCustomers: '',
+  employeeTier: '',
+  companySize: '',
+  keyPeople: '',
+  financial: '',
+  market: '',
+  innovation: '',
+  risk: '',
+  compliance: '',
+  validation: '',
   strengths: '',
   weaknesses: '',
   opportunities: '',
@@ -587,90 +1429,909 @@ const splitLines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const EditableInsightList: React.FC<{
+  title: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}> = ({ title, value, placeholder, onChange }) => {
+  const items = splitLines(value);
+  const rows = items.length ? items : [''];
+
+  const updateItem = (index: number, nextValue: string) => {
+    const next = [...rows];
+    next[index] = nextValue;
+    onChange(next.map((item) => item.trim()).filter(Boolean).join('\n'));
+  };
+
+  const removeItem = (index: number) => {
+    const next = rows.filter((_, itemIndex) => itemIndex !== index);
+    onChange(next.map((item) => item.trim()).filter(Boolean).join('\n'));
+  };
+
+  const addItem = () => {
+    onChange([...items, ''].join('\n'));
+  };
+
+  return (
+    <article className={styles.insightEditorCard}>
+      <div className={styles.insightEditorHead}>
+        <div>
+          <span>{title}</span>
+          <strong>{items.length} item(s)</strong>
+        </div>
+        <button className={styles.iconButton} type="button" aria-label={`Add ${title}`} onClick={addItem}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className={styles.insightEditorList}>
+        {rows.map((item, index) => (
+          <div className={styles.insightEditorItem} key={`${title}-${index}`}>
+            <b>{index + 1}</b>
+            <textarea
+              value={item}
+              placeholder={index === 0 ? placeholder : 'Add another clear evidence-backed point'}
+              onChange={(event) => updateItem(index, event.target.value)}
+              rows={Math.min(5, Math.max(2, Math.ceil((item.length || 80) / 90)))}
+            />
+            <button
+              className={styles.insightRemoveButton}
+              type="button"
+              aria-label={`Remove ${title} item ${index + 1}`}
+              onClick={() => removeItem(index)}
+              disabled={items.length === 0}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+};
+
+const productRowsFromText = (value: string) => {
+  const rows = splitLines(value).map((line) => {
+    const [name = '', category = '', ...descriptionParts] = line.split('|').map((part) => part.trim());
+    return { name, category, description: descriptionParts.join(' | ') };
+  });
+  return rows.length ? rows : [{ name: '', category: '', description: '' }];
+};
+
+const productRowsToText = (rows: Array<{ name: string; category: string; description: string }>) =>
+  rows
+    .map((row) => [row.name, row.category, row.description].map((part) => part.trim()).filter(Boolean).join(' | '))
+    .filter(Boolean)
+    .join('\n');
+
+const EditableProductList: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+  const rows = productRowsFromText(value);
+  const filledCount = rows.filter((row) => row.name.trim()).length;
+
+  const updateRow = (index: number, patch: Partial<{ name: string; category: string; description: string }>) => {
+    const next = rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row);
+    onChange(productRowsToText(next));
+  };
+
+  const addRow = () => {
+    onChange(productRowsToText([...rows, { name: '', category: '', description: '' }]));
+  };
+
+  const removeRow = (index: number) => {
+    onChange(productRowsToText(rows.filter((_, rowIndex) => rowIndex !== index)));
+  };
+
+  return (
+    <article className={styles.structuredEditorPanel}>
+      <div className={styles.structuredEditorHead}>
+        <div>
+          <span>Products / services</span>
+          <strong>{filledCount} item(s)</strong>
+        </div>
+        <button className={styles.iconButton} type="button" aria-label="Add product or service" onClick={addRow}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className={styles.productEditorList}>
+        {rows.map((row, index) => (
+          <div className={styles.productEditorCard} key={`product-editor-${index}`}>
+            <div className={styles.productEditorCardHead}>
+              <b>{index + 1}</b>
+              <button
+                className={styles.insightRemoveButton}
+                type="button"
+                aria-label={`Remove product or service ${index + 1}`}
+                onClick={() => removeRow(index)}
+                disabled={filledCount === 0}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+            <label>
+              <span>Name</span>
+              <input value={row.name} placeholder="Exynos 2600" onChange={(event) => updateRow(index, { name: event.target.value })} />
+            </label>
+            <label>
+              <span>Category</span>
+              <input value={row.category} placeholder="System LSI Semiconductor" onChange={(event) => updateRow(index, { category: event.target.value })} />
+            </label>
+            <label>
+              <span>Description</span>
+              <textarea value={row.description} placeholder="Short description from AI evidence" onChange={(event) => updateRow(index, { description: event.target.value })} />
+            </label>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+};
+
+const EditableTagList: React.FC<{
+  title: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}> = ({ title, value, placeholder, onChange }) => {
+  const rows = splitComma(value);
+  const editableRows = rows.length ? rows : [''];
+
+  const updateRow = (index: number, nextValue: string) => {
+    const next = editableRows.map((row, rowIndex) => rowIndex === index ? nextValue : row);
+    onChange(next.map((item) => item.trim()).filter(Boolean).join(', '));
+  };
+
+  const addRow = () => {
+    onChange([...rows, ''].join(', '));
+  };
+
+  const removeRow = (index: number) => {
+    onChange(editableRows.filter((_, rowIndex) => rowIndex !== index).map((item) => item.trim()).filter(Boolean).join(', '));
+  };
+
+  return (
+    <article className={styles.structuredEditorPanel}>
+      <div className={styles.structuredEditorHead}>
+        <div>
+          <span>{title}</span>
+          <strong>{rows.length} item(s)</strong>
+        </div>
+        <button className={styles.iconButton} type="button" aria-label={`Add ${title}`} onClick={addRow}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className={styles.tagEditorList}>
+        {editableRows.map((item, index) => (
+          <div className={styles.tagEditorItem} key={`${title}-${index}`}>
+            <input value={item} placeholder={index === 0 ? placeholder : 'Add another item'} onChange={(event) => updateRow(index, event.target.value)} />
+            <button
+              className={styles.insightRemoveButton}
+              type="button"
+              aria-label={`Remove ${title} item ${index + 1}`}
+              onClick={() => removeRow(index)}
+              disabled={rows.length === 0}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+};
+
+const keyValueRowsFromText = (value: string) => {
+  const rows = splitLines(value).map((line) => {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex < 0) return { label: line, value: '' };
+    return {
+      label: line.slice(0, separatorIndex).trim(),
+      value: line.slice(separatorIndex + 1).trim(),
+    };
+  });
+  return rows.length ? rows : [{ label: '', value: '' }];
+};
+
+const keyValueRowsToText = (rows: Array<{ label: string; value: string }>) =>
+  rows
+    .map((row) => {
+      const label = row.label.trim();
+      const value = row.value.trim();
+      if (!label && !value) return '';
+      return `${label || 'Field'}: ${value}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+const metricPercentLabels = ['percent', 'percentage', 'rate', 'ratio', 'margin', 'growth', 'share'];
+const metricAllowedLabels = [
+  'revenue',
+  'revenue growth',
+  'debt ratio',
+  'profit margin',
+  'market share',
+  'brand rank',
+  'client count',
+  'patents',
+  'rd investment percent',
+  'r&d investment percent',
+  'tech maturity level',
+  'product innovation rate',
+  'data quality score',
+];
+
+const compactMetricNumber = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+
+const currencySymbols: Record<string, string> = {
+  KRW: 'KRW ',
+  USD: '$',
+  EUR: 'EUR ',
+  GBP: 'GBP ',
+  JPY: 'JPY ',
+  VND: 'VND ',
+  CNY: 'CNY ',
+};
+
+const formatMoneyMetric = (value: number, currency?: string) => {
+  const normalizedCurrency = currency?.trim().toUpperCase();
+  const compactValue = compactMetricNumber(value);
+  if (!normalizedCurrency) return compactValue;
+
+  const symbol = currencySymbols[normalizedCurrency];
+  if (symbol) return `${symbol}${compactValue}`;
+  return `${compactValue} ${normalizedCurrency}`;
+};
+
+const metricDisplayValue = (label: string, rawValue: string, normalizedValue: number, isPercent: boolean, currency?: string) => {
+  const lowerLabel = label.toLowerCase().trim();
+  if (isPercent) return `${Number(normalizedValue.toFixed(2))}%`;
+  if (lowerLabel === 'revenue') return formatMoneyMetric(normalizedValue, currency);
+  return rawValue.trim();
+};
+
+const parseMetricNumber = (label: string, value: string, currency?: string) => {
+  const lowerLabel = label.toLowerCase().trim();
+  const isAllowedMetric = metricAllowedLabels.some((metricLabel) => lowerLabel === metricLabel);
+  const looksNumeric = /^[-+]?[\d\s,.$%]+(?:\.\d+)?\s*[a-zA-Z%]*$/.test(value.trim());
+  if (!isAllowedMetric && !looksNumeric) return null;
+
+  const match = value.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const numericValue = Number(match[0]);
+  if (!Number.isFinite(numericValue)) return null;
+
+  const lowerValue = value.toLowerCase();
+  const isPercent = lowerValue.includes('%') || metricPercentLabels.some((keyword) => lowerLabel.includes(keyword));
+  const normalizedValue = isPercent && Math.abs(numericValue) <= 1 ? numericValue * 100 : numericValue;
+
+  return {
+    label: label.trim() || 'Metric',
+    rawValue: value.trim(),
+    displayValue: metricDisplayValue(label, value, normalizedValue, isPercent, currency),
+    value: normalizedValue,
+    isPercent,
+  };
+};
+
+const MetricChartPanel: React.FC<{
+  title: string;
+  value: string;
+  tone: 'blue' | 'green';
+}> = ({ title, value, tone }) => {
+  const rows = keyValueRowsFromText(value);
+  const currency = rows.find((row) => row.label.trim().toLowerCase() === 'revenue currency')?.value.trim();
+  const metrics = rows
+    .map((row) => parseMetricNumber(row.label, row.value, currency))
+    .filter((metric): metric is NonNullable<typeof metric> => Boolean(metric));
+
+  const nonPercentMax = Math.max(1, ...metrics.filter((metric) => !metric.isPercent).map((metric) => Math.abs(metric.value)));
+
+  return (
+    <div className={`${styles.metricChartPanel} ${styles[`metricChart${formatInsightTitle(tone)}`] || ''}`}>
+      <div className={styles.metricChartHead}>
+        <span>{title} chart</span>
+        <strong>{metrics.length} numeric metric(s)</strong>
+      </div>
+      {metrics.length === 0 ? (
+        <div className={styles.metricChartEmpty}>No numeric values to visualize</div>
+      ) : (
+        <div className={styles.metricSummaryLayout}>
+          <div className={styles.metricVisualGrid}>
+            {metrics.slice(0, 6).map((metric, index) => {
+              const chartPercent = metric.isPercent
+                ? Math.max(0, Math.min(100, Math.abs(metric.value)))
+                : Math.max(3, Math.min(100, (Math.abs(metric.value) / nonPercentMax) * 100));
+              const displayPercent = metric.isPercent ? `${Math.round(chartPercent)}%` : `${Math.round(chartPercent)}%`;
+
+              return (
+                <div className={styles.metricPrimaryCard} key={`${title}-${metric.label}-${index}`}>
+                  <div className={styles.metricDonut} style={{ '--metric-value': `${chartPercent}%` } as React.CSSProperties}>
+                    <strong>{displayPercent}</strong>
+                  </div>
+                  <div className={styles.metricPrimaryText}>
+                    <span>{metric.label}</span>
+                    <strong>{metric.displayValue}</strong>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {metrics.length > 6 && (
+            <div className={styles.metricKpiList}>
+              {metrics.slice(6).map((metric, index) => (
+                <div className={styles.metricKpiItem} key={`${title}-${metric.label}-extra-${index}`}>
+                  <span>{metric.label}</span>
+                  <strong>{metric.displayValue}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const EditableKeyValuePanel: React.FC<{
+  title: string;
+  value: string;
+  placeholderLabel: string;
+  placeholderValue: string;
+  onChange: (value: string) => void;
+}> = ({ title, value, placeholderLabel, placeholderValue, onChange }) => {
+  const rows = keyValueRowsFromText(value);
+  const filledCount = rows.filter((row) => row.label.trim() || row.value.trim()).length;
+
+  const updateRow = (index: number, patch: Partial<{ label: string; value: string }>) => {
+    const next = rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row);
+    onChange(keyValueRowsToText(next));
+  };
+
+  const addRow = () => {
+    onChange(keyValueRowsToText([...rows, { label: '', value: '' }]));
+  };
+
+  const removeRow = (index: number) => {
+    onChange(keyValueRowsToText(rows.filter((_, rowIndex) => rowIndex !== index)));
+  };
+
+  return (
+    <article className={styles.structuredEditorPanel}>
+      <div className={styles.structuredEditorHead}>
+        <div>
+          <span>{title}</span>
+          <strong>{filledCount} field(s)</strong>
+        </div>
+        <button className={styles.iconButton} type="button" aria-label={`Add ${title} field`} onClick={addRow}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className={styles.keyValueEditorList}>
+        {rows.map((row, index) => (
+          <div className={styles.keyValueEditorRow} key={`${title}-${index}`}>
+            <input value={row.label} placeholder={index === 0 ? placeholderLabel : 'Field name'} onChange={(event) => updateRow(index, { label: event.target.value })} />
+            <textarea value={row.value} placeholder={index === 0 ? placeholderValue : 'Value'} onChange={(event) => updateRow(index, { value: event.target.value })} />
+            <button
+              className={styles.insightRemoveButton}
+              type="button"
+              aria-label={`Remove ${title} field ${index + 1}`}
+              onClick={() => removeRow(index)}
+              disabled={filledCount === 0}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+};
+
+const splitComma = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const jsonText = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '';
+  return JSON.stringify(value, null, 2);
+};
+
+const parseJsonField = (label: string, value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new Error(`${label} must be valid JSON.`);
+  }
+};
+
+const formatTextValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '';
+  if (Array.isArray(value)) return value.map((item) => candidateField(item)).filter(Boolean).join(', ');
+  if (typeof value === 'object') return candidateField(value);
+  return String(value);
+};
+
+const objectToText = (value: unknown, order: string[] = []) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const source = value as Record<string, unknown>;
+  const entries = [
+    ...order.filter((key) => key in source).map((key) => [key, source[key]] as const),
+    ...Object.entries(source).filter(([key]) => !order.includes(key)),
+  ];
+  return entries
+    .map(([key, item]) => {
+      const formatted = formatTextValue(item);
+      return formatted ? `${formatInsightTitle(key)}: ${formatted}` : null;
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const productsToText = (value: unknown) => {
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return candidateField(item, '');
+      const product = item as { name?: unknown; category?: unknown; description?: unknown };
+      return [product.name, product.category, product.description]
+        .map((part) => formatTextValue(part))
+        .filter(Boolean)
+        .join(' | ');
+    })
+    .filter(Boolean)
+    .join('\n');
+};
+
+const parseHumanValue = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed || /^none$/i.test(trimmed) || /^n\/a$/i.test(trimmed)) return null;
+  if (/^(yes|true)$/i.test(trimmed)) return true;
+  if (/^(no|false)$/i.test(trimmed)) return false;
+  return trimmed;
+};
+
+const parseTextObject = (
+  label: string,
+  value: string,
+  keyMap: Record<string, string>,
+  listKeys: string[] = []
+) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return parseJsonField(label, trimmed);
+
+  const result: Record<string, unknown> = {};
+  splitLines(trimmed).forEach((line) => {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex < 0) return;
+    const rawKey = line.slice(0, separatorIndex).trim().toLowerCase();
+    const key = keyMap[rawKey] || rawKey.replace(/\s+([a-z])/g, (_, char: string) => char.toUpperCase());
+    const rawValue = line.slice(separatorIndex + 1).trim();
+    result[key] = listKeys.includes(key)
+      ? splitComma(rawValue)
+      : parseHumanValue(rawValue);
+  });
+
+  return Object.keys(result).length ? result : null;
+};
+
+const parseProductsText = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('[')) return parseJsonField('Products / services', trimmed);
+
+  return splitLines(trimmed).map((line) => {
+    const [name, category, ...descriptionParts] = line.split('|').map((part) => part.trim());
+    return {
+      name: name || null,
+      category: category || null,
+      description: descriptionParts.join(' | ') || null,
+    };
+  }).filter((item) => item.name);
+};
+
+const financialKeyMap: Record<string, string> = {
+  revenue: 'revenue',
+  'revenue currency': 'revenueCurrency',
+  'revenue growth': 'revenueGrowth',
+  'debt ratio': 'debtRatio',
+  'profit margin': 'profitMargin',
+  'funding stage': 'fundingStage',
+  profitability: 'profitability',
+};
+
+const marketKeyMap: Record<string, string> = {
+  'market share': 'marketShare',
+  'brand rank': 'brandRank',
+  'client count': 'clientCount',
+  'main markets': 'mainMarkets',
+};
+
+const innovationKeyMap: Record<string, string> = {
+  patents: 'patents',
+  'rd investment percent': 'rdInvestmentPercent',
+  'r&d investment percent': 'rdInvestmentPercent',
+  'tech stack': 'techStack',
+  'tech maturity level': 'techMaturityLevel',
+  'product innovation rate': 'productInnovationRate',
+  'technology capabilities': 'technologyCapabilities',
+};
+
+const innovationMetricKeys = new Set(['patents', 'rdInvestmentPercent', 'techMaturityLevel', 'productInnovationRate']);
+
+const innovationDetailData = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([key, item]) => !innovationMetricKeys.has(key) && formatTextValue(item));
+  return entries.length ? Object.fromEntries(entries) : null;
+};
+
+const riskKeyMap: Record<string, string> = {
+  'legal risk': 'legalRisk',
+  'financial risk': 'financialRisk',
+  'reputation risk': 'reputationRisk',
+  'security risk': 'securityRisk',
+  'conflict of interest risk': 'conflictOfInterestRisk',
+  'supply interruption risk': 'supplyInterruptionRisk',
+  'dependency risk': 'dependencyRisk',
+  'overall risk level': 'overallRiskLevel',
+};
+
+const complianceKeyMap: Record<string, string> = {
+  status: 'status',
+  'quality certifications': 'qualityCertifications',
+  'security certifications': 'securityCertifications',
+  'anti corruption policy': 'antiCorruptionPolicy',
+  'anti-corruption policy': 'antiCorruptionPolicy',
+  'labor compliance': 'laborCompliance',
+  'environmental policy': 'environmentalPolicy',
+};
+
+const validationKeyMap: Record<string, string> = {
+  complete: 'isComplete',
+  'data quality score': 'dataQualityScore',
+  'missing critical fields': 'missingCriticalFields',
+  warnings: 'warnings',
+};
+
+const insightAliasMap = {
+  strengths: ['strengths', 'strength', 'insights.strengths', 'insights.strength'],
+  weaknesses: ['weaknesses', 'weakness', 'weakneses', 'weekness', 'weeknesses', 'insights.weaknesses', 'insights.weakness', 'insights.weekness', 'insights.weeknesses'],
+  opportunities: ['opportunities', 'opportunity', 'insights.opportunities', 'insights.opportunity'],
+  threats: ['threats', 'threat', 'insights.threats', 'insights.threat'],
+} as const;
+
+const getNestedValue = (source: Record<string, any> | undefined | null, path: string) => {
+  if (!source) return undefined;
+  if (path.includes('.')) {
+    return path.split('.').reduce<any>((current, key) => current && typeof current === 'object' ? current[key] : undefined, source);
+  }
+  return source[path];
+};
+
+const insightList = (source: Record<string, any> | undefined | null, key: keyof typeof insightAliasMap) => {
+  for (const alias of insightAliasMap[key]) {
+    const value = getNestedValue(source, alias);
+    if (Array.isArray(value) && value.length > 0) return value.filter(Boolean).map(String);
+    if (typeof value === 'string' && value.trim()) return splitLines(value);
+  }
+  return [];
+};
+
 const candidateToEditForm = (candidate: CandidateResponse | null): StaffCandidateEditForm => {
   if (!candidate) return emptyStaffCandidateEdit;
-  const identity = candidate.identity as { legalName?: string; tradeName?: string; taxId?: string } | undefined;
-  const business = candidate.business as { industries?: string[]; businessModel?: string } | undefined;
-  const contact = candidate.contact as { website?: string; emails?: string[]; phones?: string[] } | undefined;
-  const insights = candidate.insights as { strengths?: string[]; weaknesses?: string[]; opportunities?: string[]; threats?: string[] } | undefined;
+  const identity = candidate.identity as { legalName?: string; tradeName?: string; taxCode?: string; taxId?: string } | undefined;
+  const business = candidate.business as { industries?: string[]; businessModel?: string; products?: unknown; markets?: string[]; targetCustomers?: string[] } | undefined;
+  const companySize = candidate.companySize as { employeeTier?: string; employeeCount?: number; revenueTier?: string } | undefined;
+  const contact = candidate.contact as { website?: string; emails?: string[]; phones?: string[]; addresses?: unknown } | undefined;
+  const insights = candidate.insights as Record<string, any> | undefined;
+  const candidateExtra = candidate as CandidateResponse & { keyPeople?: string[] | string };
 
   return {
     legalName: identity?.legalName || '',
     tradeName: identity?.tradeName || '',
-    taxId: identity?.taxId || '',
-    website: contact?.website || '',
-    email: contact?.emails?.[0] || '',
-    phone: contact?.phones?.[0] || '',
-    industry: business?.industries?.join(', ') || '',
+    taxId: identity?.taxCode || identity?.taxId || '',
+    website: listJoinValue(normalizeUrlItems(contact?.website)),
+    email: listJoinValue(normalizeExtractedListValue(contact?.emails, true)),
+    phone: listJoinValue(normalizeExtractedListValue(contact?.phones, true)),
+    address: formatAddressValue(contact?.addresses),
+    industry: listJoinValue(normalizeExtractedListValue(business?.industries, true)),
     businessModel: business?.businessModel || '',
-    strengths: insights?.strengths?.join('\n') || '',
-    weaknesses: insights?.weaknesses?.join('\n') || '',
-    opportunities: insights?.opportunities?.join('\n') || '',
-    threats: insights?.threats?.join('\n') || '',
+    products: productsToText(business?.products),
+    markets: listJoinValue(normalizeExtractedListValue(business?.markets, true)),
+    targetCustomers: listJoinValue(normalizeExtractedListValue(business?.targetCustomers, true)),
+    employeeTier: companySize?.employeeTier || '',
+    companySize: formatCompanySizeValue(companySize),
+    keyPeople: Array.isArray(candidateExtra.keyPeople) ? candidateExtra.keyPeople.join('\n') : candidateExtra.keyPeople || '',
+    financial: objectToText(candidate.financial, Object.values(financialKeyMap)),
+    market: objectToText(candidate.market, Object.values(marketKeyMap)),
+    innovation: objectToText(candidate.innovation, Object.values(innovationKeyMap)),
+    risk: objectToText(candidate.risk, Object.values(riskKeyMap)),
+    compliance: objectToText(candidate.compliance, Object.values(complianceKeyMap)),
+    validation: objectToText(candidate.validation, Object.values(validationKeyMap)),
+    strengths: listJoinValue(normalizeExtractedListValue(insightList(insights, 'strengths'))),
+    weaknesses: listJoinValue(normalizeExtractedListValue(insightList(insights, 'weaknesses'))),
+    opportunities: listJoinValue(normalizeExtractedListValue(insightList(insights, 'opportunities'))),
+    threats: listJoinValue(normalizeExtractedListValue(insightList(insights, 'threats'))),
   };
 };
 
 const extractionToEditForm = (extraction: Record<string, any>): StaffCandidateEditForm => {
   const data = extraction.extractedData ?? extraction;
+  const products = data?.products ?? data?.productsServices;
+  const markets = data?.markets ?? data?.targetMarkets;
   return {
     legalName: data?.legalName || '',
     tradeName: data?.tradeName || '',
     taxId: data?.taxCode || data?.taxId || '',
-    website: data?.website || '',
-    email: Array.isArray(data?.email) ? data.email[0] || '' : data?.email || '',
-    phone: Array.isArray(data?.phone) ? data.phone[0] || '' : data?.phone || '',
-    industry: Array.isArray(data?.industries) ? data.industries.join(', ') : data?.industries || '',
+    website: listJoinValue(normalizeUrlItems(data?.website)),
+    email: listJoinValue(normalizeExtractedListValue(data?.email, true)),
+    phone: listJoinValue(normalizeExtractedListValue(data?.phone, true)),
+    address: data?.address || formatAddressValue(data?.addresses),
+    industry: listJoinValue(normalizeExtractedListValue(data?.industries, true)),
     businessModel: data?.businessModel || '',
-    strengths: Array.isArray(data?.strengths) ? data.strengths.join('\n') : data?.strengths || '',
-    weaknesses: Array.isArray(data?.weaknesses) ? data.weaknesses.join('\n') : data?.weaknesses || '',
-    opportunities: Array.isArray(data?.opportunities) ? data.opportunities.join('\n') : data?.opportunities || '',
-    threats: Array.isArray(data?.threats) ? data.threats.join('\n') : data?.threats || '',
+    products: productsToText(products),
+    markets: listJoinValue(normalizeExtractedListValue(markets, true)),
+    targetCustomers: listJoinValue(normalizeExtractedListValue(data?.targetCustomers, true)),
+    employeeTier: data?.employeeTier || '',
+    companySize: data?.companySize || data?.employeeTier || '',
+    keyPeople: Array.isArray(data?.keyPeople) ? data.keyPeople.join('\n') : data?.keyPeople || '',
+    financial: objectToText(data?.financial, Object.values(financialKeyMap)),
+    market: objectToText(data?.market, Object.values(marketKeyMap)),
+    innovation: objectToText(data?.innovation, Object.values(innovationKeyMap)),
+    risk: objectToText(data?.risk, Object.values(riskKeyMap)),
+    compliance: objectToText(data?.compliance, Object.values(complianceKeyMap)),
+    validation: '',
+    strengths: listJoinValue(normalizeExtractedListValue(insightList(data, 'strengths'))),
+    weaknesses: listJoinValue(normalizeExtractedListValue(insightList(data, 'weaknesses'))),
+    opportunities: listJoinValue(normalizeExtractedListValue(insightList(data, 'opportunities'))),
+    threats: listJoinValue(normalizeExtractedListValue(insightList(data, 'threats'))),
   };
+};
+
+const normalizeConfidenceScore = (value: unknown) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  const score = value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, Math.round(score)));
+};
+
+const candidateConfidenceScore = (candidate: CandidateResponse) => {
+  const candidateWithScores = candidate as CandidateResponse & {
+    confidenceScore?: number;
+    scorePreview?: {
+      confidenceScore?: number;
+      relationshipConfidenceScore?: number;
+    };
+  };
+
+  return normalizeConfidenceScore(
+    candidate.relationshipConfidenceScore
+      ?? candidateWithScores.confidenceScore
+      ?? candidateWithScores.scorePreview?.relationshipConfidenceScore
+      ?? candidateWithScores.scorePreview?.confidenceScore
+  );
+};
+
+const candidateConfidenceLabel = (candidate: CandidateResponse) => {
+  const score = candidateConfidenceScore(candidate);
+  return score === null ? 'N/A' : `${score}%`;
+};
+
+const candidateConfidenceClass = (candidate: CandidateResponse) => {
+  const score = candidateConfidenceScore(candidate);
+  if (score === null) return styles.candidateConfidenceUnknown;
+  if (score >= 85) return styles.candidateConfidenceHigh;
+  if (score >= 70) return styles.candidateConfidenceMedium;
+  return styles.candidateConfidenceLow;
+};
+
+const normalizeEvidenceField = (field: Record<string, any>): StaffExtractionEvidence => ({
+  fieldName: field.fieldName || field.name || 'Unknown field',
+  extractedValue: formatEvidenceValue(field.fieldName || field.name || 'Unknown field', field.value ?? field.extractedValue),
+  confidenceScore: normalizeConfidenceScore(field.confidence ?? field.confidenceScore),
+  evidenceText: field.evidenceText || field.evidence || field.sourceText || null,
+  pageNumber: typeof field.pageNumber === 'number' ? field.pageNumber : null,
+  validationStatus: field.validationStatus || null,
+  validationMessages: field.validationMessages || null,
+  reviewStatus: field.reviewStatus || null,
+});
+
+const extractionToEvidenceMap = (extraction: Record<string, any>): Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>> => {
+  const rawFieldResults = extraction.fieldResults && typeof extraction.fieldResults === 'object'
+    ? Object.values(extraction.fieldResults as Record<string, Record<string, any>>)
+    : [];
+  const fieldResults = rawFieldResults
+    .filter((field): field is Record<string, any> => Boolean(field && typeof field === 'object'))
+    .map(normalizeEvidenceField);
+  const byFieldName = new Map(fieldResults.map((field) => [field.fieldName, field]));
+
+  return staffReviewFields.reduce<Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>>>((map, field) => {
+    const matched = extractionEvidenceAliases[field.key]
+      .map((alias) => byFieldName.get(alias))
+      .find(Boolean);
+
+    if (matched) {
+      map[field.key] = matched;
+    }
+
+    return map;
+  }, {});
+};
+
+const confidenceTone = (score?: number | null) => {
+  if (score === null || score === undefined) return 'unknown';
+  if (score >= 85) return 'high';
+  if (score >= 70) return 'medium';
+  return 'low';
+};
+
+const evidenceMetaText = (evidence: StaffExtractionEvidence) => {
+  const parts = [
+    evidence.pageNumber ? `Page ${evidence.pageNumber}` : 'Page unavailable',
+  ].filter(Boolean);
+
+  return parts.join(' | ');
+};
+
+const evidenceScoreLabel = (score?: number | null) =>
+  score === null || score === undefined ? 'No score' : `${score}%`;
+
+const evidenceConfidenceLabel = (score?: number | null) => {
+  if (score === null || score === undefined) return 'Needs source check';
+  if (score >= 85) return 'High confidence';
+  if (score >= 70) return 'Medium confidence';
+  return 'Low confidence';
+};
+
+const formatEvidenceValue = (fieldName: string, value: unknown) => {
+  const normalizedField = fieldName.includes('.') ? fieldName.split('.').pop() || fieldName : fieldName;
+
+  if (normalizedField === 'products' || normalizedField === 'productsServices' || normalizedField === 'services') {
+    return productsToText(value) || candidateField(value, '');
+  }
+  if (normalizedField === 'financial') return objectToText(value, Object.values(financialKeyMap)) || candidateField(value, '');
+  if (normalizedField === 'market') return objectToText(value, Object.values(marketKeyMap)) || candidateField(value, '');
+  if (normalizedField === 'innovation') return objectToText(value, Object.values(innovationKeyMap)) || candidateField(value, '');
+  if (normalizedField === 'risk') return objectToText(value, Object.values(riskKeyMap)) || candidateField(value, '');
+  if (normalizedField === 'compliance') return objectToText(value, Object.values(complianceKeyMap)) || candidateField(value, '');
+  if (normalizedField === 'validation') return objectToText(value, Object.values(validationKeyMap)) || candidateField(value, '');
+
+  if (Array.isArray(value)) {
+    return value.map((item) => candidateField(item, '')).filter(Boolean).join('\n');
+  }
+
+  return candidateField(value, '');
+};
+
+const FieldEvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence; fieldKey?: StaffCandidateEditKey }> = ({ evidence, fieldKey }) => {
+  if (!evidence) {
+    return (
+      <div className={`${styles.extractionEvidenceBox} ${styles.extractionEvidenceUnknown}`}>
+        <div className={styles.extractionEvidenceHead}>
+          <div>
+            <span>Evidence review</span>
+            <strong>No evidence returned</strong>
+          </div>
+          <span className={styles.extractionEvidenceScore}><AlertTriangle size={14} /> N/A</span>
+        </div>
+        <p>AI did not return source evidence for this field. Staff should verify it manually in the original document.</p>
+      </div>
+    );
+  }
+
+  const score = evidence.confidenceScore;
+  const tone = confidenceTone(score);
+  const messages = Array.isArray(evidence.validationMessages)
+    ? evidence.validationMessages.join(', ')
+    : evidence.validationMessages;
+  const hasEvidence = Boolean(evidence.evidenceText?.trim());
+  const statusItems = [
+    evidenceMetaText(evidence),
+    evidence.validationStatus ? `Validation: ${evidence.validationStatus}` : null,
+    evidence.reviewStatus ? `Review: ${evidence.reviewStatus}` : null,
+  ].filter(Boolean);
+
+  return (
+    <div className={`${styles.extractionEvidenceBox} ${styles[`extractionEvidence${formatInsightTitle(tone)}`] || ''}`}>
+      <div className={styles.extractionEvidenceHead}>
+        <div>
+          <span>Evidence review</span>
+          <strong>{evidenceConfidenceLabel(score)}</strong>
+        </div>
+        <span className={styles.extractionEvidenceScore}>
+          {hasEvidence ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+          {evidenceScoreLabel(score)}
+        </span>
+      </div>
+      {score !== null && score !== undefined && (
+        <div className={styles.extractionEvidenceTrack} aria-hidden="true">
+          <i style={{ width: `${score}%` }} />
+        </div>
+      )}
+      <div className={`${styles.extractionEvidenceCompact} ${hasEvidence ? '' : styles.extractionEvidenceMissing}`}>
+        <div>
+          <span>Source evidence</span>
+          <strong>{hasEvidence ? 'Evidence available for this field' : 'No source quote returned'}</strong>
+        </div>
+        <p>{evidence.evidenceText || 'AI returned a value, but no supporting quote was attached. Staff should verify it in the original document.'}</p>
+      </div>
+      <div className={styles.extractionEvidenceMeta}>
+        {statusItems.map((item) => <small key={item}>{item}</small>)}
+      </div>
+      {messages && <small className={styles.extractionEvidenceWarning}>{messages}</small>}
+    </div>
+  );
 };
 
 const buildExtractedCompanyDataPayload = (form: StaffCandidateEditForm) => ({
   legalName: form.legalName.trim() || null,
-  tradeName: form.tradeName.trim() || null,
   taxCode: form.taxId.trim() || null,
-  industries: form.industry.split(',').map((item) => item.trim()).filter(Boolean),
+  industries: normalizeExtractedListValue(form.industry, true),
   businessModel: form.businessModel.trim() || null,
-  website: form.website.trim() || null,
-  email: form.email.trim() ? [form.email.trim()] : [],
-  phone: form.phone.trim() ? [form.phone.trim()] : [],
-  strengths: splitLines(form.strengths),
-  weaknesses: splitLines(form.weaknesses),
-  opportunities: splitLines(form.opportunities),
-  threats: splitLines(form.threats),
+  products: parseProductsText(form.products),
+  markets: normalizeExtractedListValue(form.markets, true),
+  targetCustomers: normalizeExtractedListValue(form.targetCustomers, true),
+  employeeTier: form.employeeTier.trim() || null,
+  website: normalizeUrlItems(form.website).join(', ') || null,
+  email: normalizeExtractedListValue(form.email, true),
+  phone: normalizeExtractedListValue(form.phone, true),
+  address: form.address.trim() || null,
+  companySize: form.companySize.trim() || null,
+  strengths: normalizeExtractedListValue(form.strengths),
+  weaknesses: normalizeExtractedListValue(form.weaknesses),
+  opportunities: normalizeExtractedListValue(form.opportunities),
+  threats: normalizeExtractedListValue(form.threats),
 });
 
 const buildCandidateUpdatePayload = (form: StaffCandidateEditForm): UpdateCandidateRequest => ({
   identity: {
     legalName: form.legalName.trim() || null,
     tradeName: form.tradeName.trim() || null,
-    taxId: form.taxId.trim() || null,
+    taxCode: form.taxId.trim() || null,
   },
   business: {
-    industries: form.industry.split(',').map((item) => item.trim()).filter(Boolean),
+    industries: normalizeExtractedListValue(form.industry, true),
     businessModel: form.businessModel.trim() || null,
+    products: parseProductsText(form.products),
+    markets: normalizeExtractedListValue(form.markets, true),
+    targetCustomers: normalizeExtractedListValue(form.targetCustomers, true),
   },
   contact: {
-    website: form.website.trim() || null,
-    emails: form.email.trim() ? [form.email.trim()] : [],
-    phones: form.phone.trim() ? [form.phone.trim()] : [],
+    website: normalizeUrlItems(form.website).join(', ') || null,
+    emails: normalizeExtractedListValue(form.email, true),
+    phones: normalizeExtractedListValue(form.phone, true),
+    addresses: form.address.trim() ? [{ fullAddress: form.address.trim() }] : [],
+  },
+  companySize: {
+    employeeTier: form.employeeTier.trim() || form.companySize.trim() || null,
   },
   insights: {
-    strengths: splitLines(form.strengths),
-    weaknesses: splitLines(form.weaknesses),
-    opportunities: splitLines(form.opportunities),
-    threats: splitLines(form.threats),
+    strengths: normalizeExtractedListValue(form.strengths),
+    weaknesses: normalizeExtractedListValue(form.weaknesses),
+    opportunities: normalizeExtractedListValue(form.opportunities),
+    threats: normalizeExtractedListValue(form.threats),
   },
+  financial: parseTextObject('Financial', form.financial, financialKeyMap),
+  innovation: parseTextObject('Innovation', form.innovation, innovationKeyMap, ['techStack', 'technologyCapabilities']),
 });
 
 const taskTypeText: Record<TaskType, { title: string; description: string; steps: string[] }> = {
   DOCUMENT_COLLECTION: {
     title: 'Document collection',
-    description: 'Collect and upload evidence documents, then submit the document package for manager review.',
-    steps: ['Start work', 'Upload evidence', 'Check documents', 'Submit review'],
+    description: 'Collect and upload evidence documents, then submit them directly to the project.',
+    steps: ['Start work', 'Upload evidence', 'Check documents', 'Complete task'],
   },
   COMPANY_DATA_PREPARATION: {
     title: 'Company data preparation',
@@ -708,6 +2369,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     taskId: number;
     submissionId?: number | null;
   } | null>(null);
+  const [managerCandidateTab, setManagerCandidateTab] = useState<ManagerCandidateTab>('overview');
   const [workbench, setWorkbench] = useState<ProjectTaskWorkbenchResponse | null>(null);
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
   const [workbenchError, setWorkbenchError] = useState<string | null>(null);
@@ -716,14 +2378,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [extractingImportJobId, setExtractingImportJobId] = useState<number | null>(null);
   const [projectDocuments, setProjectDocuments] = useState<WorkbenchDocumentResponse[]>([]);
   const [projectDocumentsLoading, setProjectDocumentsLoading] = useState(false);
+  const [documentsTabItems, setDocumentsTabItems] = useState<WorkbenchDocumentResponse[]>([]);
+  const [documentsTabLoading, setDocumentsTabLoading] = useState(false);
+  const [documentsTabError, setDocumentsTabError] = useState<string | null>(null);
+  const [documentSearch, setDocumentSearch] = useState('');
+  const [documentSort, setDocumentSort] = useState<'newest' | 'oldest' | 'name' | 'type' | 'size'>('newest');
   const [selectedProjectDocumentIds, setSelectedProjectDocumentIds] = useState<number[]>([]);
   const [extractingSelectedDocuments, setExtractingSelectedDocuments] = useState(false);
   const [aiProgress, setAiProgress] = useState<{ percent: number; label: string } | null>(null);
   const [pendingExtractionReviews, setPendingExtractionReviews] = useState<StaffExtractionReview[]>([]);
   const [staffCandidate, setStaffCandidate] = useState<CandidateResponse | null>(null);
   const [staffCandidateEdit, setStaffCandidateEdit] = useState<StaffCandidateEditForm>(emptyStaffCandidateEdit);
+  const [candidateReviewTab, setCandidateReviewTab] = useState<CandidateReviewTab>('profile');
   const [staffCandidateLoading, setStaffCandidateLoading] = useState(false);
   const [staffSubmitLoading, setStaffSubmitLoading] = useState(false);
+  const [deletingCandidateDraftId, setDeletingCandidateDraftId] = useState<string | null>(null);
+  const [candidateDraftPendingDelete, setCandidateDraftPendingDelete] = useState<{
+    candidateId: string;
+    label: string;
+    status: CandidateStatus;
+  } | null>(null);
   const [staffTaskNote, setStaffTaskNote] = useState('');
   const [roleEvaluationForm, setRoleEvaluationForm] = useState({
     relationship: '',
@@ -779,7 +2453,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [candidateRelationshipFilter, setCandidateRelationshipFilter] = useState('ALL');
   const currentProjectId = apiProject?.id ?? Number(localStorage.getItem('apms-active-project'));
   const isDraftProject = apiProject?.status === 'DRAFT';
-  const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Members'] : tabs), [isStaffView]);
+  const staffTaskStatus = workbench?.taskStatus || selectedStaffTask?.status;
+  const canUseStaffWorkbench = staffTaskStatus === 'IN_PROGRESS';
+  const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Documents', 'Members'] : tabs), [isStaffView]);
   const staffAccountId = useMemo(() => {
     if (!isStaffView) return null;
     if (currentUser?.id && currentUser.id > 0) return currentUser.id;
@@ -793,6 +2469,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const timeout = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    setCandidateReviewTab('profile');
+  }, [staffCandidate?.id]);
+
+  useEffect(() => {
+    setManagerCandidateTab('overview');
+  }, [selectedCandidate?.id]);
 
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
@@ -1021,22 +2705,59 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     };
   }, [selectedStaffTask?.id, selectedStaffTask?.projectId, selectedStaffTask?.taskType]);
 
+  useEffect(() => {
+    if (activeTab !== 'Documents' || !currentProjectId) return;
+
+    let cancelled = false;
+    setDocumentsTabLoading(true);
+    setDocumentsTabError(null);
+
+    api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${currentProjectId}/documents`, {
+      params: { includeHidden: false, page: 0, size: 200 },
+    })
+      .then((payload) => {
+        if (!cancelled) setDocumentsTabItems(unwrapList<WorkbenchDocumentResponse>(payload));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDocumentsTabItems([]);
+          setDocumentsTabError(error instanceof Error ? error.message : 'Cannot load project documents.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDocumentsTabLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, currentProjectId]);
+
   const assignableMembers = useMemo(
     () => projectMembers.filter((member) => member.memberRole === 'STAFF'),
     [projectMembers]
   );
 
   const candidateStats = useMemo(() => {
-    const pending = candidates.filter((candidate) => candidate.status === 'PENDING_REVIEW' || candidate.status === 'CORRECTED' || candidate.status === 'DRAFT').length;
-    const approved = candidates.filter((candidate) => candidate.status === 'APPROVED').length;
-    const rejected = candidates.filter((candidate) => candidate.status === 'REJECTED').length;
-    const incomplete = candidates.filter(isCandidateIncomplete).length;
+    const reviewCandidates = candidates.filter((candidate) => visibleCandidateStatuses.has(candidate.status));
+    const pending = reviewCandidates.filter((candidate) => candidate.status === 'PENDING_REVIEW').length;
+    const approved = reviewCandidates.filter((candidate) => candidate.status === 'APPROVED').length;
+    const rejected = reviewCandidates.filter((candidate) => candidate.status === 'REJECTED').length;
+    const incomplete = reviewCandidates.filter(isCandidateIncomplete).length;
+    const confidenceScores = reviewCandidates
+      .map(candidateConfidenceScore)
+      .filter((score): score is number => score !== null);
+    const averageConfidence = confidenceScores.length
+      ? Math.round(confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length)
+      : null;
 
     return {
       pending,
       approved,
       rejected,
       incomplete,
+      averageConfidence,
+      totalVisible: reviewCandidates.length,
     };
   }, [candidates]);
 
@@ -1051,7 +2772,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const term = candidateSearch.trim().toLowerCase();
 
     return candidates.filter((candidate) => {
-      const matchesStatus = candidateStatusFilter === 'ALL' || candidate.status === candidateStatusFilter;
+      if (!visibleCandidateStatuses.has(candidate.status)) return false;
+      const effectiveStatusFilter = candidateStatusFilter !== 'ALL' && !visibleCandidateStatuses.has(candidateStatusFilter)
+        ? 'ALL'
+        : candidateStatusFilter;
+      const matchesStatus = effectiveStatusFilter === 'ALL' || candidate.status === effectiveStatusFilter;
       const relationship = candidate.suggestedRelationshipType || candidate.relationshipTypeOverride || '';
       const matchesRelationship = candidateRelationshipFilter === 'ALL' || relationship === candidateRelationshipFilter;
       const searchable = [
@@ -1064,6 +2789,31 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return matchesStatus && matchesRelationship && (!term || searchable.includes(term));
     });
   }, [candidateRelationshipFilter, candidateSearch, candidateStatusFilter, candidates]);
+
+  const filteredDocuments = useMemo(() => {
+    const term = documentSearch.trim().toLowerCase();
+    const rows = documentsTabItems.filter((document) => {
+      const searchable = [
+        document.fileName,
+        document.sourceType,
+        document.mimeType,
+        document.status,
+        document.uploadedByName,
+        document.uploadedBy,
+        document.taskId,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return !term || searchable.includes(term);
+    });
+
+    return [...rows].sort((a, b) => {
+      if (documentSort === 'name') return (a.fileName || '').localeCompare(b.fileName || '');
+      if (documentSort === 'type') return (a.sourceType || '').localeCompare(b.sourceType || '');
+      if (documentSort === 'size') return (b.fileSizeBytes || 0) - (a.fileSizeBytes || 0);
+      const aTime = new Date(a.uploadedAt || a.createdAt || 0).getTime();
+      const bTime = new Date(b.uploadedAt || b.createdAt || 0).getTime();
+      return documentSort === 'oldest' ? aTime - bTime : bTime - aTime;
+    });
+  }, [documentSearch, documentSort, documentsTabItems]);
 
   const suggestedAccounts = useMemo(() => {
     const term = inviteEmail.trim().toLowerCase();
@@ -1472,6 +3222,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     try {
       const payload = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'IN_PROGRESS');
       updateTaskInState(payload.data);
+      setSelectedStaffTask(payload.data);
       setWorkbench((current) => current ? { ...current, taskStatus: 'IN_PROGRESS' } : current);
       setWorkbenchMessage('Task moved to In Progress.');
     } catch (error) {
@@ -1514,6 +3265,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleUploadEvidence = async (file: File | null) => {
     if (!file || !selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before using staff workbench actions.');
+      return;
+    }
     setUploadingEvidence(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -1545,6 +3300,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleRunAiExtraction = async (document: WorkbenchDocumentResponse) => {
     if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before running AI extraction.');
+      return;
+    }
     setExtractingImportJobId(document.id);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -1578,6 +3337,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const toggleProjectDocumentSelection = (documentId: number) => {
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before selecting documents.');
+      return;
+    }
     setSelectedProjectDocumentIds((current) => (
       current.includes(documentId)
         ? current.filter((id) => id !== documentId)
@@ -1587,6 +3350,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const extractProjectDocumentsForReview = async (selectedDocuments: WorkbenchDocumentResponse[]) => {
     if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before running AI extraction.');
+      return;
+    }
 
     if (selectedDocuments.length === 0) {
       setWorkbenchError('Please select at least one project document to extract.');
@@ -1623,13 +3390,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         );
         const extractionId = latestPayload.data?.id || latestPayload.data?.extractionId;
         if (extractionId) {
+          const latestExtraction = latestPayload.data as Record<string, any>;
           extractedReviews.push({
             id: extractionId,
             importJobId: document.id,
             rawDocumentId: document.rawDocumentId || undefined,
             fileName: document.fileName || `Import job #${document.id}`,
-            qualityStatus: (latestPayload.data as any)?.qualityStatus,
-            edit: extractionToEditForm(latestPayload.data as Record<string, any>),
+            qualityStatus: latestExtraction?.qualityStatus,
+            evidenceCoverageRate: typeof latestExtraction?.evidenceCoverageRate === 'number' ? latestExtraction.evidenceCoverageRate : null,
+            evidence: extractionToEvidenceMap(latestExtraction),
+            edit: extractionToEditForm(latestExtraction),
           });
         }
       }
@@ -1655,6 +3425,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const updatePendingExtractionEdit = (extractionId: string, patch: Partial<StaffCandidateEditForm>) => {
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before editing AI extraction data.');
+      return;
+    }
     setPendingExtractionReviews((current) => current.map((review) => (
       review.id === extractionId ? { ...review, edit: { ...review.edit, ...patch } } : review
     )));
@@ -1662,6 +3436,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleCreateCandidateFromReviewedExtractions = async () => {
     if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before creating a candidate draft.');
+      return;
+    }
     if (pendingExtractionReviews.length === 0) {
       setWorkbenchError('Please extract at least one document before creating a candidate.');
       return;
@@ -1718,6 +3496,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleCreateStaffCandidate = async (extractionId: string) => {
     if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before creating a candidate draft.');
+      return;
+    }
     setStaffCandidateLoading(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -1736,6 +3518,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const handleOpenStaffCandidate = async (candidateId: string) => {
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before opening candidate drafts.');
+      return;
+    }
     setStaffCandidateLoading(true);
     setWorkbenchError(null);
 
@@ -1750,26 +3536,56 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const handleSaveStaffCandidate = async () => {
-    if (!staffCandidate) return;
-    setStaffCandidateLoading(true);
+  const handleDeleteStaffCandidateDraft = (candidateId: string, candidateLabel: string, status: CandidateStatus) => {
+    if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before deleting candidate drafts.');
+      return;
+    }
+    setCandidateDraftPendingDelete({ candidateId, label: candidateLabel, status });
+  };
+
+  const confirmDeleteStaffCandidateDraft = async () => {
+    if (!selectedStaffTask || !candidateDraftPendingDelete) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before deleting candidate drafts.');
+      return;
+    }
+    const { candidateId, label } = candidateDraftPendingDelete;
+
+    setDeletingCandidateDraftId(candidateId);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
 
     try {
-      const payload = await candidateApi.updateCandidate(staffCandidate.id, buildCandidateUpdatePayload(staffCandidateEdit));
-      setStaffCandidate(payload.data);
-      setStaffCandidateEdit(candidateToEditForm(payload.data));
-      setWorkbenchMessage('Candidate information saved.');
+      await candidateApi.deleteCandidate(candidateId);
+      setWorkbench((current) => current ? {
+        ...current,
+        candidateDrafts: current.candidateDrafts?.filter((draft) => draft.candidateId !== candidateId) ?? [],
+      } : current);
+      if (staffCandidate?.id === candidateId) {
+        setStaffCandidate(null);
+        setStaffCandidateEdit(emptyStaffCandidateEdit);
+      }
+      setCandidateDraftPendingDelete(null);
+      setToast({ kind: 'success', message: `Candidate "${label}" deleted successfully.` });
     } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot save candidate.');
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Cannot delete candidate draft.' });
     } finally {
-      setStaffCandidateLoading(false);
+      setDeletingCandidateDraftId(null);
     }
   };
 
   const handleSubmitStaffCandidate = async () => {
     if (!selectedStaffTask || !staffCandidate) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before submitting a candidate.');
+      return;
+    }
+    if (staffCandidate.status !== 'DRAFT') {
+      setWorkbenchError('Only the selected candidate draft with DRAFT status can be submitted to manager.');
+      return;
+    }
     setStaffSubmitLoading(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -1782,17 +3598,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       await taskApi.submitTask(selectedStaffTask.projectId, selectedStaffTask.id, {
         submissionType: 'COMPANY_CANDIDATE',
         targetEntityType: 'CompanyCandidate',
-        targetEntityId: staffCandidate.id,
+        targetEntityId: candidatePayload.data.id,
         note: 'Candidate submitted for manager review.',
       });
 
       const updatedTask = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'IN_REVIEW');
       updateTaskInState(updatedTask.data);
+      setSelectedStaffTask(updatedTask.data);
       setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
-      setWorkbenchMessage('Submitted to manager review.');
-      await loadStaffWorkbench(updatedTask.data);
-      setSelectedStaffTask(null);
-      setStaffTaskNote('');
+      setWorkbenchMessage(`Selected candidate draft ${candidatePayload.data.id.slice(-8)} submitted to manager review.`);
+      await loadTaskWorkbench(updatedTask.data);
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot submit candidate to manager.');
     } finally {
@@ -1839,6 +3654,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     fallbackNote: string
   ) => {
     if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before submitting it to manager.');
+      return;
+    }
     const latestDocument = workbench?.documents?.[0];
     const note = buildStaffTaskSubmissionNote(selectedStaffTask.taskType, fallbackNote);
 
@@ -1853,6 +3672,24 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         targetEntityId: latestDocument?.id ? String(latestDocument.id) : String(selectedStaffTask.id),
         note,
       });
+
+      if (selectedStaffTask.taskType === 'DOCUMENT_COLLECTION') {
+        const completedTask: ProjectTaskResponse = {
+          ...selectedStaffTask,
+          status: 'DONE',
+          completedAt: new Date().toISOString(),
+        };
+        updateTaskInState(completedTask);
+        setWorkbench((current) => current ? { ...current, taskStatus: 'DONE' } : current);
+        setToast({ kind: 'success', message: 'Documents submitted directly to the project.' });
+        await loadStaffWorkbench(completedTask);
+        setSelectedStaffTask(null);
+        setStaffTaskNote('');
+        if (activeTab === 'Documents') {
+          setDocumentsTabItems([]);
+        }
+        return;
+      }
 
       const updatedTask = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'IN_REVIEW');
       updateTaskInState(updatedTask.data);
@@ -2082,18 +3919,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <h2>Candidate review</h2>
                   <p>Review extracted company candidates before approving them into Company Profile records.</p>
                 </div>
-                <span className={styles.count}>{filteredCandidates.length}/{candidates.length}</span>
+                <span className={styles.count}>{filteredCandidates.length}/{candidateStats.totalVisible}</span>
               </div>
 
               {candidateError && <div className={styles.inlineError}>{candidateError}</div>}
               {candidateActionMessage && <div className={styles.inlineSuccess}>{candidateActionMessage}</div>}
 
               <div className={styles.candidateStats}>
-                <div><span>Total candidates</span><strong>{candidates.length}</strong></div>
+                <div><span>Total candidates</span><strong>{candidateStats.totalVisible}</strong></div>
                 <div><span>Need review</span><strong>{candidateStats.pending}</strong></div>
                 <div><span>Approved</span><strong>{candidateStats.approved}</strong></div>
                 <div><span>Rejected</span><strong>{candidateStats.rejected}</strong></div>
                 <div><span>Missing data</span><strong>{candidateStats.incomplete}</strong></div>
+                <div><span>Avg confidence</span><strong>{candidateStats.averageConfidence === null ? 'N/A' : `${candidateStats.averageConfidence}%`}</strong></div>
               </div>
 
               <div className={styles.candidateToolbar}>
@@ -2110,8 +3948,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <select value={candidateStatusFilter} onChange={(event) => setCandidateStatusFilter(event.target.value as CandidateStatus | 'ALL')}>
                     <option value="ALL">All status</option>
                     <option value="PENDING_REVIEW">Pending review</option>
-                    <option value="CORRECTED">Corrected</option>
-                    <option value="DRAFT">Draft</option>
                     <option value="APPROVED">Approved</option>
                     <option value="REJECTED">Rejected</option>
                   </select>
@@ -2130,8 +3966,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <table className={styles.candidateReviewTable}>
                   <thead>
                     <tr>
+                      <th>No.</th>
                       <th>Candidate</th>
                       <th>Project relationship</th>
+                      <th>Confidence</th>
                       <th>Status</th>
                       <th>Decision</th>
                     </tr>
@@ -2139,19 +3977,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <tbody>
                     {candidatesLoading && (
                       <tr>
-                        <td colSpan={4}><div className={styles.empty}>Loading candidates...</div></td>
+                        <td colSpan={6}><div className={styles.empty}>Loading candidates...</div></td>
                       </tr>
                     )}
                     {!candidatesLoading && filteredCandidates.length === 0 && (
                       <tr>
-                        <td colSpan={4}><div className={styles.empty}>No candidate matches your review filters.</div></td>
+                        <td colSpan={6}><div className={styles.empty}>No candidate matches your review filters.</div></td>
                       </tr>
                     )}
-                    {!candidatesLoading && filteredCandidates.map((candidate) => (
+                    {!candidatesLoading && filteredCandidates.map((candidate, index) => (
                       <tr key={candidate.id}>
                         <td>
+                          <span className={styles.candidateOrderCell}>{index + 1}</span>
+                        </td>
+                        <td>
                           <div className={styles.candidateNameCell}>
-                            <span className={styles.candidateRank}>#{candidate.candidateOrder ?? candidate.id.slice(-6)}</span>
                             <span>
                               <strong>{candidateName(candidate)}</strong>
                             </span>
@@ -2162,6 +4002,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{candidate.suggestedRelationshipType || candidate.relationshipTypeOverride || 'Project default'}</strong>
                             <small>{displayedProject.type}</small>
                           </div>
+                        </td>
+                        <td>
+                          <span className={`${styles.candidateConfidenceBadge} ${candidateConfidenceClass(candidate)}`}>
+                            {candidateConfidenceLabel(candidate)}
+                          </span>
                         </td>
                         <td>
                           <span className={`${styles.candidateStatus} ${candidateStatusClass[candidate.status]}`}>
@@ -2177,6 +4022,90 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </motion.section>
+          ) : activeTab === 'Documents' ? (
+            <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className={styles.memberPanelHead}>
+                <div>
+                  <h2>Project documents</h2>
+                  <p>View documents uploaded from document collection tasks and other project evidence sources.</p>
+                </div>
+                <span className={styles.count}>{filteredDocuments.length}/{documentsTabItems.length}</span>
+              </div>
+
+              {documentsTabError && <div className={styles.inlineError}>{documentsTabError}</div>}
+
+              <div className={styles.candidateToolbar}>
+                <label className={styles.candidateSearch}>
+                  <Search size={16} />
+                  <input
+                    value={documentSearch}
+                    placeholder="Search file name, uploader, type, status..."
+                    onChange={(event) => setDocumentSearch(event.target.value)}
+                  />
+                </label>
+                <label className={styles.candidateFilter}>
+                  <Filter size={16} />
+                  <select value={documentSort} onChange={(event) => setDocumentSort(event.target.value as typeof documentSort)}>
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="name">File name</option>
+                    <option value="type">File type</option>
+                    <option value="size">File size</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className={styles.projectDocumentsGrid}>
+                {documentsTabLoading && <div className={styles.empty}>Loading project documents...</div>}
+                {!documentsTabLoading && filteredDocuments.length === 0 && (
+                  <div className={styles.documentEmptyState}>
+                    <FileText size={26} />
+                    <strong>No documents found</strong>
+                    <span>Uploaded documents from Document Collection tasks will appear here after staff submit them to the project.</span>
+                  </div>
+                )}
+                {!documentsTabLoading && filteredDocuments.map((document) => (
+                  <article className={styles.projectDocumentCard} key={document.rawDocumentId || document.id}>
+                    <div className={styles.projectDocumentIcon}>
+                      <FileText size={22} />
+                    </div>
+                    <div className={styles.projectDocumentBody}>
+                      <div className={styles.projectDocumentTitleRow}>
+                        <strong>{document.fileName || `Import job #${document.id}`}</strong>
+                        <span>{document.sourceType || 'OTHER'}</span>
+                      </div>
+                      <div className={styles.projectDocumentMetaGrid}>
+                        <div><span>Uploaded by</span><strong>{document.uploadedByName || (document.uploadedBy ? `User #${document.uploadedBy}` : 'Unknown')}</strong></div>
+                        <div><span>Uploaded</span><strong>{formatDateTime(document.uploadedAt || document.createdAt)}</strong></div>
+                        <div><span>File type</span><strong>{document.mimeType || document.sourceType || 'N/A'}</strong></div>
+                        <div><span>File size</span><strong>{formatFileSize(document.fileSizeBytes)}</strong></div>
+                        <div><span>Status</span><strong>{document.status}</strong></div>
+                        <div><span>Source task</span><strong>{document.taskId ? `Task #${document.taskId}` : 'Project upload'}</strong></div>
+                      </div>
+                      {document.errorMessage && <p className={styles.projectDocumentError}>{document.errorMessage}</p>}
+                    </div>
+                    <div className={styles.projectDocumentActions}>
+                      <button
+                        className={styles.button}
+                        type="button"
+                        onClick={() => void handleDocumentFileAction(document, 'open')}
+                        disabled={!document.rawDocumentId}
+                      >
+                        <ExternalLink size={16} />Preview
+                      </button>
+                      <button
+                        className={`${styles.button} ${styles.primaryButton}`}
+                        type="button"
+                        onClick={() => void handleDocumentFileAction(document, 'download')}
+                        disabled={!document.rawDocumentId}
+                      >
+                        <Download size={16} />Download
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
             </motion.section>
           ) : activeTab === 'Members' ? (
@@ -2590,23 +4519,29 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   className={`${styles.button} ${styles.primaryButton}`}
                   type="button"
                   onClick={() => void handleStartStaffTask()}
-                  disabled={selectedStaffTask.status !== 'TODO'}
+                  disabled={staffTaskStatus !== 'TODO'}
                 >
-                  <Clock size={16} />{selectedStaffTask.status === 'TODO' ? 'Start task' : 'Task started'}
+                  <Clock size={16} />{staffTaskStatus === 'TODO' ? 'Start task' : 'Task started'}
                 </button>
                 <span>
-                  {selectedStaffTask.status === 'TODO'
+                  {staffTaskStatus === 'TODO'
                     ? 'Start this task to move it from To Do to In Progress.'
                     : `Current task status: ${workbench?.taskStatus || selectedStaffTask.status}`}
                 </span>
               </div>
+              {!canUseStaffWorkbench && staffTaskStatus === 'TODO' && (
+                <div className={styles.reviewNoteAlert}>
+                  <strong>Task has not started yet</strong>
+                  <span>Click Start task to move this task to In Progress before using upload, AI extraction, candidate draft, submit, or delete actions.</span>
+                </div>
+              )}
 
               <div className={styles.workbenchFlow}>
                 {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
                   <div
                     key={step}
                     className={`${styles.workbenchStep} ${
-                      index === 0 && selectedStaffTask.status !== 'TODO' ? styles.workbenchStepDone : ''
+                      index === 0 && staffTaskStatus !== 'TODO' ? styles.workbenchStepDone : ''
                     } ${
                       index === 1 && (workbench?.documents?.length ?? 0) > 0 ? styles.workbenchStepDone : ''
                     } ${
@@ -2614,7 +4549,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     } ${
                       step === 'Candidate draft' && (workbench?.candidateDrafts?.length ?? 0) > 0 ? styles.workbenchStepDone : ''
                     } ${
-                      step === 'Submit review' && workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED') ? styles.workbenchStepDone : ''
+                      (step === 'Submit review' || step === 'Complete task') && workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED') ? styles.workbenchStepDone : ''
                     }`}
                   >
                     <span>{index + 1}</span>
@@ -2637,10 +4572,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         className={`${styles.button} ${styles.primaryButton}`}
                         type="button"
                         onClick={() => void handleExtractSelectedProjectDocuments()}
-                        disabled={extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
+                        disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
                       >
                         <Sparkles size={16} />
-                        {extractingSelectedDocuments ? 'Extracting...' : `Extract selected for review (${selectedProjectDocumentIds.length})`}
+                        {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
                       </button>
                     </div>
 
@@ -2679,6 +4614,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               type="checkbox"
                               checked={selected}
                               onChange={() => toggleProjectDocumentSelection(document.id)}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
                           <div className={styles.documentIcon}><FileText size={18} /></div>
@@ -2694,7 +4630,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               className={styles.button}
                               type="button"
                               onClick={() => void handleDocumentFileAction(document, 'open')}
-                              disabled={!document.rawDocumentId}
+                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
                             >
                               <ExternalLink size={16} />Open
                             </button>
@@ -2702,7 +4638,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               className={styles.button}
                               type="button"
                               onClick={() => void handleDocumentFileAction(document, 'download')}
-                              disabled={!document.rawDocumentId}
+                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
                             >
                               <Download size={16} />Download
                             </button>
@@ -2710,7 +4646,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               className={styles.button}
                               type="button"
                               onClick={() => void extractProjectDocumentsForReview([document])}
-                              disabled={extractingImportJobId === document.id || extractingSelectedDocuments}
+                              disabled={!canUseStaffWorkbench || extractingImportJobId === document.id || extractingSelectedDocuments}
                             >
                               <Sparkles size={16} />{extractingImportJobId === document.id ? 'Running...' : 'Extract for review'}
                             </button>
@@ -2728,15 +4664,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <h3>Review AI extraction</h3>
                           <p>Correct extracted fields first. APMS will mark the extraction as reviewed before creating the candidate draft.</p>
                         </div>
-                        <button
-                          className={`${styles.button} ${styles.primaryButton}`}
-                          type="button"
-                          onClick={() => void handleCreateCandidateFromReviewedExtractions()}
-                          disabled={staffCandidateLoading}
-                        >
-                          <CheckCircle2 size={16} />
-                          {staffCandidateLoading ? 'Creating...' : 'Save review & create candidate'}
-                        </button>
                       </div>
 
                       <div className={styles.extractionReviewList}>
@@ -2747,137 +4674,230 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 <span>Extraction #{reviewIndex + 1}</span>
                                 <strong>{review.fileName}</strong>
                               </div>
-                              <small>{review.qualityStatus || 'Pending staff review'}</small>
+                              <small>
+                                {review.qualityStatus || 'Pending staff review'}
+                                {typeof review.evidenceCoverageRate === 'number' ? ` | Evidence coverage ${Math.round(review.evidenceCoverageRate)}%` : ''}
+                              </small>
                             </div>
 
                             <div className={styles.candidateEditGrid}>
-                              <label className={styles.inviteField}>
-                                <span>Legal name</span>
-                                <input value={review.edit.legalName} onChange={(event) => updatePendingExtractionEdit(review.id, { legalName: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Trade name</span>
-                                <input value={review.edit.tradeName} onChange={(event) => updatePendingExtractionEdit(review.id, { tradeName: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Tax code</span>
-                                <input value={review.edit.taxId} onChange={(event) => updatePendingExtractionEdit(review.id, { taxId: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Website</span>
-                                <input value={review.edit.website} onChange={(event) => updatePendingExtractionEdit(review.id, { website: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Email</span>
-                                <input value={review.edit.email} onChange={(event) => updatePendingExtractionEdit(review.id, { email: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Phone</span>
-                                <input value={review.edit.phone} onChange={(event) => updatePendingExtractionEdit(review.id, { phone: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Industries</span>
-                                <input value={review.edit.industry} onChange={(event) => updatePendingExtractionEdit(review.id, { industry: event.target.value })} />
-                              </label>
-                              <label className={styles.inviteField}>
-                                <span>Business model</span>
-                                <input value={review.edit.businessModel} onChange={(event) => updatePendingExtractionEdit(review.id, { businessModel: event.target.value })} />
-                              </label>
-                              {(['strengths', 'weaknesses', 'opportunities', 'threats'] as const).map((field) => (
-                                <label className={`${styles.inviteField} ${styles.fullField}`} key={`${review.id}-${field}`}>
-                                  <span>{formatInsightTitle(field)}</span>
-                                  <textarea
-                                    value={review.edit[field]}
-                                    placeholder="One item per line"
-                                    onChange={(event) => updatePendingExtractionEdit(review.id, { [field]: event.target.value })}
+                              {staffReviewFields.map((field) => (
+                                <article className={`${styles.extractionFieldCard} ${field.multiline ? styles.fullField : ''}`} key={`${review.id}-${field.key}`}>
+                                  <div className={styles.extractionFieldHead}>
+                                    <div>
+                                      <span>Extracted field</span>
+                                      <strong>{field.label}</strong>
+                                    </div>
+                                    <small>{evidenceScoreLabel(review.evidence[field.key]?.confidenceScore)} confidence</small>
+                                  </div>
+                                  <ExtractionCurrentValue
+                                    field={field}
+                                    value={review.edit[field.key]}
+                                    onChange={(value) => updatePendingExtractionEdit(review.id, { [field.key]: value })}
                                   />
-                                </label>
+                                  <FieldEvidencePanel evidence={review.evidence[field.key]} fieldKey={field.key} />
+                                </article>
                               ))}
                             </div>
                           </article>
                         ))}
                       </div>
+
+                      <div className={styles.extractionReviewActions}>
+                        <button
+                          className={`${styles.button} ${styles.primaryButton}`}
+                          type="button"
+                          onClick={() => void handleCreateCandidateFromReviewedExtractions()}
+                          disabled={!canUseStaffWorkbench || staffCandidateLoading}
+                        >
+                          <CheckCircle2 size={16} />
+                          {staffCandidateLoading ? 'Creating...' : 'Save review & create candidate'}
+                        </button>
+                      </div>
                     </section>
                   )}
 
+                  {staffCandidate && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
                         <h3>Candidate detail</h3>
                         <p>Review and correct extracted fields before sending it to the manager.</p>
                       </div>
-                      {staffCandidate && (
-                        <span className={`${styles.candidateStatus} ${candidateStatusClass[staffCandidate.status]}`}>
-                          {candidateStatusLabel[staffCandidate.status]}
-                        </span>
-                      )}
+                      <span className={`${styles.candidateStatus} ${candidateStatusClass[staffCandidate.status]}`}>
+                        {candidateStatusLabel[staffCandidate.status]}
+                      </span>
                     </div>
 
-                    {!staffCandidate ? (
-                      <div className={styles.empty}>Create or open a candidate draft to edit company information.</div>
-                    ) : (
                       <>
-                        <div className={styles.candidateEditGrid}>
-                          <label className={styles.inviteField}>
-                            <span>Legal name</span>
-                            <input value={staffCandidateEdit.legalName} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, legalName: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Trade name</span>
-                            <input value={staffCandidateEdit.tradeName} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, tradeName: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Tax ID</span>
-                            <input value={staffCandidateEdit.taxId} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, taxId: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Website</span>
-                            <input value={staffCandidateEdit.website} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, website: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Email</span>
-                            <input value={staffCandidateEdit.email} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, email: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Phone</span>
-                            <input value={staffCandidateEdit.phone} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, phone: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Industry</span>
-                            <input value={staffCandidateEdit.industry} placeholder="Technology, Finance..." onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, industry: event.target.value }))} />
-                          </label>
-                          <label className={styles.inviteField}>
-                            <span>Business model</span>
-                            <input value={staffCandidateEdit.businessModel} onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, businessModel: event.target.value }))} />
-                          </label>
-                          {(['strengths', 'weaknesses', 'opportunities', 'threats'] as const).map((field) => (
-                            <label className={`${styles.inviteField} ${styles.fullField}`} key={field}>
-                              <span>{formatInsightTitle(field)}</span>
-                              <textarea
-                                value={staffCandidateEdit[field]}
-                                placeholder="One item per line"
-                                onChange={(event) => setStaffCandidateEdit((current) => ({ ...current, [field]: event.target.value }))}
-                              />
-                            </label>
-                          ))}
+                        <div className={styles.candidateReviewWorkspace}>
+                          <div className={styles.candidateReviewHero}>
+                            <div className={styles.candidateReviewHeroMain}>
+                              <span>Candidate draft workspace</span>
+                              <h4>{candidateName(staffCandidate)}</h4>
+                              <p>{candidateIndustry(staffCandidate)}</p>
+                            </div>
+                            <div className={styles.candidateReviewMetrics}>
+                              <div>
+                                <span>Status</span>
+                                <strong>{candidateStatusLabel[staffCandidate.status]}</strong>
+                              </div>
+                              <div>
+                                <span>Confidence</span>
+                                <strong>{candidateConfidenceLabel(staffCandidate)}</strong>
+                              </div>
+                              <div>
+                                <span>Data quality</span>
+                                <strong>{candidateCompleteness(staffCandidate)}</strong>
+                              </div>
+                              <div>
+                                <span>SWOT items</span>
+                                <strong>
+                                  {[
+                                    staffCandidateEdit.strengths,
+                                    staffCandidateEdit.opportunities,
+                                    staffCandidateEdit.weaknesses,
+                                    staffCandidateEdit.threats,
+                                  ].reduce((sum, value) => sum + splitLines(value).length, 0)}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={styles.candidateReviewTabs} role="tablist" aria-label="Candidate draft review sections">
+                            {candidateReviewTabs.map((tab) => (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={candidateReviewTab === tab.id}
+                                className={`${styles.candidateReviewTab} ${candidateReviewTab === tab.id ? styles.candidateReviewTabActive : ''}`}
+                                onClick={() => setCandidateReviewTab(tab.id)}
+                              >
+                                <strong>{tab.label}</strong>
+                                <span>{tab.helper}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          {candidateReviewTab === 'profile' && (
+                            <div className={`${styles.candidateReviewSection} ${styles.profileReviewSection}`}>
+                              <div className={styles.candidateReviewSectionHead}>
+                                <div>
+                                  <span>Company profile</span>
+                                  <h4>Identity and contact</h4>
+                                </div>
+                                <small>{candidateConfidenceLabel(staffCandidate)} confidence</small>
+                              </div>
+                              <div className={styles.readOnlyFieldGrid}>
+                                {[
+                                  ['Legal name', staffCandidateEdit.legalName],
+                                  ['Tax ID', staffCandidateEdit.taxId],
+                                  ['Address', staffCandidateEdit.address],
+                                  ['Industry', staffCandidateEdit.industry],
+                                  ['Employee tier', staffCandidateEdit.employeeTier],
+                                  ['Company size', staffCandidateEdit.companySize],
+                                ].map(([label, value]) => (
+                                  <div className={styles.readOnlyField} key={label}>
+                                    <span>{label}</span>
+                                    <strong>{value || 'No data'}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className={styles.candidateExtractedFieldStack}>
+                                <WebsiteListField
+                                  label="Website"
+                                  value={staffCandidateEdit.website}
+                                  editable={false}
+                                  onChange={() => undefined}
+                                />
+                                <ExtractedListField
+                                  label="Email"
+                                  fieldKey="email"
+                                  value={staffCandidateEdit.email}
+                                  editable={false}
+                                  onChange={() => undefined}
+                                />
+                                <ExtractedListField
+                                  label="Hotline"
+                                  fieldKey="phone"
+                                  value={staffCandidateEdit.phone}
+                                  editable={false}
+                                  onChange={() => undefined}
+                                />
+                              </div>
+                              <LongTextInsightCard title="Business model" value={staffCandidateEdit.businessModel} />
+                            </div>
+                          )}
+
+                          {candidateReviewTab === 'swot' && (
+                            <div className={styles.candidateReviewSection}>
+                              <div className={styles.candidateReviewSectionHead}>
+                                <div>
+                                  <span>AI insight review</span>
+                                  <h4>SWOT signals</h4>
+                                </div>
+                                <small>{[
+                                  staffCandidateEdit.strengths,
+                                  staffCandidateEdit.opportunities,
+                                  staffCandidateEdit.weaknesses,
+                                ].reduce((sum, value) => sum + splitLines(value).length, 0)} item(s)</small>
+                              </div>
+                              <div className={styles.candidateInsightGrid}>
+                                <CandidateInsightField title="Strengths" data={splitLines(staffCandidateEdit.strengths)} />
+                                <CandidateInsightField title="Opportunities" data={splitLines(staffCandidateEdit.opportunities)} />
+                                <CandidateInsightField title="Weaknesses" data={splitLines(staffCandidateEdit.weaknesses)} />
+                                <CandidateInsightField title="Threats" data={splitLines(staffCandidateEdit.threats)} />
+                              </div>
+                            </div>
+                          )}
+
+                          {candidateReviewTab === 'evidence' && (
+                            <div className={styles.candidateReviewSection}>
+                              <div className={styles.candidateReviewSectionHead}>
+                                <div>
+                                  <span>Business evidence</span>
+                                  <h4>Products, markets, and customers</h4>
+                                </div>
+                                <small>AI extracted fields</small>
+                              </div>
+                              <div className={styles.evidenceWorkspace}>
+                                <section className={styles.evidenceGroup}>
+                                  <div className={styles.evidenceGroupHead}>
+                                    <span>Business scope</span>
+                                    <strong>What the company sells and who it serves</strong>
+                                  </div>
+                                  <div className={styles.evidenceBusinessGrid}>
+                                    <CandidateProductPanel title="Products / services" data={(staffCandidate.business as { products?: unknown } | undefined)?.products} />
+                                    <CandidateInfoPanel
+                                      title="Markets and customers"
+                                      data={{
+                                        markets: normalizeExtractedListValue(staffCandidateEdit.markets, true),
+                                        targetCustomers: normalizeExtractedListValue(staffCandidateEdit.targetCustomers, true),
+                                      }}
+                                    />
+                                  </div>
+                                </section>
+                              </div>
+                            </div>
+                          )}
+
                         </div>
 
                         <div className={styles.modalActions}>
-                          <button className={styles.button} type="button" onClick={() => void handleSaveStaffCandidate()} disabled={staffCandidateLoading}>
-                            {staffCandidateLoading ? 'Saving...' : 'Save candidate'}
-                          </button>
                           <button
                             className={`${styles.button} ${styles.primaryButton}`}
                             type="button"
                             onClick={() => void handleSubmitStaffCandidate()}
-                            disabled={staffSubmitLoading || staffCandidate.status === 'PENDING_REVIEW' || staffCandidate.status === 'APPROVED'}
+                            disabled={!canUseStaffWorkbench || staffSubmitLoading || staffCandidate.status !== 'DRAFT'}
+                            title={staffCandidate.status !== 'DRAFT' ? 'Only a selected DRAFT candidate can be submitted.' : 'Submit the selected candidate draft to manager.'}
                           >
-                            <CheckCircle2 size={16} />{staffSubmitLoading ? 'Submitting...' : 'Submit to manager'}
+                            <CheckCircle2 size={16} />{staffSubmitLoading ? 'Submitting...' : 'Submit'}
                           </button>
                         </div>
                       </>
-                    )}
                   </section>
+                  )}
                   </>
                   ) : (
                   <section className={styles.workbenchPanel}>
@@ -2889,7 +4909,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Task result'}
                         </h3>
                         <p>
-                          {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit the package to manager review.'}
+                          {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit them directly to the project.'}
                           {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Write your evaluation notes and attach evidence before sending it for manager review.'}
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Add a clear result note so the manager knows what has been completed.'}
                         </p>
@@ -2904,11 +4924,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           void handleUploadEvidence(event.target.files?.[0] ?? null);
                           event.currentTarget.value = '';
                         }}
-                        disabled={uploadingEvidence}
+                        disabled={!canUseStaffWorkbench || uploadingEvidence}
                       />
                       <FileText size={24} />
                       <strong>{uploadingEvidence ? 'Uploading evidence...' : 'Upload evidence'}</strong>
-                      <span>Attach files that support this task before submitting to manager review.</span>
+                      <span>Attach files that support this task before submitting them to the project.</span>
                     </label>
 
                     <div className={styles.documentList}>
@@ -2922,7 +4942,27 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <div>
                             <strong>{document.fileName || `Import job #${document.id}`}</strong>
                             <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
-                            <small>{document.errorMessage || 'Ready for review package'}</small>
+                            <small>
+                              {document.errorMessage || `Import job: ${document.id} | Raw document: ${document.rawDocumentId || 'N/A'}`}
+                            </small>
+                          </div>
+                          <div className={styles.documentActions}>
+                            <button
+                              className={styles.button}
+                              type="button"
+                              onClick={() => void handleDocumentFileAction(document, 'open')}
+                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                            >
+                              <ExternalLink size={16} />Open
+                            </button>
+                            <button
+                              className={styles.button}
+                              type="button"
+                              onClick={() => void handleDocumentFileAction(document, 'download')}
+                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                            >
+                              <Download size={16} />Download
+                            </button>
                           </div>
                         </article>
                       ))}
@@ -2944,6 +4984,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <select
                               value={roleEvaluationForm.relationship}
                               onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, relationship: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             >
                               <option value="">Select relationship</option>
                               {candidateRelationshipOptions.map((relationship) => (
@@ -2957,6 +4998,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <select
                               value={roleEvaluationForm.riskLevel}
                               onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, riskLevel: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             >
                               <option value="LOW">Low</option>
                               <option value="MEDIUM">Medium</option>
@@ -2971,6 +5013,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               value={roleEvaluationForm.evidenceSummary}
                               placeholder="Summarize the documents, facts, or signals that support this evaluation..."
                               onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, evidenceSummary: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
 
@@ -2980,6 +5023,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               value={roleEvaluationForm.recommendation}
                               placeholder="Example: Approve this company as a strategic partner because..."
                               onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, recommendation: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
                         </div>
@@ -3003,6 +5047,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               value={generalTaskForm.resultSummary}
                               placeholder="What did you complete?"
                               onChange={(event) => setGeneralTaskForm((current) => ({ ...current, resultSummary: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
 
@@ -3012,6 +5057,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               value={generalTaskForm.nextStep}
                               placeholder="Optional next action"
                               onChange={(event) => setGeneralTaskForm((current) => ({ ...current, nextStep: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
 
@@ -3021,6 +5067,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               value={generalTaskForm.blocker}
                               placeholder="No blocker"
                               onChange={(event) => setGeneralTaskForm((current) => ({ ...current, blocker: event.target.value }))}
+                              disabled={!canUseStaffWorkbench}
                             />
                           </label>
                         </div>
@@ -3035,6 +5082,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               <input
                                 type="checkbox"
                                 checked={generalTaskForm.checklist[key as keyof typeof generalTaskForm.checklist]}
+                                disabled={!canUseStaffWorkbench}
                                 onChange={(event) => setGeneralTaskForm((current) => ({
                                   ...current,
                                   checklist: {
@@ -3076,12 +5124,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         value={staffTaskNote}
                         placeholder={
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Example: Uploaded annual report and registration evidence. Ready for manager review.'
+                            ? 'Example: Uploaded annual report and registration evidence. Ready to add to project documents.'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Example: Based on the uploaded evidence, this company fits the partner role because...'
                               : 'Example: Completed the assigned work and attached supporting evidence.'
                         }
                         onChange={(event) => setStaffTaskNote(event.target.value)}
+                        disabled={!canUseStaffWorkbench}
                       />
                     </label>
 
@@ -3096,14 +5145,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               ? 'ROLE_EVALUATION'
                               : 'OTHER',
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Document package submitted for manager review.'
+                            ? 'Documents submitted directly to the project.'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Role evaluation submitted for manager review.'
                               : 'Task result submitted for manager review.'
                         )}
-                        disabled={staffSubmitLoading || selectedStaffTask.status === 'IN_REVIEW' || selectedStaffTask.status === 'DONE'}
+                        disabled={!canUseStaffWorkbench || staffSubmitLoading}
                       >
-                        <CheckCircle2 size={16} />{staffSubmitLoading ? 'Submitting...' : 'Submit to manager'}
+                        <CheckCircle2 size={16} />
+                        {staffSubmitLoading
+                          ? 'Submitting...'
+                          : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
+                            ? 'Submit to project'
+                            : 'Submit to manager'}
                       </button>
                     </div>
                   </section>
@@ -3116,14 +5170,43 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <h3>Candidate drafts</h3>
                       <div className={styles.draftList}>
                         {(workbench?.candidateDrafts?.length ?? 0) === 0 && <div className={styles.empty}>No candidate drafts yet.</div>}
-                        {workbench?.candidateDrafts?.map((draft) => (
-                          <button className={styles.draftItem} type="button" key={draft.candidateId} onClick={() => void handleOpenStaffCandidate(draft.candidateId)}>
-                            <strong>{draft.candidateId.slice(-8)}</strong>
-                            <span>{candidateStatusLabel[draft.status]}</span>
-                            {draft.isUnderReview && <small>Under manager review</small>}
-                            {draft.hasConflicts && <small>{draft.conflictCount || 0} conflict(s)</small>}
-                          </button>
-                        ))}
+                        {workbench?.candidateDrafts?.map((draft) => {
+                          const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
+                          const isDeleting = deletingCandidateDraftId === draft.candidateId;
+
+                          return (
+                            <article
+                              className={`${styles.draftItem} ${styles.draftItemWithActions} ${staffCandidate?.id === draft.candidateId ? styles.draftItemActive : ''}`}
+                              key={draft.candidateId}
+                            >
+                              <button
+                                className={styles.draftItemMain}
+                                type="button"
+                                onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                disabled={!canUseStaffWorkbench || isDeleting}
+                              >
+                                <strong>{draftLabel}</strong>
+                                {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
+                                <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                {draft.isUnderReview && <small>Under manager review</small>}
+                                {draft.hasConflicts && <small>{draft.conflictCount || 0} conflict(s)</small>}
+                              </button>
+                              {(draft.status === 'DRAFT' || draft.status === 'REJECTED') && (
+                                <button
+                                  className={styles.draftDeleteButton}
+                                  type="button"
+                                  onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
+                                  disabled={!canUseStaffWorkbench || isDeleting}
+                                  aria-label={`Delete ${draftLabel}`}
+                                  title="Delete draft"
+                                >
+                                  <Trash2 size={15} />
+                                  {isDeleting ? 'Deleting...' : 'Delete'}
+                                </button>
+                              )}
+                            </article>
+                          );
+                        })}
                       </div>
                     </section>
                   ) : (
@@ -3169,6 +5252,79 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </div>
                   </section>
                 </aside>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {candidateDraftPendingDelete && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              if (!deletingCandidateDraftId) setCandidateDraftPendingDelete(null);
+            }}
+          >
+            <motion.div
+              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-candidate-draft-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.inviteHead}>
+                <div>
+                  <span className={styles.taskKey}>Delete candidate</span>
+                  <h2 id="delete-candidate-draft-title">Confirm candidate deletion</h2>
+                  <p>
+                    Are you sure you want to delete <strong>{candidateDraftPendingDelete.label}</strong>? Only Draft or Rejected candidates can be removed.
+                  </p>
+                </div>
+                <button
+                  className={styles.iconButton}
+                  type="button"
+                  aria-label="Close candidate delete confirmation"
+                  onClick={() => setCandidateDraftPendingDelete(null)}
+                  disabled={Boolean(deletingCandidateDraftId)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className={styles.deleteTaskPreview}>
+                <Trash2 size={20} />
+                <div>
+                  <strong>{candidateDraftPendingDelete.label}</strong>
+                  <span className={`${styles.draftStatusBadge} ${candidateStatusClass[candidateDraftPendingDelete.status]}`}>
+                    {candidateStatusLabel[candidateDraftPendingDelete.status]}
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => setCandidateDraftPendingDelete(null)}
+                  disabled={Boolean(deletingCandidateDraftId)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`${styles.button} ${styles.dangerButton}`}
+                  type="button"
+                  onClick={() => void confirmDeleteStaffCandidateDraft()}
+                  disabled={Boolean(deletingCandidateDraftId)}
+                >
+                  {deletingCandidateDraftId ? 'Deleting...' : 'Delete candidate'}
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -3277,19 +5433,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <h3>Candidate drafts</h3>
                           <p>Open the candidate from the Candidates tab if you need the full company profile preview and approval workflow.</p>
                         </div>
-                        <span className={styles.taskTypeBadge}>{workbench?.candidateDrafts?.length ?? 0} draft(s)</span>
+                        <span className={styles.taskTypeBadge}>
+                          {workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0} submitted draft(s)
+                        </span>
                       </div>
                       <div className={styles.draftList}>
-                        {(workbench?.candidateDrafts?.length ?? 0) === 0 && <div className={styles.empty}>No candidate draft linked to this task.</div>}
-                        {workbench?.candidateDrafts?.map((draft) => (
+                        {(workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0) === 0 && (
+                          <div className={styles.empty}>No submitted candidate draft linked to this task.</div>
+                        )}
+                        {workbench?.candidateDrafts
+                          ?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW')
+                          .map((draft) => (
                           <button
                             className={styles.draftItem}
                             type="button"
                             key={draft.candidateId}
                             onClick={() => void openManagerCandidateReview(draft.candidateId)}
                           >
-                            <strong>{draft.candidateId.slice(-8)}</strong>
-                            <span>{candidateStatusLabel[draft.status]}</span>
+                            <strong>{draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`}</strong>
+                            {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
+                            <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
                             {draft.isUnderReview && <small>Submitted for review</small>}
                           </button>
                         ))}
@@ -3303,25 +5466,30 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <h3>{selectedManagerReviewTask.status === 'DONE' ? 'Final decision' : 'Decision'}</h3>
                           <p>
                             {selectedManagerReviewTask.status === 'DONE'
-                              ? 'This task has already been approved. The submitted evidence remains available for audit.'
+                              ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
+                                ? 'This document collection was submitted directly to the project. No manager approval is required.'
+                                : 'This task has already been approved. The submitted evidence remains available for audit.'
                               : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION'
                                 ? 'Review the submitted candidate before approving. Approval creates the Company Profile and completes this task.'
+                                : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
+                                  ? 'Document collection tasks are submitted directly to the project and do not require approval.'
                                 : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
                           </p>
                       </div>
                     </div>
 
-                    {selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && selectedManagerReviewTask.status !== 'DONE' ? (
+                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' ? (
+                      <div className={styles.inlineSuccess}>Documents are already available in the project Documents tab.</div>
+                    ) : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>
                         <button
                           className={`${styles.button} ${styles.primaryButton}`}
                           type="button"
                           onClick={() => {
-                            const draft = workbench?.candidateDrafts?.find((item) => item.isUnderReview)
-                              ?? workbench?.candidateDrafts?.[0];
+                            const draft = workbench?.candidateDrafts?.find((item) => item.isUnderReview || item.status === 'PENDING_REVIEW');
                             if (draft) void openManagerCandidateReview(draft.candidateId);
                           }}
-                          disabled={(workbench?.candidateDrafts?.length ?? 0) === 0}
+                          disabled={(workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0) === 0}
                         >
                           <CheckCircle2 size={16} />Review candidate
                         </button>
@@ -3395,14 +5563,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       </AnimatePresence>
       <AnimatePresence>
         {selectedCandidate && (() => {
-          const identity = selectedCandidate.identity as { legalName?: string; tradeName?: string; taxId?: string; country?: string; registrationNumber?: string } | undefined;
-          const business = selectedCandidate.business as { industries?: string[]; businessModel?: string; products?: string[]; services?: string[] } | undefined;
+          const identity = selectedCandidate.identity as { legalName?: string; tradeName?: string; taxCode?: string; taxId?: string; country?: string; registrationNumber?: string } | undefined;
+          const business = selectedCandidate.business as { industries?: string[]; businessModel?: string; products?: unknown; services?: unknown; markets?: unknown; targetCustomers?: unknown } | undefined;
+          const companySize = selectedCandidate.companySize as { employeeTier?: unknown; employeeCount?: unknown; revenueTier?: unknown } | undefined;
+          const contactRaw = selectedCandidate.contact as { website?: unknown; emails?: unknown; phones?: unknown; addresses?: unknown } | undefined;
           const insights = selectedCandidate.insights as Record<string, unknown> | undefined;
-          const financial = selectedCandidate.financial;
-          const risk = selectedCandidate.risk;
-          const validation = selectedCandidate.validation as { isComplete?: boolean; dataQualityScore?: string; missingCriticalFields?: string[] | string; warnings?: string[] } | undefined;
-          const contact = candidateContact(selectedCandidate);
+          const managerWebsiteValue = listJoinValue(normalizeUrlItems(contactRaw?.website));
+          const managerEmailValue = listJoinValue(normalizeExtractedListValue(contactRaw?.emails, true));
+          const managerPhoneValue = listJoinValue(normalizeExtractedListValue(contactRaw?.phones, true));
           const canReview = selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'CORRECTED' || selectedCandidate.status === 'DRAFT';
+          const detailConfidenceScore = candidateConfidenceScore(selectedCandidate);
+          const availableManagerCandidateTabs = canReview
+            ? managerCandidateTabs
+            : managerCandidateTabs.filter((tab) => tab.id !== 'decision');
 
           return (
             <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedCandidate(null)}>
@@ -3441,7 +5614,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </div>
                   <div>
                     <span>Confidence score</span>
-                    <strong>{selectedCandidate.relationshipConfidenceScore ?? 'N/A'}</strong>
+                    <strong>{candidateConfidenceLabel(selectedCandidate)}</strong>
+                    <div className={styles.candidateConfidenceTrack} aria-hidden="true">
+                      <i style={{ width: `${detailConfidenceScore ?? 0}%` }} />
+                    </div>
                   </div>
                   <div>
                     <span>Data quality</span>
@@ -3449,86 +5625,151 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </div>
                 </div>
 
-                <div className={styles.candidateDetailGrid}>
-                  <section className={styles.candidateDetailSection}>
-                    <h3>Identity</h3>
-                    <dl>
-                      <div><dt>Legal name</dt><dd>{candidateField(identity?.legalName)}</dd></div>
-                      <div><dt>Trade name</dt><dd>{candidateField(identity?.tradeName)}</dd></div>
-                      <div><dt>Tax ID</dt><dd>{candidateField(identity?.taxId)}</dd></div>
-                      <div><dt>Registration</dt><dd>{candidateField(identity?.registrationNumber)}</dd></div>
-                      <div><dt>Country</dt><dd>{candidateField(identity?.country)}</dd></div>
-                    </dl>
-                  </section>
-
-                  <section className={styles.candidateDetailSection}>
-                    <h3>Business</h3>
-                    <dl>
-                      <div><dt>Industry</dt><dd>{candidateIndustry(selectedCandidate)}</dd></div>
-                      <div><dt>Business model</dt><dd>{candidateField(business?.businessModel)}</dd></div>
-                      <div><dt>Products</dt><dd>{candidateField(business?.products)}</dd></div>
-                      <div><dt>Services</dt><dd>{candidateField(business?.services)}</dd></div>
-                    </dl>
-                  </section>
-
-                  <section className={styles.candidateDetailSection}>
-                    <h3>Contact</h3>
-                    <dl>
-                      <div><dt>Website</dt><dd>{contact.website}</dd></div>
-                      <div><dt>Email</dt><dd>{contact.email}</dd></div>
-                      <div><dt>Phone</dt><dd>{contact.phone}</dd></div>
-                    </dl>
-                  </section>
-
-                  <section className={styles.candidateDetailSection}>
-                    <h3>Validation</h3>
-                    <dl>
-                      <div><dt>Complete</dt><dd>{validation?.isComplete ? 'Yes' : 'No'}</dd></div>
-                      <div><dt>Missing fields</dt><dd>{candidateField(validation?.missingCriticalFields, 'No missing fields')}</dd></div>
-                      <div><dt>Warnings</dt><dd>{candidateField(validation?.warnings, 'No warnings')}</dd></div>
-                    </dl>
-                  </section>
+                <div className={styles.candidateReviewTabs} role="tablist" aria-label="Manager candidate review sections">
+                  {availableManagerCandidateTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={managerCandidateTab === tab.id}
+                      className={`${styles.candidateReviewTab} ${managerCandidateTab === tab.id ? styles.candidateReviewTabActive : ''}`}
+                      onClick={() => setManagerCandidateTab(tab.id)}
+                    >
+                      <strong>{tab.label}</strong>
+                      <span>{tab.helper}</span>
+                    </button>
+                  ))}
                 </div>
 
-                <div className={styles.candidateInsightGrid}>
-                  <CandidateInsightField title="Strengths" data={insights?.strengths} />
-                  <CandidateInsightField title="Weaknesses" data={insights?.weaknesses} />
-                  <CandidateInsightField title="Opportunities" data={insights?.opportunities} />
-                  <CandidateInsightField title="Threats" data={insights?.threats} />
-                  <CandidateInfoPanel title="Financial" data={financial} />
-                  <CandidateInfoPanel title="Risk analysis" data={risk} />
-                </div>
-
-                {canReview && (
-                  <div className={styles.managerDecision}>
-                    <div>
-                      <h3>Manager decision</h3>
-                      <p>Approving this candidate will create or update the Company Profile according to the backend workflow.</p>
+                {managerCandidateTab === 'overview' && (
+                  <div className={`${styles.candidateReviewSection} ${styles.profileReviewSection}`}>
+                    <div className={styles.candidateReviewSectionHead}>
+                      <div>
+                        <span>Company profile</span>
+                        <h4>Identity and contact</h4>
+                      </div>
+                      <small>{candidateConfidenceLabel(selectedCandidate)} confidence</small>
                     </div>
-                    <label className={styles.inviteField}>
-                      <span>Relationship override</span>
-                      <select
-                        value={selectedCandidate.relationshipTypeOverride || selectedCandidate.suggestedRelationshipType || ''}
-                        onChange={(event) => {
-                          const relationshipTypeOverride = (event.target.value || undefined) as RelationshipType | undefined;
-                          setSelectedCandidate((current) => current ? { ...current, relationshipTypeOverride } : current);
-                        }}
-                      >
-                        <option value="">Use backend suggestion</option>
-                        {candidateRelationshipOptions.map((relationship) => (
-                          <option key={relationship} value={relationship}>{relationship}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className={styles.inviteField}>
-                      <span>Reject reason</span>
-                      <textarea
-                        value={rejectReason}
-                        placeholder="Explain why this candidate should not be approved..."
-                        onChange={(event) => setRejectReason(event.target.value)}
+                    <div className={styles.readOnlyFieldGrid}>
+                      {([
+                        ['Legal name', identity?.legalName],
+                        ['Tax ID', identity?.taxCode || identity?.taxId],
+                        ['Address', formatAddressValue(contactRaw?.addresses)],
+                        ['Industry', candidateIndustry(selectedCandidate)],
+                        ['Employee tier', companySize?.employeeTier],
+                        ['Company size', formatCompanySizeValue(companySize)],
+                      ] as Array<[string, unknown]>).map(([label, value]) => (
+                        <div className={styles.readOnlyField} key={label}>
+                          <span>{label}</span>
+                          <strong>{candidateField(value)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={styles.candidateExtractedFieldStack}>
+                      <WebsiteListField
+                        label="Website"
+                        value={managerWebsiteValue}
+                        editable={false}
+                        onChange={() => undefined}
                       />
-                    </label>
+                      <ExtractedListField
+                        label="Email"
+                        fieldKey="email"
+                        value={managerEmailValue}
+                        editable={false}
+                        onChange={() => undefined}
+                      />
+                      <ExtractedListField
+                        label="Phone"
+                        fieldKey="phone"
+                        value={managerPhoneValue}
+                        editable={false}
+                        onChange={() => undefined}
+                      />
+                    </div>
+                    <LongTextInsightCard title="Business model" value={business?.businessModel} />
                   </div>
+                )}
+
+                {managerCandidateTab === 'swot' && (
+                  <div className={styles.candidateInsightGrid}>
+                    <CandidateInsightField title="Strengths" data={insightList(insights, 'strengths')} />
+                    <CandidateInsightField title="Opportunities" data={insightList(insights, 'opportunities')} />
+                    <CandidateInsightField title="Weaknesses" data={insightList(insights, 'weaknesses')} />
+                    <CandidateInsightField title="Threats" data={insightList(insights, 'threats')} />
+                  </div>
+                )}
+
+                {managerCandidateTab === 'evidence' && (
+                  <div className={styles.candidateReviewSection}>
+                    <div className={styles.candidateReviewSectionHead}>
+                      <div>
+                        <span>Business evidence</span>
+                        <h4>Products, markets, and customers</h4>
+                      </div>
+                      <small>AI extracted fields</small>
+                    </div>
+                    <div className={styles.evidenceWorkspace}>
+                      <section className={styles.evidenceGroup}>
+                        <div className={styles.evidenceGroupHead}>
+                          <span>Business scope</span>
+                          <strong>What the company sells and who it serves</strong>
+                        </div>
+                        <div className={styles.evidenceBusinessGrid}>
+                          <CandidateProductPanel title="Products / services" data={business?.products} />
+                          <CandidateInfoPanel
+                            title="Markets and customers"
+                            data={{
+                              markets: normalizeExtractedListValue(business?.markets, true),
+                              targetCustomers: normalizeExtractedListValue(business?.targetCustomers, true),
+                            }}
+                          />
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                )}
+
+                {managerCandidateTab === 'decision' && canReview && (
+                  <>
+                    <div className={styles.managerDecision}>
+                      <div>
+                        <h3>Manager decision</h3>
+                        <p>Approving this candidate will create or update the Company Profile according to the backend workflow.</p>
+                      </div>
+                      <label className={styles.inviteField}>
+                        <span>Relationship override</span>
+                        <select
+                          value={selectedCandidate.relationshipTypeOverride || selectedCandidate.suggestedRelationshipType || ''}
+                          onChange={(event) => {
+                            const relationshipTypeOverride = (event.target.value || undefined) as RelationshipType | undefined;
+                            setSelectedCandidate((current) => current ? { ...current, relationshipTypeOverride } : current);
+                          }}
+                        >
+                          <option value="">Use backend suggestion</option>
+                          {candidateRelationshipOptions.map((relationship) => (
+                            <option key={relationship} value={relationship}>{relationship}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className={styles.inviteField}>
+                        <span>Reject reason</span>
+                        <textarea
+                          value={rejectReason}
+                          placeholder="Explain why this candidate should not be approved..."
+                          onChange={(event) => setRejectReason(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <div className={styles.modalActions}>
+                      <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleRejectCandidate()} disabled={candidateActionLoading}>
+                        {candidateActionLoading ? 'Saving...' : 'Reject'}
+                      </button>
+                      <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleApproveCandidate()} disabled={candidateActionLoading}>
+                        <CheckCircle2 size={16} />{candidateActionLoading ? 'Approving...' : 'Approve & create profile'}
+                      </button>
+                    </div>
+                  </>
                 )}
 
                 <div className={styles.modalActions}>
@@ -3542,16 +5783,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   >
                     Close
                   </button>
-                  {canReview && (
-                    <>
-                      <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleRejectCandidate()} disabled={candidateActionLoading}>
-                        {candidateActionLoading ? 'Saving...' : 'Reject'}
-                      </button>
-                      <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleApproveCandidate()} disabled={candidateActionLoading}>
-                        <CheckCircle2 size={16} />{candidateActionLoading ? 'Approving...' : 'Approve & create profile'}
-                      </button>
-                    </>
-                  )}
                 </div>
               </motion.div>
             </motion.div>

@@ -16,6 +16,7 @@ import type {
   ProjectStatus,
   ProjectType,
   RelationshipType,
+  RelationshipTypeOption,
   TaskPriority,
   TaskType,
   UpdateProjectRequest,
@@ -159,7 +160,7 @@ const initialProjectForm = (): ProjectFormState => ({
   projectType: 'RESEARCH_NEW_COMPANY',
   targetCompanyProfileId: '',
   targetCompanyName: '',
-  targetRelationshipType: 'Partner',
+  targetRelationshipType: 'PARTNER_WITH',
   description: '',
 });
 
@@ -197,6 +198,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [showEditForm, setShowEditForm] = useState(false);
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectResponse | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
   const [editForm, setEditForm] = useState<EditProjectFormState>(initialEditForm);
   const [memberForm, setMemberForm] = useState<MemberFormState>({ accountId: '', memberRole: 'MANAGER' });
@@ -207,6 +209,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [approvedProfiles, setApprovedProfiles] = useState<ProfileResponse[]>([]);
   const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
   const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
+  const [relationshipOptions, setRelationshipOptions] = useState<RelationshipTypeOption[]>(RELATIONSHIP_OPTIONS);
+  const [relationshipOptionsLoading, setRelationshipOptionsLoading] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -214,6 +218,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [updateLoading, setUpdateLoading] = useState(false);
   const [memberLoading, setMemberLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
@@ -289,6 +294,25 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       if (!signal?.aborted) {
         setCompanyOptionsLoading(false);
       }
+    }
+  }, []);
+
+  const reloadRelationshipOptions = useCallback(async () => {
+    setRelationshipOptionsLoading(true);
+    try {
+      const res = await projectApi.getTargetRelationshipTypes();
+      const options = Array.isArray(res.data) && res.data.length > 0 ? res.data : RELATIONSHIP_OPTIONS;
+      setRelationshipOptions(options);
+      setProjectForm((current) => ({
+        ...current,
+        targetRelationshipType: options.some((option) => option.value === current.targetRelationshipType)
+          ? current.targetRelationshipType
+          : options[0]?.value ?? 'PARTNER_WITH',
+      }));
+    } catch {
+      setRelationshipOptions(RELATIONSHIP_OPTIONS);
+    } finally {
+      setRelationshipOptionsLoading(false);
     }
   }, []);
 
@@ -387,6 +411,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   }, [reloadProjects]);
 
   useEffect(() => {
+    void reloadRelationshipOptions();
+  }, [reloadRelationshipOptions]);
+
+  useEffect(() => {
     setCurrentPage(0);
   }, [projectSearch]);
 
@@ -467,6 +495,62 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       setToast({ kind: 'success', message: 'Project activated successfully.' });
     } catch (err) {
       setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to activate project.' });
+    }
+  };
+
+  const canDeleteProject = (project: ProjectResponse) =>
+    project.status === 'DRAFT' || project.status === 'COMPLETED';
+
+  const openDeleteProjectModal = (project: ProjectResponse) => {
+    if (!canDeleteProject(project)) {
+      setToast({
+        kind: 'error',
+        message: 'Only Draft and Done projects can be deleted. In progress projects cannot be deleted.',
+      });
+      return;
+    }
+    setProjectToDelete(project);
+    setFeedback(null);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+
+    if (!canDeleteProject(projectToDelete)) {
+      setProjectToDelete(null);
+      setToast({
+        kind: 'error',
+        message: 'Only Draft and Done projects can be deleted. In progress projects cannot be deleted.',
+      });
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await projectApi.deleteProject(projectToDelete.id);
+      const deletedId = projectToDelete.id;
+      const remaining = projects.filter((project) => project.id !== deletedId);
+      setProjects(remaining);
+      setCurrentPage((page) => Math.min(page, Math.max(Math.ceil(remaining.length / pageSize) - 1, 0)));
+      setProjectToDelete(null);
+
+      if (selectedProjectId === deletedId) {
+        const nextProject = remaining[0] ?? null;
+        setSelectedProjectId(nextProject?.id ?? null);
+        setSelectedProject(nextProject);
+        setTasks([]);
+        if (nextProject) {
+          localStorage.setItem('apms-active-project', String(nextProject.id));
+        } else {
+          localStorage.removeItem('apms-active-project');
+        }
+      }
+
+      setToast({ kind: 'success', message: 'Project deleted successfully.' });
+    } catch (err) {
+      setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to delete project.' });
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -692,6 +776,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
             View detail
           </button>
+          {!isStaffView && (
+            <button className="project-delete-btn" type="button" onClick={() => openDeleteProjectModal(project)}>
+              Delete
+            </button>
+          )}
         </span>
       </div>
     );
@@ -805,18 +894,19 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               )}
               <label>
                 <span>Target relationship</span>
-                <input
+                <select
                   className="search-input"
-                  list="project-relationship-options"
-                  placeholder="Example: Partner"
                   value={projectForm.targetRelationshipType}
                   onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}
-                />
-                <datalist id="project-relationship-options">
-                  {RELATIONSHIP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.label} />
+                  disabled={relationshipOptionsLoading}
+                >
+                  <option value="">{relationshipOptionsLoading ? 'Loading relationships...' : 'Select target relationship'}</option>
+                  {relationshipOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
-                </datalist>
+                </select>
               </label>
               <label>
                 <span>Description</span>
@@ -830,6 +920,34 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               </button>
             </div>
           </div>
+          </div>
+        )}
+
+        {projectToDelete && (
+          <div className="modal-overlay project-modal-overlay" onClick={() => !deleteLoading && setProjectToDelete(null)}>
+            <div className="modal project-delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-project-title" onClick={(event) => event.stopPropagation()}>
+              <div className="project-modal-head">
+                <div>
+                  <span className="workspace-side-eyebrow">Delete project</span>
+                  <h3 id="delete-project-title">Confirm project deletion</h3>
+                  <p>This action removes the project workspace from APMS.</p>
+                </div>
+                <button className="project-modal-close" type="button" aria-label="Close delete project modal" onClick={() => setProjectToDelete(null)} disabled={deleteLoading}>&times;</button>
+              </div>
+              <div className="project-delete-summary">
+                <strong>{projectToDelete.projectName}</strong>
+                <span className={`workspace-badge ${PROJECT_STATUS_TONES[projectToDelete.status]}`}>
+                  {PROJECT_STATUS_LABELS[projectToDelete.status]}
+                </span>
+                <p>Only Draft and Done projects are allowed to be deleted. This project is eligible for deletion.</p>
+              </div>
+              <div className="workspace-head-actions">
+                <button className="btn btn-outline" onClick={() => setProjectToDelete(null)} disabled={deleteLoading}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => void handleDeleteProject()} disabled={deleteLoading}>
+                  {deleteLoading ? 'Deleting...' : 'Delete project'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

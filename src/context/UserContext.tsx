@@ -13,11 +13,11 @@ export const ROLES = {
 export type Role = typeof ROLES[keyof typeof ROLES];
 
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail'],
-  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail'],
-  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail'],
-  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile'],
-  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'profile', 'project-management', 'project-detail', 'system-chat'],
+  [ROLES.DIRECTOR]: ['director-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
+  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
+  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile', 'system-chat'],
+  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile', 'system-chat'],
 };
 
 export const ROLE_DEFAULT_PAGE: Record<Role, string> = {

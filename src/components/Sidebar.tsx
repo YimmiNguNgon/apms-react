@@ -76,6 +76,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'System',
     items: [
       { id: 'project-management', label: 'Project Management' },
+      // { id: 'system-chat', label: 'Chat', badge: 2, badgeType: 'success' },
       { id: 'system-settings',   label: 'System Settings' },
       { id: 'security-settings', label: 'Security Settings' },
     ],
@@ -112,6 +113,7 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'companies',    label: 'Companies' },
       { id: 'news',         label: 'News & Intelligence' },
+      { id: 'system-chat',  label: 'Chat', badge: 2, badgeType: 'success' },
     ],
   },
   {
@@ -129,6 +131,7 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'Operations',
     items: [
       { id: 'project-management',      label: 'Project Management' },
+      // { id: 'system-chat',             label: 'Chat', badge: 2, badgeType: 'success' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
       // { id: 'analysis-history',        label: 'Analysis History' },
     ],
@@ -181,6 +184,7 @@ const KEY_MEMBER_MENU: MenuSection[] = [
     items: [
       { id: 'ai-suggestion-review', label: 'AI Suggestion Review' },
       { id: 'relationship-updates', label: 'Relationship Updates' },
+      // { id: 'system-chat',          label: 'Chat', badge: 2, badgeType: 'success' },
       { id: 'onboarding-support',   label: 'Onboarding Support' },
     ],
   },
@@ -208,6 +212,7 @@ const STAFF_MENU: MenuSection[] = [
     items: [
       // { id: 'my-tasks',            label: 'My Tasks' },
       { id: 'project-management',  label: 'Project Management' },
+      // { id: 'system-chat',         label: 'Chat', badge: 2, badgeType: 'success' },
       // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       // { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'Company Profiles' },

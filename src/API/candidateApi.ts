@@ -68,6 +68,17 @@ export const candidateApi = {
     return readPayload<CandidateResponse>(response);
   },
 
+  deleteCandidate: async (candidateId: string) => {
+    const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}`, {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeader(),
+      },
+    });
+
+    return readPayload<void>(response);
+  },
+
   submitCandidate: async (candidateId: string) => {
     const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}/submit`, {
       method: "POST",
