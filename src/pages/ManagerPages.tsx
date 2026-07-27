@@ -1,6 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../services/api';
+import { api, type PageResponse } from '../services/api';
 import { DonutChart } from '../components/charts/Charts';
+import type { ProjectResponse, CandidateResponse, ProjectMemberResponse, ProfileResponse } from '../types/domain';
+
+type PageOrData<T> = PageResponse<T> | T[];
+
+interface EvaluationEntry {
+  companyId: string;
+  tradeName?: string;
+  legalName?: string;
+  reviewStatus?: string;
+  score?: number | null;
+  totalScore?: number | null;
+  industry?: string;
+  taxCode?: string;
+  createdFrom?: string;
+  notes?: string;
+  [key: string]: unknown;
+}
+
+interface AnalysisEntry {
+  id: string | number;
+  companyName?: string;
+  analysisType?: string;
+  date?: string;
+  status?: string;
+  summary?: string;
+  [key: string]: unknown;
+}
+
+interface RiskEntry {
+  id?: string | number;
+  companyId?: string;
+  tradeName?: string;
+  legalName?: string;
+  taxCode?: string;
+  industry?: string;
+  riskScore?: number | string;
+  reviewStatus?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface TeamKpiEntry {
+  name?: string;
+  role?: string;
+  companiesReviewed?: number;
+  target?: number;
+  accuracy?: number;
+  aiReviewed?: number;
+  bonus?: boolean;
+  [key: string]: unknown;
+}
+
+interface ReportEntry {
+  id: string | number;
+  title: string;
+  type?: string;
+  author?: string;
+  pages?: number | string;
+  status?: string;
+  date?: string;
+  content?: string;
+  scope?: string;
+  [key: string]: unknown;
+}
+
+interface PartnerStatusEntry extends ProfileResponse {
+  tradeName?: string;
+  legalName?: string;
+  taxCode?: string;
+  industry?: string;
+  partnerTier?: string;
+  tier?: string;
+}
 
 const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> = {
   VERIFIED: { bg: '#D1FAE5', color: '#065F46', label: 'Đã duyệt' },
@@ -13,7 +86,7 @@ const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> =
 
 export const PartnerEvaluation: React.FC = () => {
   const [search, setSearch] = useState('');
-  const [evaluations, setEvaluations] = useState<any[]>([]);
+  const [evaluations, setEvaluations] = useState<EvaluationEntry[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [draft, setDraft] = useState({
@@ -24,9 +97,9 @@ export const PartnerEvaluation: React.FC = () => {
   });
 
   useEffect(() => {
-    api.get<any>('/profiles').then(res => {
+    api.get<PageOrData<EvaluationEntry>>('/profiles').then(res => {
       if (res?.success && res.data) {
-        const rows = res.data.content || res.data || [];
+        const rows = Array.isArray(res.data) ? res.data : (res.data.content ?? []);
         setEvaluations(Array.isArray(rows) ? rows : []);
       }
     });
@@ -185,17 +258,17 @@ export const PartnerEvaluation: React.FC = () => {
 
 // â”€â”€â”€ Company Assignment â”€â”€â”€
 export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }> = ({ setActivePage }) => {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [viewingProject, setViewingProject] = useState<any>(null);
+  const [viewingProject, setViewingProject] = useState<ProjectResponse | null>(null);
 
   useEffect(() => {
-    api.get<any>('/projects', { params: { page: 0, size: 50 } })
+    api.get<PageOrData<ProjectResponse>>('/projects', { params: { page: 0, size: 50 } })
       .then(res => {
-        if (res?.success && Array.isArray(res.data?.content)) setProjects(res.data.content);
-        else if (res?.success && Array.isArray(res.data)) setProjects(res.data);
+        if (res?.success && Array.isArray(res.data)) setProjects(res.data);
+        else if (res?.success && res.data && 'content' in res.data) setProjects((res.data as PageResponse<ProjectResponse>).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -217,7 +290,7 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
 
   const counts = {
     total: projects.length,
-    active: projects.filter(p => p.status === 'IN_PROGRESS').length,
+    active: projects.filter(p => (p.status as string) === 'IN_PROGRESS').length,
     draft: projects.filter(p => p.status === 'DRAFT').length,
     members: projects.reduce((sum, project) => sum + ((project.members || []).length || 0), 0),
   };
@@ -366,7 +439,7 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>Assigned Members ({viewingProject.members?.length || 0})</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {viewingProject.members && viewingProject.members.length > 0 ? (
-                    viewingProject.members.map((m: any, idx: number) => (
+                    viewingProject.members.map((m: ProjectMemberResponse, idx: number) => (
                       <div key={idx} style={{ padding: '6px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }}></div>
                         {m.memberRole}
@@ -409,14 +482,14 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
 
 // ─── Analysis History ───
 export const AnalysisHistory: React.FC = () => {
-  const [analyses, setAnalyses] = useState<any[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<any>('/analysis/history')
+    api.get<PageOrData<AnalysisEntry>>('/analysis/history')
       .then(res => {
         if (res?.success && Array.isArray(res.data)) setAnalyses(res.data);
-        else if (res?.success && res.data?.content) setAnalyses(res.data.content);
+        else if (res?.success && res.data && 'content' in res.data) setAnalyses((res.data as PageResponse<AnalysisEntry>).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -443,7 +516,7 @@ export const AnalysisHistory: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {analyses.map((a: any) => (
+            {analyses.map((a: AnalysisEntry) => (
               <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                 <td style={{ padding: '11px 14px', fontWeight: 600 }}>{a.companyName || 'N/A'}</td>
                 <td style={{ padding: '11px 14px' }}>
@@ -473,15 +546,15 @@ export const AnalysisHistory: React.FC = () => {
 
 // ─── Risk Monitoring ───
 export const RiskMonitoring: React.FC = () => {
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<RiskEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
-    api.get<any>('/risk-monitoring')
+    api.get<PageOrData<RiskEntry>>('/risk-monitoring')
       .then(res => {
         if (res?.success && Array.isArray(res.data)) setItems(res.data);
-        else if (res?.success && Array.isArray(res.data?.content)) setItems(res.data.content);
+        else if (res?.success && res.data && 'content' in res.data) setItems((res.data as PageResponse<RiskEntry>).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -547,7 +620,6 @@ export const RiskMonitoring: React.FC = () => {
                 ) : (
                   (() => {
                     const pageSize = 12;
-                    const totalPages = Math.ceil(items.length / pageSize);
                     const paginatedItems = items.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
                     
                     return paginatedItems.map((item, i) => {
@@ -639,18 +711,18 @@ export const RiskMonitoring: React.FC = () => {
 
 // â”€â”€â”€ Approvals â”€â”€â”€
 export const ApprovalsPage: React.FC = () => {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [candidates, setCandidates] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [projectSearch, setProjectSearch] = useState('');
 
   useEffect(() => {
-    api.get<any>('/projects', { params: { page: 0, size: 50 } })
+    api.get<PageOrData<ProjectResponse>>('/projects', { params: { page: 0, size: 50 } })
       .then(res => {
-        const rows = res?.data?.content || res?.data || [];
+        const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<ProjectResponse>).content : []);
         const normalized = Array.isArray(rows) ? rows : [];
         setProjects(normalized);
         const stored = localStorage.getItem('apms-active-project');
@@ -670,9 +742,9 @@ export const ApprovalsPage: React.FC = () => {
     }
 
     setLoadingCandidates(true);
-    api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } })
+    api.get<PageOrData<CandidateResponse>>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } })
       .then(res => {
-        const rows = res?.data?.content || res?.data || [];
+        const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<CandidateResponse>).content : []);
         setCandidates(Array.isArray(rows) ? rows : []);
       })
       .catch(console.error)
@@ -692,8 +764,8 @@ export const ApprovalsPage: React.FC = () => {
       await api.post(`/candidates/${candidateId}/approve`, {});
       setFeedback('Candidate approved.');
       if (selectedProjectId) {
-        const res = await api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
-        const rows = res?.data?.content || res?.data || [];
+        const res = await api.get<PageOrData<CandidateResponse>>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
+        const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<CandidateResponse>).content : []);
         setCandidates(Array.isArray(rows) ? rows : []);
       }
     } catch (error) {
@@ -709,8 +781,8 @@ export const ApprovalsPage: React.FC = () => {
       await api.post(`/candidates/${candidateId}/reject`, { rejectionReason: reason });
       setFeedback('Candidate rejected.');
       if (selectedProjectId) {
-        const res = await api.get<any>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
-        const rows = res?.data?.content || res?.data || [];
+        const res = await api.get<PageOrData<CandidateResponse>>(`/projects/${selectedProjectId}/candidates`, { params: { page: 0, size: 50 } });
+        const rows = Array.isArray(res?.data) ? res.data : (res?.data && 'content' in res.data ? (res.data as PageResponse<CandidateResponse>).content : []);
         setCandidates(Array.isArray(rows) ? rows : []);
       }
     } catch (error) {
@@ -790,10 +862,10 @@ export const ApprovalsPage: React.FC = () => {
             )}
 
             <div style={{ display: 'grid', gap: 12 }}>
-              {queue.map((candidate: any) => (
+              {queue.map((candidate: CandidateResponse) => (
                 <div key={candidate.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{candidate.companyName || candidate.suggestedCompanyName || candidate.id}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{String(candidate.companyName || candidate.suggestedCompanyName || candidate.id)}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                       Status: {candidate.status} · Confidence: {candidate.relationshipConfidenceScore ?? '—'}
                     </div>
@@ -822,16 +894,16 @@ export const ApprovalsPage: React.FC = () => {
 
 // â”€â”€â”€ Team KPI â”€â”€â”€
 export const TeamKPI: React.FC = () => {
-  const [kpiData, setKpiData] = useState<any[]>([]);
+  const [kpiData, setKpiData] = useState<TeamKpiEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
 
   const loadTeamKpi = () => {
     setLoading(true);
-    api.get<any>('/kpi/team')
+    api.get<PageOrData<TeamKpiEntry>>('/kpi/team')
       .then(res => {
         if (res?.success && Array.isArray(res.data)) setKpiData(res.data);
-        else if (res?.success && res.data?.content) setKpiData(res.data.content);
+        else if (res?.success && res.data && 'content' in res.data) setKpiData((res.data as PageResponse<TeamKpiEntry>).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -921,10 +993,9 @@ export const TeamKPI: React.FC = () => {
                 <tbody>
                   {(() => {
                     const pageSize = 10;
-                    const totalPages = Math.ceil(rows.length / pageSize);
                     const paginatedRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
                     
-                    return paginatedRows.map((k: any, i: number) => {
+                    return paginatedRows.map((k: TeamKpiEntry, i: number) => {
                       const absoluteRank = (currentPage * pageSize) + i + 1;
                       const target = Math.max(1, Number(k?.target) || 1);
                       const reviewed = Number(k?.companiesReviewed) || 0;
@@ -1060,11 +1131,11 @@ export const TeamKPI: React.FC = () => {
 
 // â”€â”€â”€ Reports (Manager) â”€â”€â”€
 export const ManagerReports: React.FC = () => {
-  const [reports, setReports] = useState<any[]>([]);
+  const [reports, setReports] = useState<ReportEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [selectedReport, setSelectedReport] = useState<ReportEntry | null>(null);
   const [reportDraft, setReportDraft] = useState({
     title: '',
     type: 'Weekly summary',
@@ -1075,10 +1146,10 @@ export const ManagerReports: React.FC = () => {
   const [reportFeedback, setReportFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<any>('/reports')
+    api.get<PageOrData<ReportEntry>>('/reports')
       .then(res => {
         if (res?.success && Array.isArray(res.data)) setReports(res.data);
-        else if (res?.success && res.data?.content) setReports(res.data.content);
+        else if (res?.success && res.data && 'content' in res.data) setReports((res.data as PageResponse<ReportEntry>).content);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -1115,11 +1186,11 @@ export const ManagerReports: React.FC = () => {
     setReportFeedback('Draft report created in the current view.');
   };
 
-  const handleView = (r: any) => {
+  const handleView = (r: ReportEntry) => {
     setSelectedReport(r);
   };
 
-  const handlePublish = (r: any) => {
+  const handlePublish = (r: ReportEntry) => {
     setReports(prev => prev.map(rep => rep.id === r.id ? { ...rep, status: 'published' } : rep));
     setReportFeedback(`Báo cáo "${r.title}" đã được đăng thành công.`);
     setTimeout(() => setReportFeedback(null), 4000);
@@ -1280,10 +1351,9 @@ export const ManagerReports: React.FC = () => {
               <tbody>
                 {(() => {
                   const pageSize = 10;
-                  const totalPages = Math.ceil(reports.length / pageSize);
                   const paginatedReports = reports.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
                   
-                  return paginatedReports.map((r: any, i: number) => (
+                  return paginatedReports.map((r: ReportEntry, i: number) => (
                     <tr key={r.id || i} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
                       <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>{r.title}</div>
@@ -1353,7 +1423,7 @@ export const ManagerReports: React.FC = () => {
 
 // ─── Partner Status ───
 export const PartnerStatus: React.FC = () => {
-  const [profiles, setProfiles] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<PartnerStatusEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
@@ -1364,9 +1434,9 @@ export const PartnerStatus: React.FC = () => {
 
   const loadPartnerStatus = () => {
     setLoading(true);
-    api.get<any>('/profiles?page=0&size=100')
+    api.get<PageOrData<PartnerStatusEntry>>('/profiles?page=0&size=100')
       .then(res => {
-        if (res?.success && res.data?.content) setProfiles(res.data.content);
+        if (res?.success && res.data && 'content' in res.data) setProfiles((res.data as PageResponse<PartnerStatusEntry>).content);
         else if (res?.success && Array.isArray(res.data)) setProfiles(res.data);
       })
       .catch(console.error)
@@ -1392,12 +1462,6 @@ export const PartnerStatus: React.FC = () => {
   const pageSize = 12;
   const totalPages = Math.ceil(rows.length / pageSize);
   const paginatedRows = rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-
-  const statusGroups = Object.entries(TIER_COLORS).map(([label, color]) => {
-    const totalCompanies = rows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
-    const companies = paginatedRows.filter(p => (p.partnerTier || p.tier || 'Silver') === label);
-    return { label, color, companies, totalCount: totalCompanies.length };
-  });
 
   const summary = {
     total: rows.length,

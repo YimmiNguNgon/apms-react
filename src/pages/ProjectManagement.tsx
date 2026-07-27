@@ -3,12 +3,9 @@ import { api } from '../services/api';
 import { projectApi } from '../API/projectApi';
 import { ROLES, useUser } from '../context/UserContext';
 import type {
-  AddMemberRequest,
   CreateProjectRequest,
   PageResult,
-  CreateProjectTaskRequest,
   CandidateResponse,
-  CandidateStatus,
   ProfileResponse,
   ProjectTaskResponse,
   ProjectMemberResponse,
@@ -22,8 +19,6 @@ import type {
   UpdateProjectRequest,
 } from '../types/domain';
 
-type ProjectMemberRole = AddMemberRequest['memberRole'];
-
 type ProjectFormState = {
   projectName: string;
   projectType: ProjectType;
@@ -31,26 +26,6 @@ type ProjectFormState = {
   targetCompanyName: string;
   targetRelationshipType: string;
   description: string;
-};
-
-type EditProjectFormState = {
-  projectName: string;
-  description: string;
-  status: ProjectStatus;
-};
-
-type MemberFormState = {
-  accountId: string;
-  memberRole: ProjectMemberRole;
-};
-
-type TaskFormState = {
-  title: string;
-  description: string;
-  assignedToUserId: string;
-  priority: TaskPriority;
-  dueDate: string;
-  taskType: TaskType;
 };
 
 type FeedbackState = {
@@ -62,24 +37,6 @@ type ToastState = {
   kind: 'success' | 'error';
   message: string;
 } | null;
-
-const CANDIDATE_COLUMNS: Array<{ status: CandidateStatus; label: string }> = [
-  { status: 'DRAFT', label: 'Tiềm năng' },
-  { status: 'CORRECTED', label: 'Đã cập nhật' },
-  { status: 'PENDING_REVIEW', label: 'Đang thẩm định' },
-  { status: 'APPROVED', label: 'Đã phê duyệt' },
-  { status: 'REJECTED', label: 'Từ chối' },
-];
-
-const candidateName = (candidate: CandidateResponse) => {
-  const identity = candidate.identity as { tradeName?: string; legalName?: string } | undefined;
-  return identity?.tradeName || identity?.legalName || `Candidate #${candidate.id.slice(-6)}`;
-};
-
-const candidateIndustry = (candidate: CandidateResponse) => {
-  const business = candidate.business as { industries?: string[] } | undefined;
-  return business?.industries?.filter(Boolean).join(', ') || 'Industry not specified';
-};
 
 const profileName = (profile: ProfileResponse) =>
   profile.identity?.tradeName || profile.identity?.legalName || profile.companyId;
@@ -115,11 +72,6 @@ const PROJECT_STATUS_TONES: Record<ProjectStatus, 'neutral' | 'info' | 'success'
   COMPLETED: 'success',
   CANCELLED: 'danger',
   ARCHIVED: 'neutral',
-};
-
-const MEMBER_ROLE_LABELS: Record<ProjectMemberRole, string> = {
-  MANAGER: 'Manager',
-  STAFF: 'Staff',
 };
 
 const RELATIONSHIP_OPTIONS: Array<{ value: RelationshipType; label: string }> = [
@@ -164,21 +116,6 @@ const initialProjectForm = (): ProjectFormState => ({
   description: '',
 });
 
-const initialTaskForm = (): TaskFormState => ({
-  title: '',
-  description: '',
-  assignedToUserId: '',
-  priority: 'MEDIUM',
-  dueDate: '',
-  taskType: 'DOCUMENT_COLLECTION',
-});
-
-const initialEditForm = (): EditProjectFormState => ({
-  projectName: '',
-  description: '',
-  status: 'DRAFT',
-});
-
 type ProjectManagementProps = {
   setActivePage?: (page: string) => void;
 };
@@ -200,13 +137,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectResponse | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
-  const [editForm, setEditForm] = useState<EditProjectFormState>(initialEditForm);
-  const [memberForm, setMemberForm] = useState<MemberFormState>({ accountId: '', memberRole: 'MANAGER' });
-  const [taskForm, setTaskForm] = useState<TaskFormState>(initialTaskForm);
-  const [tasks, setTasks] = useState<ProjectTaskResponse[]>([]);
-  const [detailTab, setDetailTab] = useState<'board' | 'companies'>('board');
-  const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
-  const [approvedProfiles, setApprovedProfiles] = useState<ProfileResponse[]>([]);
+  const [, setTasks] = useState<ProjectTaskResponse[]>([]);
+  const [, setCandidates] = useState<CandidateResponse[]>([]);
+  const [, setApprovedProfiles] = useState<ProfileResponse[]>([]);
   const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
   const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipTypeOption[]>(RELATIONSHIP_OPTIONS);
@@ -220,7 +153,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [taskLoading, setTaskLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const [, setDetailError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [toast, setToast] = useState<ToastState>(null);
 
@@ -386,24 +319,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     }
   }, []);
 
-  const moveCandidate = async (candidateId: string, status: CandidateStatus) => {
-    if (!selectedProjectId) return;
-    const before = candidates;
-    setCandidates((current) => current.map((candidate) => candidate.id === candidateId ? { ...candidate, status } : candidate));
-    
-    try {
-      const response = await api.patch<CandidateResponse>(`/projects/${selectedProjectId}/candidates/${candidateId}/stage`, { status });
-      if (response.data) {
-        setCandidates((current) => current.map((candidate) => candidate.id === candidateId ? response.data : candidate));
-      }
-      if (status === 'APPROVED') await reloadProjectBoard(selectedProjectId);
-    } catch (err) {
-      setCandidates(before);
-      setDetailError(err instanceof Error ? err.message : 'Unable to move candidate.');
-    }
-  };
-
-
   useEffect(() => {
     const controller = new AbortController();
     void reloadProjects(controller.signal);
@@ -454,24 +369,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       await reloadProjectBoard(selectedProjectId, controller.signal);
       await reloadProjectTasks(selectedProjectId, controller.signal);
     }
-  };
-
-  const refreshCurrentProject = async () => {
-    if (!selectedProjectId) return;
-    const controller = new AbortController();
-    await reloadProjectDetail(selectedProjectId, controller.signal);
-    await reloadProjectBoard(selectedProjectId, controller.signal);
-    await reloadProjectTasks(selectedProjectId, controller.signal);
-    await reloadProjects(controller.signal);
-  };
-
-  const requireActiveProject = (action: string) => {
-    if (selectedProject?.status !== 'DRAFT') return true;
-    setToast({
-      kind: 'error',
-      message: `Project is still Draft. Please activate it before ${action}.`,
-    });
-    return false;
   };
 
   const handleActivateProject = async (project: ProjectResponse) => {
@@ -604,137 +501,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to create project.' });
     } finally {
       setCreateLoading(false);
-    }
-  };
-
-  const handleOpenEdit = () => {
-    if (!selectedProject) return;
-    setEditForm({
-      projectName: selectedProject.projectName ?? '',
-      description: selectedProject.description ?? '',
-      status: selectedProject.status,
-    });
-    setShowEditForm((current) => !current);
-  };
-
-  const handleUpdateProject = async () => {
-    if (!selectedProject) return;
-    const projectName = editForm.projectName.trim();
-    if (!projectName) {
-      setFeedback({ kind: 'error', message: 'Project name cannot be empty.' });
-      return;
-    }
-
-    setUpdateLoading(true);
-    setFeedback(null);
-
-    try {
-      const payload: UpdateProjectRequest = {
-        projectName,
-        description: editForm.description.trim() || null,
-        status: editForm.status,
-      };
-
-      await api.put<ProjectResponse>(`/projects/${selectedProject.id}`, payload);
-      if (editForm.status !== selectedProject.status) {
-        await api.patch<ProjectResponse>(`/projects/${selectedProject.id}/status`, { status: editForm.status });
-      }
-      setShowEditForm(false);
-      setFeedback({ kind: 'success', message: 'Project updated successfully.' });
-      await refreshCurrentProject();
-    } catch (err) {
-      setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to update project.' });
-    } finally {
-      setUpdateLoading(false);
-    }
-  };
-
-  const handleAddMember = async () => {
-    if (!selectedProject) {
-      setFeedback({ kind: 'error', message: 'Select a project before adding members.' });
-      return;
-    }
-    if (!requireActiveProject('adding staff')) return;
-
-    const accountId = Number(memberForm.accountId);
-    if (!Number.isFinite(accountId) || accountId <= 0) {
-      setFeedback({ kind: 'error', message: 'Provide a valid account id.' });
-      return;
-    }
-
-    setMemberLoading(true);
-    setFeedback(null);
-
-    try {
-      const payload: AddMemberRequest = {
-        accountId,
-        memberRole: memberForm.memberRole,
-      };
-
-      await api.post<ProjectMemberResponse>(`/projects/${selectedProject.id}/members`, payload);
-      setMemberForm({ accountId: '', memberRole: 'MANAGER' });
-      setShowMemberForm(false);
-      setFeedback({ kind: 'success', message: 'Member added to project.' });
-      await refreshCurrentProject();
-    } catch (err) {
-      setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to add member.' });
-    } finally {
-      setMemberLoading(false);
-    }
-  };
-
-  const handleRemoveMember = async (member: ProjectMemberResponse) => {
-    if (!selectedProject) return;
-    if (!window.confirm('Remove this member from the project?')) return;
-
-    setMemberLoading(true);
-    setFeedback(null);
-
-    try {
-      await api.delete<void>(`/projects/${selectedProject.id}/members/${member.accountId}`);
-      setFeedback({ kind: 'success', message: 'Member removed from project.' });
-      await refreshCurrentProject();
-    } catch (err) {
-      setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to remove member.' });
-    } finally {
-      setMemberLoading(false);
-    }
-  };
-
-  const handleCreateTask = async () => {
-    if (!selectedProject) return;
-    if (!requireActiveProject('assigning tasks to employees')) return;
-    const title = taskForm.title.trim();
-    const assignedToUserId = Number(taskForm.assignedToUserId);
-    if (!title || !Number.isFinite(assignedToUserId) || assignedToUserId <= 0) {
-      setFeedback({ kind: 'error', message: 'Task title and assigned staff are required.' });
-      return;
-    }
-
-    setTaskLoading(true);
-    setFeedback(null);
-    try {
-      const payload: CreateProjectTaskRequest = {
-        title,
-        description: taskForm.description.trim() || null,
-        assignedToUserId,
-        priority: taskForm.priority,
-        dueDate: taskForm.dueDate ? new Date(taskForm.dueDate).toISOString() : null,
-        taskType: taskForm.taskType,
-      };
-      const res = await api.post<ProjectTaskResponse>(`/projects/${selectedProject.id}/tasks`, payload);
-      if (res?.data) {
-        setTasks((current) => [res.data, ...current.filter((task) => task.id !== res.data.id)]);
-      }
-      setTaskForm(initialTaskForm());
-      setShowTaskForm(false);
-      setFeedback({ kind: 'success', message: 'Task assigned successfully.' });
-      setToast({ kind: 'success', message: 'Task created successfully.' });
-    } catch (err) {
-      setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to assign task.' });
-      setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to assign task.' });
-    } finally {
-      setTaskLoading(false);
     }
   };
 

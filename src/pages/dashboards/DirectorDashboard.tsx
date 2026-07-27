@@ -1,7 +1,35 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
 import { useUser } from '../../context/UserContext';
+import type { DashboardSummaryDto, ScoreSnapshotDto } from '../../types/domain';
 import { AreaChart, BarChart, DonutChart } from '../../components/charts/Charts';
+
+interface DashboardPartner {
+  name?: string;
+  tradeName?: string;
+  legalName?: string;
+  industry?: string;
+  segment?: string;
+}
+
+interface DashboardCompetitor {
+  name?: string;
+  tradeName?: string;
+  legalName?: string;
+  threatScore?: number;
+  competitionLevel?: number;
+  riskLevel?: number;
+  threatLevel?: string;
+  threat?: string;
+}
+
+interface DashboardRecommendation {
+  title?: string;
+  name?: string;
+  recommendation?: string;
+  category?: string;
+  type?: string;
+}
 
 const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
   <div className="workspace-empty">{message}</div>
@@ -15,20 +43,20 @@ const toNumber = (value: unknown): number | null => {
 
 export const DirectorDashboard: React.FC = () => {
   const { currentUser } = useUser();
-  const [summary, setSummary] = useState<any>(null);
-  const [recentScores, setRecentScores] = useState<any[]>([]);
-  const [partners, setPartners] = useState<any[]>([]);
-  const [competitors, setCompetitors] = useState<any[]>([]);
-  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
+  const [recentScores, setRecentScores] = useState<ScoreSnapshotDto[]>([]);
+  const [partners, setPartners] = useState<DashboardPartner[]>([]);
+  const [competitors, setCompetitors] = useState<DashboardCompetitor[]>([]);
+  const [recommendations, setRecommendations] = useState<DashboardRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.allSettled([
-      api.get<any>('/dashboard/summary'),
-      api.get<any>('/dashboard/recent-scores'),
-      api.get<any>('/dashboard/partners'),
-      api.get<any>('/dashboard/competitors'),
-      api.get<any>('/dashboard/recommendations'),
+      api.get<DashboardSummaryDto>('/dashboard/summary'),
+      api.get<ScoreSnapshotDto[]>('/dashboard/recent-scores'),
+      api.get<DashboardPartner[]>('/dashboard/partners'),
+      api.get<DashboardCompetitor[]>('/dashboard/competitors'),
+      api.get<DashboardRecommendation[]>('/dashboard/recommendations'),
     ]).then((results) => {
       const [summaryRes, scoreRes, partnerRes, competitorRes, recommendationRes] = results;
 
@@ -37,22 +65,22 @@ export const DirectorDashboard: React.FC = () => {
       }
 
       if (scoreRes.status === 'fulfilled' && scoreRes.value?.success) {
-        const rows = Array.isArray(scoreRes.value.data) ? scoreRes.value.data : scoreRes.value.data?.content ?? [];
+        const rows = Array.isArray(scoreRes.value.data) ? scoreRes.value.data : [];
         setRecentScores(rows);
       }
 
       if (partnerRes.status === 'fulfilled' && partnerRes.value?.success) {
-        const rows = Array.isArray(partnerRes.value.data) ? partnerRes.value.data : partnerRes.value.data?.content ?? [];
+        const rows = Array.isArray(partnerRes.value.data) ? partnerRes.value.data : [];
         setPartners(rows);
       }
 
       if (competitorRes.status === 'fulfilled' && competitorRes.value?.success) {
-        const rows = Array.isArray(competitorRes.value.data) ? competitorRes.value.data : competitorRes.value.data?.content ?? [];
+        const rows = Array.isArray(competitorRes.value.data) ? competitorRes.value.data : [];
         setCompetitors(rows);
       }
 
       if (recommendationRes.status === 'fulfilled' && recommendationRes.value?.success) {
-        const rows = Array.isArray(recommendationRes.value.data) ? recommendationRes.value.data : recommendationRes.value.data?.content ?? [];
+        const rows = Array.isArray(recommendationRes.value.data) ? recommendationRes.value.data : [];
         setRecommendations(rows);
       }
     }).finally(() => setLoading(false));
@@ -61,7 +89,7 @@ export const DirectorDashboard: React.FC = () => {
   const scoreTrendData = useMemo(
     () =>
       recentScores
-        .map((item: any, index: number) => ({
+        .map((item: ScoreSnapshotDto, index: number) => ({
           label: item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : `#${index + 1}`,
           value: toNumber(item.totalScore) ?? 0,
         }))
@@ -72,7 +100,7 @@ export const DirectorDashboard: React.FC = () => {
   const competitorThreatData = useMemo(
     () =>
       competitors
-        .map((item: any, index: number) => {
+        .map((item: DashboardCompetitor, index: number) => {
           const threat =
             toNumber(item.threatScore) ??
             toNumber(item.competitionLevel) ??
@@ -92,7 +120,7 @@ export const DirectorDashboard: React.FC = () => {
 
   const recommendationCategoryData = useMemo(() => {
     const counts = new Map<string, number>();
-    recommendations.forEach((item: any) => {
+    recommendations.forEach((item: DashboardRecommendation) => {
       const key = String(item.category || item.type || 'Uncategorized');
       counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -183,7 +211,7 @@ export const DirectorDashboard: React.FC = () => {
             </div>
             <div className="director-feed-list">
               {recentScores.length > 0 ? (
-                recentScores.slice(0, 3).map((score: any, index: number) => (
+                recentScores.slice(0, 3).map((score: ScoreSnapshotDto, index: number) => (
                   <article key={index} className="director-feed-card">
                     <div className="director-feed-score" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
                       {toNumber(score.totalScore) ?? 'N/A'}
@@ -203,7 +231,7 @@ export const DirectorDashboard: React.FC = () => {
               <strong>Latest partner records</strong>
               <div className="director-feed-list">
                 {partners.length > 0 ? (
-                  partners.slice(0, 3).map((partner: any, index: number) => (
+                  partners.slice(0, 3).map((partner: DashboardPartner, index: number) => (
                     <article key={index} className="director-feed-card compact">
                       <div className="director-feed-dot" />
                       <div>
@@ -254,7 +282,7 @@ export const DirectorDashboard: React.FC = () => {
             </div>
             {recommendations.length > 0 ? (
               <ul className="stat-list">
-                {recommendations.slice(0, 4).map((item: any, index: number) => (
+                {recommendations.slice(0, 4).map((item: DashboardRecommendation, index: number) => (
                   <li key={index} className="stat-list-item">
                     <span className="stat-list-label" style={{ fontSize: 12 }}>{item.title || item.name || item.recommendation || 'Untitled recommendation'}</span>
                     <span className="stat-list-badge badge-blue">{item.category || item.type || 'N/A'}</span>

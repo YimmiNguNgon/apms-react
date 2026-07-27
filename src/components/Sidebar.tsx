@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useUser, ROLES, ROLE_DEFAULT_PAGE } from '../context/UserContext';
+import { useUser, ROLES } from '../context/UserContext';
 import { LogoutModal } from './LogoutModal';
 
 interface SidebarProps {
@@ -24,6 +24,11 @@ const ROLE_CONTEXT: Record<string, { label: string; description: string; accent:
     label: 'System control',
     description: 'Users, roles, audit, and platform health.',
     accent: 'admin',
+  },
+  [ROLES.OWNER]: {
+    label: 'Business Owner',
+    description: 'Executive oversight, strategic posture, and enterprise audit.',
+    accent: 'director',
   },
   [ROLES.DIRECTOR]: {
     label: 'Executive view',
@@ -88,12 +93,14 @@ const ADMIN_MENU: MenuSection[] = [
 
 const DIRECTOR_MENU: MenuSection[] = [
   {
+    title: 'Executive Command',
     items: [
       { id: 'director-dashboard', label: 'Executive Dashboard' },
+      { id: 'risk-monitoring',    label: 'Risk Monitoring' },
     ],
   },
   {
-    title: 'Ecosystem',
+    title: 'Ecosystem & Intelligence',
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
@@ -101,19 +108,19 @@ const DIRECTOR_MENU: MenuSection[] = [
     ],
   },
   {
-    title: 'Intelligence',
+    title: 'Strategic Governance',
     items: [
-      { id: 'market-opportunities', label: 'Market Opportunities' },
-      { id: 'ai-recommendations',   label: 'AI Recommendations' },
-      { id: 'strategic-reports',    label: 'Strategic Reports' },
+      { id: 'strategic-reports', label: 'Strategic Reports' },
+      { id: 'score-rules',       label: 'Score Rules' },
     ],
   },
   {
-    title: 'Data',
+    title: 'Projects',
     items: [
       { id: 'companies',    label: 'Companies' },
       { id: 'news',         label: 'News & Intelligence' },
       { id: 'system-chat',  label: 'Chat', badge: 2, badgeType: 'success' },
+      { id: 'project-management', label: 'Projects Overview' },
     ],
   },
   {
@@ -166,21 +173,22 @@ const MANAGER_MENU: MenuSection[] = [
 
 const KEY_MEMBER_MENU: MenuSection[] = [
   {
+    title: 'Workstation',
     items: [
-      { id: 'keymember-dashboard', label: 'Dashboard' },
+      { id: 'keymember-dashboard', label: 'Workstation Dashboard' },
+      { id: 'project-management',  label: 'My Projects' },
     ],
   },
   {
-    title: 'Validation',
+    title: 'Validation & Review',
     items: [
-      { id: 'review-extracted-data',    label: 'Review Extracted Data' },
-      { id: 'company-validation',       label: 'Company Validation' },
-      { id: 'partner-classification',   label: 'Partner Classification' },
-      { id: 'competitor-classification',label: 'Competitor Classification' },
+      { id: 'company-validation',     label: 'Validation Queue' },
+      { id: 'review-extracted-data',  label: 'Review Extracted Data' },
+      { id: 'partner-classification', label: 'Score & Classify' },
     ],
   },
   {
-    title: 'AI & Relationships',
+    title: 'Directory',
     items: [
       { id: 'ai-suggestion-review', label: 'AI Suggestion Review' },
       { id: 'relationship-updates', label: 'Relationship Updates' },
@@ -194,6 +202,7 @@ const KEY_MEMBER_MENU: MenuSection[] = [
       { id: 'companies',        label: 'Companies' },
       { id: 'validate',         label: 'Validation Queue' },
       { id: 'company-detail',   label: 'Company Detail' },
+      { id: 'companies', label: 'Companies Directory' },
     ],
   },
   {
@@ -243,8 +252,36 @@ const STAFF_MENU: MenuSection[] = [
   // },
 ];
 
+const OWNER_MENU: MenuSection[] = [
+  {
+    items: [
+      { id: 'owner-dashboard', label: 'Executive Command' },
+    ],
+  },
+  {
+    title: 'Ecosystem & Projects',
+    items: [
+      { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
+      { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      { id: 'project-management',      label: 'Projects Overview' },
+    ],
+  },
+  {
+    title: 'Governance & Settings',
+    items: [
+      { id: 'company-profiles', label: 'Company Profiles' },
+      { id: 'audit-logs',       label: 'Audit Log Viewer' },
+      { id: 'system-settings',  label: 'System Settings' },
+    ],
+  },
+  {
+    items: [{ id: 'profile', label: 'Profile' }],
+  },
+];
+
 const MENU_BY_ROLE = {
   [ROLES.ADMIN]:      ADMIN_MENU,
+  [ROLES.OWNER]:      OWNER_MENU,
   [ROLES.DIRECTOR]:   DIRECTOR_MENU,
   [ROLES.MANAGER]:    MANAGER_MENU,
   [ROLES.KEY_MEMBER]: KEY_MEMBER_MENU,

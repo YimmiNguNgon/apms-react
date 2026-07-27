@@ -5,7 +5,6 @@ import {
   CalendarDays,
   ExternalLink,
   FileText,
-  Filter,
   Newspaper,
   RefreshCw,
   Search,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react';
 import {
   crawlerApi,
+  CrawlerNotAvailableError,
 } from '../API/crawlerApi';
 import type {
   CrawledArticle,
@@ -22,15 +22,6 @@ import type {
 } from '../API/crawlerApi';
 
 const PAGE_SIZE = 9;
-
-const STATUS_OPTIONS = [
-  { value: '', label: 'All status' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'MATCHED', label: 'Matched' },
-  { value: 'PUBLISHED', label: 'Published' },
-  { value: 'DISCARDED', label: 'Discarded' },
-  { value: 'ERROR', label: 'Error' },
-];
 
 const priorityClass = (priority?: string | null) => {
   const value = String(priority || '').toUpperCase();
@@ -86,14 +77,24 @@ export const News: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<CrawledArticle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [crawlerAvailable, setCrawlerAvailable] = useState<boolean | null>(null);
 
   const loadCompaniesAndStats = async () => {
-    const [companyRows, statData] = await Promise.all([
-      crawlerApi.getTrackedCompanies().catch(() => []),
-      crawlerApi.getStats().catch(() => null),
-    ]);
-    setCompanies(companyRows);
-    setStats(statData);
+    try {
+      const [companyRows, statData] = await Promise.all([
+        crawlerApi.getTrackedCompanies(),
+        crawlerApi.getStats(),
+      ]);
+      setCompanies(companyRows);
+      setStats(statData);
+      setCrawlerAvailable(true);
+    } catch (err) {
+      if (err instanceof CrawlerNotAvailableError) {
+        setCrawlerAvailable(false);
+        setCompanies([]);
+        setStats(null);
+      }
+    }
   };
 
   const loadArticles = async () => {
@@ -109,11 +110,19 @@ export const News: React.FC = () => {
       setArticles(Array.isArray(data?.content) ? data.content : []);
       setTotalPages(Math.max(Number(data?.totalPages || 1), 1));
       setTotalElements(Number(data?.totalElements || data?.content?.length || 0));
-    } catch (err: any) {
-      setArticles([]);
-      setTotalPages(1);
-      setTotalElements(0);
-      setError(err?.message || 'Cannot load crawler articles.');
+      setCrawlerAvailable(true);
+    } catch (err: unknown) {
+      if (err instanceof CrawlerNotAvailableError) {
+        setCrawlerAvailable(false);
+        setArticles([]);
+        setTotalPages(1);
+        setTotalElements(0);
+      } else {
+        setArticles([]);
+        setTotalPages(1);
+        setTotalElements(0);
+        setError(err instanceof Error ? err.message : 'Cannot load crawler articles.');
+      }
     } finally {
       setLoading(false);
     }
@@ -207,7 +216,7 @@ export const News: React.FC = () => {
           </div>
 
           <div className="workspace-stats crawler-news-stats">
-            {statCards.map((item) => (
+            {crawlerAvailable !== false && statCards.map((item) => (
               <article key={item.label} className="workspace-stat-card">
                 <span className="workspace-stat-label">{item.label}</span>
                 <strong>{item.value}</strong>
@@ -216,6 +225,7 @@ export const News: React.FC = () => {
             ))}
           </div>
 
+          {crawlerAvailable !== false && (
           <div className="workspace-panel crawler-news-filter-panel">
             <div className="crawler-news-search">
               <Search size={18} />
@@ -259,10 +269,23 @@ export const News: React.FC = () => {
 
             <button className="btn btn-ghost" onClick={resetFilters}>Reset</button>
           </div>
+          )}
 
           {error && <div className="workspace-alert danger">{error}</div>}
 
-          {!loading && companyOptions.length === 0 && (
+          {!loading && crawlerAvailable === false && (
+            <div className="workspace-panel" style={{ padding: '64px 32px', textAlign: 'center' }}>
+              <Newspaper size={48} color="#9CA3AF" style={{ margin: '0 auto 16px' }} />
+              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>
+                Chức năng thu thập dữ liệu tự động đang được xây dựng
+              </h2>
+              <p style={{ fontSize: '14px', color: '#6B7280', margin: 0, maxWidth: '480px', marginInline: 'auto' }}>
+                Tính năng Crawler sẽ sớm ra mắt. Hệ thống sẽ tự động thu thập và phân tích bài viết liên quan đến các công ty được theo dõi.
+              </p>
+            </div>
+          )}
+
+          {!loading && companyOptions.length === 0 && crawlerAvailable !== false && (
             <div className="workspace-alert warning">
               No tracked companies were found. Restart backend with crawler seed enabled or create tracked companies first.
             </div>
@@ -274,7 +297,7 @@ export const News: React.FC = () => {
                 <article key={index} className="crawler-news-card crawler-news-card-loading" />
               ))}
             </div>
-          ) : visibleArticles.length === 0 ? (
+          ) : crawlerAvailable === false ? null : visibleArticles.length === 0 ? (
             <div className="workspace-panel">
               <div className="workspace-empty">No crawler articles match the current filters.</div>
             </div>

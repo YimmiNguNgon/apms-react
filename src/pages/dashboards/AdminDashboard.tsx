@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
 import { useUser } from '../../context/UserContext';
+import type { DashboardSummaryDto, AuditLogDto, RoleDto } from '../../types/domain';
 import { AreaChart, BarChart, DonutChart } from '../../components/charts/Charts';
 
 const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
@@ -9,22 +10,22 @@ const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
 
 export const AdminDashboard: React.FC = () => {
   const { currentUser } = useUser();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activityData, setActivityData] = useState<any[]>([]);
-  const [userRegData, setUserRegData] = useState<any[]>([]);
-  const [loginActivity, setLoginActivity] = useState<any[]>([]);
-  const [systemHealth, setSystemHealth] = useState<any[]>([]);
-  const [roleDistribution, setRoleDistribution] = useState<any[]>([]);
+  const [activityData, setActivityData] = useState<AuditLogDto[]>([]);
+  const [userRegData, setUserRegData] = useState<{ label: string; value: number }[]>([]);
+  const [loginActivity, setLoginActivity] = useState<{ label: string; value: number }[]>([]);
+  const [systemHealth, setSystemHealth] = useState<{ label: string; value: number; color: string }[]>([]);
+  const [roleDistribution, setRoleDistribution] = useState<RoleDto[]>([]);
 
   useEffect(() => {
     Promise.allSettled([
-      api.get<any>('/dashboard/summary'),
-      api.get<any>('/dashboard/activity'),
-      api.get<any>('/dashboard/user-registration'),
-      api.get<any>('/dashboard/login-activity'),
-      api.get<any>('/dashboard/system-health'),
-      api.get<any>('/dashboard/role-distribution'),
+      api.get<DashboardSummaryDto>('/dashboard/summary'),
+      api.get<AuditLogDto[]>('/dashboard/activity'),
+      api.get<{ label: string; value: number }[]>('/dashboard/user-registration'),
+      api.get<{ label: string; value: number }[]>('/dashboard/login-activity'),
+      api.get<{ label: string; value: number; color: string }[]>('/dashboard/system-health'),
+      api.get<RoleDto[]>('/dashboard/role-distribution'),
     ])
       .then(([summaryRes, activityRes, userRegRes, loginRes, healthRes, roleRes]) => {
         if (summaryRes.status === 'fulfilled' && summaryRes.value?.success) {
@@ -50,7 +51,7 @@ export const AdminDashboard: React.FC = () => {
   }, []);
 
   const totalUsers = useMemo(
-    () => roleDistribution.reduce((sum, item) => sum + Number(item.count || 0), 0),
+    () => roleDistribution.reduce((sum, item) => sum + Number(item.userCount || 0), 0),
     [roleDistribution],
   );
 
@@ -169,11 +170,11 @@ export const AdminDashboard: React.FC = () => {
               </div>
               {activityData.length > 0 ? (
                 <div className="workspace-activity-list">
-                  {activityData.slice(0, 6).map((item: any, index: number) => (
+                  {activityData.slice(0, 6).map((item: AuditLogDto, index: number) => (
                     <article key={index} className="workspace-activity-item">
-                      <strong>{item.title || item.action || 'System event'}</strong>
-                      <p>{item.desc || item.description || item.detail || 'No additional description was provided.'}</p>
-                      <span>{item.time || item.timestamp || 'Recently updated'}</span>
+                      <strong>{item.action || 'System event'}</strong>
+                      <p>{item.detail || 'No additional description was provided.'}</p>
+                      <span>{item.timestamp || 'Recently updated'}</span>
                     </article>
                   ))}
                 </div>
@@ -192,10 +193,10 @@ export const AdminDashboard: React.FC = () => {
                 </div>
                 {roleDistribution.length > 0 ? (
                   <ul className="stat-list">
-                    {roleDistribution.map((item: any, index: number) => (
+                    {roleDistribution.map((item: RoleDto, index: number) => (
                       <li key={index} className="stat-list-item">
-                        <span className="stat-list-label">{item.role || item.name}</span>
-                        <span className={`stat-list-badge ${item.badge || 'badge-blue'}`}>{item.count}</span>
+                        <span className="stat-list-label">{item.name}</span>
+                        <span className={`stat-list-badge badge-blue`}>{item.userCount}</span>
                       </li>
                     ))}
                   </ul>

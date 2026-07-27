@@ -95,7 +95,7 @@ const DEMO_CANDIDATES: DashboardCandidate[] = [
     scorePreview: { completenessScore: 88 },
     rawDocumentId: 'doc-8812',
     importJobId: 'job-101',
-  } as any,
+  },
   {
     id: 'cand-102',
     projectId: '1',
@@ -107,7 +107,7 @@ const DEMO_CANDIDATES: DashboardCandidate[] = [
     scorePreview: { completenessScore: 72 },
     importJobId: 'job-402',
     rawDocumentId: 'doc-8813',
-  } as any,
+  },
   {
     id: 'cand-103',
     projectId: '2',
@@ -119,7 +119,7 @@ const DEMO_CANDIDATES: DashboardCandidate[] = [
     scorePreview: { completenessScore: 95 },
     rawDocumentId: 'doc-9031',
     importJobId: 'job-403',
-  } as any,
+  },
   {
     id: 'cand-104',
     projectId: '2',
@@ -131,7 +131,7 @@ const DEMO_CANDIDATES: DashboardCandidate[] = [
     scorePreview: { completenessScore: 81 },
     importJobId: 'job-512',
     rawDocumentId: 'doc-9032',
-  } as any,
+  },
   {
     id: 'cand-105',
     projectId: '3',
@@ -143,7 +143,7 @@ const DEMO_CANDIDATES: DashboardCandidate[] = [
     scorePreview: { completenessScore: 90 },
     rawDocumentId: 'doc-9102',
     importJobId: 'job-513',
-  } as any,
+  },
 ];
 
 export const KeyMemberDashboard: React.FC<Props> = ({ setActivePage }) => {

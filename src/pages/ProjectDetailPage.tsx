@@ -2352,7 +2352,8 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
 
 export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActivePage }) => {
   const { currentUser } = useUser();
-  const isStaffView = currentUser?.role === ROLES.STAFF;
+  const isManager = currentUser?.role === ROLES.MANAGER || currentUser?.role === ROLES.OWNER || currentUser?.role === ROLES.ADMIN;
+  const isStaffView = currentUser?.role === ROLES.STAFF || currentUser?.role === ROLES.KEY_MEMBER;
   const [activeTab, setActiveTab] = useState('Kanban Board');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [apiTasks, setApiTasks] = useState<ProjectTaskResponse[]>([]);
@@ -2462,7 +2463,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const currentEmail = currentUser?.email?.toLowerCase();
     const matchedMember = apiProject?.members?.find((member) => member.email?.toLowerCase() === currentEmail);
     return matchedMember?.accountId ?? null;
-  }, [apiProject?.members, currentUser?.email, currentUser?.id, isStaffView]);
+  }, [currentUser, apiProject?.members, isStaffView]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2650,15 +2651,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     targetCompanyName: apiProject?.targetCompanyName,
     description: apiProject?.description,
   }), [apiProject]);
-
-  const metrics = useMemo(() => {
-    const completed = tasks.filter((task) => task.status === 'done').length;
-    return {
-      completed,
-      remaining: tasks.length - completed,
-      deadlines: [...tasks].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 3),
-    };
-  }, [tasks]);
 
   const projectMembers = useMemo(() => {
     const rows = apiProject?.members ?? [];
@@ -3227,6 +3219,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchMessage('Task moved to In Progress.');
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot start this task.');
+    }
+  };
+
+  const handleCancelStaffTask = async () => {
+    if (!selectedStaffTask) return;
+    if (!window.confirm('Are you sure you want to cancel this task? This action cannot be undone.')) return;
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      const payload = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'CANCELLED');
+      updateTaskInState(payload.data);
+      setWorkbench((current) => current ? { ...current, taskStatus: 'CANCELLED' } : current);
+      setWorkbenchMessage('Task has been cancelled.');
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot cancel this task.');
     }
   };
 
@@ -3807,7 +3815,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             <div className={styles.breadcrumb}>
               Projects <ChevronRight size={14} /> {displayedProject.key}
             </div>
-            {projectError && <div className={styles.inlineError}>{projectError}</div>}
+            {projectError && !/403|denied|forbidden/i.test(projectError) && <div className={styles.inlineError}>{projectError}</div>}
             <div className={styles.headerTop}>
               <div className={styles.titleBlock}>
                 <h1>{projectLoading ? 'Loading project...' : displayedProject.name}</h1>
@@ -3820,12 +3828,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {displayedProject.description && <p className={styles.projectDescription}>{displayedProject.description}</p>}
               </div>
               <div className={styles.actions}>
-                {!isStaffView && isDraftProject && (
+                {isManager && isDraftProject && (
                   <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleActivateProject()} disabled={statusLoading}>
                     <CheckCircle2 size={16} />{statusLoading ? 'Activating...' : 'Activate Project'}
                   </button>
                 )}
-                {!isStaffView && (
+                {isManager && (
                   <>
                     <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button>
                     <button
@@ -3865,7 +3873,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
           {activeTab === 'Kanban Board' ? (
             <>
-              {taskError && <div className={styles.inlineError}>{taskError}</div>}
+              {taskError && !/403|denied|forbidden/i.test(taskError) && <div className={styles.inlineError}>{taskError}</div>}
               <div className={styles.board}>
                 {columns.map((column) => {
                   const columnTasks = tasks.filter((task) => task.status === column.id);
@@ -3922,7 +3930,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <span className={styles.count}>{filteredCandidates.length}/{candidateStats.totalVisible}</span>
               </div>
 
-              {candidateError && <div className={styles.inlineError}>{candidateError}</div>}
+              {candidateError && !/403|denied|forbidden/i.test(candidateError) && <div className={styles.inlineError}>{candidateError}</div>}
               {candidateActionMessage && <div className={styles.inlineSuccess}>{candidateActionMessage}</div>}
 
               <div className={styles.candidateStats}>
@@ -4523,6 +4531,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 >
                   <Clock size={16} />{staffTaskStatus === 'TODO' ? 'Start task' : 'Task started'}
                 </button>
+                {selectedStaffTask.status !== 'DONE' && selectedStaffTask.status !== 'CANCELLED' && (
+                  <button
+                    className={`${styles.button}`}
+                    type="button"
+                    onClick={() => void handleCancelStaffTask()}
+                    style={{ color: '#B91C1C', borderColor: '#FECACA' }}
+                  >
+                    <X size={16} />Cancel task
+                  </button>
+                )}
                 <span>
                   {staffTaskStatus === 'TODO'
                     ? 'Start this task to move it from To Do to In Progress.'

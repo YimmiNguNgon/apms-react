@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
-import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskPriority, TaskType } from '../types/domain';
+import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskPriority } from '../types/domain';
 
 interface CompanyProfileItem {
   id: string;
@@ -14,7 +14,7 @@ interface CompanyProfileItem {
   };
 }
 
-export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void }> = ({ setActivePage }) => {
+export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void }> = () => {
   const [tasks, setTasks] = useState<ProjectTaskResponse[]>([]);
   const [projectsMap, setProjectsMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
@@ -40,7 +40,7 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
   const [submitting, setSubmitting] = useState(false);
 
   // Debounce ref for auto-saving drafts
-  const autoSaveTimerRef = useRef<any>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initial Data Load
   const fetchMyTasks = useCallback(async (options: { silent?: boolean } = {}) => {
@@ -53,8 +53,8 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
       if (res?.success && res.data?.content) {
         setTasks(res.data.content);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load assigned tasks.');
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'Failed to load assigned tasks.');
     } finally {
       if (!options.silent) setLoading(false);
     }
@@ -108,9 +108,9 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
     try {
       await api.patch(`/projects/${projectId}/tasks/${taskId}`, { status: newStatus });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTasks(originalTasks);
-      alert(err?.message || 'Failed to update task status.');
+      alert((err as Error)?.message || 'Failed to update task status.');
     }
   };
 
@@ -148,7 +148,7 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     setDraftLoading(true);
 
     try {
-      const res = await api.get<any>(`/projects/${task.projectId}/tasks/${task.id}/draft`);
+      const res = await api.get<{ attachedCompanyProfileId?: string; note?: string; status?: TaskStatus }>(`/projects/${task.projectId}/tasks/${task.id}/draft`);
       if (res?.success && res.data) {
         setAttachedCompanyProfileId(res.data.attachedCompanyProfileId || '');
         setNote(res.data.note || '');
@@ -259,8 +259,8 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
       alert('Task submitted successfully for manager review!');
       setSelectedTask(null);
       void fetchMyTasks();
-    } catch (err: any) {
-      alert(err?.message || 'Failed to submit task.');
+    } catch (err: unknown) {
+      alert((err as Error)?.message || 'Failed to submit task.');
     } finally {
       setSubmitting(false);
     }

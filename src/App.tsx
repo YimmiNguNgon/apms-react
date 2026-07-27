@@ -10,14 +10,11 @@ import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './s
 
 // ── Role dashboards ──
 import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
+import { OwnerDashboard }     from './pages/dashboards/OwnerDashboard';
 import { DirectorDashboard }  from './pages/dashboards/DirectorDashboard';
 import { ManagerDashboard }   from './pages/dashboards/ManagerDashboard';
 import { KeyMemberDashboard } from './pages/dashboards/KeyMemberDashboard';
 import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
-
-interface SharedProps {
-  setActivePage: (page: string) => void;
-}
 
 const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
 
@@ -37,6 +34,10 @@ import { UserManagement }    from './pages/UserManagement';
 import { ActivityAudit }     from './pages/ActivityAudit';
 import { SystemSettingsPage }from './pages/SystemSettings';
 
+// ── Owner pages ──
+import { EcosystemOverview } from './pages/EcosystemOverview';
+import { ProjectsOverview }  from './pages/ProjectsOverview';
+
 // ── Director pages ──
 import {
   PartnerEcosystem,
@@ -45,6 +46,9 @@ import {
   AIRecommendations,
   StrategicReports,
 } from './pages/DirectorPages';
+import { DirectorRiskMonitoring } from './pages/DirectorRiskMonitoring';
+import { StrategicReportsView } from './pages/StrategicReportsView';
+import { ScoreRulesViewer } from './pages/ScoreRulesViewer';
 import { RelationshipMap } from './pages/RelationshipMap';
 
 // ─── Manager pages ──
@@ -76,7 +80,6 @@ import {
 import {
   UploadDocuments,
   PartnerManagement,
-  CompetitorManagement,
   AIExtractedData,
   SearchCompanies,
   AITrainingMode,
@@ -186,6 +189,7 @@ const MainApp: React.FC = () => {
   const renderDashboard = () => {
     switch (currentUser.role) {
       case ROLES.ADMIN:      return <AdminDashboard />;
+      case ROLES.OWNER:      return <OwnerDashboard />;
       case ROLES.DIRECTOR:   return <DirectorDashboard />;
       case ROLES.MANAGER:    return <ManagerDashboard setActivePage={setActivePage} />;
       case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={setActivePage} />;
@@ -199,7 +203,7 @@ const MainApp: React.FC = () => {
   // ── Page renderer ──
   const renderPage = () => {
     // Dashboard pages
-    const dashPages = ['admin-dashboard','director-dashboard','manager-dashboard','keymember-dashboard','staff-dashboard'];
+    const dashPages = ['admin-dashboard','owner-dashboard','director-dashboard','manager-dashboard','keymember-dashboard','staff-dashboard'];
     if (dashPages.includes(activePage)) return renderDashboard();
 
     if (!canView(activePage)) {
@@ -242,24 +246,25 @@ const MainApp: React.FC = () => {
       case 'security-settings':return <SystemSettingsPage defaultTab="security" />;
       case 'access-control':   return <SystemSettingsPage defaultTab="access-control" />;
 
-      // ── Director pages ──
-      case 'partner-ecosystem':        return <PartnerEcosystem />;
+      // ── Director & Owner pages ──
+      case 'partner-ecosystem':        return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <EcosystemOverview setActivePage={setActivePage} /> : <PartnerEcosystem />;
       case 'competitor-intelligence':  return <CompetitorIntelligence />;
       case 'relationship-map':         return <RelationshipMap setActivePage={setActivePage} />;
       case 'market-opportunities':     return <MarketOpportunities />;
       case 'ai-recommendations':       return <AIRecommendations />;
-      case 'strategic-reports':        return <StrategicReports />;
+      case 'strategic-reports':        return currentUser.role === ROLES.DIRECTOR ? <StrategicReportsView /> : <StrategicReports />;
+      case 'score-rules':              return <ScoreRulesViewer />;
 
       // ── Manager pages ──
       case 'partner-evaluation':         return <PartnerEvaluation />;
       case 'company-assignment':         return <CompanyAssignment setActivePage={setActivePage} />;
       case 'analysis-history':           return <AnalysisHistory />;
-      case 'risk-monitoring':            return <RiskMonitoring />;
+      case 'risk-monitoring':            return currentUser.role === ROLES.DIRECTOR ? <DirectorRiskMonitoring setActivePage={setActivePage} /> : <RiskMonitoring />;
       case 'partner-status':             return <PartnerStatus />;
       case 'suggested-actions-approval': return <ApprovalsPage />;
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
-      case 'project-management':         return <ProjectManagement setActivePage={setActivePage} />;
+      case 'project-management':         return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <ProjectsOverview /> : <ProjectManagement setActivePage={setActivePage} />;
       case 'project-detail':             return <ProjectDetailPage setActivePage={setActivePage} />;
 
       // ── Key Member pages ──

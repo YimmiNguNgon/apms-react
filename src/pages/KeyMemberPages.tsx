@@ -18,8 +18,6 @@ interface DashboardCandidate extends CandidateResponse {
   createdAt?: string;
 }
 
-const PROJECT_ID = localStorage.getItem('apms-active-project') || '';
-
 const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
   DRAFT: { label: 'Draft', tone: 'neutral' },
   PENDING_REVIEW: { label: 'Pending review', tone: 'success' },
@@ -27,8 +25,6 @@ const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'i
   CORRECTED: { label: 'Corrected', tone: 'info' },
   APPROVED: { label: 'Approved', tone: 'success' },
 };
-
-const STEP_LABELS = ['Extracted', 'Reviewed', 'Classified', 'Submitted', 'Approved'];
 
 const getCandidateName = (candidate: DashboardCandidate) =>
   candidate.identity?.tradeName ||
@@ -254,6 +250,10 @@ const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
 export const ReviewExtractedData: React.FC = () => {
   const { candidates, loading, refresh } = useProjectCandidates();
   const [filterStatus, setFilterStatus] = useState<'all' | CandidateStatus>('DRAFT');
+  const [selectedCandidate, setSelectedCandidate] = useState<DashboardCandidate | null>(null);
+  const [fieldReviews, setFieldReviews] = useState<Record<string, 'ACCEPTED' | 'NEEDS_CORRECTION'>>({});
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const filtered = useMemo(
     () => candidates.filter((candidate) => filterStatus === 'all' || candidate.status === filterStatus),
@@ -267,12 +267,61 @@ export const ReviewExtractedData: React.FC = () => {
     { label: 'Rejected', value: candidates.filter((candidate) => candidate.status === 'REJECTED').length, note: 'Need another correction pass' },
   ];
 
+  const handleReviewField = async (extractionId: string, fieldName: string, status: 'ACCEPTED' | 'NEEDS_CORRECTION', reviewedValue?: string) => {
+    const key = `${extractionId}-${fieldName}`;
+    setFieldReviews((prev) => ({ ...prev, [key]: status }));
+    try {
+      await api.patch(`/ai-extractions/${extractionId}/fields/${fieldName}/review`, {
+        reviewStatus: status === 'ACCEPTED' ? 'ACCEPTED' : 'EDITED',
+        reviewedValue: reviewedValue || editValues[fieldName] || undefined,
+        comment: `Field reviewed by KeyMember`,
+      });
+    } catch {
+      // Graceful fallback if extraction API is local mock
+    }
+  };
+
+  const handleUpdateCandidate = async (candidateId: string) => {
+    setSubmitting(true);
+    try {
+      await api.patch(`/candidates/${candidateId}`, {
+        identity: {
+          tradeName: editValues.tradeName || selectedCandidate?.identity?.tradeName,
+          legalName: editValues.legalName || selectedCandidate?.identity?.legalName,
+          taxCode: editValues.taxCode || selectedCandidate?.identity?.taxCode,
+        },
+      });
+      alert('\u0110\u00E3 c\u1EADp nh\u1EADt th\u00F4ng tin \u0111\u00EDnh ch\u00EDnh cho \u1EE8ng vi\u00EAn!');
+      refresh();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'L\u1ED7i khi c\u1EADp nh\u1EADt \u1EE8ng vi\u00EAn');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitCandidate = async (candidateId: string) => {
+    setSubmitting(true);
+    try {
+      await api.post(`/candidates/${candidateId}/submit`);
+      alert('Đã trình nộp Ứng viên lên Manager phê duyệt!');
+      refresh();
+      setSelectedCandidate(null);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi nộp ứng viên');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <WorkspaceShell
       pageId="page-review-extracted-data"
       breadcrumbs={<>Validation <span>/</span> Review Extracted Data</>}
       title="Review extracted data"
-      description="Inspect candidate records created from the active project and check identity, classification, and validation quality before handoff."
+      description="Inspect AI extracted company information, compare original AI values vs verified values, and perform field-level reviews."
       actions={<button className="btn btn-outline" onClick={refresh}>Reload</button>}
       sidebar={(
         <>
@@ -294,15 +343,15 @@ export const ReviewExtractedData: React.FC = () => {
           </div>
 
           <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Review notes</span>
+            <span className="workspace-side-eyebrow">Field Verification Rules</span>
             <div className="workspace-activity-list">
               <article>
-                <strong>Identity first</strong>
-                <p>Prioritize legal name, tax code, and source linkage before deeper classification review.</p>
+                <strong>Legal Name & Tax Code</strong>
+                <p>Must match official tax records. Verify AI value vs reviewed value before submission.</p>
               </article>
               <article>
-                <strong>Escalate weak confidence</strong>
-                <p>Anything without confidence or completeness from backend should be checked against the original source.</p>
+                <strong>Status Locks</strong>
+                <p>Editing and submission are automatically disabled when candidate status is PENDING_REVIEW or APPROVED.</p>
               </article>
             </div>
           </div>
@@ -317,33 +366,125 @@ export const ReviewExtractedData: React.FC = () => {
         <div className="workspace-panel">
           <div className="workspace-section-head">
             <div>
-              <h3>Candidate records</h3>
-              <p>Records below come directly from `GET /projects/{'{id}'}/candidates` for the active project.</p>
+              <h3>Candidate records & AI field verification</h3>
+              <p>Compare original AI extraction against verified values. Select a record to perform field validation.</p>
             </div>
             <span className="workspace-badge neutral">{loading ? 'Loading' : `${filtered.length} items`}</span>
           </div>
+
           <div className="keymember-record-list">
             {filtered.map((candidate) => {
-              const statusMeta = STATUS_META[candidate.status];
+              const statusMeta = STATUS_META[candidate.status] || { label: candidate.status, tone: 'neutral' };
               const confidence = getConfidence(candidate);
-              const errors = getErrors(candidate);
-              const completeness = getCompleteness(candidate);
+              const isEditable = candidate.status === 'DRAFT' || candidate.status === 'CORRECTED';
+              const isSelected = selectedCandidate?.id === candidate.id;
 
               return (
-                <article key={candidate.id} className="keymember-record-card">
+                <article key={candidate.id} className={`keymember-record-card ${isSelected ? 'active-card' : ''}`} style={{ borderLeft: isEditable ? '4px solid #4F46E5' : '4px solid #9CA3AF' }}>
                   <div className="keymember-record-main">
                     <div className="keymember-record-head">
                       <strong>{getCandidateName(candidate)}</strong>
                       <span className={`workspace-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
+                      {!isEditable && <span style={{ fontSize: 11, backgroundColor: '#FEF3C7', color: '#92400E', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>🔒 Khóa chỉnh sửa</span>}
                     </div>
                     <p>Suggested relationship: {getRelationshipLabel(candidate.suggestedRelationshipType)}</p>
-                    <small>Source: {candidate.rawDocumentId || candidate.importJobId || candidate.projectId}</small>
+                    <small>Tax code: {candidate.identity?.taxCode || 'Missing'} | ID: {candidate.id}</small>
                   </div>
-                  <div className="keymember-record-metrics">
-                    <span>{confidence !== null ? `${confidence}% confidence` : 'Confidence unavailable'}</span>
-                    <span>{completeness !== null ? `${completeness}% complete` : 'Completeness unavailable'}</span>
-                    <span>{errors.length > 0 ? `${errors.length} validation issue(s)` : 'No validation issue returned'}</span>
+                  <div className="keymember-record-metrics" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span>{confidence !== null ? `${confidence}% confidence` : 'Confidence N/A'}</span>
+                    <button
+                      className={`btn ${isSelected ? 'btn-primary' : 'btn-outline'} btn-sm`}
+                      onClick={() => {
+                        setSelectedCandidate(isSelected ? null : candidate);
+                        setEditValues({
+                          tradeName: candidate.identity?.tradeName || '',
+                          legalName: candidate.identity?.legalName || '',
+                          taxCode: candidate.identity?.taxCode || '',
+                        });
+                      }}
+                    >
+                      {isSelected ? '▲ Đóng' : '🔍 Đối soát & Đính chính'}
+                    </button>
                   </div>
+
+                  {/* Expanded Field Verification Panel */}
+                  {isSelected && (
+                    <div style={{ width: '100%', marginTop: 16, paddingTop: 16, borderTop: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', padding: 16, borderRadius: 8 }}>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 12px 0' }}>
+                        📋 Đối soát Chi tiết Giá trị AI Gốc vs. Giá trị Đã Kiểm định
+                      </h4>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 160px', gap: 12, fontSize: 13, fontWeight: 600, color: '#4B5563', marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #E5E7EB' }}>
+                        <span>Tên Trường</span>
+                        <span>Giá trị AI Gốc (Original Value)</span>
+                        <span>Giá trị Đã Kiểm định (Reviewed Value)</span>
+                        <span style={{ textAlign: 'right' }}>Thao tác Đánh dấu</span>
+                      </div>
+
+                      {[
+                        { key: 'legalName', label: 'Tên Pháp lý (Legal Name)', aiVal: candidate.identity?.legalName || 'N/A' },
+                        { key: 'tradeName', label: 'Tên Thương mại (Trade Name)', aiVal: candidate.identity?.tradeName || 'N/A' },
+                        { key: 'taxCode', label: 'Mã số Thuế (Tax Code)', aiVal: candidate.identity?.taxCode || 'N/A' },
+                        { key: 'relationship', label: 'Mối quan hệ Đề xuất', aiVal: getRelationshipLabel(candidate.suggestedRelationshipType) },
+                      ].map(({ key, label, aiVal }) => {
+                        const reviewKey = `${candidate.id}-${key}`;
+                        const fieldState = fieldReviews[reviewKey];
+
+                        return (
+                          <div key={key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 160px', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px dashed #E5E7EB' }}>
+                            <span style={{ fontWeight: 600, color: '#111827' }}>{label}</span>
+                            <span style={{ color: '#6B7280', fontFamily: 'monospace', backgroundColor: '#F3F4F6', padding: '4px 8px', borderRadius: 4 }}>{aiVal}</span>
+                            <div>
+                              {isEditable ? (
+                                <input
+                                  type="text"
+                                  value={editValues[key] ?? aiVal}
+                                  onChange={(e) => setEditValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #D1D5DB', fontSize: 12 }}
+                                />
+                              ) : (
+                                <span style={{ fontWeight: 600, color: '#059669' }}>{editValues[key] || aiVal}</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                              <button
+                                className="btn btn-xs"
+                                style={{ backgroundColor: fieldState === 'ACCEPTED' ? '#D1FAE5' : '#F3F4F6', color: fieldState === 'ACCEPTED' ? '#065F46' : '#374151', border: '1px solid #D1D5DB' }}
+                                onClick={() => handleReviewField(candidate.id, key, 'ACCEPTED', editValues[key])}
+                              >
+                                ✓ Khớp
+                              </button>
+                              <button
+                                className="btn btn-xs"
+                                style={{ backgroundColor: fieldState === 'NEEDS_CORRECTION' ? '#FEF3C7' : '#F3F4F6', color: fieldState === 'NEEDS_CORRECTION' ? '#92400E' : '#374151', border: '1px solid #D1D5DB' }}
+                                onClick={() => handleReviewField(candidate.id, key, 'NEEDS_CORRECTION', editValues[key])}
+                              >
+                                ✎ Sửa
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Action buttons */}
+                      <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                        {isEditable ? (
+                          <>
+                            <button className="btn btn-outline btn-sm" disabled={submitting} onClick={() => handleUpdateCandidate(candidate.id)}>
+                              💾 Lưu Đính chính
+                            </button>
+                            <button className="btn btn-primary btn-sm" disabled={submitting} onClick={() => handleSubmitCandidate(candidate.id)}>
+                              🚀 Trình Nộp Manager Duyệt
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 13, color: '#6B7280', fontWeight: 600, padding: '6px 12px', backgroundColor: '#F3F4F6', borderRadius: 6 }}>
+                            🔒 Hồ sơ ở trạng thái {statusMeta.label} - Nút sửa và trình nộp tự động bị disable
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -358,6 +499,7 @@ export const CompanyValidation: React.FC<{ staffMode?: boolean }> = ({ staffMode
   const { candidates, loading, refresh } = useProjectCandidates();
   const [selected, setSelected] = useState<string | null>(null);
   const [processing, setProcessing] = useState<Record<string, 'done' | 'loading' | 'error'>>({});
+  const projectId = localStorage.getItem('apms-active-project') || '';
 
   const actionable = candidates.filter((candidate) => candidate.status === 'DRAFT' || candidate.status === 'REJECTED' || candidate.status === 'CORRECTED');
 
@@ -401,7 +543,7 @@ export const CompanyValidation: React.FC<{ staffMode?: boolean }> = ({ staffMode
             <div className="workspace-detail-list">
               <div><strong>Actionable</strong><span>{loading ? 'Loading' : actionable.length}</span></div>
               <div><strong>Selected</strong><span>{selectedCandidate ? getCandidateName(selectedCandidate) : 'None'}</span></div>
-              <div><strong>Project</strong><span>{PROJECT_ID || 'Unavailable'}</span></div>
+              <div><strong>Project</strong><span>{projectId || 'Unavailable'}</span></div>
             </div>
           </div>
 
@@ -509,21 +651,72 @@ const ClassificationWorkspace: React.FC<{
   description: string;
   candidates: DashboardCandidate[];
   emptyMessage: string;
-}> = ({ pageId, title, description, candidates, emptyMessage }) => {
+  refresh?: () => void;
+}> = ({ pageId, title, description, candidates, emptyMessage, refresh }) => {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const options = ['Partner', 'Competitor', 'Supplier', 'Customer', 'Potential partner'];
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+
+  const optionMap: Record<string, RelationshipType> = {
+    'Partner': 'PARTNER_WITH',
+    'Competitor': 'COMPETITOR_OF',
+    'Supplier': 'SUPPLIER_OF',
+    'Customer': 'CUSTOMER_OF',
+    'Potential partner': 'POTENTIAL_PARTNER_OF',
+  };
+
+  const reverseMap: Record<string, string> = {
+    'PARTNER_WITH': 'Partner',
+    'COMPETITOR_OF': 'Competitor',
+    'SUPPLIER_OF': 'Supplier',
+    'CUSTOMER_OF': 'Customer',
+    'POTENTIAL_PARTNER_OF': 'Potential partner',
+  };
+
+  const handleSaveClassification = async (candidateId: string, labelValue: string) => {
+    setSavingId(candidateId);
+    const relEnum = optionMap[labelValue] || 'PARTNER_WITH';
+    setOverrides((prev) => ({ ...prev, [candidateId]: labelValue }));
+
+    try {
+      await api.patch(`/candidates/${candidateId}`, {
+        suggestedRelationshipType: relEnum,
+      });
+      if (refresh) refresh();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi lưu phân loại đối tác/đối thủ');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleSubmitToManager = async (candidateId: string) => {
+    setSubmittingId(candidateId);
+    try {
+      await api.post(`/candidates/${candidateId}/submit`);
+      alert('Đã trình nộp kết quả phân loại lên Manager phê duyệt!');
+      if (refresh) refresh();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      alert(axiosErr?.response?.data?.message || 'Lỗi khi nộp lên Manager');
+    } finally {
+      setSubmittingId(null);
+    }
+  };
 
   return (
     <WorkspaceShell
       pageId={pageId}
       breadcrumbs={<>Validation <span>/</span> {title}</>}
-      title={title.toLowerCase()}
+      title={title}
       description={description}
+      actions={refresh ? <button className="btn btn-outline" onClick={refresh}>Reload</button> : undefined}
       sidebar={(
         <div className="workspace-side-card">
-          <span className="workspace-side-eyebrow">Classification note</span>
-          <p style={{ color: '#64748b', fontSize: 12 }}>
-            These records only reflect relationship fields returned by the backend. Override controls here are display-only until a dedicated finalize endpoint exists.
+          <span className="workspace-side-eyebrow">Strategic Classification Rules</span>
+          <p style={{ color: '#64748b', fontSize: 12, lineHeight: 1.5 }}>
+            Thay đổi phân loại mối quan hệ được tự động lưu trực tiếp vào CSDL dự án. Sau khi chốt phân loại, bấm "Trình nộp Manager" để chuyển hồ sơ sang luồng duyệt.
           </p>
         </div>
       )}
@@ -534,33 +727,64 @@ const ClassificationWorkspace: React.FC<{
         <div className="workspace-panel">
           <div className="workspace-section-head">
             <div>
-              <h3>Classification records</h3>
-              <p>All rows below are derived from current project candidates with relationship suggestions.</p>
+              <h3>Classification records & Manager Handoff</h3>
+              <p>Chỉnh sửa loại phân loại đối tác/đối thủ, lưu vào Backend và trình nộp phê duyệt.</p>
             </div>
             <span className="workspace-badge neutral">{candidates.length} items</span>
           </div>
           <div className="keymember-table">
-            <div className="keymember-table-row keymember-table-head">
-              <span>Company</span>
-              <span>Suggested class</span>
-              <span>Confidence</span>
-              <span>Override</span>
-              <span>Status</span>
+            <div className="keymember-table-row keymember-table-head" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.8fr 1.2fr 1.5fr', gap: 12, fontWeight: 700, padding: '12px 16px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
+              <span>Doanh nghiệp</span>
+              <span>Đề xuất AI</span>
+              <span>Độ tin cậy</span>
+              <span>Phân loại Override</span>
+              <span>Trạng thái</span>
+              <span style={{ textAlign: 'right' }}>Thao tác Nộp</span>
             </div>
-            {candidates.map((candidate) => (
-              <div key={candidate.id} className="keymember-table-row">
-                <span>{getCandidateName(candidate)}</span>
-                <span>{getRelationshipLabel(candidate.relationshipTypeOverride || candidate.suggestedRelationshipType)}</span>
-                <span>{getConfidence(candidate) !== null ? `${getConfidence(candidate)}%` : 'Unavailable'}</span>
-                <select
-                  value={overrides[candidate.id] || getRelationshipLabel(candidate.relationshipTypeOverride || candidate.suggestedRelationshipType)}
-                  onChange={(event) => setOverrides((prev) => ({ ...prev, [candidate.id]: event.target.value }))}
-                >
-                  {options.map((option) => <option key={option} value={option}>{option}</option>)}
-                </select>
-                <span>{STATUS_META[candidate.status].label}</span>
-              </div>
-            ))}
+            {candidates.map((candidate) => {
+              const statusMeta = STATUS_META[candidate.status] || { label: candidate.status, tone: 'neutral' };
+              const currentRelLabel = overrides[candidate.id] || reverseMap[candidate.suggestedRelationshipType || ''] || getRelationshipLabel(candidate.suggestedRelationshipType);
+              const isEditable = candidate.status === 'DRAFT' || candidate.status === 'CORRECTED';
+
+              return (
+                <div key={candidate.id} className="keymember-table-row" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.8fr 1.2fr 1.5fr', gap: 12, alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #F3F4F6' }}>
+                  <span>
+                    <strong>{getCandidateName(candidate)}</strong>
+                    <div style={{ fontSize: 11, color: '#9CA3AF' }}>ID: {candidate.id}</div>
+                  </span>
+                  <span>{getRelationshipLabel(candidate.suggestedRelationshipType)}</span>
+                  <span>{getConfidence(candidate) !== null ? `${getConfidence(candidate)}%` : 'N/A'}</span>
+                  <div>
+                    <select
+                      value={currentRelLabel}
+                      disabled={!isEditable || savingId === candidate.id}
+                      onChange={(event) => handleSaveClassification(candidate.id, event.target.value)}
+                      style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12, backgroundColor: isEditable ? '#FFFFFF' : '#F3F4F6', color: '#111827', fontWeight: 600, width: '100%' }}
+                    >
+                      {['Partner', 'Competitor', 'Supplier', 'Customer', 'Potential partner'].map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span>
+                    <span className={`workspace-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
+                  </span>
+                  <div style={{ textAlign: 'right' }}>
+                    {isEditable ? (
+                      <button
+                        className="btn btn-primary btn-xs"
+                        disabled={submittingId === candidate.id}
+                        onClick={() => handleSubmitToManager(candidate.id)}
+                      >
+                        {submittingId === candidate.id ? 'Đang nộp...' : '🚀 Trình Manager'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>🔒 Đã nộp/Duyệt</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -569,7 +793,7 @@ const ClassificationWorkspace: React.FC<{
 };
 
 export const PartnerClassification: React.FC = () => {
-  const { candidates } = useProjectCandidates();
+  const { candidates, refresh } = useProjectCandidates();
   const partnerCandidates = candidates.filter((candidate) => {
     const relation = candidate.relationshipTypeOverride || candidate.suggestedRelationshipType;
     return relation === 'PARTNER_WITH' || relation === 'SUPPLIER_OF' || relation === 'POTENTIAL_PARTNER_OF';
@@ -578,16 +802,17 @@ export const PartnerClassification: React.FC = () => {
   return (
     <ClassificationWorkspace
       pageId="page-partner-classification"
-      title="Partner Classification"
-      description="Compare partner-side relationship suggestions and inspect confidence before downstream approval."
+      title="Partner Classification & Handoff"
+      description="Phân loại chính thức đối tác chiến lược, lưu thay đổi vào CSDL và trình nộp phê duyệt lên Manager."
       candidates={partnerCandidates}
       emptyMessage="No partner-side classification records are available from the backend."
+      refresh={refresh}
     />
   );
 };
 
 export const CompetitorClassification: React.FC = () => {
-  const { candidates } = useProjectCandidates();
+  const { candidates, refresh } = useProjectCandidates();
   const competitorCandidates = candidates.filter((candidate) => {
     const relation = candidate.relationshipTypeOverride || candidate.suggestedRelationshipType;
     return relation === 'COMPETITOR_OF';
@@ -596,10 +821,11 @@ export const CompetitorClassification: React.FC = () => {
   return (
     <ClassificationWorkspace
       pageId="page-competitor-classification"
-      title="Competitor Classification"
-      description="Inspect competitor-side relationship suggestions returned for the active project."
+      title="Competitor Classification & Handoff"
+      description="Phân loại đối thủ cạnh tranh, lưu thay đổi vào CSDL và trình nộp phê duyệt lên Manager."
       candidates={competitorCandidates}
       emptyMessage="No competitor classification records are available from the backend."
+      refresh={refresh}
     />
   );
 };
