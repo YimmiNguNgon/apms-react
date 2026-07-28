@@ -264,6 +264,7 @@ const OWNER_MENU: MenuSection[] = [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
       { id: 'project-management',      label: 'Projects Overview' },
+      { id: 'news',                    label: 'News & Intelligence' },
     ],
   },
   {

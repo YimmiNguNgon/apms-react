@@ -27,14 +27,7 @@ export const candidateApi = {
   },
 
   deleteCandidate: async (candidateId: string) => {
-    const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}`, {
-      method: "DELETE",
-      headers: {
-        ...getAuthHeader(),
-      },
-    });
-
-    return readPayload<void>(response);
+    return api.delete<void>(`/candidates/${candidateId}`);
   },
 
   submitCandidate: async (candidateId: string) => {
