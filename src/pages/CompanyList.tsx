@@ -33,6 +33,20 @@ const statusTone = (status?: string) => {
   return styles.neutral;
 };
 
+const displayReviewStatus = (status?: string | null) => {
+  if (status === 'VERIFIED') return 'APPROVED';
+  return status || 'UNVERIFIED';
+};
+
+const profileUpdatedTime = (profile: ProfileResponse) => {
+  const value = profile.metadata?.updatedAt || profile.metadata?.createdAt;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const newestProfilesFirst = (profiles: ProfileResponse[]) =>
+  [...profiles].sort((a, b) => profileUpdatedTime(b) - profileUpdatedTime(a));
+
 export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -60,7 +74,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         },
       });
 
-      const content = res.data?.content ?? [];
+      const content = newestProfilesFirst(res.data?.content ?? []);
       setProfiles(content);
       setTotalElements(res.data?.totalElements ?? content.length);
       setCurrentPage(page);
@@ -140,7 +154,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="">All status</option>
             <option value="APPROVED">Approved</option>
-            <option value="VERIFIED">Verified</option>
             <option value="NEEDS_UPDATE">Needs update</option>
             <option value="PENDING_REVIEW">Pending review</option>
           </select>
@@ -191,7 +204,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                     </div>
                   </td>
                   <td>{profileIndustry(profile)}</td>
-                  <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{profile.reviewStatus || 'UNVERIFIED'}</span></td>
+                  <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
                   <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
                   <td>
                     <button className={styles.iconButton} type="button" onClick={() => openProfile(profile)} title="View profile">

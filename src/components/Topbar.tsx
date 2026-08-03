@@ -60,6 +60,7 @@ const PAGE_LABELS: Record<string, string> = {
   'market-opportunities': 'Market Opportunities',
   'ai-recommendations': 'AI Recommendations',
   'strategic-reports': 'Strategic Reports',
+  'score-rules': 'Score Workspace',
   'partner-evaluation': 'Partner Evaluation',
   'company-assignment': 'Company Assignment',
   'analysis-history': 'Analysis History',

@@ -38,6 +38,11 @@ interface CompanyDetailProps {
   setActivePage?: (page: string) => void;
 }
 
+const displayReviewStatus = (status?: string | null) => {
+  if (status === 'VERIFIED') return 'APPROVED';
+  return status || 'APPROVED';
+};
+
 const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
@@ -325,7 +330,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <span>•</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <ShieldCheck size={14} style={{ color: '#16A34A' }} /> Status:{' '}
-              <strong style={{ color: '#15803D' }}>{profile.reviewStatus || 'VERIFIED'}</strong>
+              <strong style={{ color: '#15803D' }}>{displayReviewStatus(profile.reviewStatus)}</strong>
             </span>
           </div>
         </div>
@@ -555,7 +560,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: '#64748B' }}>Trạng thái xác minh:</span>
                 <span style={{ fontWeight: '700', color: '#15803D', background: '#DCFCE7', padding: '2px 8px', borderRadius: '6px' }}>
-                  {profile.reviewStatus || 'VERIFIED'}
+                  {displayReviewStatus(profile.reviewStatus)}
                 </span>
               </div>
 

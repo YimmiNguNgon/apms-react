@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useUser, ROLES } from '../context/UserContext';
+import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
 
 interface SidebarProps {
@@ -81,7 +82,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'System',
     items: [
       { id: 'project-management', label: 'Project Management' },
-      // { id: 'system-chat', label: 'Chat', badge: 2, badgeType: 'success' },
+      { id: 'system-chat', label: 'Chat' },
       { id: 'system-settings',   label: 'System Settings' },
       { id: 'security-settings', label: 'Security Settings' },
     ],
@@ -105,13 +106,14 @@ const DIRECTOR_MENU: MenuSection[] = [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
       { id: 'relationship-map',        label: 'Relationship Map' },
+      { id: 'system-chat',             label: 'Chat' },
     ],
   },
   {
     title: 'Strategic Governance',
     items: [
       { id: 'strategic-reports', label: 'Strategic Reports' },
-      { id: 'score-rules',       label: 'Score Rules' },
+      { id: 'score-rules',       label: 'Score Workspace' },
     ],
   },
   {
@@ -119,7 +121,6 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'companies',    label: 'Companies' },
       { id: 'news',         label: 'News & Intelligence' },
-      { id: 'system-chat',  label: 'Chat', badge: 2, badgeType: 'success' },
       { id: 'project-management', label: 'Projects Overview' },
     ],
   },
@@ -138,8 +139,9 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'Operations',
     items: [
       { id: 'project-management',      label: 'Project Management' },
-      // { id: 'system-chat',             label: 'Chat', badge: 2, badgeType: 'success' },
-      { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      { id: 'score-rules',             label: 'Score Workspace' },
+      { id: 'system-chat',             label: 'Chat' },
+      // { id: 'competitor-intelligence', label: 'Competitor Intel' },
       // { id: 'analysis-history',        label: 'Analysis History' },
     ],
   },
@@ -192,7 +194,7 @@ const KEY_MEMBER_MENU: MenuSection[] = [
     items: [
       { id: 'ai-suggestion-review', label: 'AI Suggestion Review' },
       { id: 'relationship-updates', label: 'Relationship Updates' },
-      // { id: 'system-chat',          label: 'Chat', badge: 2, badgeType: 'success' },
+      { id: 'system-chat',          label: 'Chat' },
       { id: 'onboarding-support',   label: 'Onboarding Support' },
     ],
   },
@@ -221,7 +223,7 @@ const STAFF_MENU: MenuSection[] = [
     items: [
       // { id: 'my-tasks',            label: 'My Tasks' },
       { id: 'project-management',  label: 'Project Management' },
-      // { id: 'system-chat',         label: 'Chat', badge: 2, badgeType: 'success' },
+      { id: 'system-chat',         label: 'Chat' },
       // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       // { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'Company Profiles' },
@@ -265,12 +267,14 @@ const OWNER_MENU: MenuSection[] = [
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
       { id: 'project-management',      label: 'Projects Overview' },
       { id: 'news',                    label: 'News & Intelligence' },
+      { id: 'system-chat',             label: 'Chat' },
     ],
   },
   {
     title: 'Governance & Settings',
     items: [
       { id: 'company-profiles', label: 'Company Profiles' },
+      { id: 'score-rules',      label: 'Score Workspace' },
       { id: 'audit-logs',       label: 'Audit Log Viewer' },
       { id: 'system-settings',  label: 'System Settings' },
     ],
@@ -294,6 +298,7 @@ const MENU_BY_ROLE = {
 // ─────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
   const { currentUser, logout } = useUser();
+  const { totalUnread } = useChatNotifications();
   const [showLogout, setShowLogout] = useState(false);
 
   if (!currentUser) return null;
@@ -305,6 +310,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
     logout();
     setShowLogout(false);
   };
+
+  const getBadgeValue = (item: MenuItem) => {
+    if (item.id === 'system-chat') return totalUnread;
+    return item.badge;
+  };
+
+  const formatBadge = (value: number) => value > 99 ? '99+' : value;
 
   return (
     <>
@@ -341,20 +353,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                 <div className="nav-section-title">{section.title}</div>
               )}
               {section.items.map(item => (
-                <a
-                  key={item.id}
-                  className={`nav-item ${activePage === item.id ? 'active' : ''}`}
-                  onClick={() => setActivePage(item.id)}
-                  title={item.label}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <span className="nav-label">{item.label}</span>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className={`nav-badge ${item.badgeType || ''}`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </a>
+                (() => {
+                  const badgeValue = getBadgeValue(item);
+                  return (
+                    <a
+                      key={item.id}
+                      className={`nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'system-chat' && badgeValue && badgeValue > 0 ? 'has-unread' : ''}`}
+                      onClick={() => setActivePage(item.id)}
+                      title={item.label}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <span className="nav-label">{item.label}</span>
+                      {badgeValue !== undefined && badgeValue > 0 && (
+                        <span className={`nav-badge ${item.id === 'system-chat' ? 'chat-unread' : item.badgeType || ''}`}>
+                          {formatBadge(badgeValue)}
+                        </span>
+                      )}
+                    </a>
+                  );
+                })()
               ))}
             </div>
           ))}
