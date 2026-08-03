@@ -276,8 +276,6 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'company-profiles', label: 'Company Profiles' },
       { id: 'score-rules',      label: 'Score Workspace' },
-      { id: 'audit-logs',       label: 'Audit Log Viewer' },
-      { id: 'system-settings',  label: 'System Settings' },
     ],
   },
   {
