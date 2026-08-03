@@ -10,39 +10,43 @@ const STATUS_COLOR: Record<string, { bg: string; color: string; label: string }>
 };
 
 const DirectorHero: React.FC<{
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  description: string;
-  metrics: Array<{ value: string | number; label: string }>;
+  description?: string;
+  metrics?: Array<{ value: string | number; label: string }>;
   actions?: React.ReactNode;
 }> = ({ eyebrow, title, description, metrics, actions }) => (
   <div className="workspace-page-head director-hero">
     <div>
-      <span className="workspace-side-eyebrow">{eyebrow}</span>
+      {eyebrow && <span className="workspace-side-eyebrow">{eyebrow}</span>}
       <h1>{title}</h1>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
     </div>
-    <div className="director-hero-side">
-      <div className="director-mini-metrics">
-        {metrics.map((metric) => (
-          <article key={metric.label}>
-            <strong>{metric.value}</strong>
-            <span>{metric.label}</span>
-          </article>
-        ))}
+    {(metrics?.length || actions) && (
+      <div className="director-hero-side">
+        {!!metrics?.length && (
+          <div className="director-mini-metrics">
+            {metrics.map((metric) => (
+              <article key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label}</span>
+              </article>
+            ))}
+          </div>
+        )}
+        {actions && <div className="workspace-head-actions">{actions}</div>}
       </div>
-      {actions && <div className="workspace-head-actions">{actions}</div>}
-    </div>
+    )}
   </div>
 );
 
-const DirectorSummaryGrid: React.FC<{ items: Array<{ label: string; value: string | number; note: string }> }> = ({ items }) => (
+const DirectorSummaryGrid: React.FC<{ items: Array<{ label: string; value: string | number; note?: string }> }> = ({ items }) => (
   <div className="workspace-stats workspace-stats-compact">
     {items.map((item) => (
       <article key={item.label} className="workspace-stat-card">
         <span className="workspace-stat-label">{item.label}</span>
         <strong>{item.value}</strong>
-        <p>{item.note}</p>
+        {item.note && <p>{item.note}</p>}
       </article>
     ))}
   </div>
@@ -302,25 +306,14 @@ export const CompetitorIntelligence: React.FC = () => {
   };
 
   const summary = [
-    { label: 'Competitors tracked', value: competitors.length, note: 'Companies returned by the backend competitor feed' },
-    { label: 'On Watchlist', value: watchlist.size, note: 'Manually flagged for executive follow-up' },
-    { label: 'High threat', value: competitors.filter((c) => (c.threatValue ?? 0) >= 70).length, note: 'Threat score ≥ 70' },
-    { label: 'Unscored', value: competitors.filter((c) => c.threatValue === null).length, note: 'Missing threat value from backend' },
+    { label: 'Competitors tracked', value: competitors.length },
+    { label: 'On Watchlist', value: watchlist.size },
+    { label: 'High threat', value: competitors.filter((c) => (c.threatValue ?? 0) >= 70).length },
+    { label: 'Unscored', value: competitors.filter((c) => c.threatValue === null).length },
   ];
 
   return (
     <section className="workspace-page director-page role-dashboard role-dashboard-manager manager-page" id="page-competitor-intelligence">
-      <DirectorHero
-        eyebrow="Ecosystem"
-        title="Competitor intelligence"
-        description="Assess the live competitor records provided by the backend. Mark high-threat competitors for executive follow-up."
-        metrics={[
-          { value: competitors.length, label: 'competitors' },
-          { value: competitors.filter((c) => (c.threatValue ?? 0) >= 70).length, label: 'high threat' },
-          { value: watchlist.size, label: 'on watchlist' },
-        ]}
-      />
-
       <DirectorSummaryGrid items={summary} />
 
       {/* Search & Threat Filter */}

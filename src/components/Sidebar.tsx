@@ -105,7 +105,6 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
-      { id: 'relationship-map',        label: 'Relationship Map' },
       { id: 'system-chat',             label: 'Chat' },
     ],
   },
@@ -265,6 +264,8 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      { id: 'relationship-map',        label: 'Relationship Map' },
+      { id: 'crawler-control',         label: 'Crawler Control' },
       { id: 'project-management',      label: 'Projects Overview' },
       { id: 'news',                    label: 'News & Intelligence' },
       { id: 'system-chat',             label: 'Chat' },
@@ -392,7 +393,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
               title="Đăng xuất"
               onClick={e => { e.stopPropagation(); setShowLogout(true); }}
               style={{
-                fontSize: '11px', width: 'auto', padding: '4px 8px',
+                fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
                 background: 'rgba(239,68,68,0.1)', color: '#FCA5A5',
                 borderRadius: 'var(--radius-sm)',
               }}

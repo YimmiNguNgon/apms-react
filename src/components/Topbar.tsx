@@ -236,7 +236,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                   ))}
                 </div>
                 <div className="notif-footer">
-                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }} onClick={() => void fetchNotifications()}>
+                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-caption)' }} onClick={() => void fetchNotifications()}>
                     Refresh notifications
                   </button>
                 </div>
@@ -253,20 +253,22 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                 <div className="topbar-profile-name">{currentUser.name}</div>
                 <div className="topbar-profile-role">{currentUser.roleName}</div>
               </div>
-              <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 4 }}>▾</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-caption)', marginLeft: 4 }}>▾</span>
             </div>
 
             {showProfile && (
               <div className="dropdown">
                 <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-color)' }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{currentUser.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{currentUser.email}</div>
-                  <span className="stat-list-badge badge-blue" style={{ marginTop: 6, display: 'inline-block', fontSize: 11 }}>
+                  <div style={{ fontWeight: 700, fontSize: 'var(--text-body)', color: 'var(--text-primary)' }}>{currentUser.name}</div>
+                  <div style={{ fontSize: 'var(--text-caption)', color: 'var(--text-muted)' }}>{currentUser.email}</div>
+                  <span className="stat-list-badge badge-blue" style={{ marginTop: 6, display: 'inline-block', fontSize: 'var(--text-caption)' }}>
                     {currentUser.roleName}
                   </span>
                 </div>
                 <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>Profile</div>
-                <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>Settings</div>
+                {currentUser.allowedPages.includes('system-settings') && (
+                  <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>Settings</div>
+                )}
                 <div className="dropdown-item" onClick={toggleTheme}>Use {theme === 'dark' ? 'light' : 'dark'} mode</div>
                 <div className="dropdown-divider" />
                 <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>Sign out</div>

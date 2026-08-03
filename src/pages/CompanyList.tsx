@@ -11,13 +11,23 @@ interface CompanyListProps {
 const PAGE_SIZE = 10;
 
 const profileName = (profile: ProfileResponse) =>
-  profile.identity?.tradeName || profile.identity?.legalName || profile.companyId || profile.id || 'Company profile';
+  profile.identity?.tradeName || profile.identity?.legalName || 'Chưa có tên công ty';
 
 const profileLegalName = (profile: ProfileResponse) =>
   profile.identity?.legalName || profileName(profile);
 
 const profileIndustry = (profile: ProfileResponse) =>
   profile.business?.industries?.filter(Boolean).join(', ') || 'Unclassified';
+
+const profileTicker = (profile: ProfileResponse) => {
+  const ticker = profile.stockTicker?.trim();
+  return ticker ? ticker.toUpperCase() : null;
+};
+
+const profileExchange = (profile: ProfileResponse) => {
+  const exchange = profile.stockExchange;
+  return exchange && exchange !== 'NONE' ? exchange : null;
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return 'No update';
@@ -117,7 +127,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         <div>
           <span className={styles.eyebrow}>Company intelligence</span>
           <h1>Company Profiles</h1>
-          <p>Search approved company profiles, review business facts, and open the official company record created from candidate approval.</p>
         </div>
         <div className={styles.actions}>
         </div>
@@ -130,7 +139,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
           const Icon = item.icon;
           return (
             <article className={styles.metricCard} key={item.label}>
-              <span><Icon size={18} />{item.label}</span>
+              <span><Icon size={14} />{item.label}</span>
               <strong>{loading ? '...' : item.value}</strong>
               <p>{item.note}</p>
             </article>
@@ -141,7 +150,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
       <section className={styles.panel}>
         <div className={styles.toolbar}>
           <label className={styles.searchBox}>
-            <Search size={17} />
+            <Search size={15} />
             <input
               value={searchQuery}
               placeholder="Search by company name, tax ID, website..."
@@ -175,6 +184,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <thead>
               <tr>
                 <th>Company</th>
+                <th>Mã CK</th>
                 <th>Industry</th>
                 <th>Status</th>
                 <th>Last updated</th>
@@ -184,12 +194,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7}><div className={styles.empty}>Loading company profiles...</div></td>
+                  <td colSpan={6}><div className={styles.empty}>Loading company profiles...</div></td>
                 </tr>
               )}
               {!loading && profiles.length === 0 && (
                 <tr>
-                  <td colSpan={7}><div className={styles.empty}>No company profiles found.</div></td>
+                  <td colSpan={6}><div className={styles.empty}>No company profiles found.</div></td>
                 </tr>
               )}
               {!loading && profiles.map((profile) => (
@@ -203,12 +213,22 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                       </div>
                     </div>
                   </td>
+                  <td>
+                    {profileTicker(profile) ? (
+                      <div className={styles.tickerCell}>
+                        <strong>{profileTicker(profile)}</strong>
+                        <small>{profileExchange(profile) || '—'}</small>
+                      </div>
+                    ) : (
+                      <span className={styles.tickerEmpty}>—</span>
+                    )}
+                  </td>
                   <td>{profileIndustry(profile)}</td>
                   <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
                   <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
                   <td>
                     <button className={styles.iconButton} type="button" onClick={() => openProfile(profile)} title="View profile">
-                      <Eye size={16} />
+                      <Eye size={14} />
                     </button>
                   </td>
                 </tr>

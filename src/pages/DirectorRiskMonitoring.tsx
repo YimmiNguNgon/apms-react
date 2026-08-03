@@ -101,6 +101,7 @@ export const DirectorRiskMonitoring: React.FC<DirectorRiskMonitoringProps> = ({ 
 
   const handleViewCompany = (companyId?: string) => {
     if (!companyId) return;
+    localStorage.setItem('apms-selected-company', companyId);
     if (setActivePage) {
       window.history.pushState({}, '', `/partner-ecosystem/company/${companyId}`);
       setActivePage('company-detail');
@@ -249,7 +250,6 @@ export const DirectorRiskMonitoring: React.FC<DirectorRiskMonitoringProps> = ({ 
                   <tr key={companyId + idx} style={{ borderBottom: '1px solid #F3F4F6', transition: 'background 0.15s' }}>
                     <td style={{ padding: '14px 20px' }}>
                       <div style={{ fontWeight: 600, color: '#111827' }}>{tradeName}</div>
-                      <div style={{ fontSize: '12px', color: '#9CA3AF', fontFamily: 'monospace', marginTop: '2px' }}>ID: {companyId}</div>
                     </td>
 
                     <td style={{ padding: '14px 20px', color: '#4B5563' }}>
