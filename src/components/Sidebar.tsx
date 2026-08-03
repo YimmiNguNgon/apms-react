@@ -113,7 +113,7 @@ const DIRECTOR_MENU: MenuSection[] = [
     title: 'Strategic Governance',
     items: [
       { id: 'strategic-reports', label: 'Strategic Reports' },
-      { id: 'score-rules',       label: 'Score Workspace' },
+      // { id: 'score-rules',       label: 'Score Workspace' },
     ],
   },
   {
@@ -139,7 +139,7 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'Operations',
     items: [
       { id: 'project-management',      label: 'Project Management' },
-      { id: 'score-rules',             label: 'Score Workspace' },
+      // { id: 'score-rules',             label: 'Score Workspace' },
       { id: 'system-chat',             label: 'Chat' },
       // { id: 'competitor-intelligence', label: 'Competitor Intel' },
       // { id: 'analysis-history',        label: 'Analysis History' },
@@ -273,7 +273,7 @@ const OWNER_MENU: MenuSection[] = [
     title: 'Governance & Settings',
     items: [
       { id: 'company-profiles', label: 'Company Profiles' },
-      { id: 'score-rules',      label: 'Score Workspace' },
+      // { id: 'score-rules',      label: 'Score Workspace' },
       { id: 'audit-logs',       label: 'Audit Log Viewer' },
       { id: 'system-settings',  label: 'System Settings' },
     ],

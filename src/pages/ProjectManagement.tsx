@@ -60,8 +60,8 @@ const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
 };
 
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  DRAFT: 'To do',
-  ACTIVE: 'In progress',
+  DRAFT: 'Inactive',
+  ACTIVE: 'Active',
   COMPLETED: 'Done',
   CANCELLED: 'Cancelled',
   ARCHIVED: 'Archived',
@@ -578,10 +578,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           <div>
             <div className="workspace-breadcrumbs">Project workspace <span>/</span> APMS board</div>
             <h1>Project management</h1>
-            <p>Manage the kanban board, project scope, and member assignments from one workspace.</p>
+            {/* <p>Manage the kanban board, project scope, and member assignments from one workspace.</p> */}
           </div>
           <div className="workspace-head-actions">
-            <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button>
+            {/* <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button> */}
             {!isStaffView && (
               <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>Create project</button>
             )}
@@ -720,9 +720,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
         <div className="workspace-focus-card">
           <div>
-            <span className="workspace-side-eyebrow">Board sync</span>
-            <h3>Selected board drives downstream task intake</h3>
-            <p>When you select a project here, APMS uses it as the active workspace for document upload, extraction, and candidate review.</p>
+            {/* <span className="workspace-side-eyebrow">Board sync</span> */}
+            {/* <h3>Selected board drives downstream task intake</h3> */}
+            {/* <p>When you select a project here, APMS uses it as the active workspace for document upload, extraction, and candidate review.</p> */}
           </div>
           <div className="workspace-focus-metrics">
             <article>

@@ -202,19 +202,19 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
             <div className="workspace-breadcrumbs">Execution <span>/</span> Staff workspace</div>
             <span className="workspace-side-eyebrow">My assigned work</span>
             <h1>Staff Dashboard</h1>
-            <p>
+            {/* <p>
               {loading
                 ? 'Loading your projects and assigned tasks from APMS.'
                 : `${currentUser?.name || 'Staff'}, you have ${tasks.filter((task) => task.status !== 'DONE').length} open task(s) across ${projects.length} project(s).`}
-            </p>
+            </p> */}
           </div>
           <div className="workspace-head-actions">
-            <button className="btn btn-outline" onClick={() => void loadStaffWorkspace()} disabled={loading}>
+            {/* <button className="btn btn-outline" onClick={() => void loadStaffWorkspace()} disabled={loading}>
               {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
-            </button>
-            <button className="btn btn-primary" onClick={() => nextTask && openProject(nextTask.projectId, nextTask.id)} disabled={!nextTask}>
+            </button> */}
+            {/* <button className="btn btn-primary" onClick={() => nextTask && openProject(nextTask.projectId, nextTask.id)} disabled={!nextTask}>
               Continue work <ArrowRight size={16} />
-            </button>
+            </button> */}
           </div>
         </div>
 

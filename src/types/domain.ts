@@ -89,10 +89,22 @@ export interface ProfileResponse {
   companySize?: CompanyProfileSize;
   contact?: CompanyProfileContact;
   insights?: CompanyProfileInsights;
+  companyMembers?: CompanyProfileMember[];
   reviewStatus?: string;
   tags?: string[];
   metadata?: CompanyProfileMetadata;
   version?: number;
+}
+
+export interface CompanyProfileMember {
+  fullName?: string;
+  position?: string;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  researchedAt?: string | null;
+  researchedBy?: number | null;
+  taskId?: number | null;
 }
 
 export interface CompanyProfileIdentity {
