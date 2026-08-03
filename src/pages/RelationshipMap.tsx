@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowUpRight, Building2, Crown, Download, Gem, Globe, LayoutGrid, Plus,
-  RefreshCw, SlidersHorizontal, TriangleAlert, Users, Zap, ZoomIn, ZoomOut,
+  ArrowUpRight, Building2, Crown, Download, Gem, Globe, LayoutGrid, Layers, Plus,
+  RefreshCw, Search, SlidersHorizontal, TriangleAlert, Users, Zap, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../services/api';
@@ -228,6 +228,13 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   const [graph, setGraph] = useState<GraphState | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<GroupKey>('ALL');
+  // Industry filter: array of selected industry names; empty array = "Tất cả" (no filter).
+  // Persisted in the URL as ?industry=Cloud,Fintech so the filter survives refresh/share.
+  const [industryFilter, setIndustryFilter] = useState<string[]>(() => {
+    const raw = new URLSearchParams(window.location.search).get('industry');
+    return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
+  const [industrySearch, setIndustrySearch] = useState('');
   const [layout, setLayout] = useState<LayoutMode>('radial');
   const [zoom, setZoom] = useState(1);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
@@ -262,6 +269,15 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+  const updateIndustryFilter = useCallback((next: string[]) => {
+    setIndustryFilter(next);
+    const params = new URLSearchParams(window.location.search);
+    if (next.length) params.set('industry', next.join(','));
+    else params.delete('industry');
+    const qs = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`);
+  }, []);
+
   const kpis: Array<{ label: string; value: number | string; growth: string; icon: LucideIcon; color: string; bg: string }> = useMemo(() => {
     const n = graph?.nodes.length ?? 48;
     const e = graph?.edges.length ?? 18;
@@ -275,18 +291,53 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     ];
   }, [graph, riskWarnings, aiScore]);
 
+  // Node visibility = (relationship-type quick filter, edge-based) AND (industry filter, node-based).
+  // NOTE: currently all filtering happens client-side because the network is small (~9 companies).
+  // If the company count grows large, move the industry filter to the backend
+  // (e.g. GET /graph/network?industry=IT,Fintech) to avoid shipping the whole graph to the FE.
   const visibleNodes = useMemo(() => {
     if (!graph) return [];
-    if (filter === 'ALL') return graph.nodes;
-    const ids = new Set<string>();
-    graph.edges.forEach((e) => { if (e.group === filter) { ids.add(e.from); ids.add(e.to); } });
-    return graph.nodes.filter((n) => ids.has(n.id));
-  }, [graph, filter]);
+    const hasTypeFilter = filter !== 'ALL';
+    const hasIndustryFilter = industryFilter.length > 0;
+    if (!hasTypeFilter && !hasIndustryFilter) return graph.nodes;
+    const typeIds = new Set<string>();
+    if (hasTypeFilter) {
+      graph.edges.forEach((e) => { if (e.group === filter) { typeIds.add(e.from); typeIds.add(e.to); } });
+    }
+    return graph.nodes.filter((n) => {
+      if (hasTypeFilter && !typeIds.has(n.id)) return false;
+      if (hasIndustryFilter) {
+        const nodeIndustry = (n.industry || '').trim() || '(Không có)';
+        if (!industryFilter.includes(nodeIndustry)) return false;
+      }
+      return true;
+    });
+  }, [graph, filter, industryFilter]);
 
   const visibleEdges = useMemo(() => {
     if (!graph) return [];
-    return filter === 'ALL' ? graph.edges : graph.edges.filter((e) => e.group === filter);
-  }, [graph, filter]);
+    const hasTypeFilter = filter !== 'ALL';
+    const hasIndustryFilter = industryFilter.length > 0;
+    if (!hasTypeFilter && !hasIndustryFilter) return graph.edges;
+    const ids = new Set(visibleNodes.map((n) => n.id));
+    return graph.edges.filter((e) => {
+      if (hasTypeFilter && e.group !== filter) return false;
+      return ids.has(e.from) && ids.has(e.to);
+    });
+  }, [graph, filter, industryFilter, visibleNodes]);
+
+  // Distinct industry values present in the data, with company counts (computed dynamically).
+  const industryOptions = useMemo(() => {
+    if (!graph) return [];
+    const map = new Map<string, number>();
+    graph.nodes.forEach((n) => {
+      const key = (n.industry || '').trim() || '(Không có)';
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return [...map.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+  }, [graph]);
 
   const positions = useMemo(() => {
     const n = visibleNodes.length;
@@ -302,8 +353,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   const topPartners = useMemo(() => {
     if (!graph) return [];
-    return [...graph.nodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
-  }, [graph]);
+    return [...visibleNodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
+  }, [graph, visibleNodes]);
 
   const handleViewCompany = (companyId?: string) => {
     if (!companyId) return;
@@ -414,8 +465,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           <div className={styles.rmNetworkHead}>
             <div className={styles.rmNetworkTitle}>
               <h2>Mạng lưới Quan hệ</h2>
-              <span className={styles.rmTag}>[{graph?.nodes.length ?? 12}] Doanh nghiệp</span>
-              <span className={styles.rmTag}>[{graph?.edges.length ?? 18}] Kết nối</span>
+              <span className={styles.rmTag}>[{graph ? visibleNodes.length : 12}] Doanh nghiệp</span>
+              <span className={styles.rmTag}>[{graph ? visibleEdges.length : 18}] Kết nối</span>
             </div>
             <div className={styles.rmControls}>
               <button className={styles.rmCtrlBtn} title="Thu nhỏ" onClick={() => setZoom((z) => clamp(z - 0.2))}><ZoomOut size={16} /></button>
@@ -429,6 +480,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             {loading ? (
               <div className={styles.rmLoading}>Đang tải mạng lưới quan hệ...</div>
             ) : graph && graph.nodes.length > 0 ? (
+              visibleNodes.length === 0 ? (
+                <div className={styles.rmEmpty}>
+                  Không có đối tác nào phù hợp với bộ lọc đang chọn. Hãy điều chỉnh bộ lọc ngành nghề hoặc loại quan hệ.
+                </div>
+              ) : (
               <svg className={styles.rmGraph} viewBox="0 0 860 600" role="img" aria-label="Mạng lưới quan hệ doanh nghiệp">
                 <defs>
                   <pattern id="rmDotGrid" width="26" height="26" patternUnits="userSpaceOnUse">
@@ -526,7 +582,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     <text x={430} y={312} textAnchor="middle" className={styles.rmCenterSub}>My Company</text>
                   </g>
                 </g>
-              </svg>
+                </svg>
+              )
             ) : (
               <div className={styles.rmEmpty}>Chưa có dữ liệu quan hệ doanh nghiệp. Hãy thử làm mới lại.</div>
             )}
@@ -573,6 +630,61 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           </div>
 
           <div className={styles.rmSideCard}>
+            <div className={styles.rmSideTitle}><Layers size={16} /> Ngành nghề</div>
+            <div className={styles.rmIndustrySearch}>
+              <Search size={14} />
+              <input
+                type="text"
+                className={styles.rmIndustrySearchInput}
+                placeholder="Tìm ngành nghề..."
+                value={industrySearch}
+                onChange={(e) => setIndustrySearch(e.target.value)}
+              />
+            </div>
+            <div className={styles.rmIndustryList}>
+              <label className={`${styles.rmIndustryItem} ${industryFilter.length === 0 ? styles.rmIndustryItemActive : ''}`}>
+                <input
+                  type="checkbox"
+                  className={styles.rmIndustryCheck}
+                  checked={industryFilter.length === 0}
+                  onChange={() => updateIndustryFilter([])}
+                />
+                <span className={styles.rmIndustryName}>Tất cả</span>
+                <span className={styles.rmIndustryCount}>{graph?.nodes.length ?? 0}</span>
+              </label>
+              {industryOptions
+                .filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase()))
+                .map((opt) => {
+                  const checked = industryFilter.includes(opt.name);
+                  return (
+                    <label key={opt.name} className={`${styles.rmIndustryItem} ${checked ? styles.rmIndustryItemActive : ''}`}>
+                      <input
+                        type="checkbox"
+                        className={styles.rmIndustryCheck}
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? industryFilter.filter((x) => x !== opt.name)
+                            : [...industryFilter, opt.name];
+                          updateIndustryFilter(next);
+                        }}
+                      />
+                      <span className={styles.rmIndustryName}>{opt.name}</span>
+                      <span className={styles.rmIndustryCount}>{opt.count}</span>
+                    </label>
+                  );
+                })}
+              {industryOptions.length === 0 && !loading && (
+                <div className={styles.rmIndustryEmpty}>Chưa có dữ liệu ngành nghề.</div>
+              )}
+              {industryOptions.length > 0 && industrySearch.trim() !== '' &&
+                industryOptions.filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase())).length === 0 && (
+                <div className={styles.rmIndustryEmpty}>Không tìm thấy ngành nghề phù hợp.</div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.rmSideCard}>
             <div className={styles.rmSideTitle}><Users size={16} /> Top Đối tác Kết nối</div>
             <div className={styles.rmRankList}>
               {topPartners.map((node, i) => {
@@ -597,7 +709,9 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                 );
               })}
               {topPartners.length === 0 && !loading && (
-                <div className={styles.rmEmpty}>Chưa có dữ liệu đối tác.</div>
+                <div className={styles.rmEmpty}>
+                  {graph && graph.nodes.length > 0 ? 'Không có đối tác phù hợp với bộ lọc.' : 'Chưa có dữ liệu đối tác.'}
+                </div>
               )}
             </div>
           </div>
