@@ -19,23 +19,23 @@
 
 .hero span {
   color: #2563eb;
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: 0.08em;
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .hero h1 {
   margin: 5px 0 5px;
   color: #0f172a;
-  font-size: 26px;
+  font-size: var(--text-display);
   line-height: 1.15;
 }
 
 .hero p {
   margin: 0;
   color: #64748b;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 650;
   line-height: 1.5;
 }
@@ -145,15 +145,15 @@
 .detailsTitle h3 {
   margin: 0;
   color: #0f172a;
-  font-size: 18px;
+  font-size: var(--text-h2);
   line-height: 1.2;
 }
 
 .sidebarTitle span,
 .detailsTitle span {
   color: #64748b;
-  font-size: 12px;
-  font-weight: 850;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .searchBox {
@@ -175,8 +175,8 @@
   outline: 0;
   background: transparent;
   color: #0f172a;
-  font-size: 13px;
-  font-weight: 750;
+  font-size: var(--text-body);
+  font-weight: 650;
 }
 
 .filterRow {
@@ -189,7 +189,7 @@
 .chipButton {
   flex: 0 0 auto;
   min-height: 32px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   padding: 0 11px;
 }
 
@@ -242,8 +242,8 @@
   border-radius: 999px;
   background: linear-gradient(135deg, #2563eb, #0ea5e9);
   color: #ffffff;
-  font-size: 13px;
-  font-weight: 950;
+  font-size: var(--text-body);
+  font-weight: 700;
 }
 
 .avatar[data-tone="green"] {
@@ -283,8 +283,8 @@
 
 .conversationTop strong {
   color: #0f172a;
-  font-size: 13px;
-  font-weight: 950;
+  font-size: var(--text-body);
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -294,15 +294,15 @@
 .conversationMeta small {
   flex: 0 0 auto;
   color: #94a3b8;
-  font-size: 11px;
-  font-weight: 850;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .conversationMain p {
   margin: 4px 0 0;
   color: #64748b;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--text-caption);
+  font-weight: 650;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -317,8 +317,8 @@
   border-radius: 999px;
   background: #2563eb;
   color: #ffffff;
-  font-size: 11px;
-  font-weight: 950;
+  font-size: var(--text-caption);
+  font-weight: 700;
   padding: 0 7px;
 }
 
@@ -330,8 +330,8 @@
   border-radius: 999px;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 11px;
-  font-weight: 900;
+  font-size: var(--text-caption);
+  font-weight: 700;
   line-height: 1;
   padding: 0 8px;
 }
@@ -362,15 +362,15 @@
 .chatIdentity h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 17px;
+  font-size: var(--text-h2);
   line-height: 1.25;
 }
 
 .chatIdentity p {
   margin: 3px 0 0;
   color: #64748b;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .chatActions {
@@ -395,9 +395,9 @@
   align-items: center;
   justify-content: center;
   color: #94a3b8;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -426,8 +426,8 @@
   border-radius: 999px;
   background: #e0f2fe;
   color: #0369a1;
-  font-size: 11px;
-  font-weight: 950;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .messageBubble {
@@ -451,8 +451,8 @@
 .messageBubble p {
   margin: 0;
   color: #172033;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-body);
+  font-weight: 500;
   line-height: 1.48;
   white-space: pre-wrap;
 }
@@ -463,8 +463,8 @@
 
 .messageBubble small {
   color: #94a3b8;
-  font-size: 10px;
-  font-weight: 850;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .outgoing .messageBubble small {
@@ -479,8 +479,8 @@
   border-radius: 12px;
   background: #f1f5f9;
   color: #334155;
-  font-size: 12px;
-  font-weight: 850;
+  font-size: var(--text-caption);
+  font-weight: 700;
   padding: 8px 9px;
 }
 
@@ -526,8 +526,8 @@
   outline: 0;
   background: transparent;
   color: #0f172a;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-body);
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -561,19 +561,19 @@
 .profileCard .avatar {
   width: 62px;
   height: 62px;
-  font-size: 18px;
+  font-size: var(--text-h2);
 }
 
 .profileCard strong {
   color: #0f172a;
-  font-size: 15px;
-  font-weight: 950;
+  font-size: var(--text-body);
+  font-weight: 700;
 }
 
 .profileCard span {
   color: #64748b;
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .infoPanel {
@@ -588,8 +588,8 @@
 .infoPanel h4 {
   margin: 0;
   color: #0f172a;
-  font-size: 13px;
-  font-weight: 950;
+  font-size: var(--text-body);
+  font-weight: 700;
 }
 
 .infoRow {
@@ -604,14 +604,14 @@
 
 .infoRow span {
   color: #64748b;
-  font-size: 12px;
-  font-weight: 850;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .infoRow strong {
   color: #0f172a;
-  font-size: 12px;
-  font-weight: 950;
+  font-size: var(--text-caption);
+  font-weight: 700;
   text-align: right;
 }
 
@@ -644,15 +644,15 @@
 
 .fileItem strong {
   color: #0f172a;
-  font-size: 12px;
-  font-weight: 900;
+  font-size: var(--text-caption);
+  font-weight: 700;
 }
 
 .fileItem span {
   margin-top: 2px;
   color: #64748b;
-  font-size: 11px;
-  font-weight: 750;
+  font-size: var(--text-caption);
+  font-weight: 650;
 }
 
 @media (max-width: 1260px) {

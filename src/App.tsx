@@ -28,6 +28,7 @@ import { AdminPanel }      from './pages/AdminPanel';
 import { AIAgent }         from './pages/AIAgent';
 import { News }            from './pages/News';
 import { SystemChat }      from './pages/SystemChat';
+import { CrawlerControl }  from './pages/CrawlerControl';
 
 // ── Admin pages ──
 import { UserManagement }    from './pages/UserManagement';
@@ -173,7 +174,7 @@ const MainApp: React.FC = () => {
             <line x1="15.5" y1="12" x2="21" y2="12" stroke="white" strokeWidth="1.5" />
           </svg>
         </div>
-        <div style={{ color: '#94A3B8', fontSize: 14 }}>Đang tải APMS Platform…</div>
+        <div style={{ color: '#94A3B8', fontSize: 'var(--text-body)' }}>Đang tải APMS Platform…</div>
         <style>{`@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }`}</style>
       </div>
     );
@@ -232,6 +233,7 @@ const MainApp: React.FC = () => {
       case 'personal-ai-agent':return renderDashboard();
       case 'news':             return <News />;
       case 'system-chat':      return <SystemChat />;
+      case 'crawler-control':  return <CrawlerControl />;
 
       // ── Profile (shared) ──
       case 'profile':          return <ProfilePage />;

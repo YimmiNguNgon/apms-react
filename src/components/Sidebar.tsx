@@ -104,7 +104,6 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
-      { id: 'relationship-map',        label: 'Relationship Map' },
     ],
   },
   {
@@ -263,6 +262,8 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      { id: 'relationship-map',        label: 'Relationship Map' },
+      { id: 'crawler-control',         label: 'Crawler Control' },
       { id: 'project-management',      label: 'Projects Overview' },
       { id: 'news',                    label: 'News & Intelligence' },
     ],
@@ -271,8 +272,6 @@ const OWNER_MENU: MenuSection[] = [
     title: 'Governance & Settings',
     items: [
       { id: 'company-profiles', label: 'Company Profiles' },
-      { id: 'audit-logs',       label: 'Audit Log Viewer' },
-      { id: 'system-settings',  label: 'System Settings' },
     ],
   },
   {
@@ -375,7 +374,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
               title="Đăng xuất"
               onClick={e => { e.stopPropagation(); setShowLogout(true); }}
               style={{
-                fontSize: '11px', width: 'auto', padding: '4px 8px',
+                fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
                 background: 'rgba(239,68,68,0.1)', color: '#FCA5A5',
                 borderRadius: 'var(--radius-sm)',
               }}

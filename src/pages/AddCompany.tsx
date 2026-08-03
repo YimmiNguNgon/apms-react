@@ -6,6 +6,8 @@ export const AddCompany: React.FC = () => {
   const [formData, setFormData] = useState({
     legalName: '',
     tradeName: '',
+    stockTicker: '',
+    stockExchange: 'NONE',
     website: '',
     phone: '',
     address: '',
@@ -87,6 +89,8 @@ export const AddCompany: React.FC = () => {
     const inputText = `
 Ten phap ly: ${formData.legalName}
 Ten thuong mai: ${formData.tradeName}
+Ma co phieu (neu co): ${formData.stockTicker}
+San giao dich (neu co): ${formData.stockExchange === 'NONE' ? '' : formData.stockExchange}
 Website: ${formData.website}
 So dien thoai: ${formData.phone}
 Dia chi: ${formData.address}
@@ -105,6 +109,8 @@ Ghi chu them: ${formData.notes}
       setFormData({
         legalName: '',
         tradeName: '',
+        stockTicker: '',
+        stockExchange: 'NONE',
         website: '',
         phone: '',
         address: '',
@@ -204,6 +210,38 @@ Ghi chu them: ${formData.notes}
                   className="search-input"
                   placeholder="Commercial brand name"
                 />
+              </label>
+              <label>
+                <span>Stock ticker (optional)</span>
+                <input
+                  type="text"
+                  name="stockTicker"
+                  value={formData.stockTicker}
+                  onChange={(event) => setFormData((current) => ({ ...current, stockTicker: event.target.value.toUpperCase() }))}
+                  className="search-input"
+                  placeholder="VD: FPT"
+                  disabled={formData.stockExchange === 'NONE'}
+                />
+              </label>
+              <label>
+                <span>Stock exchange</span>
+                <select
+                  name="stockExchange"
+                  value={formData.stockExchange}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      stockExchange: event.target.value,
+                      stockTicker: event.target.value === 'NONE' ? '' : current.stockTicker,
+                    }))
+                  }
+                  className="search-input"
+                >
+                  <option value="NONE">Chưa niêm yết</option>
+                  <option value="HOSE">HOSE</option>
+                  <option value="HNX">HNX</option>
+                  <option value="UPCOM">UPCOM</option>
+                </select>
               </label>
               <label>
                 <span>Website</span>

@@ -91,7 +91,7 @@ export const DirectorDashboard: React.FC = () => {
       recentScores
         .map((item: ScoreSnapshotDto, index: number) => ({
           label: item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : `#${index + 1}`,
-          value: toNumber(item.totalScore) ?? 0,
+          value: toNumber(item.totalScore) ?? toNumber(item.overallScore) ?? 0,
         }))
         .filter((item) => item.value > 0),
     [recentScores],

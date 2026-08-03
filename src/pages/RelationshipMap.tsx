@@ -1,20 +1,223 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Filter, ExternalLink, ArrowRight, Building, Download, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowUpRight, Building2, Crown, Download, Gem, Globe, LayoutGrid, Plus,
+  RefreshCw, SlidersHorizontal, TriangleAlert, Users, Zap, ZoomIn, ZoomOut,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { api } from '../services/api';
-import type { GraphCompanyDto, GraphRelationship } from '../types/domain';
+import styles from './RelationshipMap.module.css';
 
-type RelationshipType = 'PARTNER_WITH' | 'COMPETITOR_OF' | 'SUPPLIER_OF' | 'CUSTOMER_OF' | 'POTENTIAL_PARTNER_OF' | string;
+type GroupKey = 'ALL' | 'project' | 'supplier' | 'customer' | 'competitor' | 'investment' | 'other';
+type LayoutMode = 'radial' | 'grid';
 
-export interface RelationshipRow {
-  id: string;
-  sourceId: string;
-  sourceName: string;
-  targetId: string;
-  targetName: string;
-  relationshipType: RelationshipType;
-  establishedDate: string;
+interface GraphRelationshipExt {
+  targetCompanyId: string;
+  targetCompanyName?: string;
+  relationshipType: string;
+  confidenceScore?: number;
+  projectId?: string;
+}
+
+interface GraphCompanyDto {
+  companyId: string;
+  name: string;
   industry?: string;
-  confidence?: number;
+  relationships?: GraphRelationshipExt[];
+}
+
+interface RiskItem {
+  companyId: string;
+  tradeName?: string;
+  riskScore?: number;
+  riskLevel?: string;
+}
+
+interface GNode {
+  id: string;
+  name: string;
+  initials: string;
+  short: string;
+  connections: number;
+  color: string;
+  label: string;
+  group: GroupKey;
+  industry?: string;
+}
+
+interface GEdge {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+  color: string;
+  dashed: boolean;
+  label: string;
+  group: GroupKey;
+}
+
+interface GraphState {
+  nodes: GNode[];
+  edges: GEdge[];
+  counts: Record<GroupKey, number>;
+  projectCount: number;
+}
+
+const TYPE_META: Record<string, { color: string; label: string; dashed: boolean; group: GroupKey }> = {
+  PARTNER_WITH: { color: '#10B981', label: 'Hợp tác dự án', dashed: false, group: 'project' },
+  SUPPLIER_OF: { color: '#2563EB', label: 'Nhà cung cấp', dashed: true, group: 'supplier' },
+  CUSTOMER_OF: { color: '#F97316', label: 'Khách hàng', dashed: false, group: 'customer' },
+  COMPETITOR_OF: { color: '#EF4444', label: 'Đối thủ cạnh tranh', dashed: true, group: 'competitor' },
+  POTENTIAL_PARTNER_OF: { color: '#8B5CF6', label: 'Đầu tư – Cổ đông', dashed: true, group: 'investment' },
+};
+
+const FALLBACK_META = { color: '#64748B', label: 'Liên kết khác', dashed: false, group: 'other' as GroupKey };
+
+const LEGEND_ORDER = ['PARTNER_WITH', 'SUPPLIER_OF', 'CUSTOMER_OF', 'COMPETITOR_OF', 'POTENTIAL_PARTNER_OF'];
+
+const CHIP_LABELS: Record<string, string> = {
+  ALL: 'Tất cả', project: 'Dự án', supplier: 'NCC', customer: 'KH', competitor: 'Đối thủ', investment: 'Đầu tư',
+};
+
+const SAMPLE_COUNTS: Record<string, number> = {
+  ALL: 48, project: 8, supplier: 6, customer: 5, competitor: 3, investment: 4,
+};
+
+const CHIP_DEFS: Array<{ key: GroupKey; color: string }> = [
+  { key: 'ALL', color: '#64748B' },
+  { key: 'project', color: '#10B981' },
+  { key: 'supplier', color: '#2563EB' },
+  { key: 'customer', color: '#F97316' },
+  { key: 'competitor', color: '#EF4444' },
+  { key: 'investment', color: '#8B5CF6' },
+];
+
+const PARTNER_TYPE_OPTIONS = [
+  { value: 'PARTNER_WITH', label: 'Hợp tác dự án' },
+  { value: 'SUPPLIER_OF', label: 'Nhà cung cấp' },
+  { value: 'CUSTOMER_OF', label: 'Khách hàng' },
+  { value: 'COMPETITOR_OF', label: 'Đối thủ cạnh tranh' },
+  { value: 'POTENTIAL_PARTNER_OF', label: 'Đầu tư – Cổ đông' },
+] as const;
+
+interface PartnerForm {
+  name: string;
+  industry: string;
+  relationshipType: string;
+  notes: string;
+}
+
+const clamp = (v: number) => Math.min(2, Math.max(0.7, Math.round(v * 10) / 10));
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+};
+
+const hexToRgb = (hex: string) => {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const;
+};
+
+const darken = (hex: string, amt: number) => {
+  const [r, g, b] = hexToRgb(hex).map((v) => Math.max(0, Math.round(v * (1 - amt))));
+  return `rgb(${r},${g},${b})`;
+};
+
+const iconGrad = (hex: string) =>
+  `radial-gradient(circle at 32% 26%, ${hexToRgba(hex, 0.28)}, ${hexToRgba(hex, 0.1)} 55%, ${hexToRgba(hex, 0.04)} 100%)`;
+
+const avatarGrad = (hex: string) => `linear-gradient(135deg, ${hex} 0%, ${darken(hex, 0.28)} 100%)`;
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function shortOf(name: string): string {
+  const t = name.trim();
+  return t.length > 15 ? `${t.slice(0, 15)}…` : t;
+}
+
+function buildGraph(raw: GraphCompanyDto[]): GraphState {
+  const incBy: Record<string, string[]> = {};
+  const edges: GEdge[] = [];
+  const projects = new Set<string>();
+
+  raw.forEach((c) => {
+    (c.relationships || []).forEach((rel) => {
+      const t = (rel.relationshipType || '').toUpperCase();
+      const meta = TYPE_META[t] || FALLBACK_META;
+      edges.push({
+        id: `${c.companyId}→${rel.targetCompanyId}·${t}`,
+        from: c.companyId,
+        to: rel.targetCompanyId,
+        type: t,
+        color: meta.color,
+        dashed: meta.dashed,
+        label: meta.label,
+        group: meta.group,
+      });
+      (incBy[c.companyId] = incBy[c.companyId] || []).push(t);
+      (incBy[rel.targetCompanyId] = incBy[rel.targetCompanyId] || []).push(t);
+      if (rel.projectId) projects.add(rel.projectId);
+    });
+  });
+
+  const nodes: GNode[] = raw.map((c) => {
+    const types = incBy[c.companyId] || [];
+    const freq: Record<string, number> = {};
+    types.forEach((t) => { freq[t] = (freq[t] || 0) + 1; });
+    const domType = Object.keys(freq).sort((a, b) => (freq[b] || 0) - (freq[a] || 0))[0];
+    const meta = TYPE_META[domType] || FALLBACK_META;
+    return {
+      id: c.companyId,
+      name: c.name || 'Chưa có tên',
+      initials: initialsOf(c.name || 'Chưa có tên'),
+      short: shortOf(c.name || 'Chưa có tên'),
+      connections: types.length,
+      color: meta.color,
+      label: meta.label,
+      group: meta.group,
+      industry: c.industry,
+    };
+  });
+
+  const counts: Record<GroupKey, number> = {
+    ALL: edges.length, project: 0, supplier: 0, customer: 0, competitor: 0, investment: 0, other: 0,
+  };
+  edges.forEach((e) => { counts[e.group] = (counts[e.group] || 0) + 1; });
+
+  return { nodes, edges, counts, projectCount: projects.size };
+}
+
+function radialPositions(n: number, cx: number, cy: number, r: number): Array<{ x: number; y: number }> {
+  return Array.from({ length: n }, (_, i) => {
+    const a = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  });
+}
+
+function gridPositions(n: number, cx: number, cy: number, w: number, h: number): Array<{ x: number; y: number }> {
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const out: Array<{ x: number; y: number }> = [];
+  let idx = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (idx >= n) break;
+      const x = cols > 1 ? cx - w / 2 + (w / (cols - 1)) * c : cx;
+      const y = rows > 1 ? cy - h / 2 + (h / (rows - 1)) * r : cy;
+      out.push({ x, y });
+      idx++;
+    }
+  }
+  return out;
 }
 
 interface RelationshipMapProps {
@@ -22,80 +225,89 @@ interface RelationshipMapProps {
 }
 
 export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage }) => {
-  const [rows, setRows] = useState<RelationshipRow[]>([]);
+  const [graph, setGraph] = useState<GraphState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [relFilter, setRelFilter] = useState<string>('ALL');
-  const [selectedRow, setSelectedRow] = useState<RelationshipRow | null>(null);
+  const [filter, setFilter] = useState<GroupKey>('ALL');
+  const [layout, setLayout] = useState<LayoutMode>('radial');
+  const [zoom, setZoom] = useState(1);
+  const [hoverNode, setHoverNode] = useState<string | null>(null);
+  const [aiScore, setAiScore] = useState('8.4');
+  const [riskWarnings, setRiskWarnings] = useState(7);
 
-  useEffect(() => {
+  const [partnerModalOpen, setPartnerModalOpen] = useState(false);
+  const [partnerForm, setPartnerForm] = useState<PartnerForm>({ name: '', industry: '', relationshipType: 'PARTNER_WITH', notes: '' });
+  const [partnerSubmitting, setPartnerSubmitting] = useState(false);
+  const [partnerError, setPartnerError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
     setLoading(true);
-    api.get<GraphCompanyDto[]>('/graph/network')
-      .then((res) => {
-        const list = Array.isArray(res?.data) ? res.data : (res as { data?: GraphCompanyDto[] })?.data ?? [];
-        const extracted: RelationshipRow[] = [];
-
-        list.forEach((item: GraphCompanyDto, idx: number) => {
-          const sourceId = String(item.companyId || `COMP-${idx}`);
-          const sourceName = String(item.name || sourceId);
-          const industry = item.industry;
-
-          if (item.relationships && Array.isArray(item.relationships) && item.relationships.length > 0) {
-            item.relationships.forEach((rel, rIdx) => {
-              const r = rel as GraphRelationship & Record<string, unknown>;
-              extracted.push({
-                id: `REL-${sourceId}-${rel.targetCompanyId || rIdx}`,
-                sourceId,
-                sourceName,
-                targetId: String(rel.targetCompanyId || r.target || `TARGET-${rIdx}`),
-                targetName: String(r.targetCompanyName || r.targetName || rel.targetCompanyId || 'Doanh nghiệp liên kết'),
-                relationshipType: String(rel.relationshipType || item.relationshipType || 'PARTNER_WITH'),
-                establishedDate: String(r.establishedDate || r.createdAt || 'Mới cập nhật'),
-                industry,
-                confidence: typeof rel.confidenceScore === 'number' ? rel.confidenceScore : undefined,
-              });
-            });
-          } else {
-            extracted.push({
-              id: `NODE-${sourceId}`,
-              sourceId,
-              sourceName,
-              targetId: '-',
-              targetName: 'Doanh nghiệp độc lập',
-              relationshipType: String(item.relationshipType || 'PARTNER_WITH'),
-              establishedDate: 'Đã xác thực',
-              industry,
-            });
-          }
-        });
-
-        setRows(extracted);
+    Promise.allSettled([
+      api.get<GraphCompanyDto[]>('/graph/network'),
+      api.get<RiskItem[]>('/risk-monitoring'),
+    ])
+      .then(([net, risk]) => {
+        const list = net.status === 'fulfilled' && Array.isArray(net.value?.data) ? net.value.data : [];
+        setGraph(buildGraph(list));
+        if (risk.status === 'fulfilled' && Array.isArray(risk.value?.data)) {
+          const items = risk.value.data as RiskItem[];
+          const scores = items.map((i) => Number(i.riskScore)).filter((n) => !Number.isNaN(n));
+          if (scores.length) setAiScore((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1));
+          setRiskWarnings(items.filter((i) => (i.riskLevel || '').toUpperCase() === 'HIGH').length);
+        }
       })
-      .catch(() => { setRows([]); })
       .finally(() => setLoading(false));
   }, []);
 
-  const safeStr = (v: unknown, fallback: string = 'N/A') => (v !== null && v !== undefined && v !== '' ? String(v) : fallback);
+  useEffect(() => { load(); }, [load]);
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      const text = (row.sourceName + ' ' + row.targetName + ' ' + row.relationshipType).toLowerCase();
-      const matchesSearch = text.includes(search.toLowerCase());
-      const matchesRel = relFilter === 'ALL' || row.relationshipType.toUpperCase().includes(relFilter.toUpperCase());
-      return matchesSearch && matchesRel;
-    });
-  }, [rows, search, relFilter]);
+  const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-  const stats = useMemo(() => {
-    const partners = rows.filter((r) => r.relationshipType.includes('PARTNER')).length;
-    const competitors = rows.filter((r) => r.relationshipType.includes('COMPETITOR')).length;
-    const suppliers = rows.filter((r) => r.relationshipType.includes('SUPPLIER')).length;
-    const customers = rows.filter((r) => r.relationshipType.includes('CUSTOMER')).length;
-    return { total: rows.length, partners, competitors, suppliers, customers };
-  }, [rows]);
+  const kpis: Array<{ label: string; value: number | string; growth: string; icon: LucideIcon; color: string; bg: string }> = useMemo(() => {
+    const n = graph?.nodes.length ?? 48;
+    const e = graph?.edges.length ?? 18;
+    const p = graph?.projectCount ?? 3;
+    return [
+      { label: 'Tổng đối tác', value: n, growth: '+5 tháng này', icon: Building2, color: '#2563EB', bg: iconGrad('#2563EB') },
+      { label: 'Quan hệ hoạt động', value: e, growth: '+12 mới', icon: Zap, color: '#F59E0B', bg: iconGrad('#F59E0B') },
+      { label: 'Dự án chung', value: p, growth: '+3 Q2', icon: Zap, color: '#F97316', bg: iconGrad('#F97316') },
+      { label: 'Cảnh báo nguy cơ', value: riskWarnings, growth: '+2 mới', icon: TriangleAlert, color: '#EF4444', bg: iconGrad('#EF4444') },
+      { label: 'AI Score TB', value: aiScore, growth: '+0.3', icon: Gem, color: '#8B5CF6', bg: iconGrad('#8B5CF6') },
+    ];
+  }, [graph, riskWarnings, aiScore]);
 
-  const handleViewCompany = (companyId: string) => {
-    if (!companyId || companyId === '-') return;
+  const visibleNodes = useMemo(() => {
+    if (!graph) return [];
+    if (filter === 'ALL') return graph.nodes;
+    const ids = new Set<string>();
+    graph.edges.forEach((e) => { if (e.group === filter) { ids.add(e.from); ids.add(e.to); } });
+    return graph.nodes.filter((n) => ids.has(n.id));
+  }, [graph, filter]);
+
+  const visibleEdges = useMemo(() => {
+    if (!graph) return [];
+    return filter === 'ALL' ? graph.edges : graph.edges.filter((e) => e.group === filter);
+  }, [graph, filter]);
+
+  const positions = useMemo(() => {
+    const n = visibleNodes.length;
+    if (layout === 'grid') return gridPositions(n, 430, 300, 580, 340);
+    return radialPositions(n, 430, 300, 205);
+  }, [layout, visibleNodes.length]);
+
+  const posById = useMemo(() => {
+    const m = new Map<string, { x: number; y: number }>();
+    visibleNodes.forEach((node, i) => m.set(node.id, positions[i] || { x: 430, y: 300 }));
+    return m;
+  }, [visibleNodes, positions]);
+
+  const topPartners = useMemo(() => {
+    if (!graph) return [];
+    return [...graph.nodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
+  }, [graph]);
+
+  const handleViewCompany = (companyId?: string) => {
+    if (!companyId) return;
+    localStorage.setItem('apms-selected-company', companyId);
     if (setActivePage) {
       window.history.pushState({}, '', `/partner-ecosystem/company/${companyId}`);
       setActivePage('company-detail');
@@ -103,250 +315,359 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   };
 
   const handleExportCSV = () => {
-    const header = ['Source ID', 'Source Name', 'Relationship', 'Target ID', 'Target Name', 'Established Date', 'Industry', 'Confidence'];
-    const csvRows = filteredRows.map((r) => [
-      r.sourceId, r.sourceName, r.relationshipType, r.targetId, r.targetName, r.establishedDate, r.industry ?? '', r.confidence ?? '',
-    ]);
-    const content = [header, ...csvRows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const edges = graph?.edges ?? [];
+    const header = ['Nguồn', 'Loại quan hệ', 'Nhóm', 'Đích'];
+    const rows = edges.map((e) => {
+      const src = graph?.nodes.find((n) => n.id === e.from);
+      const dst = graph?.nodes.find((n) => n.id === e.to);
+      return [src?.name ?? e.from, e.label, CHIP_LABELS[e.group] ?? e.group, dst?.name ?? e.to];
+    });
+    const content = [header, ...rows].map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `relationship_matrix_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `relationship_network_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const getRelBadgeStyle = (relType: string) => {
-    if (relType.includes('COMPETITOR')) return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Đối thủ' };
-    if (relType.includes('SUPPLIER')) return { bg: '#E0F2FE', color: '#0369A1', border: '#7DD3FC', label: 'Nhà cung ứng' };
-    if (relType.includes('CUSTOMER')) return { bg: '#F3E8FF', color: '#6B21A8', border: '#D8B4FE', label: 'Khách hàng' };
-    if (relType.includes('POTENTIAL')) return { bg: '#FEF3C7', color: '#92400E', border: '#FCD34D', label: 'Tiềm năng' };
-    return { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Đối tác' };
+  const nodeDashed = (group: GroupKey) => group === 'supplier' || group === 'competitor' || group === 'investment';
+
+  const openPartnerModal = () => {
+    setPartnerForm({ name: '', industry: '', relationshipType: 'PARTNER_WITH', notes: '' });
+    setPartnerError(null);
+    setPartnerModalOpen(true);
+  };
+
+  const closePartnerModal = () => {
+    if (partnerSubmitting) return;
+    setPartnerModalOpen(false);
+    setPartnerError(null);
+  };
+
+  const handleCreatePartner = async () => {
+    if (!partnerForm.name.trim()) {
+      setPartnerError('Vui lòng nhập tên công ty đối tác.');
+      return;
+    }
+    setPartnerSubmitting(true);
+    setPartnerError(null);
+    try {
+      await api.post('/graph/partners', {
+        name: partnerForm.name.trim(),
+        industry: partnerForm.industry.trim() || undefined,
+        relationshipType: partnerForm.relationshipType,
+        notes: partnerForm.notes.trim() || undefined,
+      });
+      setPartnerModalOpen(false);
+      await load();
+    } catch (err) {
+      setPartnerError(err instanceof Error ? err.message : 'Không thể tạo đối tác. Vui lòng thử lại.');
+    } finally {
+      setPartnerSubmitting(false);
+    }
   };
 
   return (
-    <div style={{ padding: '24px', backgroundColor: '#F8F9FA', minHeight: '100vh', color: '#1F2937' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-            Graph Intelligence & Relationship Matrix
+    <div className={styles.rmPage}>
+      {/* ── Header ── */}
+      <header className={styles.rmHeader}>
+        <div className={styles.rmHeaderLeft}>
+          <div className={styles.rmGlobe}><Globe strokeWidth={1.8} /></div>
+          <div>
+            <h1 className={styles.rmTitle}>Mạng lưới Quan hệ đối tác</h1>
+            <p className={styles.rmSub}>Bản đồ quan hệ đa chiều – Cập nhật: {today}</p>
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111827', margin: 0 }}>
-            Bản đồ Quan hệ Doanh nghiệp (Relationship Matrix)
-          </h1>
-          <p style={{ fontSize: '14px', color: '#6B7280', marginTop: '4px', margin: 0 }}>
-            Danh sách các mối liên kết doanh nghiệp trong hệ sinh thái (Đối tác, Đối thủ, Nhà cung ứng, Khách hàng).
-          </p>
         </div>
-        {/* Export button */}
-        <button
-          onClick={handleExportCSV}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', fontWeight: 600, color: '#374151', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', flexShrink: 0, marginTop: '4px' }}
-        >
-          <Download size={16} color="#4F46E5" />
-          <span>Xuất CSV ({filteredRows.length})</span>
-        </button>
-      </div>
+        <div className={styles.rmHeaderActions}>
+          <button className={`${styles.rmBtn} ${styles.rmBtnOutline}`} onClick={handleExportCSV}>
+            <Download size={15} /> Xuất báo cáo
+          </button>
+          <button className={`${styles.rmBtn} ${styles.rmBtnPrimary}`} onClick={openPartnerModal}>
+            <Plus size={16} /> Thêm đối tác
+          </button>
+        </div>
+      </header>
 
-      {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ backgroundColor: '#FFFFFF', padding: '18px', borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>Tổng liên kết Graph</span>
-          <div style={{ fontSize: '26px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>{stats.total}</div>
-        </div>
-        <div style={{ backgroundColor: '#FFFFFF', padding: '18px', borderRadius: '12px', border: '1px solid #D1FAE5', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <span style={{ fontSize: '13px', color: '#065F46', fontWeight: 500 }}>Quan hệ Đối tác (Partner)</span>
-          <div style={{ fontSize: '26px', fontWeight: 700, color: '#059669', marginTop: '4px' }}>{stats.partners}</div>
-        </div>
-        <div style={{ backgroundColor: '#FFFFFF', padding: '18px', borderRadius: '12px', border: '1px solid #FEE2E2', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <span style={{ fontSize: '13px', color: '#991B1B', fontWeight: 500 }}>Đối thủ Cạnh tranh</span>
-          <div style={{ fontSize: '26px', fontWeight: 700, color: '#DC2626', marginTop: '4px' }}>{stats.competitors}</div>
-        </div>
-        <div style={{ backgroundColor: '#FFFFFF', padding: '18px', borderRadius: '12px', border: '1px solid #E0F2FE', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <span style={{ fontSize: '13px', color: '#0369A1', fontWeight: 500 }}>Nhà cung ứng / Khách hàng</span>
-          <div style={{ fontSize: '26px', fontWeight: 700, color: '#0284C7', marginTop: '4px' }}>{stats.suppliers + stats.customers}</div>
-        </div>
-      </div>
+      {/* ── KPI row ── */}
+      <section className={styles.rmKpiGrid}>
+        {kpis.map((kpi, idx) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={kpi.label} className={styles.rmKpi} style={{ animationDelay: `${idx * 70}ms` }}>
+              <div className={styles.rmKpiLabel}>{kpi.label}</div>
+              <div className={styles.rmKpiValue}>{kpi.value}</div>
+              <div className={styles.rmKpiGrowth}><ArrowUpRight size={13} strokeWidth={2.4} />{kpi.growth}</div>
+              <div className={styles.rmKpiIcon} style={{ background: kpi.bg }}>
+                <Icon size={19} color={kpi.color} strokeWidth={2} />
+              </div>
+            </div>
+          );
+        })}
+      </section>
 
-      {/* Filter Bar */}
-      <div style={{ backgroundColor: '#FFFFFF', padding: '16px 20px', borderRadius: '12px', border: '1px solid #E5E7EB', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#F3F4F6', padding: '8px 12px', borderRadius: '8px', flex: 1, minWidth: '260px' }}>
-          <Search size={18} color="#9CA3AF" />
-          <input
-            type="text"
-            placeholder="Tìm theo tên công ty chính hoặc công ty liên kết..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '14px', color: '#1F2937' }}
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Filter size={16} color="#6B7280" />
-          <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>Loại quan hệ:</span>
-          {['ALL', 'PARTNER', 'COMPETITOR', 'SUPPLIER', 'CUSTOMER'].map((typeKey) => (
-            <button
-              key={typeKey}
-              onClick={() => setRelFilter(typeKey)}
-              style={{
-                padding: '6px 12px', borderRadius: '6px', border: '1px solid',
-                borderColor: relFilter === typeKey ? '#4F46E5' : '#E5E7EB',
-                backgroundColor: relFilter === typeKey ? '#EEF2FF' : '#FFFFFF',
-                color: relFilter === typeKey ? '#4F46E5' : '#4B5563',
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              {typeKey === 'ALL' ? 'Tất cả' : typeKey === 'PARTNER' ? 'Đối tác' : typeKey === 'COMPETITOR' ? 'Đối thủ' : typeKey === 'SUPPLIER' ? 'Cung ứng' : 'Khách hàng'}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* ── Main grid ── */}
+      <div className={styles.rmMainGrid}>
+        {/* Network panel */}
+        <section className={styles.rmNetwork}>
+          <div className={styles.rmNetworkHead}>
+            <div className={styles.rmNetworkTitle}>
+              <h2>Mạng lưới Quan hệ</h2>
+              <span className={styles.rmTag}>[{graph?.nodes.length ?? 12}] Doanh nghiệp</span>
+              <span className={styles.rmTag}>[{graph?.edges.length ?? 18}] Kết nối</span>
+            </div>
+            <div className={styles.rmControls}>
+              <button className={styles.rmCtrlBtn} title="Thu nhỏ" onClick={() => setZoom((z) => clamp(z - 0.2))}><ZoomOut size={16} /></button>
+              <button className={styles.rmCtrlBtn} title="Phóng to" onClick={() => setZoom((z) => clamp(z + 0.2))}><ZoomIn size={16} /></button>
+              <button className={styles.rmCtrlBtn} title="Làm mới" onClick={load}><RefreshCw size={16} /></button>
+              <button className={styles.rmCtrlBtn} title="Đổi bố cục" onClick={() => setLayout((l) => (l === 'radial' ? 'grid' : 'radial'))}><LayoutGrid size={16} /></button>
+            </div>
+          </div>
 
-      {/* Main Relationship Matrix Table */}
-      <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: '#6B7280' }}>Đang tải dữ liệu mạng lưới quan hệ...</div>
-        ) : filteredRows.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: '#6B7280' }}>Không tìm thấy thông tin quan hệ nào phù hợp.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB', color: '#4B5563', fontWeight: 600 }}>
-                <th style={{ padding: '14px 20px' }}>Doanh nghiệp gốc (Source)</th>
-                <th style={{ padding: '14px 20px', textAlign: 'center' }}>Loại quan hệ</th>
-                <th style={{ padding: '14px 20px' }}>Doanh nghiệp liên kết (Target)</th>
-                <th style={{ padding: '14px 20px' }}>Thời gian thiết lập</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row, idx) => {
-                const badge = getRelBadgeStyle(row.relationshipType);
+          <div className={styles.rmGraphWrap}>
+            {loading ? (
+              <div className={styles.rmLoading}>Đang tải mạng lưới quan hệ...</div>
+            ) : graph && graph.nodes.length > 0 ? (
+              <svg className={styles.rmGraph} viewBox="0 0 860 600" role="img" aria-label="Mạng lưới quan hệ doanh nghiệp">
+                <defs>
+                  <pattern id="rmDotGrid" width="26" height="26" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="1.4" fill="rgba(148,163,184,0.28)" />
+                  </pattern>
+                  <radialGradient id="rmCenterGrad" cx="50%" cy="42%" r="72%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#1e3a8a" />
+                  </radialGradient>
+                  <radialGradient id="rmCenterHalo" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="rgba(59,130,246,0.35)" />
+                    <stop offset="100%" stopColor="rgba(59,130,246,0)" />
+                  </radialGradient>
+                </defs>
+
+                <rect x="0" y="0" width="860" height="600" fill="url(#rmDotGrid)" />
+                <ellipse cx="430" cy="300" rx="300" ry="230" fill="url(#rmCenterHalo)" />
+
+                <g
+                  className={styles.rmGraphGroup}
+                  style={{
+                    transform: `translate(${(430 * (1 - zoom)).toFixed(2)}px, ${(300 * (1 - zoom)).toFixed(2)}px) scale(${zoom})`,
+                  }}
+                >
+                  {/* mesh edges */}
+                  {visibleEdges.map((e, i) => {
+                    const p1 = posById.get(e.from);
+                    const p2 = posById.get(e.to);
+                    if (!p1 || !p2) return null;
+                    const active = hoverNode === null || e.from === hoverNode || e.to === hoverNode;
+                    return (
+                      <line
+                        key={e.id}
+                        className={styles.rmEdge}
+                        x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                        stroke={e.color}
+                        strokeOpacity={active ? (hoverNode ? 0.9 : 0.35) : 0.12}
+                        strokeWidth={active && hoverNode ? 2.2 : 1.2}
+                        strokeDasharray={e.dashed ? '5 5' : undefined}
+                        style={{ animationDelay: `${i * 20}ms` }}
+                      />
+                    );
+                  })}
+
+                  {/* hub edges from center */}
+                  {visibleNodes.map((n) => {
+                    const p = posById.get(n.id);
+                    if (!p) return null;
+                    const active = hoverNode === null || n.id === hoverNode;
+                    return (
+                      <line
+                        key={`hub-${n.id}`}
+                        className={styles.rmHubEdge}
+                        x1={430} y1={300} x2={p.x} y2={p.y}
+                        stroke={n.color}
+                        strokeOpacity={active ? (hoverNode ? 0.55 : 0.25) : 0.08}
+                        strokeWidth={active && hoverNode ? 1.8 : 1.2}
+                        strokeDasharray={nodeDashed(n.group) ? '4 5' : undefined}
+                      />
+                    );
+                  })}
+
+                  {/* satellite nodes */}
+                  {visibleNodes.map((n, i) => {
+                    const p = posById.get(n.id)!;
+                    const dimmed = hoverNode !== null && hoverNode !== n.id;
+                    return (
+                      <g
+                        key={n.id}
+                        className={styles.rmNodeGroup}
+                        style={{ opacity: dimmed ? 0.35 : 1, animationDelay: `${i * 45}ms` }}
+                        onClick={() => handleViewCompany(n.id)}
+                        onMouseEnter={() => setHoverNode(n.id)}
+                        onMouseLeave={() => setHoverNode(null)}
+                      >
+                        <title>{n.name}</title>
+                        <circle
+                          cx={p.x} cy={p.y} r={24}
+                          fill={`${n.color}1f`} stroke={n.color} strokeWidth={2.5}
+                          style={{ cursor: 'pointer', filter: `drop-shadow(0 4px 10px ${hexToRgba(n.color, 0.35)})` }}
+                        />
+                        <text x={p.x} y={p.y + 4} textAnchor="middle" className={styles.rmNodeText} fill={n.color}>{n.initials}</text>
+                        <circle cx={p.x + 17} cy={p.y - 17} r={9} fill={n.color} stroke="#fff" strokeWidth={2} />
+                        <text x={p.x + 17} y={p.y - 13.5} textAnchor="middle" className={styles.rmBadgeText}>{n.connections}</text>
+                        <text x={p.x} y={p.y + 40} textAnchor="middle" className={styles.rmNodeLabel}>{n.short}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* center node */}
+                  <g className={styles.rmCenterHalo} pointerEvents="none">
+                    <circle cx={430} cy={300} r={64} fill="rgba(59,130,246,0.15)" />
+                    <circle cx={430} cy={300} r={58} fill="url(#rmCenterGrad)" stroke="#1e40af" strokeWidth={3} />
+                    <text x={430} y={293} textAnchor="middle" className={styles.rmCenterText}>MC</text>
+                    <text x={430} y={312} textAnchor="middle" className={styles.rmCenterSub}>My Company</text>
+                  </g>
+                </g>
+              </svg>
+            ) : (
+              <div className={styles.rmEmpty}>Chưa có dữ liệu quan hệ doanh nghiệp. Hãy thử làm mới lại.</div>
+            )}
+          </div>
+
+          <div className={styles.rmLegend}>
+            {LEGEND_ORDER.map((key) => {
+              const m = TYPE_META[key];
+              return (
+                <div key={key} className={styles.rmLegendItem}>
+                  <span
+                    className={`${styles.rmLegendLine} ${m.dashed ? styles.rmLegendLineDashed : styles.rmLegendLineSolid}`}
+                    style={{ borderColor: m.color }}
+                  />
+                  {m.label}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Sidebar */}
+        <aside className={styles.rmSide}>
+          <div className={styles.rmSideCard}>
+            <div className={styles.rmSideTitle}><SlidersHorizontal size={16} /> Bộ lọc nhanh</div>
+            <div className={styles.rmChips}>
+              {CHIP_DEFS.map((chip) => {
+                const count = graph ? (graph.counts[chip.key] ?? 0) : (SAMPLE_COUNTS[chip.key] ?? 0);
+                const active = filter === chip.key;
                 return (
-                  <tr
-                    key={row.id + idx}
-                    style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  <button
+                    key={chip.key}
+                    className={`${styles.rmChip} ${active ? styles.rmChipActive : ''}`}
+                    style={active ? { background: hexToRgba(chip.color, 0.14), borderColor: hexToRgba(chip.color, 0.35) } : undefined}
+                    onClick={() => setFilter(chip.key)}
                   >
-                    <td style={{ padding: '14px 20px' }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{row.sourceName}</div>
-                      <div style={{ fontSize: '12px', color: '#9CA3AF', fontFamily: 'monospace' }}>ID: {row.sourceId}</div>
-                    </td>
-                    <td style={{ padding: '14px 20px', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, backgroundColor: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
-                          {badge.label}
-                        </span>
-                        <ArrowRight size={14} color="#9CA3AF" />
-                      </div>
-                    </td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{row.targetName}</div>
-                      {row.targetId !== '-' && (
-                        <div style={{ fontSize: '12px', color: '#9CA3AF', fontFamily: 'monospace' }}>ID: {row.targetId}</div>
-                      )}
-                    </td>
-                    <td style={{ padding: '14px 20px', color: '#6B7280' }}>{safeStr(row.establishedDate)}</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => setSelectedRow(row)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          Chi tiết
-                        </button>
-                        <button
-                          onClick={() => handleViewCompany(row.sourceId)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          <span>Hồ sơ</span>
-                          <ExternalLink size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    <span className={styles.rmChipDot} style={{ background: chip.color }} />
+                    <span className={styles.rmChipLabel}>{CHIP_LABELS[chip.key]}</span>
+                    <span className={styles.rmChipCount} style={active ? { color: chip.color, borderColor: hexToRgba(chip.color, 0.4) } : undefined}>{count}</span>
+                  </button>
                 );
               })}
-            </tbody>
-          </table>
-        )}
+            </div>
+          </div>
+
+          <div className={styles.rmSideCard}>
+            <div className={styles.rmSideTitle}><Users size={16} /> Top Đối tác Kết nối</div>
+            <div className={styles.rmRankList}>
+              {topPartners.map((node, i) => {
+                const maxConn = Math.max(1, ...topPartners.map((t) => t.connections));
+                return (
+                  <div
+                    key={node.id}
+                    className={`${styles.rmRankItem} ${i === 0 ? styles.rmRankTop : ''}`}
+                    onClick={() => handleViewCompany(node.id)}
+                  >
+                    {i === 0 ? <Crown size={16} className={styles.rmCrown} strokeWidth={2.4} /> : <span className={styles.rmRank}>{i + 1}</span>}
+                    <span className={styles.rmAvatar} style={{ background: avatarGrad(node.color) }}>{node.initials}</span>
+                    <div className={styles.rmRankInfo}>
+                      <div className={styles.rmRankName}>{node.short}</div>
+                      <div className={styles.rmRankSub}>{node.industry || node.label}</div>
+                      <div className={styles.rmRankBar}>
+                        <span className={styles.rmRankBarFill} style={{ width: `${Math.round((node.connections / maxConn) * 100)}%`, background: node.color }} />
+                      </div>
+                    </div>
+                    <span className={styles.rmRankCount}>{node.connections} kết nối</span>
+                  </div>
+                );
+              })}
+              {topPartners.length === 0 && !loading && (
+                <div className={styles.rmEmpty}>Chưa có dữ liệu đối tác.</div>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
 
-      {/* Relationship Detail Modal */}
-      {selectedRow && (
-        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(17,24,39,0.5)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div style={{ width: '100%', maxWidth: '640px', backgroundColor: '#FFFFFF', borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden' }}>
-            {/* Modal Header */}
-            <div style={{ padding: '22px 26px 16px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* ── Add partner modal ── */}
+      {partnerModalOpen && (
+        <div className="modal-overlay" onClick={closePartnerModal}>
+          <div className={`modal ${styles.rmModal}`} role="dialog" aria-modal="true" aria-labelledby="add-partner-title" onClick={(e) => e.stopPropagation()}>
+            <div className={styles.rmModalHead}>
               <div>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Chi tiết Quan hệ Hệ thống</span>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: '4px 0 0 0' }}>
-                  {selectedRow.sourceName} → {selectedRow.targetName}
-                </h2>
+                <h3 id="add-partner-title">Thêm đối tác mới</h3>
+                <p>Thêm một doanh nghiệp vào mạng lưới quan hệ và gắn liên kết với công ty của bạn.</p>
               </div>
-              <button onClick={() => setSelectedRow(null)} style={{ padding: '8px', border: 'none', background: '#F3F4F6', borderRadius: '8px', cursor: 'pointer', color: '#4B5563' }}>
-                <X size={18} />
-              </button>
+              <button className={styles.rmModalClose} type="button" aria-label="Đóng" onClick={closePartnerModal}>&times;</button>
             </div>
 
-            {/* Modal Body */}
-            <div style={{ padding: '22px 26px' }}>
-              {/* Relationship Type visual */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '20px', backgroundColor: '#F9FAFB', borderRadius: '12px', marginBottom: '20px', border: '1px solid #E5E7EB' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', backgroundColor: '#EEF2FF', borderRadius: '12px', margin: '0 auto 6px' }}>
-                    <Building size={24} color="#4F46E5" />
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#111827', fontSize: '14px' }}>{selectedRow.sourceName}</div>
-                  <div style={{ fontSize: '11px', color: '#9CA3AF', fontFamily: 'monospace' }}>ID: {selectedRow.sourceId}</div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                  <ArrowRight size={20} color="#6B7280" />
-                  <span style={{ padding: '4px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, backgroundColor: getRelBadgeStyle(selectedRow.relationshipType).bg, color: getRelBadgeStyle(selectedRow.relationshipType).color, border: `1px solid ${getRelBadgeStyle(selectedRow.relationshipType).border}` }}>
-                    {getRelBadgeStyle(selectedRow.relationshipType).label}
-                  </span>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', backgroundColor: '#F0FDF4', borderRadius: '12px', margin: '0 auto 6px' }}>
-                    <Building size={24} color="#059669" />
-                  </div>
-                  <div style={{ fontWeight: 700, color: '#111827', fontSize: '14px' }}>{selectedRow.targetName}</div>
-                  <div style={{ fontSize: '11px', color: '#9CA3AF', fontFamily: 'monospace' }}>ID: {selectedRow.targetId}</div>
-                </div>
-              </div>
+            {partnerError && <div className="workspace-inline-error">{partnerError}</div>}
 
-              {/* Metadata grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-                {[
-                  { label: 'Loại quan hệ', value: selectedRow.relationshipType },
-                  { label: 'Ngày thiết lập', value: safeStr(selectedRow.establishedDate) },
-                  { label: 'Ngành nghề', value: safeStr(selectedRow.industry, 'Chưa phân loại') },
-                  { label: 'Độ tin cậy', value: selectedRow.confidence !== undefined ? `${selectedRow.confidence}%` : 'Chưa có dữ liệu' },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ padding: '12px 14px', backgroundColor: '#F9FAFB', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
-                    <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 500, marginBottom: '4px' }}>{label}</div>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{value}</div>
-                  </div>
-                ))}
-              </div>
+            <div className={styles.rmFormGrid}>
+              <label>
+                <span>Tên công ty <em>*</em></span>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Ví dụ: Công ty Cổ phần FPT"
+                  value={partnerForm.name}
+                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, name: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Ngành nghề</span>
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Ví dụ: Công nghệ thông tin"
+                  value={partnerForm.industry}
+                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, industry: e.target.value }))}
+                />
+              </label>
+              <label className={styles.rmFormSpan}>
+                <span>Loại quan hệ <em>*</em></span>
+                <select
+                  className="search-input"
+                  value={partnerForm.relationshipType}
+                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, relationshipType: e.target.value }))}
+                >
+                  {PARTNER_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.rmFormSpan}>
+                <span>Ghi chú</span>
+                <textarea
+                  className="search-input"
+                  rows={4}
+                  placeholder="Bối cảnh hợp tác, điểm mạnh, hay lý do thêm đối tác này..."
+                  value={partnerForm.notes}
+                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, notes: e.target.value }))}
+                />
+              </label>
+            </div>
 
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setSelectedRow(null)}
-                  style={{ padding: '10px 16px', backgroundColor: '#FFFFFF', border: '1px solid #D1D5DB', borderRadius: '8px', fontSize: '14px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}
-                >
-                  Đóng
-                </button>
-                <button
-                  onClick={() => { handleViewCompany(selectedRow.sourceId); setSelectedRow(null); }}
-                  style={{ padding: '10px 16px', backgroundColor: '#4F46E5', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, color: '#FFFFFF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                >
-                  <ExternalLink size={15} /> Xem Hồ sơ Công ty
-                </button>
-              </div>
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={closePartnerModal} disabled={partnerSubmitting}>Hủy</button>
+              <button className="btn btn-primary" onClick={() => void handleCreatePartner()} disabled={partnerSubmitting}>
+                {partnerSubmitting ? 'Đang lưu...' : 'Thêm đối tác'}
+              </button>
             </div>
           </div>
         </div>

@@ -11,15 +11,9 @@ interface ProjectInspectionDrawerProps {
   onClose: () => void;
 }
 
-const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
+const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
-  }
-  if (rawId && rawId.trim()) {
-    if (/^[0-9a-fA-F]{24}$/.test(rawId.trim())) {
-      return `Công ty (ID: ${rawId.trim().substring(0, 8)}...)`;
-    }
-    return rawId.trim();
   }
   return 'Chưa xác định';
 };
@@ -203,7 +197,7 @@ export const ProjectInspectionDrawer: React.FC<ProjectInspectionDrawerProps> = (
             <span>
               Công ty mục tiêu:{' '}
               <strong style={{ color: '#0F172A' }}>
-                {formatCompanyName(projectDetail?.targetCompanyName, projectDetail?.targetCompanyProfileId)}
+                {formatCompanyName(projectDetail?.targetCompanyName)}
               </strong>
             </span>
           </div>
@@ -367,7 +361,7 @@ export const ProjectInspectionDrawer: React.FC<ProjectInspectionDrawerProps> = (
                         CÔNG TY MỤC TIÊU
                       </span>
                       <strong style={{ fontSize: '15px', color: '#0F172A', fontWeight: '700' }}>
-                        {formatCompanyName(projectDetail?.targetCompanyName, projectDetail?.targetCompanyProfileId)}
+                        {formatCompanyName(projectDetail?.targetCompanyName)}
                       </strong>
                     </div>
 

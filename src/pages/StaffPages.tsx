@@ -1097,7 +1097,6 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
                 <div key={company.companyId} className="workspace-table-row">
                   <div>
                     <strong>{company.name}</strong>
-                    <small>{company.companyId}</small>
                   </div>
                   <span>{company.industry}</span>
                   <span>{company.city}</span>
