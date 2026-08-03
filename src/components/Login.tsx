@@ -58,19 +58,19 @@ export const Login: React.FC = () => {
     <div className="login-page">
       <div className="login-wrapper">
         <div className="login-left">
-          <div className="login-hero-badge">
+          {/* <div className="login-hero-badge">
             <span>*</span>
             Business Ecosystem Intelligence
-          </div>
+          </div> */}
           <h1 className="login-hero-title">
-            Alliance<br />
-            <span>Partner</span><br />
+            AI-Powered<br />
+            <span>Partnership</span><br />
             Management
           </h1>
           <p className="login-hero-sub">
             APMS connects partner, competitor, and market intelligence into one operational workspace backed by your live backend data.
           </p>
-          <div className="login-hero-features">
+          {/* <div className="login-hero-features">
             {[
               'Relationship map and company profiles',
               'Competitive and partnership intelligence',
@@ -82,7 +82,7 @@ export const Login: React.FC = () => {
                 {feature}
               </div>
             ))}
-          </div>
+          </div> */}
         </div>
 
         <form className="login-card" onSubmit={handleSubmit}>
@@ -99,15 +99,15 @@ export const Login: React.FC = () => {
             </div>
             <div>
               <div className="login-logo-title">APMS</div>
-              <div className="login-logo-sub">Business Intelligence Platform</div>
+              {/* <div className="login-logo-sub">Business Intelligence Platform</div> */}
             </div>
           </div>
 
           <div className="login-form-title">Sign in</div>
-          <div className="login-form-sub">Use your backend account credentials.</div>
+          {/* <div className="login-form-sub">Use your backend account credentials.</div> */}
 
           <div className="form-field">
-            <label className="form-label">Email or username</label>
+            <label className="form-label">Email</label>
             <input
               className="form-input"
               type="text"
