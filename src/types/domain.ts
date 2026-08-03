@@ -230,7 +230,7 @@ export interface UpdateCandidateRequest {
 }
 
 export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED';
-export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'OTHER';
+export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'OTHER';
 
 export interface WorkbenchDocumentResponse extends ImportJobResponse {
   latestExtractionId?: string | null;
@@ -351,7 +351,27 @@ export interface ImportJobResponse {
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
-export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'GENERAL_TASK';
+export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'GENERAL_TASK';
+
+export interface CompanyMemberResearchItem {
+  fullName: string;
+  position: string;
+  imageUrl?: string | null;
+  sourceUrl: string;
+  notes?: string | null;
+}
+
+export interface CompanyMemberResearchDraftResponse {
+  id?: string | null;
+  projectId: number;
+  taskId: number;
+  companyProfileId?: string | null;
+  createdByAccountId?: number | null;
+  submissionId?: number | null;
+  members: CompanyMemberResearchItem[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 
 export interface ProjectTaskResponse {
   id: number;
@@ -416,6 +436,219 @@ export interface ScoreRuleDto {
   description?: string;
   weight?: number;
   active?: boolean;
+}
+
+export type ScoreRole = 'COMPETITOR' | 'PARTNER' | 'POTENTIAL_PARTNER' | 'CUSTOMER' | 'SUPPLIER';
+export type RoleEvaluationStatus =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'REVISION_REQUIRED'
+  | 'APPROVAL_PROCESSING'
+  | 'APPROVED'
+  | 'APPROVAL_FAILED'
+  | 'REJECTED';
+export type EvaluationCompletenessStatus = 'COMPLETE' | 'PARTIAL' | 'INCOMPLETE';
+export type CriterionInputMethod = 'AUTOMATIC_PROPOSAL' | 'MANUAL_REVIEWED' | 'MANUAL_OVERRIDE' | 'AI_ASSISTED' | 'AI_ASSISTED_EDITED';
+export type CriterionSuggestionReviewStatus = 'PENDING' | 'ACCEPTED' | 'EDITED' | 'REJECTED' | 'NEEDS_MORE_DATA';
+
+export interface RoleScoreCriterionRule {
+  criterionKey: string;
+  criterionName?: string | null;
+  weight?: number | string | null;
+  direction?: string | null;
+  required?: boolean | null;
+  displayOrder?: number | null;
+}
+
+export interface RoleScoreRuleSetResponse {
+  id: number;
+  evaluatedRole: ScoreRole;
+  ruleSetVersion?: string | null;
+  weightingMethod?: string | null;
+  weightSource?: string | null;
+  weightVersion?: string | null;
+  active?: boolean | null;
+  criteria?: RoleScoreCriterionRule[];
+}
+
+export interface RoleCriterionInput {
+  criterionKey?: string | null;
+  rawScore?: number | string | null;
+  inputMethod?: CriterionInputMethod | null;
+  explanation?: string | null;
+  evidenceIds?: string[];
+  preparedAt?: string | null;
+  managerConfirmed?: boolean | null;
+  overrideReason?: string | null;
+}
+
+export interface RoleAutomaticSuggestion {
+  criterionKey?: string | null;
+  suggestedRawScore?: number | string | null;
+  suggestionRationale?: string | null;
+  explanation?: string | null;
+  confidence?: number | string | null;
+  evidenceCoverage?: number | string | null;
+  reviewStatus?: CriterionSuggestionReviewStatus | null;
+  validationStatus?: string | null;
+  missingData?: string[];
+  validationWarnings?: string[];
+  calculationWarnings?: string[];
+  evidenceIds?: string[];
+  sourceFieldPaths?: string[];
+  generatedAt?: string | null;
+  modelProvider?: string | null;
+  modelVersion?: string | null;
+}
+
+export interface RoleEvidenceRecord {
+  evidenceId: string;
+  criterionKey?: string | null;
+  sourceType?: string | null;
+  rawDocumentId?: string | null;
+  companyId?: string | null;
+  profileDocumentId?: string | null;
+  profileVersion?: number | null;
+  externalUrl?: string | null;
+  evidenceDate?: string | null;
+  extractedFieldPath?: string | null;
+  evidenceCategory?: string | null;
+  reliability?: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  preparedAt?: string | null;
+  note?: string | null;
+}
+
+export interface RoleEvaluationDraftResponse {
+  id: string;
+  projectId: number;
+  taskId: number;
+  targetCompanyId?: string | null;
+  targetProfileDocumentId?: string | null;
+  targetProfileVersion?: number | null;
+  referenceCompanyId?: string | null;
+  referenceProfileDocumentId?: string | null;
+  referenceProfileVersion?: number | null;
+  evaluatedRole: ScoreRole;
+  ruleSetVersion?: string | null;
+  weightVersion?: string | null;
+  status: RoleEvaluationStatus;
+  criterionInputs?: Record<string, RoleCriterionInput>;
+  automaticSuggestions?: Record<string, RoleAutomaticSuggestion>;
+  criterionEvidence?: Record<string, RoleEvidenceRecord[]>;
+  staleTargetProfile?: boolean | null;
+  staleReferenceProfile?: boolean | null;
+  staleRuleSet?: boolean | null;
+  active?: boolean | null;
+  approvedSnapshotId?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewComment?: string | null;
+}
+
+export interface RoleCriterionReadinessResult {
+  criterionKey: string;
+  sufficiencyStatus?: string | null;
+  missingCategories?: string[];
+  reasons?: string[];
+  evidenceReferenceIds?: string[];
+}
+
+export interface RoleEvaluationReadinessResponse {
+  evaluationId: string;
+  aggregateCompletenessStatus?: EvaluationCompletenessStatus | null;
+  criterionResults?: Record<string, RoleCriterionReadinessResult>;
+  missingSourceCategories?: string[];
+  blockingReasons?: string[];
+  warnings?: string[];
+  staffMaySubmit?: boolean;
+  evaluatedAt?: string | null;
+  sourceSnapshotHash?: string | null;
+}
+
+export interface RoleEvaluationPreviewResponse {
+  label?: 'PREVIEW';
+  criterionScores?: Record<string, number | string>;
+  normalizedCriterionScores?: Record<string, number | string>;
+  completenessStatus?: EvaluationCompletenessStatus | null;
+  missingCriteria?: string[];
+  previewOverallScore?: number | string | null;
+  warnings?: string[];
+}
+
+export interface RoleScoreSnapshotResponse {
+  id: number;
+  targetCompanyProfileId: string;
+  targetProfileVersion?: number | null;
+  referenceCompanyProfileId?: string | null;
+  referenceProfileVersion?: number | null;
+  evaluatedRole: ScoreRole;
+  criterionScores?: Record<string, number | string>;
+  normalizedCriterionScores?: Record<string, number | string>;
+  weightsUsed?: Record<string, number | string>;
+  overallScore?: number | string | null;
+  completenessStatus?: EvaluationCompletenessStatus | null;
+  missingCriteria?: string[];
+  scoreRuleSetVersion?: string | null;
+  weightVersion?: string | null;
+  weightingMethod?: string | null;
+  weightSource?: string | null;
+  calculatedAt?: string | null;
+}
+
+export interface RoleEvaluationVersionCriterionResponse {
+  criterionKey: string;
+  rawScore?: number | string | null;
+  finalRationale?: string | null;
+  inputMethod?: string | null;
+  evidenceReferenceIds?: string[];
+  evidence?: RoleEvaluationVersionEvidenceResponse[];
+  dataSufficiencyStatus?: string | null;
+  missingDataExplanation?: string | null;
+  suggestionReviewStatus?: string | null;
+  staffEdited?: boolean | null;
+  managerFeedback?: string | null;
+  aiConfidence?: number | string | null;
+}
+
+export interface RoleEvaluationVersionEvidenceResponse {
+  evidenceId?: string | null;
+  criterionKey?: string | null;
+  sourceType?: string | null;
+  rawDocumentId?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  projectId?: string | null;
+  taskId?: string | null;
+  evidenceCategory?: string | null;
+  reliability?: string | null;
+  note?: string | null;
+  externalUrl?: string | null;
+}
+
+export interface RoleEvaluationVersionResponse {
+  id: string;
+  evaluationId: string;
+  projectId?: number | null;
+  taskId?: number | null;
+  targetCompanyProfileId: string;
+  targetCompanyId?: string | null;
+  targetCompanyName?: string | null;
+  industries?: string[];
+  evaluatedRole: ScoreRole;
+  versionNumber?: number | null;
+  status?: RoleEvaluationStatus | null;
+  completenessStatus?: EvaluationCompletenessStatus | null;
+  overallScore?: number | string | null;
+  criteria?: Record<string, RoleEvaluationVersionCriterionResponse>;
+  submittedByAccountId?: number | null;
+  submittedAt?: string | null;
+  approvedByAccountId?: number | null;
+  approvedAt?: string | null;
+  reviewComment?: string | null;
+  createdAt?: string | null;
 }
 
 export interface AccountDto {

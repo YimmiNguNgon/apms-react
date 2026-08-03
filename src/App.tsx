@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { UserProvider, useUser, ROLES, ROLE_DEFAULT_PAGE } from './context/UserContext';
+import { ChatNotificationProvider } from './context/ChatNotificationContext';
 import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
@@ -17,6 +18,22 @@ import { KeyMemberDashboard } from './pages/dashboards/KeyMemberDashboard';
 import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
 
 const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
+
+const readActivePageFromLocation = () => {
+  if (typeof window === 'undefined') return '';
+  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
+  if (hashPage) return hashPage;
+  const queryPage = new URLSearchParams(window.location.search).get('page');
+  return queryPage || '';
+};
+
+const writeActivePageToLocation = (page: string) => {
+  if (typeof window === 'undefined' || !page) return;
+  const nextHash = `#${page}`;
+  if (window.location.hash !== nextHash) {
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+  }
+};
 
 // ── Existing pages ──
 import { CompanyList }     from './pages/CompanyList';
@@ -98,10 +115,21 @@ const MainApp: React.FC = () => {
   const { currentUser, loading } = useUser();
   useTheme();
 
-  const [activePage, setActivePage] = useState<string>(() => localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || '');
+  const [activePage, setActivePage] = useState<string>(() =>
+    readActivePageFromLocation() || localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || ''
+  );
   const [notificationToast, setNotificationToast] = useState<{ title: string; body: string } | null>(null);
 
+  const navigateToPage = useCallback((page: string) => {
+    setActivePage(page);
+    if (page) {
+      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, page);
+      writeActivePageToLocation(page);
+    }
+  }, []);
+
   useEffect(() => {
+    if (loading) return;
     if (!currentUser) {
       localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
       setActivePage('');
@@ -110,16 +138,25 @@ const MainApp: React.FC = () => {
 
     if (!activePage || !currentUser.allowedPages.includes(activePage)) {
       const defaultPage = ROLE_DEFAULT_PAGE[currentUser.role];
-      setActivePage(defaultPage);
-      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, defaultPage);
+      navigateToPage(defaultPage);
     }
-  }, [activePage, currentUser]);
+  }, [activePage, currentUser, loading, navigateToPage]);
 
   useEffect(() => {
     if (!currentUser || !activePage) return;
     if (!currentUser.allowedPages.includes(activePage)) return;
     localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, activePage);
+    writeActivePageToLocation(activePage);
   }, [activePage, currentUser]);
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      const page = readActivePageFromLocation();
+      if (page) setActivePage(page);
+    };
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -191,9 +228,9 @@ const MainApp: React.FC = () => {
       case ROLES.ADMIN:      return <AdminDashboard />;
       case ROLES.OWNER:      return <OwnerDashboard />;
       case ROLES.DIRECTOR:   return <DirectorDashboard />;
-      case ROLES.MANAGER:    return <ManagerDashboard setActivePage={setActivePage} />;
-      case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={setActivePage} />;
-      case ROLES.STAFF:      return <StaffDashboard setActivePage={setActivePage} />;
+      case ROLES.MANAGER:    return <ManagerDashboard setActivePage={navigateToPage} />;
+      case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={navigateToPage} />;
+      case ROLES.STAFF:      return <StaffDashboard setActivePage={navigateToPage} />;
       default:               return <DirectorDashboard />;
     }
   };
@@ -212,7 +249,7 @@ const MainApp: React.FC = () => {
           <div style={{ fontSize: 48 }}>🔒</div>
           <h2 style={{ color: 'var(--text-primary)' }}>Không có quyền truy cập</h2>
           <p style={{ color: 'var(--text-muted)' }}>Bạn không có quyền xem trang này.</p>
-          <button className="btn btn-primary" onClick={() => setActivePage(ROLE_DEFAULT_PAGE[currentUser.role])}>
+          <button className="btn btn-primary" onClick={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}>
             ← Về Dashboard
           </button>
         </div>
@@ -221,9 +258,9 @@ const MainApp: React.FC = () => {
 
     switch (activePage) {
       // ── Existing pages ──
-      case 'companies':        return <CompanyList setActivePage={setActivePage} />;
-      case 'company-detail':   return <CompanyDetail setActivePage={setActivePage} />;
-      case 'company-profiles': return <CompanyList setActivePage={setActivePage} />;
+      case 'companies':        return <CompanyList setActivePage={navigateToPage} />;
+      case 'company-detail':   return <CompanyDetail setActivePage={navigateToPage} />;
+      case 'company-profiles': return <CompanyList setActivePage={navigateToPage} />;
       case 'verify':           return <VerifyQueue />;
       case 'validate':         return <ValidationQueue />;
       case 'add-company':      return <AddCompany />;
@@ -247,9 +284,9 @@ const MainApp: React.FC = () => {
       case 'access-control':   return <SystemSettingsPage defaultTab="access-control" />;
 
       // ── Director & Owner pages ──
-      case 'partner-ecosystem':        return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <EcosystemOverview setActivePage={setActivePage} /> : <PartnerEcosystem />;
+      case 'partner-ecosystem':        return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <EcosystemOverview setActivePage={navigateToPage} /> : <PartnerEcosystem />;
       case 'competitor-intelligence':  return <CompetitorIntelligence />;
-      case 'relationship-map':         return <RelationshipMap setActivePage={setActivePage} />;
+      case 'relationship-map':         return <RelationshipMap setActivePage={navigateToPage} />;
       case 'market-opportunities':     return <MarketOpportunities />;
       case 'ai-recommendations':       return <AIRecommendations />;
       case 'strategic-reports':        return currentUser.role === ROLES.DIRECTOR ? <StrategicReportsView /> : <StrategicReports />;
@@ -257,15 +294,15 @@ const MainApp: React.FC = () => {
 
       // ── Manager pages ──
       case 'partner-evaluation':         return <PartnerEvaluation />;
-      case 'company-assignment':         return <CompanyAssignment setActivePage={setActivePage} />;
+      case 'company-assignment':         return <CompanyAssignment setActivePage={navigateToPage} />;
       case 'analysis-history':           return <AnalysisHistory />;
-      case 'risk-monitoring':            return currentUser.role === ROLES.DIRECTOR ? <DirectorRiskMonitoring setActivePage={setActivePage} /> : <RiskMonitoring />;
+      case 'risk-monitoring':            return currentUser.role === ROLES.DIRECTOR ? <DirectorRiskMonitoring setActivePage={navigateToPage} /> : <RiskMonitoring />;
       case 'partner-status':             return <PartnerStatus />;
       case 'suggested-actions-approval': return <ApprovalsPage />;
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
-      case 'project-management':         return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <ProjectsOverview /> : <ProjectManagement setActivePage={setActivePage} />;
-      case 'project-detail':             return <ProjectDetailPage setActivePage={setActivePage} />;
+      case 'project-management':         return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <ProjectsOverview /> : <ProjectManagement setActivePage={navigateToPage} />;
+      case 'project-detail':             return <ProjectDetailPage setActivePage={navigateToPage} />;
 
       // ── Key Member pages ──
       case 'review-extracted-data':    return <ReviewExtractedData />;
@@ -277,13 +314,13 @@ const MainApp: React.FC = () => {
       case 'onboarding-support':       return <OnboardingSupport />;
 
       // ── Staff pages ──
-      case 'my-tasks':            return <MyTasksWorkspace setActivePage={setActivePage} />;
-      case 'upload-documents':    return <UploadDocuments setActivePage={setActivePage} />;
+      case 'my-tasks':            return <MyTasksWorkspace setActivePage={navigateToPage} />;
+      case 'upload-documents':    return <UploadDocuments setActivePage={navigateToPage} />;
       case 'partner-management':  return <PartnerManagement />;
       case 'competitor-management':return <CompetitorWatchlist />;
       case 'ai-extracted-data':   return <AIExtractedData />;
       case 'candidate-review':    return <CompanyValidation staffMode />;
-      case 'search-companies':    return <SearchCompanies setActivePage={setActivePage} />;
+      case 'search-companies':    return <SearchCompanies setActivePage={navigateToPage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;
 
@@ -297,7 +334,7 @@ const MainApp: React.FC = () => {
             <p style={{ color: 'var(--text-muted)', maxWidth: 400 }}>
               Trang này đang trong quá trình phát triển. Các tính năng sẽ sớm được ra mắt.
             </p>
-            <button className="btn btn-primary" onClick={() => setActivePage(ROLE_DEFAULT_PAGE[currentUser.role])}>
+            <button className="btn btn-primary" onClick={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}>
               ← Về Dashboard
             </button>
           </div>
@@ -307,20 +344,22 @@ const MainApp: React.FC = () => {
 
   return (
     <div className="app-container">
-      <Sidebar activePage={activePage} setActivePage={setActivePage} />
-      <div className="main-content">
-        <Topbar activePage={activePage} setActivePage={setActivePage} />
-        <div className="page-container">
-          {renderPage()}
+      <ChatNotificationProvider activePage={activePage} navigateToPage={navigateToPage}>
+        <Sidebar activePage={activePage} setActivePage={navigateToPage} />
+        <div className="main-content">
+          <Topbar activePage={activePage} setActivePage={navigateToPage} />
+          <div className="page-container">
+            {renderPage()}
+          </div>
         </div>
-      </div>
-      <AIAgent />
-      {notificationToast && (
-        <div className="apms-toast success">
-          <strong>{notificationToast.title}</strong>
-          {notificationToast.body && <span>{notificationToast.body}</span>}
-        </div>
-      )}
+        {activePage !== 'system-chat' && <AIAgent />}
+        {notificationToast && (
+          <div className="apms-toast success">
+            <strong>{notificationToast.title}</strong>
+            {notificationToast.body && <span>{notificationToast.body}</span>}
+          </div>
+        )}
+      </ChatNotificationProvider>
     </div>
   );
 };

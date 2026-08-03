@@ -43,6 +43,7 @@ const profileName = (profile: ProfileResponse) =>
 
 const profileRoleLabel = (profile: ProfileResponse) => {
   if (profile.tags?.length) return profile.tags.join(', ');
+  if (profile.reviewStatus === 'VERIFIED') return 'APPROVED';
   return profile.reviewStatus || 'Company profile';
 };
 

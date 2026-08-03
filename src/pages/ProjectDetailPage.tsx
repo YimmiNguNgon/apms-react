@@ -5,25 +5,31 @@ import {
   AlertTriangle,
   ArrowLeft,
   Bot,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   Clock,
   Copy,
+  DollarSign,
   Download,
   Edit3,
   ExternalLink,
   FileText,
   Filter,
   Globe2,
-  Image as ImageIcon,
+  Lightbulb,
   MessageSquare,
   MoreHorizontal,
   Paperclip,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
+  Target,
   Trash2,
+  TrendingUp,
+  type LucideIcon,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -40,12 +46,16 @@ import { projectApi } from '../API/projectApi';
 import { accountApi } from '../API/accountApi';
 import { taskApi } from '../API/taskApi';
 import { candidateApi } from '../API/candidateApi';
+import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
+import { RoleEvaluationWorkspace } from '../components/RoleEvaluationWorkspace';
 import type {
   AiExtractionResult,
   CandidateResponse,
   CandidateStatus,
+  CompanyMemberResearchDraftResponse,
+  CompanyMemberResearchItem,
   CreateProjectTaskRequest,
   MergeCandidateResponse,
   PageResult,
@@ -67,6 +77,7 @@ import type {
 
 const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Members'];
 const SELECTED_PROJECT_STORAGE_KEY = 'apms-selected-project';
+const PROJECT_DETAIL_TAB_STORAGE_KEY = 'apms-project-detail-active-tab';
 
 const priorityClass: Record<TaskPriority, string> = {
   Highest: styles.priorityHighest,
@@ -228,7 +239,7 @@ const candidateReviewTabs: Array<{ id: CandidateReviewTab; label: string; helper
 const managerCandidateTabs: Array<{ id: ManagerCandidateTab; label: string; helper: string }> = [
   { id: 'overview', label: 'Overview', helper: 'Identity and contact' },
   { id: 'swot', label: 'SWOT', helper: 'AI signals' },
-  { id: 'evidence', label: 'Evidence', helper: 'Charts and validation' },
+  { id: 'evidence', label: 'Business Fields', helper: 'Products, markets, customers' },
   { id: 'decision', label: 'Decision', helper: 'Approve or reject' },
 ];
 
@@ -525,6 +536,46 @@ const normalizeUrlItems = (value: unknown): string[] => {
   return normalizeExtractedListValue(value);
 };
 
+const normalizePhoneItems = (value: unknown): string[] => {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => normalizePhoneItems(item))
+      .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+  if (typeof value === 'object') return [candidateField(value, '')].filter(Boolean);
+
+  const raw = String(value).trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return normalizePhoneItems(parsed);
+  } catch {
+    // Keep tolerant parsing for phone values returned as plain text.
+  }
+
+  const withoutBrackets = raw
+    .replace(/^\[\s*/, '')
+    .replace(/\s*\]$/, '')
+    .replace(/^["']|["']$/g, '');
+  const lineItems = withoutBrackets
+    .split(/\r?\n/)
+    .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
+
+  if (lineItems.length > 1) return lineItems;
+  if (withoutBrackets.includes(',')) {
+    return withoutBrackets
+      .split(',')
+      .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+
+  return lineItems;
+};
+
 const urlDomainLabel = (value: string) => {
   try {
     const normalized = value.startsWith('http') ? value : `https://${value}`;
@@ -554,6 +605,22 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
   const messages = Array.isArray(evidence.validationMessages)
     ? evidence.validationMessages.join(', ')
     : evidence.validationMessages;
+  const sources = evidence.sources?.length
+    ? evidence.sources
+    : evidence.sourceFileName
+      ? [{
+          fileName: evidence.sourceFileName,
+          importJobId: evidence.sourceImportJobId,
+          rawDocumentId: evidence.sourceRawDocumentId,
+          extractionId: evidence.sourceExtractionId,
+          confidenceScore: evidence.confidenceScore,
+          evidenceText: evidence.evidenceText,
+          pageNumber: evidence.pageNumber,
+          validationStatus: evidence.validationStatus,
+          validationMessages: evidence.validationMessages,
+          reviewStatus: evidence.reviewStatus,
+        }]
+      : [];
 
   return (
     <div className={styles.itemEvidencePanel}>
@@ -570,6 +637,22 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18 }}
           >
+            {sources.length > 0 && (
+              <div className={styles.itemEvidenceSources}>
+                <span>Used source documents</span>
+                {sources.map((source, index) => (
+                  <article key={`${source.extractionId || source.importJobId || source.fileName}-${index}`}>
+                    <strong>{source.fileName}</strong>
+                    <footer>
+                      {source.pageNumber ? <small>Page {source.pageNumber}</small> : <small>Page unavailable</small>}
+                      {typeof source.confidenceScore === 'number' && <small>{source.confidenceScore}% confidence</small>}
+                      {source.importJobId && <small>Import job #{source.importJobId}</small>}
+                    </footer>
+                    {source.evidenceText && <p>{source.evidenceText}</p>}
+                  </article>
+                ))}
+              </div>
+            )}
             <div>
               <span>Source evidence</span>
               <p>{hasEvidence ? evidence.evidenceText : 'No source quote returned for this field.'}</p>
@@ -577,8 +660,6 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
             <footer>
               <small>{evidence.pageNumber ? `Page ${evidence.pageNumber}` : 'Page unavailable'}</small>
               <small>Confidence: {score}</small>
-              {evidence.validationStatus && <small>Validation: {evidence.validationStatus}</small>}
-              {evidence.reviewStatus && <small>Review: {evidence.reviewStatus}</small>}
             </footer>
             {messages && <strong>{messages}</strong>}
           </motion.div>
@@ -653,7 +734,9 @@ const ExtractedListField: React.FC<{
   showMeta?: boolean;
   onChange: (value: string) => void;
 }> = ({ label, fieldKey, value, evidence, editable = true, showMeta = false, onChange }) => {
-  const items = normalizeExtractedListValue(value, !swotFieldKeys.has(fieldKey));
+  const items = fieldKey === 'phone'
+    ? normalizePhoneItems(value)
+    : normalizeExtractedListValue(value, !swotFieldKeys.has(fieldKey));
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -910,6 +993,52 @@ const ExtractionCurrentValue: React.FC<{
     );
   }
 
+  if (field.key === 'innovation') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <MetricChartPanel title="Innovation" value={value} tone="green" />
+        <EditableKeyValuePanel
+          title="Innovation fields"
+          value={value}
+          placeholderLabel="Technology capability"
+          placeholderValue="Describe technology, R&D, patents, or digital transformation signals"
+          onChange={onChange}
+        />
+      </div>
+    );
+  }
+
+  if (field.key === 'risk') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <EditableKeyValuePanel
+          title="Risk fields"
+          value={value}
+          placeholderLabel="Operational risk"
+          placeholderValue="Describe the risk signal found in the document"
+          onChange={onChange}
+        />
+      </div>
+    );
+  }
+
+  if (field.key === 'compliance') {
+    return (
+      <div className={styles.extractionReadableValue}>
+        <span>Current value</span>
+        <EditableKeyValuePanel
+          title="Compliance fields"
+          value={value}
+          placeholderLabel="Certification"
+          placeholderValue="Describe compliance, governance, certification, or regulation evidence"
+          onChange={onChange}
+        />
+      </div>
+    );
+  }
+
   if (chipFieldKeys.has(field.key) && trimmedValue) {
     const items = splitComma(value);
     return (
@@ -952,6 +1081,123 @@ const ExtractionCurrentValue: React.FC<{
     </label>
   );
 };
+
+const hasExtractedFieldValue = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return Boolean(trimmed && !/^no data$/i.test(trimmed) && !/^n\/a$/i.test(trimmed));
+};
+
+const groupStatusLabel = (score: number | null, visibleFieldCount: number) => {
+  if (visibleFieldCount === 0) return 'No data';
+  if (score === null) return 'Needs review';
+  if (score >= 85) return 'High confidence';
+  if (score >= 70) return 'Medium confidence';
+  return 'Low confidence';
+};
+
+const AiExtractEmptyState: React.FC<{ group: StaffExtractionGroup }> = ({ group }) => {
+  const Icon = group.icon;
+
+  return (
+    <div className={styles.aiExtractEmptyState}>
+      <Icon size={20} />
+      <strong>No information extracted</strong>
+      <span>AI could not find {group.title.toLowerCase()} data in the selected document.</span>
+    </div>
+  );
+};
+
+const AiExtractCard: React.FC<{
+  group: StaffExtractionGroup;
+  field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string };
+  review: StaffExtractionReview;
+  onChange: (key: StaffCandidateEditKey, value: string) => void;
+  onAskAi?: (field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }, review: StaffExtractionReview) => void;
+}> = ({ group, field, review, onChange, onAskAi }) => {
+  const evidence = review.evidence[field.key];
+  const score = evidence?.confidenceScore ?? null;
+  const hasValue = hasExtractedFieldValue(review.edit[field.key]);
+  const Icon = group.icon;
+
+  return (
+    <motion.article
+      className={`${styles.aiExtractCard} ${styles[`aiExtractCard${formatInsightTitle(group.tone)}`] || ''}`}
+      layout
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.18 }}
+    >
+      <header className={styles.aiExtractCardHeader}>
+        <div className={styles.aiExtractCardTitleRow}>
+          <span className={styles.aiExtractIcon}><Icon size={18} /></span>
+          <div>
+            <small>{group.eyebrow}</small>
+            <h4>{field.label}</h4>
+          </div>
+        </div>
+        <div className={styles.aiExtractCardActions}>
+          <button
+            className={styles.aiFieldAssistButton}
+            type="button"
+            onClick={() => onAskAi?.(field, review)}
+            title={`Ask AI to research ${field.label}`}
+          >
+            <Sparkles size={14} /> AI
+          </button>
+          <span className={`${styles.aiExtractStatusBadge} ${styles[`aiExtractStatus${formatInsightTitle(confidenceTone(score))}`] || ''}`}>
+            {score === null ? groupStatusLabel(score, hasValue ? 1 : 0) : `${score}%`}
+          </span>
+        </div>
+      </header>
+
+      <p className={styles.aiExtractCardDescription}>
+        <strong>{group.title}</strong>
+        {group.description}
+      </p>
+
+      <div className={styles.aiExtractCardContent}>
+        <ExtractionCurrentValue
+          field={field}
+          value={review.edit[field.key]}
+          onChange={(value) => onChange(field.key, value)}
+        />
+        <EvidencePanel evidence={evidence} />
+        {!hasValue && !evidence && <AiExtractEmptyState group={group} />}
+      </div>
+    </motion.article>
+  );
+};
+
+const StaffAiExtractResult: React.FC<{
+  review: StaffExtractionReview;
+  onChange: (key: StaffCandidateEditKey, value: string) => void;
+  onAskAi?: (field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }, review: StaffExtractionReview) => void;
+}> = ({ review, onChange, onAskAi }) => (
+  <div className={styles.aiExtractResult}>
+    <div className={styles.aiExtractSummary}>
+      <div>
+        <span>AI extract result</span>
+        <strong>Field-by-field review workspace</strong>
+      </div>
+    </div>
+    <div className={styles.aiExtractGrid}>
+      {staffExtractionGroups.flatMap((group) =>
+        group.fields
+          .map((key) => staffReviewFieldByKey.get(key))
+          .filter((field): field is NonNullable<typeof field> => Boolean(field))
+          .map((field) => (
+            <AiExtractCard
+              key={`${review.id}-${group.id}-${field.key}`}
+              group={group}
+              field={field}
+              review={review}
+              onChange={onChange}
+              onAskAi={onAskAi}
+            />
+          ))
+      )}
+    </div>
+  </div>
+);
 
 const CandidateInsightField: React.FC<{ title: string; data: unknown }> = ({ title, data }) => {
   const items = toInsightItems(data);
@@ -1230,54 +1476,6 @@ const TaskDetailModal: React.FC<{ task: ProjectTask | null; onClose: () => void 
           </section>
 
           <section className={styles.drawerSection}>
-            <h3><Sparkles size={16} /> AI Information</h3>
-            <div className={styles.aiPanel}>
-              <p><strong>Summary:</strong> {task.aiSummary}</p>
-              <p><strong>Risk analysis:</strong> {task.aiRiskAnalysis}</p>
-              <strong>Suggestions</strong>
-              <ul>{task.aiSuggestions.map((item) => <li key={item}>{item}</li>)}</ul>
-              <strong>Recommended next steps</strong>
-              <ul>{task.aiNextSteps.map((item) => <li key={item}>{item}</li>)}</ul>
-            </div>
-          </section>
-
-          <section className={styles.drawerSection}>
-            <h3><Paperclip size={16} /> Attachments</h3>
-            <ul className={styles.attachmentList}>
-              {task.attachments.length === 0 && <li className={styles.empty}>No attachments yet</li>}
-              {task.attachments.map((file) => (
-                <li className={styles.attachmentItem} key={file.id}>
-                  <span className={styles.attachmentIcon}>{file.type === 'image' ? <ImageIcon size={18} /> : <FileText size={18} />}</span>
-                  <div>
-                    <strong>{file.name}</strong>
-                    <div className={styles.keyLine}>{file.size}</div>
-                    {file.preview && <img className={styles.imagePreview} src={file.preview} alt={file.name} />}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className={styles.drawerSection}>
-            <h3><MessageSquare size={16} /> Comments</h3>
-            <ul className={styles.commentList}>
-              {task.comments.map((comment) => (
-                <li className={styles.commentItem} key={comment.id}>
-                  <Avatar small name={comment.author.name} initials={comment.author.avatar} color={comment.author.color} />
-                  <div className={styles.commentBubble}>
-                    <strong>{comment.author.name}</strong><span>{comment.createdAt}</span>
-                    <p>{comment.message}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className={styles.commentBox}>
-              <input placeholder="Add a comment, use @ to mention someone..." />
-              <button className={`${styles.button} ${styles.primaryButton}`} type="button">Add</button>
-            </div>
-          </section>
-
-          <section className={styles.drawerSection}>
             <h3><Activity size={16} /> Activity History</h3>
             <ul className={styles.historyList}>
               {task.activity.map((item) => (
@@ -1334,6 +1532,24 @@ interface StaffExtractionEvidence {
   validationStatus?: string | null;
   validationMessages?: string | string[] | null;
   reviewStatus?: string | null;
+  sourceFileName?: string | null;
+  sourceImportJobId?: number | null;
+  sourceRawDocumentId?: string | null;
+  sourceExtractionId?: string | null;
+  sources?: StaffExtractionEvidenceSource[];
+}
+
+interface StaffExtractionEvidenceSource {
+  fileName: string;
+  importJobId?: number | null;
+  rawDocumentId?: string | null;
+  extractionId?: string | null;
+  confidenceScore?: number | null;
+  evidenceText?: string | null;
+  pageNumber?: number | null;
+  validationStatus?: string | null;
+  validationMessages?: string | string[] | null;
+  reviewStatus?: string | null;
 }
 
 interface StaffExtractionReview {
@@ -1345,6 +1561,32 @@ interface StaffExtractionReview {
   evidenceCoverageRate?: number | null;
   evidence: Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>>;
   edit: StaffCandidateEditForm;
+}
+
+interface FieldAiSourceReference {
+  documentId: string;
+  documentTitle: string;
+  snippet: string;
+  relevanceScore: number;
+}
+
+interface FieldAiAssistState {
+  fieldKey: StaffCandidateEditKey;
+  fieldLabel: string;
+  companyName: string;
+  currentValue: string;
+  prompt: string;
+  answer?: string;
+  sessionId?: string;
+  sources?: FieldAiSourceReference[];
+  suggestedActions?: string[];
+}
+
+interface FieldAiChatResponse {
+  sessionId?: string;
+  answer?: string;
+  sources?: FieldAiSourceReference[];
+  suggestedActions?: string[];
 }
 
 const staffReviewFields: Array<{ key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }> = [
@@ -1361,11 +1603,113 @@ const staffReviewFields: Array<{ key: StaffCandidateEditKey; label: string; mult
   { key: 'phone', label: 'Hotline' },
   { key: 'address', label: 'Address', multiline: true },
   { key: 'companySize', label: 'Company size' },
+  { key: 'financial', label: 'Financial', multiline: true, placeholder: 'Revenue: ...\nProfit margin: ...\nFinancial stability: ...' },
+  { key: 'innovation', label: 'Innovation', multiline: true, placeholder: 'Technology capability: ...\nR&D investment percent: ...' },
+  { key: 'risk', label: 'Risk', multiline: true, placeholder: 'Financial risk: ...\nOperational risk: ...\nOverall risk level: ...' },
+  { key: 'compliance', label: 'Compliance', multiline: true, placeholder: 'Legal compliance: ...\nCertifications: ...\nGovernance: ...' },
   { key: 'strengths', label: 'Strengths', multiline: true, placeholder: 'One item per line' },
   { key: 'opportunities', label: 'Opportunities', multiline: true, placeholder: 'One item per line' },
   { key: 'weaknesses', label: 'Weaknesses', multiline: true, placeholder: 'One item per line' },
   { key: 'threats', label: 'Threats', multiline: true, placeholder: 'One item per line' },
 ];
+
+type StaffExtractionGroupTone = 'blue' | 'green' | 'amber' | 'red' | 'slate';
+
+interface StaffExtractionGroup {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  icon: LucideIcon;
+  tone: StaffExtractionGroupTone;
+  fields: StaffCandidateEditKey[];
+}
+
+const staffExtractionGroups: StaffExtractionGroup[] = [
+  {
+    id: 'company-overview',
+    title: 'Company Overview',
+    eyebrow: 'Identity',
+    description: 'Legal identity and contact data extracted from the document.',
+    icon: Building2,
+    tone: 'blue',
+    fields: ['legalName', 'taxId', 'website', 'email', 'phone', 'address'],
+  },
+  {
+    id: 'business-information',
+    title: 'Business Information',
+    eyebrow: 'Business',
+    description: 'What the company does, sells, and who it serves.',
+    icon: Target,
+    tone: 'blue',
+    fields: ['industry', 'businessModel', 'products', 'markets', 'targetCustomers', 'employeeTier', 'companySize'],
+  },
+  {
+    id: 'financial',
+    title: 'Financial',
+    eyebrow: 'Numbers',
+    description: 'Revenue, profit, growth, funding, and financial stability signals.',
+    icon: DollarSign,
+    tone: 'green',
+    fields: ['financial'],
+  },
+  {
+    id: 'innovation',
+    title: 'Innovation',
+    eyebrow: 'Capability',
+    description: 'Technology, R&D, patents, products, and transformation signals.',
+    icon: Lightbulb,
+    tone: 'green',
+    fields: ['innovation'],
+  },
+  {
+    id: 'strengths',
+    title: 'Strengths',
+    eyebrow: 'SWOT',
+    description: 'Positive signals extracted for business review.',
+    icon: TrendingUp,
+    tone: 'green',
+    fields: ['strengths'],
+  },
+  {
+    id: 'weaknesses',
+    title: 'Weaknesses',
+    eyebrow: 'SWOT',
+    description: 'Internal limitations or weak signals found by AI.',
+    icon: AlertTriangle,
+    tone: 'amber',
+    fields: ['weaknesses'],
+  },
+  {
+    id: 'opportunities',
+    title: 'Opportunities',
+    eyebrow: 'SWOT',
+    description: 'Potential growth or partnership opportunities.',
+    icon: Sparkles,
+    tone: 'blue',
+    fields: ['opportunities'],
+  },
+  {
+    id: 'risk',
+    title: 'Risk',
+    eyebrow: 'Risk',
+    description: 'Operational, legal, financial, market, and reputation risks.',
+    icon: AlertTriangle,
+    tone: 'red',
+    fields: ['risk', 'threats'],
+  },
+  {
+    id: 'compliance',
+    title: 'Compliance',
+    eyebrow: 'Governance',
+    description: 'Legal, tax, certification, governance, and regulatory signals.',
+    icon: ShieldCheck,
+    tone: 'slate',
+    fields: ['compliance'],
+  },
+];
+
+const staffReviewFieldByKey = new Map(staffReviewFields.map((field) => [field.key, field]));
 
 const extractionEvidenceAliases: Record<StaffCandidateEditKey, string[]> = {
   legalName: ['legalName', 'identity.legalName'],
@@ -2045,7 +2389,7 @@ const candidateToEditForm = (candidate: CandidateResponse | null): StaffCandidat
     taxId: identity?.taxCode || identity?.taxId || '',
     website: listJoinValue(normalizeUrlItems(contact?.website)),
     email: listJoinValue(normalizeExtractedListValue(contact?.emails, true)),
-    phone: listJoinValue(normalizeExtractedListValue(contact?.phones, true)),
+    phone: listJoinValue(normalizePhoneItems(contact?.phones)),
     address: formatAddressValue(contact?.addresses),
     industry: listJoinValue(normalizeExtractedListValue(business?.industries, true)),
     businessModel: business?.businessModel || '',
@@ -2078,7 +2422,7 @@ const extractionToEditForm = (extraction: Record<string, any>): StaffCandidateEd
     taxId: data?.taxCode || data?.taxId || '',
     website: listJoinValue(normalizeUrlItems(data?.website)),
     email: listJoinValue(normalizeExtractedListValue(data?.email, true)),
-    phone: listJoinValue(normalizeExtractedListValue(data?.phone, true)),
+    phone: listJoinValue(normalizePhoneItems(data?.phone)),
     address: data?.address || formatAddressValue(data?.addresses),
     industry: listJoinValue(normalizeExtractedListValue(data?.industries, true)),
     businessModel: data?.businessModel || '',
@@ -2137,24 +2481,62 @@ const candidateConfidenceClass = (candidate: CandidateResponse) => {
   return styles.candidateConfidenceLow;
 };
 
-const normalizeEvidenceField = (field: Record<string, any>): StaffExtractionEvidence => ({
-  fieldName: field.fieldName || field.name || 'Unknown field',
-  extractedValue: formatEvidenceValue(field.fieldName || field.name || 'Unknown field', field.value ?? field.extractedValue),
-  confidenceScore: normalizeConfidenceScore(field.confidence ?? field.confidenceScore),
-  evidenceText: field.evidenceText || field.evidence || field.sourceText || null,
-  pageNumber: typeof field.pageNumber === 'number' ? field.pageNumber : null,
-  validationStatus: field.validationStatus || null,
-  validationMessages: field.validationMessages || null,
-  reviewStatus: field.reviewStatus || null,
-});
+const normalizeEvidenceField = (
+  field: Record<string, any>,
+  source?: {
+    fileName?: string;
+    importJobId?: number;
+    rawDocumentId?: string;
+    extractionId?: string;
+  }
+): StaffExtractionEvidence => {
+  const fieldName = field.fieldName || field.name || 'Unknown field';
+  const normalized: StaffExtractionEvidence = {
+    fieldName,
+    extractedValue: formatEvidenceValue(fieldName, field.value ?? field.extractedValue),
+    confidenceScore: normalizeConfidenceScore(field.confidence ?? field.confidenceScore),
+    evidenceText: field.evidenceText || field.evidence || field.sourceText || null,
+    pageNumber: typeof field.pageNumber === 'number' ? field.pageNumber : null,
+    validationStatus: field.validationStatus || null,
+    validationMessages: field.validationMessages || null,
+    reviewStatus: field.reviewStatus || null,
+    sourceFileName: source?.fileName || null,
+    sourceImportJobId: source?.importJobId || null,
+    sourceRawDocumentId: source?.rawDocumentId || null,
+    sourceExtractionId: source?.extractionId || null,
+  };
 
-const extractionToEvidenceMap = (extraction: Record<string, any>): Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>> => {
+  normalized.sources = source?.fileName ? [{
+    fileName: source.fileName,
+    importJobId: source.importJobId,
+    rawDocumentId: source.rawDocumentId,
+    extractionId: source.extractionId,
+    confidenceScore: normalized.confidenceScore,
+    evidenceText: normalized.evidenceText,
+    pageNumber: normalized.pageNumber,
+    validationStatus: normalized.validationStatus,
+    validationMessages: normalized.validationMessages,
+    reviewStatus: normalized.reviewStatus,
+  }] : [];
+
+  return normalized;
+};
+
+const extractionToEvidenceMap = (
+  extraction: Record<string, any>,
+  source?: {
+    fileName?: string;
+    importJobId?: number;
+    rawDocumentId?: string;
+    extractionId?: string;
+  }
+): Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>> => {
   const rawFieldResults = extraction.fieldResults && typeof extraction.fieldResults === 'object'
     ? Object.values(extraction.fieldResults as Record<string, Record<string, any>>)
     : [];
   const fieldResults = rawFieldResults
     .filter((field): field is Record<string, any> => Boolean(field && typeof field === 'object'))
-    .map(normalizeEvidenceField);
+    .map((field) => normalizeEvidenceField(field, source));
   const byFieldName = new Map(fieldResults.map((field) => [field.fieldName, field]));
 
   return staffReviewFields.reduce<Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>>>((map, field) => {
@@ -2168,6 +2550,184 @@ const extractionToEvidenceMap = (extraction: Record<string, any>): Partial<Recor
 
     return map;
   }, {});
+};
+
+const normalizedCompareValue = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const uniqueTextItems = (items: string[]) => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const normalized = normalizedCompareValue(item);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+};
+
+const mergeStructuredLines = (values: string[]) => {
+  const rows = new Map<string, string>();
+  values.flatMap(splitLines).forEach((line) => {
+    const separatorIndex = line.indexOf(':');
+    const key = separatorIndex >= 0 ? normalizedCompareValue(line.slice(0, separatorIndex)) : normalizedCompareValue(line);
+    if (!key || rows.has(key)) return;
+    rows.set(key, line);
+  });
+  return Array.from(rows.values()).join('\n');
+};
+
+const mergeProductsReviewValue = (values: string[]) => {
+  const rows = new Map<string, string>();
+  values
+    .flatMap((value) => normalizeExtractedListValue(value))
+    .forEach((line) => {
+      const [name] = line.split('|').map((part) => part.trim());
+      const key = normalizedCompareValue(name || line);
+      if (!key || rows.has(key)) return;
+      rows.set(key, line);
+    });
+  return Array.from(rows.values()).join('\n');
+};
+
+const bestSingleValue = (values: string[]) => {
+  const unique = uniqueTextItems(values.filter(hasExtractedFieldValue));
+  if (unique.length === 0) return '';
+  return unique.sort((a, b) => b.length - a.length)[0];
+};
+
+const mergeReviewFieldValue = (key: StaffCandidateEditKey, values: string[]) => {
+  const availableValues = values.filter(hasExtractedFieldValue);
+  if (availableValues.length === 0) return '';
+
+  if (key === 'website') return listJoinValue(uniqueTextItems(availableValues.flatMap(normalizeUrlItems)));
+  if (key === 'phone') return listJoinValue(uniqueTextItems(availableValues.flatMap(normalizePhoneItems)));
+  if (key === 'products') return mergeProductsReviewValue(availableValues);
+  if (editableListFieldKeys.has(key) || chipFieldKeys.has(key) || key === 'keyPeople') {
+    return listJoinValue(uniqueTextItems(availableValues.flatMap((value) => normalizeExtractedListValue(value, !swotFieldKeys.has(key)))));
+  }
+  if (['financial', 'market', 'innovation', 'risk', 'compliance', 'validation'].includes(key)) {
+    return mergeStructuredLines(availableValues);
+  }
+  if (key === 'businessModel') {
+    return uniqueTextItems(availableValues.flatMap(splitLines)).join('\n');
+  }
+
+  return bestSingleValue(availableValues);
+};
+
+const mergeFieldEvidence = (
+  key: StaffCandidateEditKey,
+  reviews: StaffExtractionReview[]
+): StaffExtractionEvidence | undefined => {
+  const evidenceItems = reviews
+    .reduce<Array<{ evidence?: StaffExtractionEvidence; source: StaffExtractionEvidenceSource }>>((items, review) => {
+      const evidence = review.evidence[key];
+      const hasValue = hasExtractedFieldValue(review.edit[key]);
+      if (!evidence && !hasValue) return items;
+
+      const source: StaffExtractionEvidenceSource = {
+        fileName: evidence?.sourceFileName || review.fileName,
+        importJobId: evidence?.sourceImportJobId ?? review.importJobId ?? null,
+        rawDocumentId: evidence?.sourceRawDocumentId ?? review.rawDocumentId ?? null,
+        extractionId: evidence?.sourceExtractionId ?? review.id,
+        confidenceScore: evidence?.confidenceScore ?? null,
+        evidenceText: evidence?.evidenceText || null,
+        pageNumber: evidence?.pageNumber ?? null,
+        validationStatus: evidence?.validationStatus || null,
+        validationMessages: evidence?.validationMessages || null,
+        reviewStatus: evidence?.reviewStatus || null,
+      };
+
+      items.push({
+        evidence,
+        source,
+      });
+      return items;
+    }, []);
+
+  if (evidenceItems.length === 0) return undefined;
+
+  const sources = uniqueTextItems(evidenceItems.map((item) => item.source.fileName))
+    .map((fileName) => evidenceItems.find((item) => item.source.fileName === fileName)?.source)
+    .filter((source): source is StaffExtractionEvidenceSource => Boolean(source));
+  const bestEvidence = evidenceItems
+    .map((item) => item.evidence)
+    .filter((item): item is StaffExtractionEvidence => Boolean(item))
+    .sort((a, b) => (b.confidenceScore ?? -1) - (a.confidenceScore ?? -1))[0];
+  const evidenceText = sources
+    .map((source) => source.evidenceText ? `${source.fileName}: ${source.evidenceText}` : `${source.fileName}: No source quote returned.`)
+    .join('\n\n');
+
+  return {
+    fieldName: bestEvidence?.fieldName || key,
+    extractedValue: bestEvidence?.extractedValue,
+    confidenceScore: bestEvidence?.confidenceScore ?? null,
+    evidenceText,
+    pageNumber: bestEvidence?.pageNumber ?? null,
+    validationStatus: bestEvidence?.validationStatus || null,
+    validationMessages: bestEvidence?.validationMessages || null,
+    reviewStatus: bestEvidence?.reviewStatus || null,
+    sourceFileName: sources[0]?.fileName || null,
+    sourceImportJobId: sources[0]?.importJobId ?? null,
+    sourceRawDocumentId: sources[0]?.rawDocumentId ?? null,
+    sourceExtractionId: sources[0]?.extractionId ?? null,
+    sources,
+  };
+};
+
+const mergeStaffExtractionReviews = (reviews: StaffExtractionReview[]): StaffExtractionReview | null => {
+  if (reviews.length === 0) return null;
+  const edit = staffReviewFields.reduce<StaffCandidateEditForm>((form, field) => ({
+    ...form,
+    [field.key]: mergeReviewFieldValue(field.key, reviews.map((review) => review.edit[field.key])),
+  }), { ...emptyStaffCandidateEdit });
+  const evidence = staffReviewFields.reduce<Partial<Record<StaffCandidateEditKey, StaffExtractionEvidence>>>((map, field) => {
+    const mergedEvidence = mergeFieldEvidence(field.key, reviews);
+    if (mergedEvidence) map[field.key] = mergedEvidence;
+    return map;
+  }, {});
+  const coverageScores = reviews
+    .map((review) => review.evidenceCoverageRate)
+    .filter((score): score is number => typeof score === 'number');
+
+  return {
+    id: reviews.map((review) => review.id).join('|'),
+    importJobId: reviews[0]?.importJobId,
+    rawDocumentId: reviews[0]?.rawDocumentId,
+    fileName: `Merged from ${reviews.length} document(s)`,
+    qualityStatus: reviews.every((review) => review.qualityStatus === 'REVIEWED') ? 'REVIEWED' : 'Pending staff review',
+    evidenceCoverageRate: coverageScores.length
+      ? Math.round(coverageScores.reduce((sum, score) => sum + score, 0) / coverageScores.length)
+      : null,
+    evidence,
+    edit,
+  };
+};
+
+const buildFieldAiAssistPrompt = (
+  companyName: string,
+  fieldLabel: string,
+  currentValue: string,
+  evidence?: StaffExtractionEvidence
+) => {
+  const sourceNames = evidence?.sources?.map((source) => source.fileName).filter(Boolean) ?? [];
+  const sourceSummary = uniqueTextItems(sourceNames).join(', ') || evidence?.sourceFileName || 'No source document attached';
+  const valueText = currentValue.trim() || 'No current value has been extracted yet.';
+  const evidenceText = evidence?.evidenceText?.trim() || 'No extracted evidence text is available for this field.';
+
+  return [
+    `Please help verify and enrich the "${fieldLabel}" field for company "${companyName}".`,
+    '',
+    'Task:',
+    '- Search reliable public/company information if your environment supports web research.',
+    '- If live web search is not available, clearly say so and answer only from APMS/project context.',
+    '- Return a concise, staff-friendly answer with the recommended value, supporting reason, source names or URLs, and any uncertainty.',
+    '',
+    `Current extracted value:\n${valueText}`,
+    '',
+    `Current APMS evidence/source documents:\n${sourceSummary}`,
+    '',
+    `Evidence text:\n${evidenceText}`,
+  ].join('\n');
 };
 
 const confidenceTone = (score?: number | null) => {
@@ -2286,9 +2846,13 @@ const buildExtractedCompanyDataPayload = (form: StaffCandidateEditForm) => ({
   employeeTier: form.employeeTier.trim() || null,
   website: normalizeUrlItems(form.website).join(', ') || null,
   email: normalizeExtractedListValue(form.email, true),
-  phone: normalizeExtractedListValue(form.phone, true),
+  phone: normalizePhoneItems(form.phone),
   address: form.address.trim() || null,
   companySize: form.companySize.trim() || null,
+  financial: parseTextObject('Financial', form.financial, financialKeyMap),
+  innovation: parseTextObject('Innovation', form.innovation, innovationKeyMap, ['techStack', 'technologyCapabilities']),
+  risk: parseTextObject('Risk', form.risk, riskKeyMap),
+  compliance: parseTextObject('Compliance', form.compliance, complianceKeyMap),
   strengths: normalizeExtractedListValue(form.strengths),
   weaknesses: normalizeExtractedListValue(form.weaknesses),
   opportunities: normalizeExtractedListValue(form.opportunities),
@@ -2311,7 +2875,7 @@ const buildCandidateUpdatePayload = (form: StaffCandidateEditForm): UpdateCandid
   contact: {
     website: normalizeUrlItems(form.website).join(', ') || null,
     emails: normalizeExtractedListValue(form.email, true),
-    phones: normalizeExtractedListValue(form.phone, true),
+    phones: normalizePhoneItems(form.phone),
     addresses: form.address.trim() ? [{ fullAddress: form.address.trim() }] : [],
   },
   companySize: {
@@ -2325,6 +2889,8 @@ const buildCandidateUpdatePayload = (form: StaffCandidateEditForm): UpdateCandid
   },
   financial: parseTextObject('Financial', form.financial, financialKeyMap),
   innovation: parseTextObject('Innovation', form.innovation, innovationKeyMap, ['techStack', 'technologyCapabilities']),
+  risk: parseTextObject('Risk', form.risk, riskKeyMap),
+  compliance: parseTextObject('Compliance', form.compliance, complianceKeyMap),
 });
 
 const taskTypeText: Record<TaskType, { title: string; description: string; steps: string[] }> = {
@@ -2335,13 +2901,18 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
   },
   COMPANY_DATA_PREPARATION: {
     title: 'Company data preparation',
-    description: 'Upload evidence, run AI extraction, create a candidate draft, correct data, then submit to manager.',
-    steps: ['Start work', 'Upload evidence', 'AI extraction', 'Candidate draft', 'Submit review'],
+    description: 'Select project documents, run AI extraction, create a candidate draft, correct data, then submit to manager.',
+    steps: ['AI extraction', 'Candidate draft', 'Submit review'],
   },
   ROLE_EVALUATION: {
     title: 'Role evaluation',
     description: 'Review the company context, prepare evaluation notes, attach supporting files, then submit the evaluation.',
     steps: ['Start work', 'Review context', 'Prepare evaluation', 'Submit review'],
+  },
+  COMPANY_MEMBER_RESEARCH: {
+    title: 'Company member research',
+    description: 'Research leadership and key company members, record sources, save a draft, then submit it for manager review.',
+    steps: ['Start work', 'Review target', 'Add members', 'Submit review'],
   },
   GENERAL_TASK: {
     title: 'General task',
@@ -2350,11 +2921,154 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
   },
 };
 
+const emptyCompanyMemberForm: CompanyMemberResearchItem = {
+  fullName: '',
+  position: '',
+  imageUrl: '',
+  sourceUrl: '',
+  notes: '',
+};
+
+type CompanyMemberLayerId = 'board' | 'executive' | 'management' | 'other';
+
+const companyMemberLayerMeta: Record<CompanyMemberLayerId, { title: string; description: string }> = {
+  board: {
+    title: 'Board of directors',
+    description: 'Chairperson, board members, and governance representatives.',
+  },
+  executive: {
+    title: 'Executive management',
+    description: 'CEO, general director, CFO, CTO, and executive operators.',
+  },
+  management: {
+    title: 'Functional leaders',
+    description: 'Department heads, managers, founders, and public representatives.',
+  },
+  other: {
+    title: 'Other verified members',
+    description: 'People that do not clearly belong to another leadership layer.',
+  },
+};
+
+const companyMemberInitials = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return `${Array.from(words[0])[0] || ''}${Array.from(words[words.length - 1])[0] || ''}`.toUpperCase();
+  return Array.from(name.trim()).slice(0, 2).join('').toUpperCase() || 'NA';
+};
+
+const companyMemberLayerId = (position: string): CompanyMemberLayerId => {
+  const normalized = position.toLowerCase();
+  if (/(hđqt|hdqt|hội đồng|hoi dong|board|chairman|chairwoman|chairperson)/i.test(normalized)) return 'board';
+  if (/(ceo|cfo|coo|cto|chief|tổng giám|tong giam|phó tổng|pho tong|general director|giám đốc|giam doc|president|kế toán trưởng|ke toan truong)/i.test(normalized)) return 'executive';
+  if (/(founder|co-founder|manager|head|leader|trưởng|truong|phó|pho|director|representative|đại diện|dai dien)/i.test(normalized)) return 'management';
+  return 'other';
+};
+
+const groupCompanyMemberLayers = (members: CompanyMemberResearchItem[]) => {
+  const buckets: Record<CompanyMemberLayerId, CompanyMemberResearchItem[]> = {
+    board: [],
+    executive: [],
+    management: [],
+    other: [],
+  };
+  members.forEach((member) => buckets[companyMemberLayerId(member.position || '')].push(member));
+  return (Object.keys(buckets) as CompanyMemberLayerId[])
+    .map((id) => ({ id, ...companyMemberLayerMeta[id], members: buckets[id] }))
+    .filter((layer) => layer.members.length > 0);
+};
+
+const CompanyMemberLayerCard: React.FC<{
+  member: CompanyMemberResearchItem;
+  variant?: 'lead' | 'compact';
+  statusLabel?: string;
+  actions?: React.ReactNode;
+}> = ({ member, variant = 'compact', statusLabel, actions }) => (
+  <article className={`${styles.memberLayerCard} ${variant === 'lead' ? styles.memberLayerLeadCard : ''}`}>
+    <div className={styles.memberLayerAvatar}>
+      {member.imageUrl ? (
+        <img src={member.imageUrl} alt={member.fullName} />
+      ) : (
+        <span>{companyMemberInitials(member.fullName)}</span>
+      )}
+    </div>
+    <div className={styles.memberLayerInfo}>
+      <strong>{member.fullName || 'Unnamed member'}</strong>
+      <span>{member.position || 'Position not provided'}</span>
+      {member.notes && <p>{member.notes}</p>}
+      <div className={styles.memberLayerFooter}>
+        {member.sourceUrl ? (
+          <a href={member.sourceUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={14} /> Source
+          </a>
+        ) : (
+          <small>No source URL</small>
+        )}
+        {statusLabel && <small>{statusLabel}</small>}
+      </div>
+    </div>
+    {actions && <div className={styles.memberLayerActions}>{actions}</div>}
+  </article>
+);
+
+const CompanyMemberLayerBoard: React.FC<{
+  members: CompanyMemberResearchItem[];
+  emptyText: string;
+  statusLabel?: string;
+  renderActions?: (member: CompanyMemberResearchItem, index: number) => React.ReactNode;
+}> = ({ members, emptyText, statusLabel, renderActions }) => {
+  const layers = groupCompanyMemberLayers(members);
+  const memberIndex = (target: CompanyMemberResearchItem) => members.findIndex((member) => member === target);
+
+  if (layers.length === 0) return <div className={styles.empty}>{emptyText}</div>;
+
+  return (
+    <div className={styles.memberLayerBoard}>
+      {layers.map((layer) => {
+        const [lead, ...rest] = layer.members;
+        return (
+          <section className={styles.memberLayerSection} key={layer.id}>
+            <div className={styles.memberLayerSectionHead}>
+              <div>
+                <h4>{layer.title}</h4>
+                <p>{layer.description}</p>
+              </div>
+              <span>{layer.members.length} member(s)</span>
+            </div>
+            <div className={styles.memberLayerGrid}>
+              <CompanyMemberLayerCard
+                member={lead}
+                variant="lead"
+                statusLabel={statusLabel}
+                actions={renderActions?.(lead, memberIndex(lead))}
+              />
+              {rest.length > 0 && (
+                <div className={styles.memberLayerCompactGrid}>
+                  {rest.map((member) => {
+                    const index = memberIndex(member);
+                    return (
+                      <CompanyMemberLayerCard
+                        member={member}
+                        key={`${member.fullName}-${member.position}-${index}`}
+                        statusLabel={statusLabel}
+                        actions={renderActions?.(member, index)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+};
+
 export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActivePage }) => {
   const { currentUser } = useUser();
   const isManager = currentUser?.role === ROLES.MANAGER || currentUser?.role === ROLES.OWNER || currentUser?.role === ROLES.ADMIN;
   const isStaffView = currentUser?.role === ROLES.STAFF || currentUser?.role === ROLES.KEY_MEMBER;
-  const [activeTab, setActiveTab] = useState('Kanban Board');
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem(PROJECT_DETAIL_TAB_STORAGE_KEY) || 'Kanban Board');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [apiTasks, setApiTasks] = useState<ProjectTaskResponse[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -2365,6 +3079,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null);
   const [selectedStaffTask, setSelectedStaffTask] = useState<ProjectTaskResponse | null>(null);
   const [selectedManagerReviewTask, setSelectedManagerReviewTask] = useState<ProjectTaskResponse | null>(null);
+  const [cancelTaskConfirmOpen, setCancelTaskConfirmOpen] = useState(false);
+  const [cancelTaskLoading, setCancelTaskLoading] = useState(false);
   const [candidateReviewTaskContext, setCandidateReviewTaskContext] = useState<{
     projectId: number;
     taskId: number;
@@ -2388,6 +3104,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [extractingSelectedDocuments, setExtractingSelectedDocuments] = useState(false);
   const [aiProgress, setAiProgress] = useState<{ percent: number; label: string } | null>(null);
   const [pendingExtractionReviews, setPendingExtractionReviews] = useState<StaffExtractionReview[]>([]);
+  const [lastExtractionReviews, setLastExtractionReviews] = useState<StaffExtractionReview[]>([]);
+  const mergedPendingExtractionReview = useMemo(
+    () => mergeStaffExtractionReviews(pendingExtractionReviews),
+    [pendingExtractionReviews]
+  );
+  const [fieldAiAssist, setFieldAiAssist] = useState<FieldAiAssistState | null>(null);
+  const [fieldAiLoading, setFieldAiLoading] = useState(false);
+  const [fieldAiError, setFieldAiError] = useState<string | null>(null);
   const [staffCandidate, setStaffCandidate] = useState<CandidateResponse | null>(null);
   const [staffCandidateEdit, setStaffCandidateEdit] = useState<StaffCandidateEditForm>(emptyStaffCandidateEdit);
   const [candidateReviewTab, setCandidateReviewTab] = useState<CandidateReviewTab>('profile');
@@ -2400,6 +3124,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     status: CandidateStatus;
   } | null>(null);
   const [staffTaskNote, setStaffTaskNote] = useState('');
+  const [companyMemberDraft, setCompanyMemberDraft] = useState<CompanyMemberResearchDraftResponse | null>(null);
+  const [companyMemberItems, setCompanyMemberItems] = useState<CompanyMemberResearchItem[]>([]);
+  const [companyMemberForm, setCompanyMemberForm] = useState<CompanyMemberResearchItem>(emptyCompanyMemberForm);
+  const [editingCompanyMemberIndex, setEditingCompanyMemberIndex] = useState<number | null>(null);
+  const [companyMemberLoading, setCompanyMemberLoading] = useState(false);
+  const [companyMemberSaving, setCompanyMemberSaving] = useState(false);
+  const [companyMemberSubmitting, setCompanyMemberSubmitting] = useState(false);
+  const [managerCompanyMemberDraft, setManagerCompanyMemberDraft] = useState<CompanyMemberResearchDraftResponse | null>(null);
+  const [managerCompanyMemberLoading, setManagerCompanyMemberLoading] = useState(false);
   const [roleEvaluationForm, setRoleEvaluationForm] = useState({
     relationship: '',
     evidenceSummary: '',
@@ -2456,6 +3189,34 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isDraftProject = apiProject?.status === 'DRAFT';
   const staffTaskStatus = workbench?.taskStatus || selectedStaffTask?.status;
   const canUseStaffWorkbench = staffTaskStatus === 'IN_PROGRESS';
+  const isStaffWorkbenchStepActive = (step: string) => {
+    const hasSubmittedReview = workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED');
+    const hasCandidateDraft = Boolean(staffCandidate) || (workbench?.candidateDrafts?.length ?? 0) > 0;
+    const hasAiExtraction = pendingExtractionReviews.length > 0
+      || lastExtractionReviews.length > 0
+      || hasCandidateDraft
+      || Boolean(workbench?.documents?.some((document) => document.latestExtractionId));
+
+    if (selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION') {
+      if (step === 'AI extraction') return extractingSelectedDocuments || selectedProjectDocumentIds.length > 0 || hasAiExtraction;
+      if (step === 'Candidate draft') return hasCandidateDraft;
+      if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
+      return false;
+    }
+
+    if (selectedStaffTask?.taskType === 'COMPANY_MEMBER_RESEARCH') {
+      if (step === 'Start work') return staffTaskStatus !== 'TODO';
+      if (step === 'Review target') return Boolean(workbench?.targetCompanyName || displayedProject.targetCompanyName || workbench?.targetCompanyProfileId);
+      if (step === 'Add members') return companyMemberItems.length > 0;
+      if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
+      return false;
+    }
+
+    if (step === 'Start work') return staffTaskStatus !== 'TODO';
+    if (step === 'Upload evidence') return (workbench?.documents?.length ?? 0) > 0;
+    if (step === 'Complete task' || step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
+    return false;
+  };
   const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Documents', 'Members'] : tabs), [isStaffView]);
   const staffAccountId = useMemo(() => {
     if (!isStaffView) return null;
@@ -2482,6 +3243,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   useEffect(() => {
     if (!visibleTabs.includes(activeTab)) {
       setActiveTab('Kanban Board');
+    }
+  }, [activeTab, visibleTabs]);
+
+  useEffect(() => {
+    if (visibleTabs.includes(activeTab)) {
+      localStorage.setItem(PROJECT_DETAIL_TAB_STORAGE_KEY, activeTab);
     }
   }, [activeTab, visibleTabs]);
 
@@ -2543,6 +3310,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           (staffAccountId ? task.assignedToUserId === staffAccountId : task.assignedToName?.toLowerCase() === currentUser?.email?.toLowerCase())
         ));
         setApiTasks(rows);
+        setSelectedStaffTask((current) => current ? rows.find((task) => task.id === current.id) ?? current : current);
+        setSelectedManagerReviewTask((current) => current ? rows.find((task) => task.id === current.id) ?? current : current);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -2559,21 +3328,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [currentProjectId, currentUser?.email, isStaffView, staffAccountId, taskRefreshTick]);
 
   useEffect(() => {
-    if (!isStaffView) return;
-    const refreshStaffTasks = () => setTaskRefreshTick((current) => current + 1);
+    const refreshProjectTasks = () => setTaskRefreshTick((current) => current + 1);
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') refreshStaffTasks();
+      if (document.visibilityState === 'visible') refreshProjectTasks();
     };
-    const interval = window.setInterval(refreshStaffTasks, 8000);
-    window.addEventListener('focus', refreshStaffTasks);
+    const interval = window.setInterval(refreshProjectTasks, 8000);
+    window.addEventListener('focus', refreshProjectTasks);
     document.addEventListener('visibilitychange', refreshWhenVisible);
 
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('focus', refreshStaffTasks);
+      window.removeEventListener('focus', refreshProjectTasks);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [isStaffView]);
+  }, []);
 
   useEffect(() => {
     if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
@@ -2665,7 +3433,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [apiTasks, projectMembers]);
 
   useEffect(() => {
-    if (!selectedStaffTask || selectedStaffTask.taskType !== 'COMPANY_DATA_PREPARATION') {
+    if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
       setProjectDocuments([]);
       setSelectedProjectDocumentIds([]);
       return;
@@ -3138,16 +3906,57 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const loadCompanyMemberDraft = async (task: ProjectTaskResponse) => {
+    setCompanyMemberLoading(true);
+    try {
+      const payload = await companyMemberResearchApi.getDraft(task.projectId, task.id);
+      const draft = payload.data;
+      setCompanyMemberDraft(draft);
+      setCompanyMemberItems(draft?.members ?? []);
+    } catch (error) {
+      setCompanyMemberDraft(null);
+      setCompanyMemberItems([]);
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot load company member research draft.');
+    } finally {
+      setCompanyMemberLoading(false);
+    }
+  };
+
+  const loadManagerCompanyMemberDraft = async (task: ProjectTaskResponse) => {
+    setManagerCompanyMemberLoading(true);
+    try {
+      const payload = await companyMemberResearchApi.getDraft(task.projectId, task.id);
+      setManagerCompanyMemberDraft(payload.data);
+    } catch (error) {
+      setManagerCompanyMemberDraft(null);
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot load company member research submission.');
+    } finally {
+      setManagerCompanyMemberLoading(false);
+    }
+  };
+
   const loadStaffWorkbench = async (task: ProjectTaskResponse) => {
     await loadTaskWorkbench(task, { loadCandidateDraft: true });
+    if (task.taskType === 'COMPANY_MEMBER_RESEARCH') {
+      await loadCompanyMemberDraft(task);
+    }
   };
 
   const loadManagerWorkbench = async (task: ProjectTaskResponse) => {
     await loadTaskWorkbench(task);
+    if (task.taskType === 'COMPANY_MEMBER_RESEARCH') {
+      await loadManagerCompanyMemberDraft(task);
+    } else {
+      setManagerCompanyMemberDraft(null);
+    }
   };
 
   const resetStaffWorkbenchForms = () => {
     setStaffTaskNote('');
+    setCompanyMemberDraft(null);
+    setCompanyMemberItems([]);
+    setCompanyMemberForm(emptyCompanyMemberForm);
+    setEditingCompanyMemberIndex(null);
     setRoleEvaluationForm({
       relationship: '',
       evidenceSummary: '',
@@ -3164,6 +3973,112 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         readyForReview: false,
       },
     });
+  };
+
+  const resetCompanyMemberForm = () => {
+    setCompanyMemberForm(emptyCompanyMemberForm);
+    setEditingCompanyMemberIndex(null);
+  };
+
+  const handleSaveCompanyMemberItem = () => {
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before editing company members.');
+      return;
+    }
+
+    const fullName = companyMemberForm.fullName.trim();
+    const position = companyMemberForm.position.trim();
+    const sourceUrl = companyMemberForm.sourceUrl.trim();
+    if (!fullName || !position || !sourceUrl) {
+      setWorkbenchError('Full name, position, and source URL are required.');
+      return;
+    }
+
+    const nextItem: CompanyMemberResearchItem = {
+      fullName,
+      position,
+      imageUrl: companyMemberForm.imageUrl?.trim() || null,
+      sourceUrl,
+      notes: companyMemberForm.notes?.trim() || null,
+    };
+
+    setCompanyMemberItems((current) => {
+      if (editingCompanyMemberIndex === null) return [...current, nextItem];
+      return current.map((item, index) => (index === editingCompanyMemberIndex ? nextItem : item));
+    });
+    setWorkbenchError(null);
+    resetCompanyMemberForm();
+  };
+
+  const handleEditCompanyMemberItem = (index: number) => {
+    const item = companyMemberItems[index];
+    if (!item) return;
+    setCompanyMemberForm({
+      fullName: item.fullName || '',
+      position: item.position || '',
+      imageUrl: item.imageUrl || '',
+      sourceUrl: item.sourceUrl || '',
+      notes: item.notes || '',
+    });
+    setEditingCompanyMemberIndex(index);
+  };
+
+  const handleRemoveCompanyMemberItem = (index: number) => {
+    setCompanyMemberItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    if (editingCompanyMemberIndex === index) resetCompanyMemberForm();
+  };
+
+  const saveCompanyMemberResearchDraft = async () => {
+    if (!selectedStaffTask) return null;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before saving company member research.');
+      return null;
+    }
+    if (companyMemberItems.length === 0) {
+      setWorkbenchError('Please add at least one company member before saving the draft.');
+      return null;
+    }
+
+    setCompanyMemberSaving(true);
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      const payload = await companyMemberResearchApi.saveDraft(selectedStaffTask.projectId, selectedStaffTask.id, companyMemberItems);
+      setCompanyMemberDraft(payload.data);
+      setCompanyMemberItems(payload.data?.members ?? companyMemberItems);
+      setWorkbenchMessage('Company member research draft saved.');
+      return payload.data;
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot save company member research draft.');
+      return null;
+    } finally {
+      setCompanyMemberSaving(false);
+    }
+  };
+
+  const submitCompanyMemberResearchDraft = async () => {
+    if (!selectedStaffTask) return;
+    const savedDraft = companyMemberDraft || await saveCompanyMemberResearchDraft();
+    if (!savedDraft) return;
+
+    setCompanyMemberSubmitting(true);
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      await companyMemberResearchApi.submitDraft(selectedStaffTask.projectId, selectedStaffTask.id);
+      const updatedTask: ProjectTaskResponse = { ...selectedStaffTask, status: 'IN_REVIEW' };
+      updateTaskInState(updatedTask);
+      setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
+      setToast({ kind: 'success', message: 'Company member research submitted to manager review.' });
+      setTaskRefreshTick((current) => current + 1);
+      setSelectedStaffTask(null);
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot submit company member research.');
+    } finally {
+      setCompanyMemberSubmitting(false);
+    }
   };
 
   const handleOpenTask = (task: ProjectTask) => {
@@ -3224,7 +4139,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleCancelStaffTask = async () => {
     if (!selectedStaffTask) return;
-    if (!window.confirm('Are you sure you want to cancel this task? This action cannot be undone.')) return;
+    setCancelTaskConfirmOpen(true);
+  };
+
+  const confirmCancelStaffTask = async () => {
+    if (!selectedStaffTask) return;
+    setCancelTaskLoading(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
 
@@ -3232,9 +4152,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'CANCELLED');
       updateTaskInState(payload.data);
       setWorkbench((current) => current ? { ...current, taskStatus: 'CANCELLED' } : current);
+      setCancelTaskConfirmOpen(false);
       setWorkbenchMessage('Task has been cancelled.');
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot cancel this task.');
+    } finally {
+      setCancelTaskLoading(false);
     }
   };
 
@@ -3299,6 +4222,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
       setWorkbenchMessage('Evidence uploaded. You can run AI extraction now.');
       await loadStaffWorkbench(selectedStaffTask);
+      const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
+        params: { includeHidden: false, page: 0, size: 100 },
+      });
+      setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot upload file.');
     } finally {
@@ -3406,7 +4333,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             fileName: document.fileName || `Import job #${document.id}`,
             qualityStatus: latestExtraction?.qualityStatus,
             evidenceCoverageRate: typeof latestExtraction?.evidenceCoverageRate === 'number' ? latestExtraction.evidenceCoverageRate : null,
-            evidence: extractionToEvidenceMap(latestExtraction),
+            evidence: extractionToEvidenceMap(latestExtraction, {
+              extractionId,
+              importJobId: document.id,
+              rawDocumentId: document.rawDocumentId || undefined,
+              fileName: document.fileName || `Import job #${document.id}`,
+            }),
             edit: extractionToEditForm(latestExtraction),
           });
         }
@@ -3417,6 +4349,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       }
 
       setPendingExtractionReviews(extractedReviews);
+      setLastExtractionReviews([]);
       setSelectedProjectDocumentIds([]);
       setAiProgress({
         percent: 100,
@@ -3432,14 +4365,95 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const updatePendingExtractionEdit = (extractionId: string, patch: Partial<StaffCandidateEditForm>) => {
+  const updateMergedPendingExtractionEdit = (key: StaffCandidateEditKey, value: string) => {
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before editing AI extraction data.');
       return;
     }
-    setPendingExtractionReviews((current) => current.map((review) => (
-      review.id === extractionId ? { ...review, edit: { ...review.edit, ...patch } } : review
-    )));
+    setPendingExtractionReviews((current) => current.map((review) => ({
+      ...review,
+      edit: {
+        ...review.edit,
+        [key]: value,
+      },
+    })));
+  };
+
+  const openFieldAiAssist = (
+    field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string },
+    review: StaffExtractionReview
+  ) => {
+    if (!currentProjectId || Number.isNaN(Number(currentProjectId))) {
+      setWorkbenchError('Please open a valid project before using AI field research.');
+      return;
+    }
+
+    const companyName = review.edit.legalName
+      || review.edit.tradeName
+      || displayedProject.targetCompanyName
+      || displayedProject.name
+      || 'this company';
+    const currentValue = review.edit[field.key] || '';
+    const evidence = review.evidence[field.key];
+
+    setFieldAiError(null);
+    setFieldAiAssist({
+      fieldKey: field.key,
+      fieldLabel: field.label,
+      companyName,
+      currentValue,
+      prompt: buildFieldAiAssistPrompt(companyName, field.label, currentValue, evidence),
+      sources: [],
+      suggestedActions: [],
+    });
+  };
+
+  const submitFieldAiAssist = async () => {
+    if (!fieldAiAssist) return;
+    if (!currentProjectId || Number.isNaN(Number(currentProjectId))) {
+      setFieldAiError('Cannot ask AI because no active project is selected.');
+      return;
+    }
+
+    const prompt = fieldAiAssist.prompt.trim();
+    if (!prompt) {
+      setFieldAiError('Please enter a question for AI.');
+      return;
+    }
+
+    setFieldAiLoading(true);
+    setFieldAiError(null);
+
+    try {
+      const payload: { projectId: number; question: string; sessionId?: string } = {
+        projectId: Number(currentProjectId),
+        question: prompt,
+      };
+      if (fieldAiAssist.sessionId) payload.sessionId = fieldAiAssist.sessionId;
+
+      const response = await api.post<FieldAiChatResponse>('/ai-assistant/chat', payload, { timeoutMs: null });
+      setFieldAiAssist((current) => current ? {
+        ...current,
+        answer: response.data?.answer || 'AI did not return an answer.',
+        sessionId: response.data?.sessionId || current.sessionId,
+        sources: response.data?.sources || [],
+        suggestedActions: response.data?.suggestedActions || [],
+      } : current);
+    } catch (error) {
+      setFieldAiError(error instanceof Error ? error.message : 'Cannot connect to the AI assistant.');
+    } finally {
+      setFieldAiLoading(false);
+    }
+  };
+
+  const copyFieldAiPrompt = async () => {
+    if (!fieldAiAssist) return;
+    try {
+      await navigator.clipboard?.writeText(fieldAiAssist.prompt);
+      setToast({ kind: 'success', message: 'AI prompt copied.' });
+    } catch {
+      setFieldAiError('Cannot copy this prompt from the browser.');
+    }
   };
 
   const handleCreateCandidateFromReviewedExtractions = async () => {
@@ -3486,6 +4500,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setAiProgress({ percent: 100, label: 'Candidate draft created' });
       setStaffCandidate(candidatePayload.data);
       setStaffCandidateEdit(candidateToEditForm(candidatePayload.data));
+      setLastExtractionReviews(pendingExtractionReviews);
       setPendingExtractionReviews([]);
       setSelectedProjectDocumentIds([]);
       setWorkbenchMessage(`Candidate draft created from ${pendingExtractionReviews.length} reviewed extraction(s).`);
@@ -3496,6 +4511,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setStaffCandidateLoading(false);
       window.setTimeout(() => setAiProgress(null), 900);
     }
+  };
+
+  const restoreLastExtractionReview = () => {
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('Please start this task before editing AI extraction data.');
+      return;
+    }
+    if (staffCandidate?.status !== 'DRAFT') {
+      setWorkbenchError('This candidate has already been submitted or rejected. Please run AI extraction again from the source documents.');
+      return;
+    }
+    if (lastExtractionReviews.length === 0) {
+      setWorkbenchError('No previous AI extraction review is available.');
+      return;
+    }
+    setPendingExtractionReviews(lastExtractionReviews);
+    setWorkbenchMessage('Returned to the latest AI extraction review. Update the fields, then create the candidate draft again.');
   };
 
   const handleExtractSelectedProjectDocuments = async () => {
@@ -3800,6 +4832,48 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot open this document.');
     }
   };
+
+  const managerCandidateDrafts = useMemo(() => {
+    const drafts = workbench?.candidateDrafts ?? [];
+    if (!selectedManagerReviewTask || selectedManagerReviewTask.taskType !== 'COMPANY_DATA_PREPARATION') return [];
+
+    if (selectedManagerReviewTask.status === 'DONE') {
+      return drafts.filter((draft) =>
+        draft.status === 'APPROVED'
+        || draft.status === 'REJECTED'
+        || draft.status === 'PENDING_REVIEW'
+        || Boolean(draft.isApproved)
+        || Boolean(draft.isUnderReview)
+      );
+    }
+
+    return drafts.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW');
+  }, [selectedManagerReviewTask, workbench?.candidateDrafts]);
+
+  const managerReviewDocuments = useMemo(() => {
+    const documentsByKey = new Map<string, WorkbenchDocumentResponse>();
+    const addDocument = (document: WorkbenchDocumentResponse) => {
+      const key = document.rawDocumentId || String(document.id);
+      if (!documentsByKey.has(key)) documentsByKey.set(key, document);
+    };
+
+    (workbench?.documents ?? []).forEach(addDocument);
+
+    const sourceDocumentIds = new Set(
+      managerCandidateDrafts.flatMap((draft) => draft.sourceDocumentIds ?? []).filter(Boolean)
+    );
+
+    if (sourceDocumentIds.size > 0) {
+      projectDocuments
+        .filter((document) =>
+          sourceDocumentIds.has(document.rawDocumentId || '')
+          || sourceDocumentIds.has(String(document.id))
+        )
+        .forEach(addDocument);
+    }
+
+    return Array.from(documentsByKey.values());
+  }, [managerCandidateDrafts, projectDocuments, workbench?.documents]);
 
   return (
     <section className={styles.page}>
@@ -4354,6 +5428,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <option value="DOCUMENT_COLLECTION">Document collection</option>
                     <option value="COMPANY_DATA_PREPARATION">Company data preparation</option>
                     <option value="ROLE_EVALUATION">Role evaluation</option>
+                    <option value="COMPANY_MEMBER_RESEARCH">Company member research</option>
                   </select>
                 </label>
 
@@ -4460,7 +5535,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       <AnimatePresence>
         {selectedStaffTask && (
           <motion.div
-            className={styles.modalOverlay}
+            className={`${styles.modalOverlay} ${styles.taskWorkbenchOverlay}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -4523,23 +5598,24 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
 
               <div className={styles.workbenchTopActions}>
-                <button
-                  className={`${styles.button} ${styles.primaryButton}`}
-                  type="button"
-                  onClick={() => void handleStartStaffTask()}
-                  disabled={staffTaskStatus !== 'TODO'}
-                >
-                  <Clock size={16} />{staffTaskStatus === 'TODO' ? 'Start task' : 'Task started'}
-                </button>
-                {selectedStaffTask.status !== 'DONE' && selectedStaffTask.status !== 'CANCELLED' && (
+                {staffTaskStatus === 'TODO' ? (
                   <button
-                    className={`${styles.button}`}
+                    className={`${styles.button} ${styles.primaryButton}`}
+                    type="button"
+                    onClick={() => void handleStartStaffTask()}
+                  >
+                    <Clock size={16} />Start task
+                  </button>
+                ) : staffTaskStatus === 'IN_PROGRESS' ? (
+                  <button
+                    className={`${styles.button} ${styles.dangerButton}`}
                     type="button"
                     onClick={() => void handleCancelStaffTask()}
-                    style={{ color: '#B91C1C', borderColor: '#FECACA' }}
                   >
                     <X size={16} />Cancel task
                   </button>
+                ) : (
+                  <span className={styles.taskTypeBadge}>{staffTaskStatus}</span>
                 )}
                 <span>
                   {staffTaskStatus === 'TODO'
@@ -4558,17 +5634,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
                   <div
                     key={step}
-                    className={`${styles.workbenchStep} ${
-                      index === 0 && staffTaskStatus !== 'TODO' ? styles.workbenchStepDone : ''
-                    } ${
-                      index === 1 && (workbench?.documents?.length ?? 0) > 0 ? styles.workbenchStepDone : ''
-                    } ${
-                      step === 'AI extraction' && workbench?.documents?.some((doc) => doc.latestExtractionId) ? styles.workbenchStepDone : ''
-                    } ${
-                      step === 'Candidate draft' && (workbench?.candidateDrafts?.length ?? 0) > 0 ? styles.workbenchStepDone : ''
-                    } ${
-                      (step === 'Submit review' || step === 'Complete task') && workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED') ? styles.workbenchStepDone : ''
-                    }`}
+                    className={`${styles.workbenchStep} ${isStaffWorkbenchStepActive(step) ? styles.workbenchStepDone : ''}`}
                   >
                     <span>{index + 1}</span>
                     <strong>{step}</strong>
@@ -4685,40 +5751,31 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </div>
 
                       <div className={styles.extractionReviewList}>
-                        {pendingExtractionReviews.map((review, reviewIndex) => (
-                          <article className={styles.extractionReviewCard} key={review.id}>
+                        {mergedPendingExtractionReview && (
+                          <article className={styles.extractionReviewCard} key={mergedPendingExtractionReview.id}>
                             <div className={styles.extractionReviewHead}>
                               <div>
-                                <span>Extraction #{reviewIndex + 1}</span>
-                                <strong>{review.fileName}</strong>
+                                <span>Merged AI extraction review</span>
+                                <strong>{pendingExtractionReviews.length} source document(s)</strong>
+                                <div className={styles.extractionSourceChips}>
+                                  {pendingExtractionReviews.map((review) => (
+                                    <small key={review.id}>{review.fileName}</small>
+                                  ))}
+                                </div>
                               </div>
                               <small>
-                                {review.qualityStatus || 'Pending staff review'}
-                                {typeof review.evidenceCoverageRate === 'number' ? ` | Evidence coverage ${Math.round(review.evidenceCoverageRate)}%` : ''}
+                                {mergedPendingExtractionReview.qualityStatus || 'Pending staff review'}
+                                {typeof mergedPendingExtractionReview.evidenceCoverageRate === 'number' ? ` | Evidence coverage ${Math.round(mergedPendingExtractionReview.evidenceCoverageRate)}%` : ''}
                               </small>
                             </div>
 
-                            <div className={styles.candidateEditGrid}>
-                              {staffReviewFields.map((field) => (
-                                <article className={`${styles.extractionFieldCard} ${field.multiline ? styles.fullField : ''}`} key={`${review.id}-${field.key}`}>
-                                  <div className={styles.extractionFieldHead}>
-                                    <div>
-                                      <span>Extracted field</span>
-                                      <strong>{field.label}</strong>
-                                    </div>
-                                    <small>{evidenceScoreLabel(review.evidence[field.key]?.confidenceScore)} confidence</small>
-                                  </div>
-                                  <ExtractionCurrentValue
-                                    field={field}
-                                    value={review.edit[field.key]}
-                                    onChange={(value) => updatePendingExtractionEdit(review.id, { [field.key]: value })}
-                                  />
-                                  <FieldEvidencePanel evidence={review.evidence[field.key]} fieldKey={field.key} />
-                                </article>
-                              ))}
-                            </div>
+                            <StaffAiExtractResult
+                              review={mergedPendingExtractionReview}
+                              onChange={updateMergedPendingExtractionEdit}
+                              onAskAi={openFieldAiAssist}
+                            />
                           </article>
-                        ))}
+                        )}
                       </div>
 
                       <div className={styles.extractionReviewActions}>
@@ -4742,9 +5799,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <h3>Candidate detail</h3>
                         <p>Review and correct extracted fields before sending it to the manager.</p>
                       </div>
-                      <span className={`${styles.candidateStatus} ${candidateStatusClass[staffCandidate.status]}`}>
-                        {candidateStatusLabel[staffCandidate.status]}
-                      </span>
+                      <div className={styles.workbenchPanelActions}>
+                        {staffCandidate.status === 'DRAFT' && lastExtractionReviews.length > 0 && pendingExtractionReviews.length === 0 && (
+                          <button
+                            className={styles.button}
+                            type="button"
+                            onClick={restoreLastExtractionReview}
+                            disabled={!canUseStaffWorkbench}
+                          >
+                            <ArrowLeft size={16} />
+                            Back to AI extraction
+                          </button>
+                        )}
+                        <span className={`${styles.candidateStatus} ${candidateStatusClass[staffCandidate.status]}`}>
+                          {candidateStatusLabel[staffCandidate.status]}
+                        </span>
+                      </div>
                     </div>
 
                       <>
@@ -4917,6 +5987,173 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </section>
                   )}
                   </>
+                  ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? (
+                  <section className={styles.workbenchPanel}>
+                    <div className={styles.workbenchPanelHead}>
+                      <div>
+                        <h3>Company member research</h3>
+                        <p>Research key people, leadership, board members, founders, or public representatives and attach a source URL for each person.</p>
+                      </div>
+                      <span className={styles.taskTypeBadge}>{companyMemberItems.length} member(s)</span>
+                    </div>
+
+                    <div className={styles.memberResearchHero}>
+                      <div>
+                        <span>Research target</span>
+                        <h4>{workbench?.targetCompanyName || displayedProject.targetCompanyName || displayedProject.name}</h4>
+                        <p>
+                          Add verified people related to this company. Each member must have name, position, and a public source URL so the manager can review the evidence.
+                        </p>
+                      </div>
+                      <div className={styles.memberResearchStats}>
+                        <div>
+                          <strong>{companyMemberItems.length}</strong>
+                          <span>Members added</span>
+                        </div>
+                        <div>
+                          <strong>{companyMemberDraft?.updatedAt ? formatOptionalDate(companyMemberDraft.updatedAt) : 'Not saved'}</strong>
+                          <span>Last saved</span>
+                        </div>
+                        <div>
+                          <strong>{companyMemberDraft?.submissionId ? 'Submitted' : 'Draft'}</strong>
+                          <span>Draft status</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {companyMemberLoading ? (
+                      <div className={styles.empty}>Loading member research draft...</div>
+                    ) : (
+                      <>
+                        <div className={styles.memberResearchLayout}>
+                          <section className={styles.memberResearchForm}>
+                            <div className={styles.taskSpecificHead}>
+                              <UserPlus size={20} />
+                              <div>
+                                <strong>{editingCompanyMemberIndex === null ? 'Add company member' : 'Edit company member'}</strong>
+                                <span>Use official website, annual report, LinkedIn, news, or other reliable public source.</span>
+                              </div>
+                            </div>
+
+                            <div className={styles.memberResearchFormGrid}>
+                              <label className={styles.inviteField}>
+                                <span>Full name</span>
+                                <input
+                                  value={companyMemberForm.fullName}
+                                  placeholder="Example: Nguyen Van A"
+                                  onChange={(event) => setCompanyMemberForm((current) => ({ ...current, fullName: event.target.value }))}
+                                  disabled={!canUseStaffWorkbench}
+                                />
+                              </label>
+                              <label className={styles.inviteField}>
+                                <span>Position</span>
+                                <input
+                                  value={companyMemberForm.position}
+                                  placeholder="Example: CEO, Founder, Board member"
+                                  onChange={(event) => setCompanyMemberForm((current) => ({ ...current, position: event.target.value }))}
+                                  disabled={!canUseStaffWorkbench}
+                                />
+                              </label>
+                              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                                <span>Image URL</span>
+                                <input
+                                  value={companyMemberForm.imageUrl || ''}
+                                  placeholder="Optional profile image URL"
+                                  onChange={(event) => setCompanyMemberForm((current) => ({ ...current, imageUrl: event.target.value }))}
+                                  disabled={!canUseStaffWorkbench}
+                                />
+                              </label>
+                              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                                <span>Source URL</span>
+                                <input
+                                  value={companyMemberForm.sourceUrl}
+                                  placeholder="https://company.com/leadership"
+                                  onChange={(event) => setCompanyMemberForm((current) => ({ ...current, sourceUrl: event.target.value }))}
+                                  disabled={!canUseStaffWorkbench}
+                                />
+                              </label>
+                              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                                <span>Notes</span>
+                                <textarea
+                                  value={companyMemberForm.notes || ''}
+                                  placeholder="Short note about this person's role or why this source is reliable..."
+                                  onChange={(event) => setCompanyMemberForm((current) => ({ ...current, notes: event.target.value }))}
+                                  disabled={!canUseStaffWorkbench}
+                                />
+                              </label>
+                            </div>
+
+                            <div className={styles.modalActions}>
+                              {editingCompanyMemberIndex !== null && (
+                                <button className={styles.button} type="button" onClick={resetCompanyMemberForm} disabled={!canUseStaffWorkbench}>
+                                  Cancel edit
+                                </button>
+                              )}
+                              <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={handleSaveCompanyMemberItem} disabled={!canUseStaffWorkbench}>
+                                <Plus size={16} />{editingCompanyMemberIndex === null ? 'Add member' : 'Update member'}
+                              </button>
+                            </div>
+                          </section>
+
+                          <section className={styles.memberResearchList}>
+                            <div className={styles.memberResearchListHead}>
+                              <div>
+                                <span>Draft members</span>
+                                <strong>{companyMemberItems.length} researched person(s)</strong>
+                              </div>
+                              <button
+                                className={styles.button}
+                                type="button"
+                                onClick={() => void saveCompanyMemberResearchDraft()}
+                                disabled={!canUseStaffWorkbench || companyMemberSaving || companyMemberItems.length === 0}
+                              >
+                                <CheckCircle2 size={16} />{companyMemberSaving ? 'Saving...' : 'Save draft'}
+                              </button>
+                            </div>
+
+                            {companyMemberItems.length === 0 ? (
+                              <div className={styles.empty}>No members added yet. Add at least one person before submitting.</div>
+                            ) : (
+                              <CompanyMemberLayerBoard
+                                members={companyMemberItems}
+                                emptyText="No members added yet. Add at least one person before submitting."
+                                statusLabel="Draft"
+                                renderActions={(_, index) => (
+                                  <>
+                                    <button className={styles.button} type="button" onClick={() => handleEditCompanyMemberItem(index)} disabled={!canUseStaffWorkbench}>
+                                      <Edit3 size={15} />Edit
+                                    </button>
+                                    <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => handleRemoveCompanyMemberItem(index)} disabled={!canUseStaffWorkbench}>
+                                      <Trash2 size={15} />Delete
+                                    </button>
+                                  </>
+                                )}
+                              />
+                            )}
+                          </section>
+                        </div>
+
+                        <div className={styles.modalActions}>
+                          <button
+                            className={styles.button}
+                            type="button"
+                            onClick={() => void saveCompanyMemberResearchDraft()}
+                            disabled={!canUseStaffWorkbench || companyMemberSaving || companyMemberItems.length === 0}
+                          >
+                            <CheckCircle2 size={16} />{companyMemberSaving ? 'Saving...' : 'Save draft'}
+                          </button>
+                          <button
+                            className={`${styles.button} ${styles.primaryButton}`}
+                            type="button"
+                            onClick={() => void submitCompanyMemberResearchDraft()}
+                            disabled={!canUseStaffWorkbench || companyMemberSubmitting || companyMemberSaving || companyMemberItems.length === 0}
+                          >
+                            <CheckCircle2 size={16} />{companyMemberSubmitting ? 'Submitting...' : 'Submit for manager review'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </section>
                   ) : (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
@@ -4935,116 +6172,83 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <span className={styles.taskTypeBadge}>{taskTypeText[selectedStaffTask.taskType].title}</span>
                     </div>
 
-                    <label className={styles.workbenchUploadBox}>
-                      <input
-                        type="file"
-                        onChange={(event) => {
-                          void handleUploadEvidence(event.target.files?.[0] ?? null);
-                          event.currentTarget.value = '';
-                        }}
-                        disabled={!canUseStaffWorkbench || uploadingEvidence}
-                      />
-                      <FileText size={24} />
-                      <strong>{uploadingEvidence ? 'Uploading evidence...' : 'Upload evidence'}</strong>
-                      <span>Attach files that support this task before submitting them to the project.</span>
-                    </label>
-
-                    <div className={styles.documentList}>
-                      {workbenchLoading && <div className={styles.empty}>Loading workbench...</div>}
-                      {!workbenchLoading && (workbench?.documents?.length ?? 0) === 0 && (
-                        <div className={styles.empty}>No evidence uploaded yet.</div>
-                      )}
-                      {workbench?.documents?.map((document) => (
-                        <article className={styles.documentItem} key={document.id}>
-                          <div className={styles.documentIcon}><FileText size={18} /></div>
-                          <div>
-                            <strong>{document.fileName || `Import job #${document.id}`}</strong>
-                            <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
-                            <small>
-                              {document.errorMessage || `Import job: ${document.id} | Raw document: ${document.rawDocumentId || 'N/A'}`}
-                            </small>
-                          </div>
-                          <div className={styles.documentActions}>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'open')}
-                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                            >
-                              <ExternalLink size={16} />Open
-                            </button>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'download')}
-                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                            >
-                              <Download size={16} />Download
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-
                     {selectedStaffTask.taskType === 'ROLE_EVALUATION' && (
-                      <div className={styles.taskSpecificPanel}>
-                        <div className={styles.taskSpecificHead}>
-                          <Bot size={20} />
-                          <div>
-                            <strong>Role evaluation workspace</strong>
-                            <span>Assess how this company should be positioned in the project before manager review.</span>
-                          </div>
-                        </div>
+                      <RoleEvaluationWorkspace
+                        mode="staff"
+                        project={apiProject}
+                        task={selectedStaffTask}
+                        documents={projectDocuments}
+                        documentsLoading={projectDocumentsLoading}
+                        canEdit={canUseStaffWorkbench}
+                        uploadingEvidence={uploadingEvidence}
+                        onUploadEvidence={handleUploadEvidence}
+                        onSubmitted={async () => {
+                          const updatedTask = await taskApi.getTaskWorkbench(selectedStaffTask.projectId, selectedStaffTask.id);
+                          setWorkbench(updatedTask.data);
+                          const nextTask: ProjectTaskResponse = {
+                            ...selectedStaffTask,
+                            status: updatedTask.data.taskStatus,
+                          };
+                          updateTaskInState(nextTask);
+                          setSelectedStaffTask(null);
+                          setTaskRefreshTick((current) => current + 1);
+                          setToast({ kind: 'success', message: 'Role evaluation submitted to manager review.' });
+                        }}
+                      />
+                    )}
 
-                        <div className={styles.roleEvaluationGrid}>
-                          <label className={styles.inviteField}>
-                            <span>Suggested relationship</span>
-                            <select
-                              value={roleEvaluationForm.relationship}
-                              onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, relationship: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            >
-                              <option value="">Select relationship</option>
-                              {candidateRelationshipOptions.map((relationship) => (
-                                <option key={relationship} value={relationship}>{relationship}</option>
-                              ))}
-                            </select>
-                          </label>
+                    {selectedStaffTask.taskType !== 'ROLE_EVALUATION' && (
+                      <label className={styles.workbenchUploadBox}>
+                        <input
+                          type="file"
+                          onChange={(event) => {
+                            void handleUploadEvidence(event.target.files?.[0] ?? null);
+                            event.currentTarget.value = '';
+                          }}
+                          disabled={!canUseStaffWorkbench || uploadingEvidence}
+                        />
+                        <FileText size={24} />
+                        <strong>{uploadingEvidence ? 'Uploading evidence...' : 'Upload evidence'}</strong>
+                        <span>Attach files that support this task before submitting them to the project.</span>
+                      </label>
+                    )}
 
-                          <label className={styles.inviteField}>
-                            <span>Risk level</span>
-                            <select
-                              value={roleEvaluationForm.riskLevel}
-                              onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, riskLevel: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            >
-                              <option value="LOW">Low</option>
-                              <option value="MEDIUM">Medium</option>
-                              <option value="HIGH">High</option>
-                              <option value="CRITICAL">Critical</option>
-                            </select>
-                          </label>
-
-                          <label className={`${styles.inviteField} ${styles.fullField}`}>
-                            <span>Evidence summary</span>
-                            <textarea
-                              value={roleEvaluationForm.evidenceSummary}
-                              placeholder="Summarize the documents, facts, or signals that support this evaluation..."
-                              onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, evidenceSummary: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            />
-                          </label>
-
-                          <label className={`${styles.inviteField} ${styles.fullField}`}>
-                            <span>Recommendation</span>
-                            <textarea
-                              value={roleEvaluationForm.recommendation}
-                              placeholder="Example: Approve this company as a strategic partner because..."
-                              onChange={(event) => setRoleEvaluationForm((current) => ({ ...current, recommendation: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            />
-                          </label>
-                        </div>
+                    {selectedStaffTask.taskType !== 'ROLE_EVALUATION' && (
+                      <div className={styles.documentList}>
+                        {workbenchLoading && <div className={styles.empty}>Loading workbench...</div>}
+                        {!workbenchLoading && (workbench?.documents?.length ?? 0) === 0 && (
+                          <div className={styles.empty}>No evidence uploaded yet.</div>
+                        )}
+                        {workbench?.documents?.map((document) => (
+                          <article className={styles.documentItem} key={document.id}>
+                            <div className={styles.documentIcon}><FileText size={18} /></div>
+                            <div>
+                              <strong>{document.fileName || `Import job #${document.id}`}</strong>
+                              <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
+                              <small>
+                                {document.errorMessage || `Import job: ${document.id} | Raw document: ${document.rawDocumentId || 'N/A'}`}
+                              </small>
+                            </div>
+                            <div className={styles.documentActions}>
+                              <button
+                                className={styles.button}
+                                type="button"
+                                onClick={() => void handleDocumentFileAction(document, 'open')}
+                                disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                              >
+                                <ExternalLink size={16} />Open
+                              </button>
+                              <button
+                                className={styles.button}
+                                type="button"
+                                onClick={() => void handleDocumentFileAction(document, 'download')}
+                                disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                              >
+                                <Download size={16} />Download
+                              </button>
+                            </div>
+                          </article>
+                        ))}
                       </div>
                     )}
 
@@ -5157,25 +6361,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         className={`${styles.button} ${styles.primaryButton}`}
                         type="button"
                         onClick={() => void handleSubmitStaffTaskReview(
+                          selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' ? 'DOCUMENT_COLLECTION' : 'OTHER',
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'DOCUMENT_COLLECTION'
-                            : selectedStaffTask.taskType === 'ROLE_EVALUATION'
-                              ? 'ROLE_EVALUATION'
-                              : 'OTHER',
-                          selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Documents submitted directly to the project.'
-                            : selectedStaffTask.taskType === 'ROLE_EVALUATION'
-                              ? 'Role evaluation submitted for manager review.'
-                              : 'Task result submitted for manager review.'
+                            ? 'Documents submitted for manager review.'
+                            : 'Task result submitted for manager review.'
                         )}
-                        disabled={!canUseStaffWorkbench || staffSubmitLoading}
+                        disabled={!canUseStaffWorkbench || staffSubmitLoading || selectedStaffTask.taskType === 'ROLE_EVALUATION'}
                       >
                         <CheckCircle2 size={16} />
                         {staffSubmitLoading
                           ? 'Submitting...'
                           : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Submit to project'
-                            : 'Submit to manager'}
+                            ? 'Submit for manager review'
+                            : selectedStaffTask.taskType === 'ROLE_EVALUATION'
+                              ? 'Use evaluation submit'
+                              : 'Submit to manager'}
                       </button>
                     </div>
                   </section>
@@ -5185,10 +6385,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <aside className={styles.workbenchSidebar}>
                   {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' ? (
                     <section className={styles.workbenchPanel}>
-                      <h3>Candidate drafts</h3>
+                      <h3>Rejected drafts</h3>
                       <div className={styles.draftList}>
-                        {(workbench?.candidateDrafts?.length ?? 0) === 0 && <div className={styles.empty}>No candidate drafts yet.</div>}
-                        {workbench?.candidateDrafts?.map((draft) => {
+                        {(workbench?.candidateDrafts?.filter((draft) => draft.status === 'REJECTED').length ?? 0) === 0 && (
+                          <div className={styles.empty}>No rejected draft history yet.</div>
+                        )}
+                        {workbench?.candidateDrafts?.filter((draft) => draft.status === 'REJECTED').map((draft) => {
                           const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
                           const isDeleting = deletingCandidateDraftId === draft.candidateId;
 
@@ -5245,6 +6447,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <span>Submit clear notes for manager approval.</span>
                           </>
                         )}
+                        {selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (
+                          <>
+                            <span>Identify key people related to the target company.</span>
+                            <span>Add a reliable source URL for every member.</span>
+                            <span>Save the draft, then submit it for manager review.</span>
+                          </>
+                        )}
                         {selectedStaffTask.taskType === 'GENERAL_TASK' && (
                           <>
                             <span>Complete the assigned work.</span>
@@ -5270,6 +6479,77 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </div>
                   </section>
                 </aside>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {cancelTaskConfirmOpen && selectedStaffTask && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              if (!cancelTaskLoading) setCancelTaskConfirmOpen(false);
+            }}
+          >
+            <motion.div
+              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cancel-task-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.inviteHead}>
+                <div>
+                  <span className={styles.taskKey}>Cancel task</span>
+                  <h2 id="cancel-task-title">Confirm task cancellation</h2>
+                  <p>
+                    Are you sure you want to cancel <strong>APMS-{selectedStaffTask.id}</strong>? This task will move to Cancelled status.
+                  </p>
+                </div>
+                <button
+                  className={styles.iconButton}
+                  type="button"
+                  aria-label="Close cancel task confirmation"
+                  onClick={() => setCancelTaskConfirmOpen(false)}
+                  disabled={cancelTaskLoading}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className={styles.deleteTaskPreview}>
+                <X size={20} />
+                <div>
+                  <strong>{selectedStaffTask.title}</strong>
+                  <span>{selectedStaffTask.taskType.replace(/_/g, ' ')}</span>
+                </div>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => setCancelTaskConfirmOpen(false)}
+                  disabled={cancelTaskLoading}
+                >
+                  Keep working
+                </button>
+                <button
+                  className={`${styles.button} ${styles.dangerButton}`}
+                  type="button"
+                  onClick={() => void confirmCancelStaffTask()}
+                  disabled={cancelTaskLoading}
+                >
+                  {cancelTaskLoading ? 'Cancelling...' : 'Cancel task'}
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -5351,7 +6631,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       <AnimatePresence>
         {selectedManagerReviewTask && (
           <motion.div
-            className={styles.modalOverlay}
+            className={`${styles.modalOverlay} ${styles.taskWorkbenchOverlay}`}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -5397,21 +6677,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
               <div className={styles.staffWorkbenchGrid}>
                 <main className={styles.workbenchMain}>
+                  {selectedManagerReviewTask.taskType !== 'COMPANY_DATA_PREPARATION'
+                    && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
                         <h3>Uploaded evidence</h3>
                         <p>These are the files uploaded by staff for this task.</p>
                       </div>
-                      <span className={styles.taskTypeBadge}>{workbench?.documents?.length ?? 0} file(s)</span>
+                      <span className={styles.taskTypeBadge}>{managerReviewDocuments.length} file(s)</span>
                     </div>
 
                     <div className={styles.documentList}>
                       {workbenchLoading && <div className={styles.empty}>Loading review data...</div>}
-                      {!workbenchLoading && (workbench?.documents?.length ?? 0) === 0 && (
+                      {!workbenchLoading && managerReviewDocuments.length === 0 && (
                         <div className={styles.empty}>No uploaded files found for this task.</div>
                       )}
-                      {workbench?.documents?.map((document) => (
+                      {managerReviewDocuments.map((document) => (
                         <article className={styles.documentItem} key={document.id}>
                           <div className={styles.documentIcon}><FileText size={18} /></div>
                           <div>
@@ -5443,25 +6725,54 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       ))}
                     </div>
                   </section>
+                  )}
+
+                  {selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (
+                    <section className={styles.workbenchPanel}>
+                      <div className={styles.workbenchPanelHead}>
+                        <div>
+                          <h3>Company member research</h3>
+                        </div>
+                        <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span>
+                      </div>
+                      {managerCompanyMemberLoading ? (
+                        <div className={styles.empty}>Loading submitted members...</div>
+                      ) : !managerCompanyMemberDraft?.members?.length ? (
+                        <div className={styles.empty}>No company members were submitted for review.</div>
+                      ) : (
+                        <CompanyMemberLayerBoard
+                          members={managerCompanyMemberDraft.members}
+                          emptyText="No company members were submitted for review."
+                          statusLabel="Ready to apply"
+                        />
+                      )}
+                    </section>
+                  )}
 
                   {selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && (
                     <section className={styles.workbenchPanel}>
                       <div className={styles.workbenchPanelHead}>
                         <div>
-                          <h3>Candidate drafts</h3>
-                          <p>Open the candidate from the Candidates tab if you need the full company profile preview and approval workflow.</p>
+                          <h3>{selectedManagerReviewTask.status === 'DONE' ? 'Candidate result' : 'Candidate drafts'}</h3>
+                          <p>
+                            {selectedManagerReviewTask.status === 'DONE'
+                              ? 'Final candidate decision linked to this completed task.'
+                              : 'Open the candidate from the Candidates tab if you need the full company profile preview and approval workflow.'}
+                          </p>
                         </div>
                         <span className={styles.taskTypeBadge}>
-                          {workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0} submitted draft(s)
+                          {managerCandidateDrafts.length} {selectedManagerReviewTask.status === 'DONE' ? 'result(s)' : 'submitted draft(s)'}
                         </span>
                       </div>
                       <div className={styles.draftList}>
-                        {(workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0) === 0 && (
-                          <div className={styles.empty}>No submitted candidate draft linked to this task.</div>
+                        {managerCandidateDrafts.length === 0 && (
+                          <div className={styles.empty}>
+                            {selectedManagerReviewTask.status === 'DONE'
+                              ? 'No approved or rejected candidate result linked to this task.'
+                              : 'No submitted candidate draft linked to this task.'}
+                          </div>
                         )}
-                        {workbench?.candidateDrafts
-                          ?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW')
-                          .map((draft) => (
+                        {managerCandidateDrafts.map((draft) => (
                           <button
                             className={styles.draftItem}
                             type="button"
@@ -5478,6 +6789,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
+                  {selectedManagerReviewTask.taskType === 'ROLE_EVALUATION' && (
+                    <section className={styles.workbenchPanel}>
+                      <RoleEvaluationWorkspace
+                        mode="manager"
+                        project={apiProject}
+                        task={selectedManagerReviewTask}
+                        documents={projectDocuments.length > 0 ? projectDocuments : workbench?.documents || []}
+                        documentsLoading={projectDocumentsLoading}
+                        managerComment={managerReviewComment}
+                        onManagerCommentChange={setManagerReviewComment}
+                        onReviewed={async () => {
+                          await loadManagerWorkbench(selectedManagerReviewTask);
+                          setTaskRefreshTick((current) => current + 1);
+                        }}
+                      />
+                    </section>
+                  )}
+
+                  {selectedManagerReviewTask.taskType !== 'ROLE_EVALUATION' && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
@@ -5485,29 +6815,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <p>
                             {selectedManagerReviewTask.status === 'DONE'
                               ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
-                                ? 'This document collection was submitted directly to the project. No manager approval is required.'
+                                ? 'This document collection has been approved. The submitted documents remain available in the project.'
+                                : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
+                                  ? 'This company member research has been approved. The members were applied to the Company Profile.'
                                 : 'This task has already been approved. The submitted evidence remains available for audit.'
                               : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION'
                                 ? 'Review the submitted candidate before approving. Approval creates the Company Profile and completes this task.'
+                                : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
+                                  ? 'Review the submitted members and source URLs, then approve to apply them to the Company Profile or reject to return it to staff.'
                                 : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
-                                  ? 'Document collection tasks are submitted directly to the project and do not require approval.'
+                                  ? 'Review the uploaded documents, then approve to move the task to Done or reject to return it to staff.'
                                 : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
                           </p>
                       </div>
                     </div>
 
-                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' ? (
-                      <div className={styles.inlineSuccess}>Documents are already available in the project Documents tab.</div>
+                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
+                      <div className={styles.inlineSuccess}>Documents were approved and are available in the project Documents tab.</div>
                     ) : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>
                         <button
                           className={`${styles.button} ${styles.primaryButton}`}
                           type="button"
                           onClick={() => {
-                            const draft = workbench?.candidateDrafts?.find((item) => item.isUnderReview || item.status === 'PENDING_REVIEW');
+                            const draft = managerCandidateDrafts[0];
                             if (draft) void openManagerCandidateReview(draft.candidateId);
                           }}
-                          disabled={(workbench?.candidateDrafts?.filter((draft) => draft.isUnderReview || draft.status === 'PENDING_REVIEW').length ?? 0) === 0}
+                          disabled={managerCandidateDrafts.length === 0}
                         >
                           <CheckCircle2 size={16} />Review candidate
                         </button>
@@ -5547,6 +6881,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </>
                     )}
                   </section>
+                  )}
                 </main>
 
                 <aside className={styles.workbenchSidebar}>
@@ -5565,14 +6900,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </div>
                   </section>
 
-                  <section className={styles.workbenchPanel}>
-                    <h3>Review checklist</h3>
-                    <div className={styles.workbenchHintList}>
-                      <span>Check whether the uploaded file matches the task requirement.</span>
-                      <span>Confirm the staff note explains what was completed.</span>
-                      <span>For candidate tasks, review candidate data before approving the task.</span>
-                    </div>
-                  </section>
                 </aside>
               </div>
             </motion.div>
@@ -5588,7 +6915,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           const insights = selectedCandidate.insights as Record<string, unknown> | undefined;
           const managerWebsiteValue = listJoinValue(normalizeUrlItems(contactRaw?.website));
           const managerEmailValue = listJoinValue(normalizeExtractedListValue(contactRaw?.emails, true));
-          const managerPhoneValue = listJoinValue(normalizeExtractedListValue(contactRaw?.phones, true));
+          const managerPhoneValue = listJoinValue(normalizePhoneItems(contactRaw?.phones));
           const canReview = selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'CORRECTED' || selectedCandidate.status === 'DRAFT';
           const detailConfidenceScore = candidateConfidenceScore(selectedCandidate);
           const availableManagerCandidateTabs = canReview
@@ -5626,10 +6953,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <span className={`${styles.candidateStatus} ${candidateStatusClass[selectedCandidate.status]}`}>
                     {candidateStatusLabel[selectedCandidate.status]}
                   </span>
-                  <div>
+                  {/* <div>
                     <span>Suggested relationship</span>
                     <strong>{selectedCandidate.suggestedRelationshipType || 'Not suggested'}</strong>
-                  </div>
+                  </div> */}
                   <div>
                     <span>Confidence score</span>
                     <strong>{candidateConfidenceLabel(selectedCandidate)}</strong>
@@ -5637,10 +6964,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <i style={{ width: `${detailConfidenceScore ?? 0}%` }} />
                     </div>
                   </div>
-                  <div>
+                  {/* <div>
                     <span>Data quality</span>
                     <strong>{candidateCompleteness(selectedCandidate)}</strong>
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className={styles.candidateReviewTabs} role="tablist" aria-label="Manager candidate review sections">
@@ -5755,7 +7082,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <h3>Manager decision</h3>
                         <p>Approving this candidate will create or update the Company Profile according to the backend workflow.</p>
                       </div>
-                      <label className={styles.inviteField}>
+                      {/* <label className={styles.inviteField}>
                         <span>Relationship override</span>
                         <select
                           value={selectedCandidate.relationshipTypeOverride || selectedCandidate.suggestedRelationshipType || ''}
@@ -5769,7 +7096,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <option key={relationship} value={relationship}>{relationship}</option>
                           ))}
                         </select>
-                      </label>
+                      </label> */}
                       <label className={styles.inviteField}>
                         <span>Reject reason</span>
                         <textarea
@@ -5806,6 +7133,121 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             </motion.div>
           );
         })()}
+      </AnimatePresence>
+      <AnimatePresence>
+        {fieldAiAssist && (
+          <motion.div
+            className={`${styles.modalOverlay} ${styles.fieldAiAssistOverlay}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setFieldAiAssist(null)}
+          >
+            <motion.div
+              className={`${styles.inviteModal} ${styles.fieldAiAssistModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="field-ai-assist-title"
+              initial={{ y: 18, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 18, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.inviteHead}>
+                <div>
+                  <span className={styles.taskKey}>AI field research</span>
+                  <h2 id="field-ai-assist-title">{fieldAiAssist.fieldLabel}</h2>
+                  <p>
+                    Ask AI to verify or enrich this extracted field for <strong>{fieldAiAssist.companyName}</strong>.
+                  </p>
+                </div>
+                <button className={styles.iconButton} type="button" aria-label="Close AI helper" onClick={() => setFieldAiAssist(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className={styles.fieldAiContextGrid}>
+                <div>
+                  <span>Company</span>
+                  <strong>{fieldAiAssist.companyName}</strong>
+                </div>
+                <div>
+                  <span>Field</span>
+                  <strong>{fieldAiAssist.fieldLabel}</strong>
+                </div>
+                <div>
+                  <span>Current value</span>
+                  <strong>{fieldAiAssist.currentValue.trim() || 'No extracted value yet'}</strong>
+                </div>
+              </div>
+
+              <div className={styles.aiFieldNote}>
+                <Sparkles size={16} />
+                <span>
+                  This uses the APMS AI assistant API. If live web search is not enabled on the backend, AI will answer from project/company context and should say that clearly.
+                </span>
+              </div>
+
+              <label className={styles.inviteField}>
+                <span>Question for AI</span>
+                <textarea
+                  className={styles.fieldAiPrompt}
+                  value={fieldAiAssist.prompt}
+                  onChange={(event) => setFieldAiAssist((current) => current ? { ...current, prompt: event.target.value } : current)}
+                />
+              </label>
+
+              {fieldAiError && <div className={styles.inlineError}>{fieldAiError}</div>}
+
+              <div className={styles.modalActions}>
+                <button className={styles.button} type="button" onClick={() => void copyFieldAiPrompt()}>
+                  <Copy size={16} /> Copy prompt
+                </button>
+                <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void submitFieldAiAssist()} disabled={fieldAiLoading || !fieldAiAssist.prompt.trim()}>
+                  <Sparkles size={16} /> {fieldAiLoading ? 'Asking AI...' : 'Ask AI'}
+                </button>
+              </div>
+
+              {fieldAiLoading && (
+                <div className={styles.fieldAiLoading}>
+                  <span />
+                  <div>
+                    <strong>AI is checking this field...</strong>
+                    <p>Reviewing project context and available assistant sources.</p>
+                  </div>
+                </div>
+              )}
+
+              {fieldAiAssist.answer && (
+                <section className={styles.fieldAiAnswerPanel}>
+                  <div className={styles.fieldAiAnswerHead}>
+                    <Bot size={18} />
+                    <div>
+                      <span>AI answer</span>
+                      <strong>Use this as a reference before editing the extracted value.</strong>
+                    </div>
+                  </div>
+                  <p>{fieldAiAssist.answer}</p>
+                </section>
+              )}
+
+              {fieldAiAssist.sources && fieldAiAssist.sources.length > 0 && (
+                <section className={styles.fieldAiSources}>
+                  <h3>Sources returned by AI</h3>
+                  {fieldAiAssist.sources.map((source, index) => (
+                    <article key={`${source.documentId}-${index}`}>
+                      <span>{index + 1}</span>
+                      <div>
+                        <strong>{source.documentTitle || source.documentId}</strong>
+                        <p>{source.snippet || `${Math.round((source.relevanceScore || 0) * 100)}% relevance`}</p>
+                      </div>
+                    </article>
+                  ))}
+                </section>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
       <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
     </section>
