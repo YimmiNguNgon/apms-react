@@ -133,7 +133,7 @@ export const Login: React.FC = () => {
               onChange={(event) => setPassword(event.target.value)}
             />
             <span
-              style={{ fontSize: '12px', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
+              style={{ fontSize: 'var(--text-caption)', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
               onClick={() => { window.location.href = '/forgot-password'; }}
             >
               Forgot password?

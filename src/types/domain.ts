@@ -92,6 +92,8 @@ export interface ProfileResponse {
   companyMembers?: CompanyProfileMember[];
   reviewStatus?: string;
   tags?: string[];
+  stockTicker?: string;
+  stockExchange?: string;
   metadata?: CompanyProfileMetadata;
   version?: number;
 }
@@ -112,6 +114,8 @@ export interface CompanyProfileIdentity {
   tradeName?: string;
   taxCode?: string;
   registrationNumber?: string;
+  stockTicker?: string;
+  stockExchange?: string;
 }
 
 export interface CompanyProfileBusiness {
@@ -429,16 +433,20 @@ export interface ManualInputRequest {
 export interface ScoreSnapshotDto {
   scoreSnapshotId: number;
   companyId: string;
+  companyName?: string | null;
+  targetCompanyProfileId?: string | null;
   projectId?: number | null;
   candidateId?: string | null;
   partnerFitScore?: number | null;
   competitionLevel?: number | null;
   riskLevel?: number | null;
   relationshipStrength?: number | null;
-  totalScore: number;
+  totalScore?: number | null;
+  overallScore?: number | null;
   factorsJson?: string | null;
   ruleVersion?: number | null;
   generatedBy?: string | null;
+  evaluatedRole?: string | null;
   createdAt?: string | null;
 }
 

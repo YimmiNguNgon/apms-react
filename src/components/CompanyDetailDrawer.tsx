@@ -1,21 +1,23 @@
 import React, { useEffect } from 'react';
-import { Building2, X, FileText, FolderKanban, Database, Users, ShieldAlert, Award, Hash, CheckCircle2 } from 'lucide-react';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
 
 export interface ScoreSnapshot {
   scoreSnapshotId: number;
   companyId: string;
   companyName?: string;
+  targetCompanyProfileId?: string;
   projectId: string;
   candidateId: string;
-  partnerFitScore: number;
-  competitionLevel: number;
-  riskLevel: number;
-  relationshipStrength: number;
-  totalScore: number;
+  partnerFitScore?: number | null;
+  competitionLevel?: number | null;
+  riskLevel?: number | null;
+  relationshipStrength?: number | null;
+  totalScore?: number | null;
+  overallScore?: number | null;
   factorsJson: string;
   ruleVersion: string;
   generatedBy: string;
+  evaluatedRole?: string | null;
   createdAt: string;
 }
 
@@ -30,15 +32,9 @@ interface CompanyDetailDrawerProps {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
+export const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
-  }
-  if (rawId && rawId.trim()) {
-    if (/^[0-9a-fA-F]{24}$/.test(rawId.trim())) {
-      return `Công ty (ID: ${rawId.trim().substring(0, 8)}...)`;
-    }
-    return rawId.trim();
   }
   return 'Chưa có tên công ty';
 };
@@ -67,7 +63,7 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
 
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
-  const displayName = formatCompanyName(tradeName || legalName, companyId);
+  const displayName = formatCompanyName(tradeName || legalName);
   const initials = displayName.substring(0, 2).toUpperCase();
 
   const taxCode = profile?.identity?.taxCode;
@@ -128,16 +124,15 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
               borderRadius: '8px',
               color: '#94A3B8',
               cursor: 'pointer',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              padding: '6px 12px',
+              fontSize: 'var(--text-caption)',
+              fontWeight: 600,
               transition: 'all 0.15s ease',
             }}
             title="Close Drawer (ESC)"
             id="btn-close-company-drawer"
           >
-            <X size={18} />
+            Đóng
           </button>
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
@@ -153,7 +148,7 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                 justifyContent: 'center',
                 color: '#FFFFFF',
                 fontWeight: '700',
-                fontSize: '20px',
+                fontSize: 'var(--text-h1)',
                 letterSpacing: '0.5px',
                 boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
                 flexShrink: 0,
@@ -167,8 +162,8 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                 <h2
                   style={{
                     margin: 0,
-                    fontSize: '22px',
-                    fontWeight: '700',
+                    fontSize: 'var(--text-h1)',
+                    fontWeight: '600',
                     color: '#F8FAFC',
                     lineHeight: '1.25',
                   }}
@@ -182,12 +177,12 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                       background: 'rgba(37, 99, 235, 0.15)',
                       border: '1px solid rgba(37, 99, 235, 0.3)',
                       color: '#60A5FA',
-                      fontSize: '11px',
+                      fontSize: 'var(--text-caption)',
                       fontWeight: '600',
                       padding: '3px 10px',
                       borderRadius: '12px',
                       textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
+                      letterSpacing: '0.03em',
                     }}
                   >
                     {relationshipType.replace('_', ' ')}
@@ -195,9 +190,8 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#94A3B8' }}>
-                <Hash size={13} style={{ color: '#64748B' }} />
-                <span>Company ID: <strong style={{ color: '#CBD5E1', fontFamily: 'monospace' }}>{companyId}</strong></span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-body)', color: '#94A3B8' }}>
+                <span>{relationshipType ? relationshipType.replace('_', ' ') : 'Doanh nghiệp'}</span>
               </div>
             </div>
           </div>
@@ -224,43 +218,42 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
               {/* Section 1: Identity Information */}
               <section style={{ background: '#1E293B', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid #334155', paddingBottom: '12px' }}>
-                  <Building2 size={18} style={{ color: '#3B82F6' }} />
-                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#F1F5F9' }}>Identity & Legal Registration</h3>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: '600', color: '#F1F5F9' }}>Identity & Legal Registration</h3>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div>
-                    <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94A3B8', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                    <span style={{ fontSize: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#94A3B8', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
                       Trade Name
                     </span>
-                    <strong style={{ fontSize: '14px', color: tradeName ? '#F8FAFC' : '#64748B' }}>
+                    <strong style={{ fontSize: 'var(--text-body)', color: tradeName ? '#F8FAFC' : '#64748B' }}>
                       {tradeName || 'Chưa cập nhật'}
                     </strong>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94A3B8', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                    <span style={{ fontSize: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#94A3B8', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
                       Legal Name
                     </span>
-                    <strong style={{ fontSize: '14px', color: legalName ? '#F8FAFC' : '#64748B' }}>
+                    <strong style={{ fontSize: 'var(--text-body)', color: legalName ? '#F8FAFC' : '#64748B' }}>
                       {legalName || 'Chưa cập nhật'}
                     </strong>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94A3B8', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                    <span style={{ fontSize: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#94A3B8', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
                       Tax Code
                     </span>
-                    <strong style={{ fontSize: '14px', color: taxCode ? '#F8FAFC' : '#64748B', fontFamily: 'monospace' }}>
+                    <strong style={{ fontSize: 'var(--text-body)', color: taxCode ? '#F8FAFC' : '#64748B', fontFamily: 'monospace' }}>
                       {taxCode || 'Chưa cập nhật'}
                     </strong>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94A3B8', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                    <span style={{ fontSize: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#94A3B8', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
                       Registration No.
                     </span>
-                    <strong style={{ fontSize: '14px', color: regNo ? '#F8FAFC' : '#64748B', fontFamily: 'monospace' }}>
+                    <strong style={{ fontSize: 'var(--text-body)', color: regNo ? '#F8FAFC' : '#64748B', fontFamily: 'monospace' }}>
                       {regNo || 'Chưa cập nhật'}
                     </strong>
                   </div>
@@ -270,38 +263,36 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
               {/* Section 2: AI Strategic Evaluation & Scores */}
               <section style={{ background: '#1E293B', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid #334155', paddingBottom: '12px' }}>
-                  <Award size={18} style={{ color: '#10B981' }} />
-                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#F1F5F9' }}>Strategic Assessment & Risk Posture</h3>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: '600', color: '#F1F5F9' }}>Strategic Assessment & Risk Posture</h3>
                 </div>
 
                 {recentScore ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                     <div style={{ background: '#0F172A', padding: '14px', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-                      <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Overall Score</span>
-                      <span style={{ fontSize: '22px', fontWeight: '800', color: recentScore.totalScore >= 70 ? '#22C55E' : '#F59E0B' }}>
-                        {recentScore.totalScore} <span style={{ fontSize: '13px', color: '#64748B', fontWeight: 'normal' }}>/100</span>
+                      <span style={{ fontSize: 'var(--text-label)', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Overall Score</span>
+                      <span style={{ fontSize: 'var(--text-metric)', fontWeight: '700', color: (recentScore.totalScore ?? recentScore.overallScore ?? 0) >= 70 ? '#22C55E' : '#F59E0B' }}>
+                        {recentScore.totalScore ?? recentScore.overallScore ?? '—'} <span style={{ fontSize: 'var(--text-body)', color: '#64748B', fontWeight: 'normal' }}>/100</span>
                       </span>
                     </div>
 
                     <div style={{ background: '#0F172A', padding: '14px', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-                      <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Partner Fit</span>
-                      <span style={{ fontSize: '22px', fontWeight: '800', color: '#3B82F6' }}>
-                        {recentScore.partnerFitScore}
+                      <span style={{ fontSize: 'var(--text-label)', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Partner Fit</span>
+                      <span style={{ fontSize: 'var(--text-metric)', fontWeight: '700', color: '#3B82F6' }}>
+                        {recentScore.partnerFitScore ?? '—'}
                       </span>
                     </div>
 
                     <div style={{ background: '#0F172A', padding: '14px', borderRadius: '8px', border: '1px solid #334155', textAlign: 'center' }}>
-                      <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Risk Level</span>
-                      <span style={{ fontSize: '22px', fontWeight: '800', color: recentScore.riskLevel <= 30 ? '#22C55E' : recentScore.riskLevel <= 60 ? '#F59E0B' : '#EF4444' }}>
-                        {recentScore.riskLevel}
+                      <span style={{ fontSize: 'var(--text-label)', color: '#94A3B8', display: 'block', marginBottom: '4px', textTransform: 'uppercase' }}>Risk Level</span>
+                      <span style={{ fontSize: 'var(--text-metric)', fontWeight: '700', color: (recentScore.riskLevel ?? 0) <= 30 ? '#22C55E' : (recentScore.riskLevel ?? 0) <= 60 ? '#F59E0B' : '#EF4444' }}>
+                        {recentScore.riskLevel ?? '—'}
                       </span>
                     </div>
                   </div>
                 ) : (
                   <div style={{ padding: '24px 16px', textAlign: 'center', background: '#0F172A', borderRadius: '8px', border: '1px dashed #334155' }}>
-                    <ShieldAlert size={28} style={{ color: '#64748B', marginBottom: '8px' }} />
-                    <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: '#CBD5E1' }}>Chưa có điểm đánh giá AI</p>
-                    <span style={{ fontSize: '12px', color: '#64748B' }}>Thực thể chưa chạy quy trình chấm điểm đối tác gần đây.</span>
+                    <p style={{ margin: '0 0 4px', fontSize: 'var(--text-body)', fontWeight: '600', color: '#CBD5E1' }}>Chưa có điểm đánh giá AI</p>
+                    <span style={{ fontSize: 'var(--text-caption)', color: '#64748B' }}>Thực thể chưa chạy quy trình chấm điểm đối tác gần đây.</span>
                   </div>
                 )}
               </section>
@@ -309,47 +300,41 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
               {/* Section 3: Evidence Sources & Linked Artifacts */}
               <section style={{ background: '#1E293B', borderRadius: '12px', padding: '20px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid #334155', paddingBottom: '12px' }}>
-                  <Database size={18} style={{ color: '#8B5CF6' }} />
-                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#F1F5F9' }}>Evidence Sources & Linked Artifacts</h3>
+                  <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: '600', color: '#F1F5F9' }}>Evidence Sources & Linked Artifacts</h3>
                 </div>
 
                 {!sources || (!sources.projectIds?.length && !sources.importJobIds?.length && !sources.rawDocumentIds?.length && !sources.candidateIds?.length) ? (
                   <div style={{ padding: '24px 16px', textAlign: 'center', background: '#0F172A', borderRadius: '8px', border: '1px dashed #334155' }}>
-                    <FileText size={28} style={{ color: '#64748B', marginBottom: '8px' }} />
-                    <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: '#CBD5E1' }}>Chưa có nguồn dữ liệu đối chiếu</p>
-                    <span style={{ fontSize: '12px', color: '#64748B' }}>Không tìm thấy dự án hoặc tài liệu crawling liên quan trực tiếp.</span>
+                    <p style={{ margin: '0 0 4px', fontSize: 'var(--text-body)', fontWeight: '600', color: '#CBD5E1' }}>Chưa có nguồn dữ liệu đối chiếu</p>
+                    <span style={{ fontSize: 'var(--text-caption)', color: '#64748B' }}>Không tìm thấy dự án hoặc tài liệu crawling liên quan trực tiếp.</span>
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div style={{ background: '#0F172A', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #334155' }}>
-                      <FolderKanban size={18} style={{ color: '#3B82F6' }} />
                       <div>
-                        <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block' }}>Associated Projects</span>
-                        <strong style={{ fontSize: '15px', color: '#F8FAFC' }}>{sources.projectIds?.length || 0} projects</strong>
+                        <span style={{ fontSize: 'var(--text-caption)', color: '#94A3B8', display: 'block' }}>Associated Projects</span>
+                        <strong style={{ fontSize: 'var(--text-h2)', color: '#F8FAFC' }}>{sources.projectIds?.length || 0} projects</strong>
                       </div>
                     </div>
 
                     <div style={{ background: '#0F172A', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #334155' }}>
-                      <Users size={18} style={{ color: '#10B981' }} />
                       <div>
-                        <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block' }}>Candidate Profiles</span>
-                        <strong style={{ fontSize: '15px', color: '#F8FAFC' }}>{sources.candidateIds?.length || 0} candidates</strong>
+                        <span style={{ fontSize: 'var(--text-caption)', color: '#94A3B8', display: 'block' }}>Candidate Profiles</span>
+                        <strong style={{ fontSize: 'var(--text-h2)', color: '#F8FAFC' }}>{sources.candidateIds?.length || 0} candidates</strong>
                       </div>
                     </div>
 
                     <div style={{ background: '#0F172A', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #334155' }}>
-                      <FileText size={18} style={{ color: '#F59E0B' }} />
                       <div>
-                        <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block' }}>Raw Evidence Docs</span>
-                        <strong style={{ fontSize: '15px', color: '#F8FAFC' }}>{sources.rawDocumentIds?.length || 0} documents</strong>
+                        <span style={{ fontSize: 'var(--text-caption)', color: '#94A3B8', display: 'block' }}>Raw Evidence Docs</span>
+                        <strong style={{ fontSize: 'var(--text-h2)', color: '#F8FAFC' }}>{sources.rawDocumentIds?.length || 0} documents</strong>
                       </div>
                     </div>
 
                     <div style={{ background: '#0F172A', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid #334155' }}>
-                      <CheckCircle2 size={18} style={{ color: '#8B5CF6' }} />
                       <div>
-                        <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block' }}>Import Ingestion Jobs</span>
-                        <strong style={{ fontSize: '15px', color: '#F8FAFC' }}>{sources.importJobIds?.length || 0} jobs</strong>
+                        <span style={{ fontSize: 'var(--text-caption)', color: '#94A3B8', display: 'block' }}>Import Ingestion Jobs</span>
+                        <strong style={{ fontSize: 'var(--text-h2)', color: '#F8FAFC' }}>{sources.importJobIds?.length || 0} jobs</strong>
                       </div>
                     </div>
                   </div>

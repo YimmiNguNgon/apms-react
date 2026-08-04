@@ -87,11 +87,11 @@ export const ProfilePage: React.FC = () => {
 
   return (
     <section className="page active admin-console-page role-dashboard role-dashboard-admin">
-      <div className="workspace-page-head admin-console-hero">
+      <div className="workspace-page-head admin-console-hero compact-hero">
         <div>
           <span className="workspace-side-eyebrow">Account profile</span>
           <h1>Profile</h1>
-          <p>Review identity details, role scope, accessible pages, and password security for this account.</p>
+          <p>Identity, role scope, accessible pages, and password security.</p>
         </div>
         <div className="workspace-head-actions">
           {saved && <span className="admin-save-state">Changes saved</span>}

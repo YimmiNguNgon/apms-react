@@ -81,7 +81,7 @@ const ADMIN_MENU: MenuSection[] = [
   {
     title: 'System',
     items: [
-      { id: 'project-management', label: 'Project Management' },
+      { id: 'project-management', label: 'Project' },
       { id: 'system-chat', label: 'Chat' },
       { id: 'system-settings',   label: 'System Settings' },
       { id: 'security-settings', label: 'Security Settings' },
@@ -105,7 +105,6 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
-      { id: 'relationship-map',        label: 'Relationship Map' },
       { id: 'system-chat',             label: 'Chat' },
     ],
   },
@@ -138,7 +137,7 @@ const MANAGER_MENU: MenuSection[] = [
   {
     title: 'Operations',
     items: [
-      { id: 'project-management',      label: 'Project Management' },
+      { id: 'project-management',      label: 'Project' },
       // { id: 'score-rules',             label: 'Score Workspace' },
       { id: 'system-chat',             label: 'Chat' },
       // { id: 'competitor-intelligence', label: 'Competitor Intel' },
@@ -164,7 +163,7 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'Data',
     items: [
       { id: 'companies', label: 'Companies' },
-      { id: 'news',      label: 'Crawler Articles' },
+      { id: 'news',      label: 'News' },
       // { id: 'verify',    label: 'Verify Queue' },
     ],
   },
@@ -222,12 +221,12 @@ const STAFF_MENU: MenuSection[] = [
     title: 'Work Queue',
     items: [
       // { id: 'my-tasks',            label: 'My Tasks' },
-      { id: 'project-management',  label: 'Project Management' },
+      { id: 'project-management',  label: 'Project' },
       { id: 'system-chat',         label: 'Chat' },
       // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       // { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'Company Profiles' },
-      { id: 'news',                label: 'Crawler Articles' },
+      { id: 'news',                label: 'News' },
     ],
   },
   // {
@@ -265,7 +264,10 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
       { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      { id: 'relationship-map',        label: 'Relationship Map' },
+      { id: 'crawler-control',         label: 'Crawler Control' },
       { id: 'project-management',      label: 'Projects Overview' },
+      { id: 'news',                    label: 'News & Intelligence' },
       { id: 'system-chat',             label: 'Chat' },
     ],
   },
@@ -334,7 +336,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           </div>
           <div className="logo-text-block">
             <div className="logo-title">APMS</div>
-            <div className="logo-sub">Business Intelligence</div>
+            {/* <div className="logo-sub">Business Intelligence</div> */}
           </div>
         </div>
 
@@ -391,7 +393,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
               title="Đăng xuất"
               onClick={e => { e.stopPropagation(); setShowLogout(true); }}
               style={{
-                fontSize: '11px', width: 'auto', padding: '4px 8px',
+                fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
                 background: 'rgba(239,68,68,0.1)', color: '#FCA5A5',
                 borderRadius: 'var(--radius-sm)',
               }}

@@ -4974,7 +4974,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 )}
                 {isManager && (
                   <>
-                    <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button>
+                    {/* <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button> */}
                     <button
                       className={`${styles.button} ${styles.primaryButton}`}
                       type="button"
@@ -4984,7 +4984,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     >
                       <UserPlus size={16} />Invite Member
                     </button>
-                    <button className={styles.iconButton} type="button" aria-label="More actions"><MoreHorizontal size={18} /></button>
+                    {/* <button className={styles.iconButton} type="button" aria-label="More actions"><MoreHorizontal size={18} /></button> */}
                   </>
                 )}
               </div>

@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
 import { CompanyDetailDrawer } from '../components/CompanyDetailDrawer';
+import { RecentScoreCard, ScoreCardSkeleton } from '../components/RecentScoreCard';
+import { ScoreDetailModal } from '../components/ScoreDetailModal';
+import { riskTone, scoreTone } from '../components/scoreTone';
 
 export interface GraphCompany {
   companyId: string;
@@ -16,33 +19,47 @@ export interface ScoreSnapshot {
   scoreSnapshotId: number;
   companyId: string;
   companyName?: string;
+  targetCompanyProfileId?: string;
   projectId: string;
   candidateId: string;
-  partnerFitScore: number;
-  competitionLevel: number;
-  riskLevel: number;
-  relationshipStrength: number;
-  totalScore: number;
+  partnerFitScore?: number | null;
+  competitionLevel?: number | null;
+  riskLevel?: number | null;
+  relationshipStrength?: number | null;
+  totalScore?: number | null;
+  overallScore?: number | null;
   factorsJson: string;
   ruleVersion: string;
   generatedBy: string;
+  evaluatedRole?: string | null;
   createdAt: string;
 }
 
-const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
+const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
-  }
-  if (rawId && rawId.trim()) {
-    if (/^[0-9a-fA-F]{24}$/.test(rawId.trim())) {
-      return `Công ty (ID: ${rawId.trim().substring(0, 8)}...)`;
-    }
-    return rawId.trim();
   }
   return 'Chưa có tên công ty';
 };
 
 type GroupTab = 'partners' | 'competitors' | 'suppliers' | 'potential-partners';
+
+const TABS: Array<{ value: GroupTab; label: string }> = [
+  { value: 'partners', label: 'Đối tác' },
+  { value: 'competitors', label: 'Đối thủ' },
+  { value: 'suppliers', label: 'Nhà cung cấp' },
+  { value: 'potential-partners', label: 'Đối tác tiềm năng' },
+];
+
+const badgeBase: React.CSSProperties = {
+  display: 'inline-block',
+  fontSize: '11px',
+  fontWeight: 600,
+  lineHeight: 1.4,
+  padding: '2px 8px',
+  borderRadius: '6px',
+  whiteSpace: 'nowrap',
+};
 
 interface EcosystemOverviewProps {
   setActivePage?: (page: string) => void;
@@ -54,6 +71,9 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
   const [companies, setCompanies] = useState<GraphCompany[]>([]);
   const [recentScores, setRecentScores] = useState<ScoreSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scoresLoading, setScoresLoading] = useState(true);
+  const [showAllScores, setShowAllScores] = useState(false);
+  const [selectedScore, setSelectedScore] = useState<ScoreSnapshot | null>(null);
 
   // Detail Drawer Fallback State
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -63,13 +83,17 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
 
   // Load Recent Scores
   useEffect(() => {
+    setScoresLoading(true);
     api.get<ScoreSnapshot[]>('/dashboard/recent-scores')
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) {
           setRecentScores(res.data);
+        } else {
+          setRecentScores([]);
         }
       })
-      .catch(() => setRecentScores([]));
+      .catch(() => setRecentScores([]))
+      .finally(() => setScoresLoading(false));
   }, []);
 
   // Load Group Data by Tab
@@ -103,6 +127,15 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
         c.industry?.toLowerCase().includes(q)
     );
   }, [companies, searchQuery]);
+
+  // Latest score snapshot per company for quick table badges
+  const scoreByCompany = useMemo(() => {
+    const map = new Map<string, ScoreSnapshot>();
+    recentScores.forEach((s) => {
+      if (!map.has(s.companyId)) map.set(s.companyId, s);
+    });
+    return map;
+  }, [recentScores]);
 
   // Handle View Profile Click
   const handleSelectCompany = (id: string) => {
@@ -139,116 +172,195 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
     setCompanySources(null);
   };
 
+  const visibleScores = showAllScores ? recentScores : recentScores.slice(0, 4);
+
   return (
     <section className="workspace-page" id="page-ecosystem-overview">
-      <div className="workspace-shell">
-        <div className="workspace-main-full">
-          <div className="workspace-breadcrumbs">Enterprise Ecosystem <span>/</span> Strategic Overview</div>
-          <div className="workspace-page-head">
-            <div>
-              <span className="workspace-side-eyebrow">Executive Intelligence</span>
-              <h1>Enterprise Ecosystem Overview</h1>
-              <p>Comprehensive market posture across partners, competitors, suppliers, and potential targets.</p>
-            </div>
-          </div>
+      <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', color: '#64748B', fontSize: 'var(--text-caption)', fontWeight: 500 }}>
+          <span>Intelligence</span>
+          <span>/</span>
+          <span>Enterprise Ecosystem Overview</span>
+        </div>
 
-          {/* Recent Scores Mini Widget */}
-          <div className="workspace-panel" style={{ marginBottom: '24px' }}>
-            <div className="workspace-section-head">
-              <div>
-                <h3>Recent AI Evaluation Scores</h3>
-                <p>Latest partner fit and risk assessments system-wide.</p>
-              </div>
+        {/* Banner */}
+        <div style={{ display: 'flex', alignItems: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 18px', marginBottom: '16px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' }}>
+          <div>
+            <span style={{ fontSize: 'var(--text-label)', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2563EB', display: 'block' }}>
+              Executive Intelligence
+            </span>
+            <h1 style={{ margin: 0, fontSize: 'var(--text-h1)', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px', lineHeight: 1.2 }}>
+              Enterprise Ecosystem Overview
+            </h1>
+          </div>
+        </div>
+
+        {/* Recent AI Evaluation Scores */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '14px', padding: '14px 16px', marginBottom: '16px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: 600, color: '#0F172A' }}>Điểm đánh giá AI gần đây</h3>
+              <p style={{ margin: '2px 0 0', fontSize: 'var(--text-caption)', color: '#94A3B8' }}>
+                Đánh giá mức độ phù hợp và rủi ro của đối tác mới nhất.
+              </p>
             </div>
-            {recentScores.length === 0 ? (
-              <div className="workspace-empty" style={{ padding: '16px' }}>No recent score snapshots recorded.</div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                {recentScores.slice(0, 4).map((score) => (
-                  <article key={score.scoreSnapshotId} className="workspace-stat-card" style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-                    <span className="workspace-stat-label">Target: {formatCompanyName(score.companyName, score.companyId)}</span>
-                    <strong className="workspace-stat-value" style={{ color: score.totalScore >= 70 ? '#22C55E' : '#F59E0B' }}>
-                      {score.totalScore} / 100
-                    </strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span>Fit Score: <strong>{score.partnerFitScore}</strong> | Risk Level: <strong>{score.riskLevel}</strong></span>
-                      <span>Evaluated By: {score.generatedBy || 'AI Engine'}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
+            {recentScores.length > 4 && (
+              <button
+                onClick={() => setShowAllScores((v) => !v)}
+                style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#1D4ED8', background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: '4px 0' }}
+              >
+                {showAllScores ? 'Thu gọn' : `Xem tất cả (${recentScores.length})`}
+              </button>
             )}
           </div>
 
-          {/* Navigation Tabs & Search Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '16px', flexWrap: 'wrap' }}>
-            <div className="tab-group" style={{ display: 'flex', gap: '8px' }}>
-              {(['partners', 'competitors', 'suppliers', 'potential-partners'] as GroupTab[]).map((tab) => (
-                <button
-                  key={tab}
-                  className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-outline'}`}
-                  onClick={() => setActiveTab(tab)}
-                  style={{ textTransform: 'capitalize' }}
-                >
-                  {tab.replace('-', ' ')}
-                </button>
+          {scoresLoading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <ScoreCardSkeleton key={i} />
               ))}
             </div>
-
-            <div style={{ flex: 1, maxWidth: '320px' }}>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Search by company name, ID, or industry..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
-              />
+          ) : recentScores.length === 0 ? (
+            <div style={{ padding: '36px 16px', textAlign: 'center', background: '#F8FAFC', border: '1px dashed #E2E8F0', borderRadius: '10px' }}>
+              <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#334155', marginBottom: '2px' }}>Chưa có kết quả đánh giá AI</div>
+              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>Chưa ghi nhận snapshot điểm số nào cho hệ sinh thái.</div>
             </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+              {visibleScores.map((score) => (
+                <RecentScoreCard key={score.scoreSnapshotId} score={score} onClick={setSelectedScore} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Toolbar: tabs + search */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', gap: '4px', background: '#F1F5F9', borderRadius: '10px', padding: '4px', flexWrap: 'wrap' }}>
+            {TABS.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setActiveTab(tab.value)}
+                style={{
+                  fontSize: 'var(--text-label)',
+                  fontWeight: 600,
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: activeTab === tab.value ? '#FFFFFF' : 'transparent',
+                  color: activeTab === tab.value ? '#1D4ED8' : '#64748B',
+                  boxShadow: activeTab === tab.value ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {/* Companies Table */}
-          <div className="workspace-panel">
-            {loading ? (
-              <div className="workspace-empty">Loading ecosystem companies...</div>
-            ) : filteredCompanies.length === 0 ? (
-              <div className="workspace-empty">No companies found in category "{activeTab.replace('-', ' ')}".</div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                      <th style={{ padding: '12px' }}>Company ID</th>
-                      <th style={{ padding: '12px' }}>Name</th>
-                      <th style={{ padding: '12px' }}>Industry</th>
-                      <th style={{ padding: '12px' }}>Relationships</th>
-                      <th style={{ padding: '12px' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCompanies.map((comp) => (
-                      <tr key={comp.companyId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{comp.companyId}</td>
-                        <td style={{ padding: '12px' }}>{formatCompanyName(comp.name, comp.companyId)}</td>
-                        <td style={{ padding: '12px' }}>
-                          <span className="badge badge-blue">{comp.industry || 'General Industry'}</span>
+          <div style={{ position: 'relative', width: '280px', maxWidth: '100%' }}>
+            <input
+              type="text"
+              placeholder="Tìm theo tên công ty, ID hoặc ngành..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: '100%', height: '38px', padding: '0 10px', fontSize: 'var(--text-body)', color: '#0F172A', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+
+        {/* Companies Table */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '14px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)', overflow: 'hidden' }}>
+          {loading ? (
+            <div style={{ padding: '8px 16px 16px' }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.4fr 0.8fr 0.9fr 0.7fr 1fr', gap: '12px', alignItems: 'center', padding: '14px 4px', borderBottom: i < 5 ? '1px solid #F1F5F9' : 'none' }}>
+                  <div className="eco-skeleton" style={{ height: '14px', width: '70%' }} />
+                  <div className="eco-skeleton" style={{ height: '20px', width: '60%' }} />
+                  <div className="eco-skeleton" style={{ height: '12px', width: '40%' }} />
+                  <div className="eco-skeleton" style={{ height: '20px', width: '60%' }} />
+                  <div className="eco-skeleton" style={{ height: '20px', width: '50%' }} />
+                  <div className="eco-skeleton" style={{ height: '26px', width: '80%' }} />
+                </div>
+              ))}
+            </div>
+          ) : filteredCompanies.length === 0 ? (
+            <div style={{ padding: '48px 16px', textAlign: 'center' }}>
+              <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
+                Không tìm thấy công ty nào trong nhóm "{TABS.find((t) => t.value === activeTab)?.label}"
+              </div>
+              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</div>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Tên công ty</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Ngành</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Quan hệ</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Fit Score</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Risk</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCompanies.map((comp) => {
+                    const snap = scoreByCompany.get(comp.companyId);
+                    const fit = snap?.partnerFitScore;
+                    const risk = snap?.riskLevel;
+                    const fitTone = scoreTone(fit);
+                    const riskToneValue = riskTone(risk);
+                    return (
+                      <tr key={comp.companyId} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '11px 12px', fontWeight: 600, color: '#0F172A', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                            <span style={{ width: '26px', height: '26px', borderRadius: '8px', background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 'var(--text-caption)', flexShrink: 0 }}>
+                              {formatCompanyName(comp.name).charAt(0).toUpperCase()}
+                            </span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '240px' }}>{formatCompanyName(comp.name)}</span>
+                          </div>
                         </td>
-                        <td style={{ padding: '12px' }}>{comp.relationships?.length || 0} linkages</td>
-                        <td style={{ padding: '12px' }}>
+                        <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
+                          <span style={{ ...badgeBase, background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}>
+                            {comp.industry || 'Chung'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '11px 12px', fontSize: 'var(--text-caption)', color: '#64748B', whiteSpace: 'nowrap' }}>
+                          {comp.relationships?.length || 0} mối quan hệ
+                        </td>
+                        <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
+                          {fit != null ? (
+                            <span style={{ ...badgeBase, background: fitTone.bg, color: fitTone.color }}>{fit}</span>
+                          ) : (
+                            <span style={{ fontSize: 'var(--text-caption)', color: '#CBD5E1' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
+                          {risk != null ? (
+                            <span style={{ ...badgeBase, background: riskToneValue.bg, color: riskToneValue.color }}>{risk}</span>
+                          ) : (
+                            <span style={{ fontSize: 'var(--text-caption)', color: '#CBD5E1' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '11px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <button
-                            className="btn btn-sm btn-outline"
                             onClick={() => handleSelectCompany(comp.companyId)}
+                            style={{ fontSize: '13px', fontWeight: 600, color: '#1D4ED8', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '0 10px', height: '28px', display: 'inline-flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease' }}
                           >
-                            View Profile
+                            Xem hồ sơ
                           </button>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -262,6 +374,9 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
         loading={profileLoading}
         onClose={closeModal}
       />
+
+      {/* Score Detail Modal */}
+      <ScoreDetailModal score={selectedScore} onClose={() => setSelectedScore(null)} />
     </section>
   );
 };

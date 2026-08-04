@@ -73,6 +73,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [backendAvailable, setBackendAvailable] = useState(true);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
@@ -85,6 +86,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
     api.get<SystemSettingsResponse>('/admin/settings')
       .then((res) => {
         if (res?.success && res.data) {
+          setBackendAvailable(true);
           if (res.data.system) setSystem((prev) => ({ ...prev, ...res.data.system }));
           if (res.data.security) {
             setSecurity((prev) => ({ ...prev, ...res.data.security }));
@@ -93,8 +95,8 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
           if (Array.isArray(res.data.trustedIps)) setTrustedIps(res.data.trustedIps);
         }
       })
-      .catch((err) => {
-        setError(err?.message || 'Could not fetch system settings.');
+      .catch(() => {
+        setBackendAvailable(false);
       })
       .finally(() => setLoading(false));
   };
@@ -207,7 +209,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
     system: {
       eyebrow: 'Platform configuration',
       title: 'System Settings',
-      desc: 'Control workspace defaults, AI threshold, SLA, and upload limits for APMS administrators.',
+      desc: 'Workspace defaults, AI threshold, SLA, and upload limits.',
       meter: 6,
       meterLabel: 'system rules',
       stats: [
@@ -220,7 +222,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
     security: {
       eyebrow: 'Security posture',
       title: 'Security Settings',
-      desc: 'Tune multi-factor authentication, session timeouts, and audit policies across the workspace.',
+      desc: 'MFA, session timeouts, and audit policies.',
       meter: `${enabledControls}/5`,
       meterLabel: 'controls on',
       stats: [
@@ -233,7 +235,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
     'access-control': {
       eyebrow: 'Access boundary',
       title: 'Access Control',
-      desc: 'Restrict network entry points to trusted IP subnets and manage network access policy.',
+      desc: 'Trusted IP subnets and network access policy.',
       meter: trustedIps.length,
       meterLabel: 'trusted subnets',
       stats: [
@@ -247,7 +249,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
   return (
     <section className={`page active admin-console-page admin-system-page ${tab} role-dashboard role-dashboard-admin`}>
-      <div className={`workspace-page-head admin-console-hero admin-system-hero ${tab}`}>
+      <div className={`workspace-page-head admin-console-hero admin-system-hero compact-hero ${tab}`}>
         <div>
           <span className="workspace-side-eyebrow">{pageMeta.eyebrow}</span>
           <h1>{pageMeta.title}</h1>
@@ -260,7 +262,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
         </div>
       </div>
 
-      <div className={`workspace-stats workspace-stats-compact admin-system-stats ${tab}`}>
+      <div className={`workspace-stats workspace-stats-compact admin-system-stats compact-stats ${tab}`}>
         {pageMeta.stats.map((item) => (
           <article key={item.label} className="workspace-stat-card">
             <span className="workspace-stat-label">{item.label}</span>
@@ -293,6 +295,15 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
       {loading ? (
         <div className="admin-skeleton">Loading system settings...</div>
+      ) : !backendAvailable ? (
+        <div className="workspace-panel" style={{ padding: '64px 32px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>
+            System Settings not available
+          </h2>
+          <p style={{ fontSize: '14px', color: '#6B7280', margin: 0, maxWidth: '480px', marginInline: 'auto' }}>
+            The system settings backend is being developed. Default configuration is being used for the current session.
+          </p>
+        </div>
       ) : (
         <div className={`admin-system-content ${tab}`}>
           {tab === 'system' && (
