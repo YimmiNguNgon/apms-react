@@ -3067,7 +3067,7 @@ const CompanyMemberLayerBoard: React.FC<{
 export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActivePage }) => {
   const { currentUser } = useUser();
   const isManager = currentUser?.role === ROLES.MANAGER || currentUser?.role === ROLES.OWNER || currentUser?.role === ROLES.ADMIN;
-  const isStaffView = currentUser?.role === ROLES.STAFF || currentUser?.role === ROLES.KEY_MEMBER;
+  const isStaffView = currentUser?.role === ROLES.STAFF;
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem(PROJECT_DETAIL_TAB_STORAGE_KEY) || 'Kanban Board');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [apiTasks, setApiTasks] = useState<ProjectTaskResponse[]>([]);

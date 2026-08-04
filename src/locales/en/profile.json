@@ -1,0 +1,32 @@
+{
+  "header": {
+    "accountProfile": "Account Profile",
+    "title": "Account Profile - {{name}}",
+    "saved": "Changes saved",
+    "editProfile": "Edit Profile",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "save": "Save Changes"
+  },
+  "summary": {
+    "permissionSummary": "Permissions Summary",
+    "allowedPages": "Allowed Access Pages",
+    "morePages": "+{{count}} other pages"
+  },
+  "info": {
+    "personalInfo": "Personal Information",
+    "fullName": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "dept": "Department",
+    "bio": "Bio / Overview"
+  },
+  "security": {
+    "securityAccount": "Security & Password",
+    "currentPassword": "Current Password *",
+    "newPassword": "New Password *",
+    "confirmNewPassword": "Confirm New Password *",
+    "changing": "Updating...",
+    "changePassword": "Change Password"
+  }
+}

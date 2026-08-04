@@ -48,7 +48,7 @@ export const AIAgent: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.DIRECTOR;
+  const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.OWNER;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });

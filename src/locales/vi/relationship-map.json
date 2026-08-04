@@ -1,0 +1,95 @@
+{
+  "title": "Mạng lưới Quan hệ đối tác",
+  "subtitle": "Bản đồ quan hệ đa chiều – Cập nhật: {{date}}",
+  "actions": {
+    "export": "Xuất báo cáo",
+    "addPartner": "Thêm đối tác"
+  },
+  "stats": {
+    "totalPartners": "Tổng đối tác",
+    "activeRelations": "Quan hệ hoạt động",
+    "sharedProjects": "Dự án chung",
+    "riskWarnings": "Cảnh báo nguy cơ",
+    "avgAiScore": "AI Score TB",
+    "totalPartnersGrowth": "+5 tháng này",
+    "activeRelationsGrowth": "+12 mới",
+    "sharedProjectsGrowth": "+3 Q2",
+    "riskWarningsGrowth": "+2 mới",
+    "avgAiScoreGrowth": "+0.3"
+  },
+  "network": {
+    "title": "Mạng lưới Quan hệ",
+    "companies": "[{{count}}] Doanh nghiệp",
+    "connections": "[{{count}}] Kết nối",
+    "zoomOut": "Thu nhỏ",
+    "zoomIn": "Phóng to",
+    "refresh": "Làm mới",
+    "toggleLayout": "Đổi bố cục",
+    "grid": "Lưới",
+    "radial": "Vòng",
+    "loading": "Đang tải mạng lưới quan hệ...",
+    "emptyFiltered": "Không có đối tác nào phù hợp với bộ lọc đang chọn. Hãy điều chỉnh bộ lọc ngành nghề hoặc loại quan hệ.",
+    "emptyData": "Chưa có dữ liệu quan hệ doanh nghiệp. Hãy thử làm mới lại.",
+    "ariaLabel": "Mạng lưới quan hệ doanh nghiệp",
+    "centerSub": "My Company"
+  },
+  "relationshipTypes": {
+    "partnerWith": "Hợp tác dự án",
+    "supplierOf": "Nhà cung cấp",
+    "customerOf": "Khách hàng",
+    "competitorOf": "Đối thủ cạnh tranh",
+    "potentialPartnerOf": "Đầu tư – Cổ đông",
+    "fallback": "Liên kết khác"
+  },
+  "chips": {
+    "all": "Tất cả",
+    "project": "Dự án",
+    "supplier": "NCC",
+    "customer": "KH",
+    "competitor": "Đối thủ",
+    "investment": "Đầu tư"
+  },
+  "filters": {
+    "title": "Bộ lọc nhanh",
+    "industry": "Ngành nghề",
+    "searchPlaceholder": "Tìm ngành nghề...",
+    "allIndustries": "Tất cả",
+    "noIndustry": "(Không có)",
+    "empty": "Chưa có dữ liệu ngành nghề.",
+    "notFound": "Không tìm thấy ngành nghề phù hợp."
+  },
+  "topPartners": {
+    "title": "Top Đối tác Kết nối",
+    "connections": "{{count}} kết nối",
+    "emptyFiltered": "Không có đối tác phù hợp với bộ lọc.",
+    "emptyData": "Chưa có dữ liệu đối tác."
+  },
+  "exportCsv": {
+    "source": "Nguồn",
+    "type": "Loại quan hệ",
+    "group": "Nhóm",
+    "target": "Đích"
+  },
+  "errors": {
+    "requiredName": "Vui lòng nhập tên công ty đối tác.",
+    "createFailed": "Không thể tạo đối tác. Vui lòng thử lại."
+  },
+  "modal": {
+    "addTitle": "Thêm đối tác mới",
+    "description": "Thêm một doanh nghiệp vào mạng lưới quan hệ và gắn liên kết với công ty của bạn.",
+    "close": "Đóng",
+    "companyName": "Tên công ty",
+    "companyNamePlaceholder": "Ví dụ: Công ty Cổ phần FPT",
+    "industry": "Ngành nghề",
+    "industryPlaceholder": "Ví dụ: Công nghệ thông tin",
+    "relationshipType": "Loại quan hệ",
+    "notes": "Ghi chú",
+    "notesPlaceholder": "Bối cảnh hợp tác, điểm mạnh, hay lý do thêm đối tác này...",
+    "cancel": "Hủy",
+    "saving": "Đang lưu...",
+    "addPartner": "Thêm đối tác"
+  },
+  "node": {
+    "noName": "Chưa có tên"
+  }
+}

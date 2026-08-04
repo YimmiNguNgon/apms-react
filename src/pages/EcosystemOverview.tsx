@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { api } from '../services/api';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
 import { CompanyDetailDrawer } from '../components/CompanyDetailDrawer';
@@ -39,16 +41,16 @@ const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
   }
-  return 'Chưa có tên công ty';
+  return i18n.t('ecosystem:table.noCompanyName');
 };
 
 type GroupTab = 'partners' | 'competitors' | 'suppliers' | 'potential-partners';
 
 const TABS: Array<{ value: GroupTab; label: string }> = [
-  { value: 'partners', label: 'Đối tác' },
-  { value: 'competitors', label: 'Đối thủ' },
-  { value: 'suppliers', label: 'Nhà cung cấp' },
-  { value: 'potential-partners', label: 'Đối tác tiềm năng' },
+  { value: 'partners', label: i18n.t('ecosystem:tabs.partners') },
+  { value: 'competitors', label: i18n.t('ecosystem:tabs.competitors') },
+  { value: 'suppliers', label: i18n.t('ecosystem:tabs.suppliers') },
+  { value: 'potential-partners', label: i18n.t('ecosystem:tabs.potentialPartners') },
 ];
 
 const badgeBase: React.CSSProperties = {
@@ -66,6 +68,7 @@ interface EcosystemOverviewProps {
 }
 
 export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActivePage }) => {
+  const { t } = useTranslation('ecosystem');
   const [activeTab, setActiveTab] = useState<GroupTab>('partners');
   const [searchQuery, setSearchQuery] = useState('');
   const [companies, setCompanies] = useState<GraphCompany[]>([]);
@@ -179,19 +182,19 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
       <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
         {/* Breadcrumb */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', color: '#64748B', fontSize: 'var(--text-caption)', fontWeight: 500 }}>
-          <span>Intelligence</span>
+          <span>{t('breadcrumb.intelligence')}</span>
           <span>/</span>
-          <span>Enterprise Ecosystem Overview</span>
+          <span>{t('breadcrumb.title')}</span>
         </div>
 
         {/* Banner */}
         <div style={{ display: 'flex', alignItems: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 18px', marginBottom: '16px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' }}>
           <div>
             <span style={{ fontSize: 'var(--text-label)', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2563EB', display: 'block' }}>
-              Executive Intelligence
+              {t('banner.kicker')}
             </span>
             <h1 style={{ margin: 0, fontSize: 'var(--text-h1)', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px', lineHeight: 1.2 }}>
-              Enterprise Ecosystem Overview
+              {t('banner.title')}
             </h1>
           </div>
         </div>
@@ -200,9 +203,9 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '14px', padding: '14px 16px', marginBottom: '16px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: 600, color: '#0F172A' }}>Điểm đánh giá AI gần đây</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-h2)', fontWeight: 600, color: '#0F172A' }}>{t('scores.title')}</h3>
               <p style={{ margin: '2px 0 0', fontSize: 'var(--text-caption)', color: '#94A3B8' }}>
-                Đánh giá mức độ phù hợp và rủi ro của đối tác mới nhất.
+                {t('scores.subtitle')}
               </p>
             </div>
             {recentScores.length > 4 && (
@@ -210,7 +213,7 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
                 onClick={() => setShowAllScores((v) => !v)}
                 style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#1D4ED8', background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', padding: '4px 0' }}
               >
-                {showAllScores ? 'Thu gọn' : `Xem tất cả (${recentScores.length})`}
+                {showAllScores ? t('scores.collapse') : t('scores.viewAll', { count: recentScores.length })}
               </button>
             )}
           </div>
@@ -223,8 +226,8 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
             </div>
           ) : recentScores.length === 0 ? (
             <div style={{ padding: '36px 16px', textAlign: 'center', background: '#F8FAFC', border: '1px dashed #E2E8F0', borderRadius: '10px' }}>
-              <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#334155', marginBottom: '2px' }}>Chưa có kết quả đánh giá AI</div>
-              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>Chưa ghi nhận snapshot điểm số nào cho hệ sinh thái.</div>
+              <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#334155', marginBottom: '2px' }}>{t('scores.emptyTitle')}</div>
+              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>{t('scores.emptyBody')}</div>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
@@ -264,7 +267,7 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
           <div style={{ position: 'relative', width: '280px', maxWidth: '100%' }}>
             <input
               type="text"
-              placeholder="Tìm theo tên công ty, ID hoặc ngành..."
+              placeholder={t('filters.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ width: '100%', height: '38px', padding: '0 10px', fontSize: 'var(--text-body)', color: '#0F172A', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', outline: 'none', boxSizing: 'border-box' }}
@@ -290,21 +293,21 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
           ) : filteredCompanies.length === 0 ? (
             <div style={{ padding: '48px 16px', textAlign: 'center' }}>
               <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, color: '#334155', marginBottom: '2px' }}>
-                Không tìm thấy công ty nào trong nhóm "{TABS.find((t) => t.value === activeTab)?.label}"
+                {t('table.emptyGroup', { group: TABS.find((tab) => tab.value === activeTab)?.label })}
               </div>
-              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</div>
+              <div style={{ fontSize: 'var(--text-caption)', color: '#94A3B8' }}>{t('table.emptyHint')}</div>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Tên công ty</th>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Ngành</th>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Quan hệ</th>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Fit Score</th>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Risk</th>
-                    <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Thao tác</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.company')}</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.industry')}</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.relationship')}</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.fitScore')}</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.risk')}</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -326,11 +329,11 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
                         </td>
                         <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
                           <span style={{ ...badgeBase, background: 'rgba(37,99,235,0.10)', color: '#2563EB' }}>
-                            {comp.industry || 'Chung'}
+                            {comp.industry || t('table.generalIndustry')}
                           </span>
                         </td>
                         <td style={{ padding: '11px 12px', fontSize: 'var(--text-caption)', color: '#64748B', whiteSpace: 'nowrap' }}>
-                          {comp.relationships?.length || 0} mối quan hệ
+                          {t('table.relationshipsCount', { count: comp.relationships?.length || 0 })}
                         </td>
                         <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
                           {fit != null ? (
@@ -351,7 +354,7 @@ export const EcosystemOverview: React.FC<EcosystemOverviewProps> = ({ setActiveP
                             onClick={() => handleSelectCompany(comp.companyId)}
                             style={{ fontSize: '13px', fontWeight: 600, color: '#1D4ED8', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '0 10px', height: '28px', display: 'inline-flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease' }}
                           >
-                            Xem hồ sơ
+                            {t('table.viewProfile')}
                           </button>
                         </td>
                       </tr>

@@ -1,0 +1,141 @@
+{
+  "title": "Crawler Intelligence Control",
+  "subtitle": "Bảng điều khiển thu thập tin tức & phân tích AI",
+  "categories": {
+    "news": "Tin tức",
+    "opportunity": "Cơ hội",
+    "risk": "Rủi ro"
+  },
+  "common": {
+    "noDate": "Không có ngày"
+  },
+  "table": {
+    "noSummary": "Chưa có tóm tắt cho mục này.",
+    "noTitle": "Bài viết chưa có tiêu đề",
+    "noMatch": "Không khớp",
+    "unknownSource": "Không rõ",
+    "riskLevel": "Risk {{level}}",
+    "opportunityLevel": "Opp {{level}}",
+    "genericLevel": "Chung",
+    "sourceLink": "Gốc",
+    "loading": "Đang tải danh sách bài viết...",
+    "empty": "Không tìm thấy bài viết nào. Hãy chạy Crawl để thu thập dữ liệu.",
+    "headers": {
+      "type": "Loại",
+      "titleSummary": "Tiêu đề & Tóm tắt",
+      "company": "Doanh nghiệp",
+      "sourceDate": "Nguồn & Ngày",
+      "rating": "Đánh giá",
+      "details": "Chi tiết"
+    }
+  },
+  "header": {
+    "forceRefreshTitle": "Bỏ qua thời gian chờ cào theo công ty và thu thập lại toàn bộ",
+    "forceRefresh": "Cào lại toàn bộ",
+    "runCrawl": "Chạy Crawl",
+    "runCrawlRunning": "Đang cào…",
+    "runAnalyze": "Chạy Phân tích",
+    "runAnalyzeRunning": "Đang phân tích…"
+  },
+  "tabs": {
+    "ariaLabel": "Crawler Control Tabs",
+    "dataLabel": "Dữ liệu thu thập [{{total}}]",
+    "settingsLabel": "Cấu hình AI & Nguồn tin uy tín"
+  },
+  "filters": {
+    "searchPlaceholder": "Tìm tiêu đề hoặc nội dung...",
+    "allSources": "Tất cả nguồn tin",
+    "reset": "Đặt lại"
+  },
+  "pagination": {
+    "showing": "Hiển thị {{shown}} / {{total}} mục",
+    "previous": "Trước",
+    "page": "Trang {{current}} / {{total}}",
+    "next": "Sau"
+  },
+  "stats": {
+    "totalArticles": "Tổng bài viết",
+    "news": "Tin tức",
+    "opportunity": "Cơ hội",
+    "risk": "Rủi ro",
+    "uniqueEvents": "Sự kiện độc lập",
+    "duplicateNote": "{{count}} trùng lặp"
+  },
+  "sidebar": {
+    "crawlerInfo": "Thông tin Crawler",
+    "crawled": "Đã thu thập",
+    "articleCount": "{{count}} bài viết",
+    "scope": "Phạm vi cào",
+    "projectScope": "Dự án {{id}}",
+    "allCompanies": "Tất cả công ty",
+    "autoRefresh": "Tự động cập nhật",
+    "refreshInterval": "Mỗi 30 giây",
+    "rejectionsTitle": "Từ chối cào ({{count}} lượt)",
+    "rejectedUntrusted": "Không thuộc danh sách uy tín",
+    "rejectedUnknownDomain": "Tên miền không rõ",
+    "rejectedNoCompany": "Không đề cập công ty"
+  },
+  "aiProcessing": {
+    "title": "Tiến trình xử lý AI bài viết",
+    "enqueueAll": "Đưa tất cả vào hàng đợi",
+    "enqueueing": "Đang xếp hàng…",
+    "processQueue": "Xử lý hàng đợi",
+    "processing": "Đang xử lý…",
+    "analyzed": "Đã phân tích",
+    "ofTotal": "trên {{count}} bài",
+    "queue": "Hàng đợi",
+    "runningJobs": "{{count}} đang chạy",
+    "uniqueEvents": "Sự kiện độc lập",
+    "duplicates": "{{count}} trùng lặp",
+    "failed": "Lỗi xử lý",
+    "failedJobs": "{{count}} việc thất bại"
+  },
+  "whitelist": {
+    "title": "Danh sách nguồn tin uy tín (Whitelist)",
+    "activeSummary": "{{active}} đang hoạt động / {{total}} nguồn",
+    "domainPlaceholder": "Tên miền e.g. vnexpress.net",
+    "sourceNamePlaceholder": "Tên nguồn e.g. VnExpress",
+    "categoryPlaceholder": "Danh mục (tùy chọn)",
+    "adding": "Đang thêm…",
+    "addSource": "Thêm nguồn",
+    "adminOnly": "Chỉ Quản trị viên (Admin) mới có quyền quản lý danh sách nguồn tin uy tín.",
+    "ownerNotice": "Bạn có thể chỉnh sửa Tên nguồn và Danh mục. Các thao tác khác (thêm/xóa nguồn, đổi trạng thái) chỉ dành cho Quản trị viên.",
+    "editHint": "Nhấp để chỉnh sửa",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "retry": "Thử lại",
+    "empty": "Chưa cấu hình nguồn tin uy tín nào.",
+    "statusActive": "Hoạt động",
+    "statusInactive": "Tắt",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "delete": "Xóa",
+    "headers": {
+      "domain": "Tên miền",
+      "sourceName": "Tên nguồn",
+      "category": "Danh mục",
+      "status": "Trạng thái",
+      "actions": "Thao tác"
+    }
+  },
+  "crawlHistory": {
+    "title": "Lịch sử Crawl gần đây",
+    "empty": "Chưa có lượt cào nào ghi nhận.",
+    "manual": "thủ công",
+    "savedFetched": "{{saved}} lưu / {{fetched}} lấy về",
+    "duplicatesRejected": "Trùng: {{duplicates}} | Từ chối: {{rejected}}"
+  },
+  "errors": {
+    "loadFailed": "Không thể tải dữ liệu crawler.",
+    "crawlFailed": "Không thể chạy crawl.",
+    "analyzeFailed": "Không thể chạy phân tích.",
+    "sourceFieldsRequired": "Vui lòng nhập tên miền và tên nguồn tin.",
+    "addSourceFailed": "Không thể thêm nguồn uy tín.",
+    "loadSourceFailed": "Không thể tải danh sách nguồn uy tín.",
+    "updateSourceFailed": "Không thể lưu thay đổi nguồn uy tín.",
+    "toggleSourceFailed": "Không thể thay đổi trạng thái.",
+    "removeSourceFailed": "Không thể xóa nguồn.",
+    "processQueueFailed": "Không thể xử lý hàng đợi AI.",
+    "enqueueFailed": "Không thể đưa bài viết vào hàng đợi AI."
+  }
+}

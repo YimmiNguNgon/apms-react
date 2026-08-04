@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { FolderPlus, Plus } from 'lucide-react';
 import { api } from '../services/api';
 import { projectApi } from '../API/projectApi';
@@ -27,7 +29,7 @@ const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
   }
-  return 'Chưa xác định';
+  return i18n.t('projects-overview:companyName.unknown');
 };
 
 const STATUS_BADGE: Record<string, { bg: string; fg: string }> = {
@@ -93,17 +95,19 @@ const footerBtn: React.CSSProperties = {
 };
 
 const RELATIONSHIP_OPTIONS: Array<{ value: RelationshipType; label: string }> = [
-  { value: 'PARTNER_WITH', label: 'Partner' },
-  { value: 'COMPETITOR_OF', label: 'Competitor' },
-  { value: 'SUPPLIER_OF', label: 'Supplier' },
-  { value: 'CUSTOMER_OF', label: 'Customer' },
-  { value: 'POTENTIAL_PARTNER_OF', label: 'Potential partner' },
+  { value: 'PARTNER_WITH', label: i18n.t('projects-overview:relationships.partner') },
+  { value: 'COMPETITOR_OF', label: i18n.t('projects-overview:relationships.competitor') },
+  { value: 'SUPPLIER_OF', label: i18n.t('projects-overview:relationships.supplier') },
+  { value: 'CUSTOMER_OF', label: i18n.t('projects-overview:relationships.customer') },
+  { value: 'POTENTIAL_PARTNER_OF', label: i18n.t('projects-overview:relationships.potentialPartner') },
 ];
 
 const profileName = (profile: ProfileResponse) =>
   profile.identity?.tradeName || profile.identity?.legalName || profile.companyId;
 
 export const ProjectsOverview: React.FC = () => {
+  const { t } = useTranslation('projects-overview');
+
   // Page list state
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -159,10 +163,10 @@ export const ProjectsOverview: React.FC = () => {
       })
       .catch(() => {
         setProjects([]);
-        setError('Không thể tải danh sách dự án. Vui lòng thử lại.');
+        setError(t('errors.loadFailed'));
       })
       .finally(() => setLoading(false));
-  }, [page, statusFilter, typeFilter]);
+  }, [page, statusFilter, typeFilter, t]);
 
   useEffect(() => {
     loadProjects();
@@ -249,15 +253,15 @@ export const ProjectsOverview: React.FC = () => {
   const handleCreateProject = async () => {
     const projectName = createForm.projectName.trim();
     if (!projectName) {
-      setCreateError('Vui lòng nhập tên dự án.');
+      setCreateError(t('errors.nameRequired'));
       return;
     }
     if (createForm.projectType === 'UPDATE_EXISTING_COMPANY' && !createForm.targetCompanyProfileId) {
-      setCreateError('Vui lòng chọn công ty mục tiêu.');
+      setCreateError(t('errors.targetCompanyRequired'));
       return;
     }
     if (!createForm.targetRelationshipType) {
-      setCreateError('Vui lòng chọn loại quan hệ mục tiêu.');
+      setCreateError(t('errors.relationshipRequired'));
       return;
     }
 
@@ -281,7 +285,7 @@ export const ProjectsOverview: React.FC = () => {
       setPage(0);
       await loadProjects();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Không thể tạo dự án. Vui lòng thử lại.');
+      setCreateError(err instanceof Error ? err.message : t('errors.createFailed'));
     } finally {
       setCreateLoading(false);
     }
@@ -305,19 +309,19 @@ export const ProjectsOverview: React.FC = () => {
       <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
         {/* Breadcrumb */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', color: '#64748B', fontSize: 'var(--text-caption)', fontWeight: 500 }}>
-          <span>Portfolio Governance</span>
+          <span>{t('breadcrumb.section')}</span>
           <span>/</span>
-          <span>Tổng quan các dự án</span>
+          <span>{t('breadcrumb.current')}</span>
         </div>
 
         {/* Banner tiêu đề */}
         <div style={{ display: 'flex', alignItems: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '10px 16px', marginBottom: '16px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)' }}>
           <div>
             <span style={{ fontSize: 'var(--text-label)', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#2563EB', display: 'block' }}>
-              Danh mục dự án doanh nghiệp
+              {t('title.eyebrow')}
             </span>
             <h1 style={{ margin: 0, fontSize: 'var(--text-h1)', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px', lineHeight: 1.2 }}>
-              Tổng quan về các dự án toàn hệ thống
+              {t('title.heading')}
             </h1>
           </div>
         </div>
@@ -327,13 +331,13 @@ export const ProjectsOverview: React.FC = () => {
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
               <div>
-                <label style={labelStyle}>Bộ lọc trạng thái</label>
+                <label style={labelStyle}>{t('filters.statusLabel')}</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
                   style={inputStyle}
                 >
-                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="ALL">{t('filters.statusAll')}</option>
                   <option value="DRAFT">DRAFT</option>
                   <option value="ACTIVE">ACTIVE</option>
                   <option value="COMPLETED">COMPLETED</option>
@@ -343,13 +347,13 @@ export const ProjectsOverview: React.FC = () => {
               </div>
 
               <div>
-                <label style={labelStyle}>Bộ lọc loại</label>
+                <label style={labelStyle}>{t('filters.typeLabel')}</label>
                 <select
                   value={typeFilter}
                   onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}
                   style={inputStyle}
                 >
-                  <option value="ALL">Tất cả loại</option>
+                  <option value="ALL">{t('filters.typeAll')}</option>
                   <option value="RESEARCH_NEW_COMPANY">RESEARCH_NEW_COMPANY</option>
                   <option value="UPDATE_EXISTING_COMPANY">UPDATE_EXISTING_COMPANY</option>
                   <option value="RESEARCH_MULTIPLE_COMPANIES">RESEARCH_MULTIPLE_COMPANIES</option>
@@ -358,10 +362,10 @@ export const ProjectsOverview: React.FC = () => {
             </div>
 
             <div style={{ width: '280px', maxWidth: '100%' }}>
-              <label style={labelStyle}>Dự án tìm kiếm</label>
+              <label style={labelStyle}>{t('filters.searchLabel')}</label>
               <input
                 type="text"
-                placeholder="Tìm theo tên dự án hoặc công ty..."
+                placeholder={t('filters.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ ...inputStyle, width: '100%' }}
@@ -374,7 +378,7 @@ export const ProjectsOverview: React.FC = () => {
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)', overflow: 'hidden' }}>
           {loading ? (
             <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 'var(--text-body)', color: '#64748B' }}>
-              Đang tải danh sách dự án...
+              {t('states.loading')}
             </div>
           ) : error ? (
             <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 'var(--text-body)', color: '#DC2626' }}>
@@ -385,18 +389,18 @@ export const ProjectsOverview: React.FC = () => {
               <div style={{ width: '64px', height: '64px', margin: '0 auto 16px', borderRadius: '16px', background: 'rgba(37,99,235,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <FolderPlus size={32} color="#2563EB" />
               </div>
-              <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#0F172A' }}>Chưa có project nào</h2>
+              <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#0F172A' }}>{t('empty.title')}</h2>
               <p style={{ margin: '0 auto 20px', maxWidth: '440px', fontSize: '14px', color: '#64748B', lineHeight: 1.6 }}>
-                Hệ thống chưa có dự án nào. Hãy tạo dự án đầu tiên để thiết lập không gian nghiên cứu và theo dõi công ty mục tiêu.
+                {t('empty.description')}
               </p>
               <button className="btn btn-primary" onClick={() => void openCreateModal()}>
                 <Plus size={16} />
-                Tạo dự án
+                {t('create.submit')}
               </button>
             </div>
           ) : filteredProjects.length === 0 ? (
             <div style={{ padding: '40px 16px', textAlign: 'center', fontSize: 'var(--text-body)', color: '#64748B' }}>
-              Không tìm thấy dự án nào.
+              {t('states.notFound')}
             </div>
           ) : (
             <>
@@ -404,12 +408,12 @@ export const ProjectsOverview: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>ID dự án</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Tên dự án</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Công ty mục tiêu</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Loại</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Trạng thái</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>Hành động</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.projectId')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.projectName')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.targetCompany')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.type')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.status')}</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 'var(--text-label)', fontWeight: 600, color: '#64748B', whiteSpace: 'nowrap' }}>{t('table.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -433,7 +437,7 @@ export const ProjectsOverview: React.FC = () => {
                               onClick={() => handleSelectProject(p.id)}
                               style={{ fontSize: '13px', fontWeight: 600, color: '#1D4ED8', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '0 10px', height: '28px', display: 'inline-flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease' }}
                             >
-                              Kiểm tra chi tiết
+                              {t('table.viewDetail')}
                             </button>
                           </td>
                         </tr>
@@ -446,7 +450,7 @@ export const ProjectsOverview: React.FC = () => {
               {/* Chân bảng (phân trang) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: 'var(--text-caption)', color: '#64748B' }}>
-                  Tổng số {totalElements} dự án (Trang {page + 1} trên {totalPages || 1})
+                  {t('pagination.summary', { total: totalElements, page: page + 1, totalPages: totalPages || 1 })}
                 </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
@@ -454,14 +458,14 @@ export const ProjectsOverview: React.FC = () => {
                     disabled={page === 0}
                     onClick={() => setPage((prev) => Math.max(0, prev - 1))}
                   >
-                    ← Trước
+                    {t('pagination.previous')}
                   </button>
                   <button
                     style={{ ...footerBtn, opacity: page >= totalPages - 1 ? 0.45 : 1, cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
                     disabled={page >= totalPages - 1}
                     onClick={() => setPage((prev) => prev + 1)}
                   >
-                    Sau →
+                    {t('pagination.next')}
                   </button>
                 </div>
               </div>
@@ -475,30 +479,30 @@ export const ProjectsOverview: React.FC = () => {
           <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()}>
             <div className="project-modal-head">
               <div>
-                <span className="workspace-side-eyebrow">New workspace</span>
-                <h3 id="create-project-title">Tạo dự án mới</h3>
-                <p>Thiết lập không gian nghiên cứu và gán bối cảnh công ty mục tiêu.</p>
+                <span className="workspace-side-eyebrow">{t('create.eyebrow')}</span>
+                <h3 id="create-project-title">{t('create.title')}</h3>
+                <p>{t('create.description')}</p>
               </div>
-              <button className="project-modal-close" type="button" aria-label="Đóng modal tạo dự án" onClick={() => !createLoading && setShowCreateModal(false)}>&times;</button>
+              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => !createLoading && setShowCreateModal(false)}>&times;</button>
             </div>
             {createError && <div className="project-modal-feedback workspace-inline-error">{createError}</div>}
             <div className="workspace-form-grid">
               <label>
-                <span>Project name</span>
-                <input className="search-input" placeholder="VD: CMC cloud partnership review Q3" value={createForm.projectName} onChange={(event) => setCreateForm((current) => ({ ...current, projectName: event.target.value }))} />
+                <span>{t('create.projectNameLabel')}</span>
+                <input className="search-input" placeholder={t('create.projectNamePlaceholder')} value={createForm.projectName} onChange={(event) => setCreateForm((current) => ({ ...current, projectName: event.target.value }))} />
               </label>
               <label>
-                <span>Project type</span>
+                <span>{t('create.projectTypeLabel')}</span>
                 <select className="search-input" value={createForm.projectType} onChange={(event) => setCreateForm((current) => ({ ...current, projectType: event.target.value as ProjectType, targetCompanyProfileId: '' }))}>
-                  <option value="RESEARCH_NEW_COMPANY">New company research</option>
-                  <option value="UPDATE_EXISTING_COMPANY">Update existing company</option>
+                  <option value="RESEARCH_NEW_COMPANY">{t('create.typeNewCompany')}</option>
+                  <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
                 </select>
               </label>
               {createForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
                 <label>
-                  <span>Existing company</span>
+                  <span>{t('create.existingCompanyLabel')}</span>
                   <select className="search-input" value={createForm.targetCompanyProfileId} onChange={(event) => setCreateForm((current) => ({ ...current, targetCompanyProfileId: event.target.value }))}>
-                    <option value="">{companyOptions.length ? 'Chọn công ty hiện có' : 'Đang tải công ty...'}</option>
+                    <option value="">{companyOptions.length ? t('create.selectCompany') : t('create.loadingCompanies')}</option>
                     {companyOptions.map((profile) => (
                       <option key={profile.companyId || profile.id} value={profile.companyId}>{profileName(profile)}</option>
                     ))}
@@ -506,23 +510,23 @@ export const ProjectsOverview: React.FC = () => {
                 </label>
               )}
               <label>
-                <span>Target relationship</span>
+                <span>{t('create.relationshipLabel')}</span>
                 <select className="search-input" value={createForm.targetRelationshipType} onChange={(event) => setCreateForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}>
-                  <option value="">Chọn loại quan hệ mục tiêu</option>
+                  <option value="">{t('create.selectRelationship')}</option>
                   {relationshipOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>
               <label>
-                <span>Description</span>
-                <input className="search-input" placeholder="Mô tả mục tiêu dự án (tuỳ chọn)" value={createForm.description} onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))} />
+                <span>{t('create.descriptionLabel')}</span>
+                <input className="search-input" placeholder={t('create.descriptionPlaceholder')} value={createForm.description} onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))} />
               </label>
             </div>
             <div className="workspace-head-actions">
-              <button className="btn btn-outline" onClick={() => setShowCreateModal(false)} disabled={createLoading}>Huỷ</button>
+              <button className="btn btn-outline" onClick={() => setShowCreateModal(false)} disabled={createLoading}>{t('create.cancel')}</button>
               <button className="btn btn-primary" onClick={() => void handleCreateProject()} disabled={createLoading}>
-                {createLoading ? 'Đang tạo...' : 'Tạo dự án'}
+                {createLoading ? t('create.submitting') : t('create.submit')}
               </button>
             </div>
           </div>

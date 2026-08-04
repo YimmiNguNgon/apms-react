@@ -1,0 +1,82 @@
+{
+  "title": "Company Related Articles",
+  "subtitle": "Tin tức doanh nghiệp thu thập tự động",
+  "syncBadge": "Tự động cập nhật (30s)",
+  "stats": {
+    "articles": "Bài viết tin tức",
+    "articlesNote": "Tổng bài thu thập bởi crawler",
+    "sources": "Nguồn tin",
+    "sourcesNote": "Kênh tin tức đang hoạt động",
+    "companiesNote": "Doanh nghiệp khớp trên trang này"
+  },
+  "filters": {
+    "searchPlaceholder": "Tìm tiêu đề, tóm tắt, nguồn hoặc công ty...",
+    "allSources": "Tất cả nguồn tin",
+    "reset": "Đặt lại"
+  },
+  "table": {
+    "type": "Loại",
+    "title": "Tiêu đề & Tóm tắt",
+    "company": "Doanh nghiệp",
+    "sourceDate": "Nguồn & Ngày",
+    "rating": "Đánh giá",
+    "actions": "Thao tác"
+  },
+  "level": {
+    "risk": "Risk {{level}}",
+    "opportunity": "Opp {{level}}",
+    "general": "Chung"
+  },
+  "empty": {
+    "loading": "Đang tải bài viết...",
+    "noResults": "Không có bài viết nào phù hợp với bộ lọc."
+  },
+  "article": {
+    "noTitle": "Bài viết chưa có tiêu đề"
+  },
+  "summary": {
+    "empty": "Chưa có tóm tắt cho bài viết này."
+  },
+  "company": {
+    "noMatch": "Không khớp",
+    "related": "Doanh nghiệp liên quan"
+  },
+  "source": {
+    "unknown": "Không rõ"
+  },
+  "duplicate": "Trùng",
+  "actions": {
+    "details": "Chi tiết",
+    "original": "Gốc"
+  },
+  "pagination": {
+    "showing": "Hiển thị {{count}} / {{total}} bài viết",
+    "page": "Trang {{page}} / {{total}}",
+    "previous": "Trước",
+    "next": "Sau"
+  },
+  "modal": {
+    "close": "Đóng",
+    "sourceLabel": "Nguồn",
+    "dateLabel": "Ngày",
+    "openOriginal": "Mở bài viết gốc",
+    "aiSummaryTitle": "Tóm tắt AI",
+    "aiSummaryEmpty": "Chưa tạo tóm tắt AI.",
+    "assessmentTitle": "Đánh giá & Cảm xúc",
+    "riskReason": "Lý do: {{reason}}",
+    "topics": "Chủ đề",
+    "collectedContent": "Nội dung thu thập",
+    "noContent": "Không có nội dung."
+  },
+  "aiState": {
+    "completed": "Đã phân tích AI",
+    "failed": "AI lỗi",
+    "inProgress": "Đang phân tích..."
+  },
+  "date": {
+    "noDate": "Không có ngày"
+  },
+  "errors": {
+    "loadFailed": "Không thể tải danh sách bài viết."
+  }
+}

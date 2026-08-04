@@ -1,12 +1,13 @@
 /* ============================================================
    Relationship Map – Mạng lưới Quan hệ đối tác
-   Clean / modern / soft corners / light shadows / subtle glow
+   Ultra-compact layout (100% desktop scale view without scroll)
+   No icons - Clean, fast, responsive
    ============================================================ */
 
 .rmPage {
   max-width: var(--workspace-shell-max);
   margin: 0 auto;
-  padding: 2px 0 32px;
+  padding: 0 0 4px;
 }
 
 /* ── Header ─────────────────────────────────────────────── */
@@ -14,58 +15,41 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px;
   flex-wrap: wrap;
-  padding: 20px 24px;
-  margin-bottom: 24px;
+  padding: 8px 16px;
+  margin-bottom: 8px;
   border: 1px solid var(--workspace-panel-border);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .rmHeaderLeft {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: baseline;
+  gap: 10px;
   min-width: 0;
-}
-
-.rmGlobe {
-  width: 52px;
-  height: 52px;
-  flex-shrink: 0;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
-  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28);
-}
-
-.rmGlobe svg {
-  width: 26px;
-  height: 26px;
+  flex-wrap: wrap;
 }
 
 .rmTitle {
-  font-size: var(--text-display);
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
   line-height: 1.2;
   color: var(--text-primary);
 }
 
 .rmSub {
-  margin-top: 4px;
-  font-size: var(--text-body);
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
 .rmHeaderActions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -73,14 +57,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 18px;
-  border-radius: 12px;
-  font-size: var(--text-body);
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
   font-weight: 600;
   white-space: nowrap;
-  transition: all 0.18s ease;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .rmBtn:active {
@@ -91,7 +75,6 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .rmBtnOutline:hover {
@@ -104,7 +87,7 @@
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   border: 1px solid rgba(30, 64, 175, 0.6);
   color: #fff;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.32);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .rmBtnPrimary:hover {
@@ -115,84 +98,61 @@
 .rmKpiGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .rmKpi {
-  position: relative;
-  padding: 22px 20px 20px;
+  padding: 6px 12px;
   border: 1px solid var(--workspace-panel-border);
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-  animation: rmFadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  animation: rmFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .rmKpi:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08), 0 14px 30px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .rmKpiLabel {
-  font-size: var(--text-label);
-  font-weight: 500;
+  font-size: 0.68rem;
+  font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  line-height: 1.3;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rmKpiBottom {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .rmKpiValue {
-  margin-top: 10px;
-  font-size: var(--text-metric);
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.4px;
   line-height: 1;
   color: var(--text-primary);
 }
 
 .rmKpiGrowth {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-caption);
+  font-size: 0.68rem;
   font-weight: 600;
-  color: var(--color-success);
-}
-
-/* circular gradient blob icon */
-.rmKpiIcon {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 6px 14px rgba(15, 23, 42, 0.1);
-}
-
-.rmKpiIcon::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 0.55), transparent 46%);
-  pointer-events: none;
-}
-
-.rmKpiIcon svg {
-  position: relative;
-  z-index: 1;
+  white-space: nowrap;
 }
 
 @keyframes rmFadeUp {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -200,19 +160,19 @@
   .rmKpi, .rmNodeGroup { animation: none; }
 }
 
-/* ── Main grid (70 / 30) ───────────────────────────────── */
+/* ── Main grid (72 / 28) ───────────────────────────────── */
 .rmMainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 8px;
   align-items: start;
 }
 
 .rmNetwork {
   border: 1px solid var(--workspace-panel-border);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   min-width: 0;
 }
@@ -221,59 +181,63 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 18px 22px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .rmNetworkTitle {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .rmNetworkTitle h2 {
-  font-size: var(--text-h2);
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.1px;
 }
 
 .rmTag {
-  font-size: var(--text-caption);
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 1px 8px;
   white-space: nowrap;
 }
 
 .rmControls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .rmCtrlBtn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border-color);
   background: var(--bg-surface);
   color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .rmCtrlBtn:hover {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.18);
 }
 
 .rmCtrlBtn:active {
@@ -283,26 +247,24 @@
 /* ── Graph canvas ───────────────────────────────────────── */
 .rmGraphWrap {
   position: relative;
-  padding: 14px 12px 6px;
+  padding: 4px;
   background:
-    radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.03) 40%, transparent 64%),
-    radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.05), transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.02) 40%, transparent 64%),
     var(--bg-surface);
 }
 
 .rmGraph {
   width: 100%;
+  max-height: calc(100vh - 240px);
   height: auto;
   display: block;
 }
 
-/* zoom group – smooth 250ms transition */
 .rmGraphGroup {
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  transform-origin: 430px 300px;
+  transform-origin: 430px 220px;
 }
 
-/* connection lines */
 .rmEdge {
   transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
 }
@@ -311,45 +273,44 @@
   transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
 }
 
-/* satellite node fade-in + hover dim */
 .rmNodeGroup {
-  animation: rmNodeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: rmNodeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-box: fill-box;
   transform-origin: center;
   transition: opacity 0.2s ease;
 }
 
 @keyframes rmNodeIn {
-  from { opacity: 0; transform: scale(0.55); }
+  from { opacity: 0; transform: scale(0.6); }
   to   { opacity: 1; transform: scale(1); }
 }
 
 .rmNodeText {
   font-family: 'Inter', sans-serif;
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 800;
   user-select: none;
 }
 
 .rmNodeLabel {
   font-family: 'Inter', sans-serif;
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 600;
   fill: var(--text-muted);
   paint-order: stroke;
   stroke: var(--bg-card);
-  stroke-width: 3px;
+  stroke-width: 2.5px;
   stroke-linejoin: round;
   user-select: none;
 }
 
 .rmCenterHalo {
-  filter: drop-shadow(0 0 26px rgba(37, 99, 235, 0.55)) drop-shadow(0 0 10px rgba(37, 99, 235, 0.35));
+  filter: drop-shadow(0 0 18px rgba(37, 99, 235, 0.45));
 }
 
 .rmCenterText {
   font-family: 'Inter', sans-serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
   fill: #fff;
   letter-spacing: 0.2px;
@@ -358,7 +319,7 @@
 
 .rmCenterSub {
   font-family: 'Inter', sans-serif;
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 600;
   fill: rgba(255, 255, 255, 0.85);
   user-select: none;
@@ -366,7 +327,7 @@
 
 .rmBadgeText {
   font-family: 'Inter', sans-serif;
-  font-size: 9px;
+  font-size: 7.5px;
   font-weight: 900;
   fill: #fff;
   user-select: none;
@@ -376,8 +337,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 18px;
-  padding: 13px 22px 17px;
+  gap: 4px 14px;
+  padding: 6px 12px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-input);
 }
@@ -385,17 +346,17 @@
 .rmLegendItem {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--text-caption);
+  gap: 6px;
+  font-size: 0.68rem;
   font-weight: 500;
   color: var(--text-muted);
 }
 
 .rmLegendLine {
-  width: 26px;
+  width: 18px;
   height: 0;
-  border-top: 3px solid;
-  border-radius: 3px;
+  border-top: 2.5px solid;
+  border-radius: 2px;
 }
 
 .rmLegendLineSolid {
@@ -410,51 +371,45 @@
 .rmSide {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 8px;
   min-width: 0;
 }
 
 .rmSideCard {
   border: 1px solid var(--workspace-panel-border);
-  border-radius: 20px;
+  border-radius: 12px;
   background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.04);
-  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 8px 10px;
 }
 
 .rmSideTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--text-h2);
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 14px;
-}
-
-.rmSideTitle svg {
-  color: var(--brand-primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.1px;
 }
 
 /* pill chips */
 .rmChips {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 
 .rmChip {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 9px 13px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .rmChip:hover {
@@ -462,20 +417,19 @@
 }
 
 .rmChipActive {
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
 }
 
 .rmChipDot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px var(--bg-card);
 }
 
 .rmChipLabel {
   flex: 1;
-  font-size: var(--text-body);
+  font-size: 0.72rem;
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -486,30 +440,24 @@
 }
 
 .rmChipCount {
-  font-size: var(--text-caption);
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  padding: 2px 10px;
+  padding: 1px 6px;
 }
 
 /* industry filter */
 .rmIndustrySearch {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 11px;
-  border-radius: 10px;
+  padding: 3px 8px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--bg-input);
-  margin-bottom: 10px;
-}
-
-.rmIndustrySearch svg {
-  color: var(--text-muted);
-  flex-shrink: 0;
+  margin-bottom: 5px;
 }
 
 .rmIndustrySearchInput {
@@ -518,7 +466,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: var(--text-body);
+  font-size: 0.72rem;
   color: var(--text-primary);
 }
 
@@ -529,8 +477,8 @@
 .rmIndustryList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 280px;
+  gap: 2px;
+  max-height: 95px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -538,11 +486,11 @@
 .rmIndustryItem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease;
 }
 
 .rmIndustryItem:hover {
@@ -554,8 +502,8 @@
 }
 
 .rmIndustryCheck {
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
   accent-color: var(--brand-primary);
   cursor: pointer;
@@ -564,7 +512,7 @@
 .rmIndustryName {
   flex: 1;
   min-width: 0;
-  font-size: var(--text-body);
+  font-size: 0.72rem;
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -579,18 +527,18 @@
 
 .rmIndustryCount {
   flex-shrink: 0;
-  font-size: var(--text-caption);
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 1px 6px;
 }
 
 .rmIndustryEmpty {
-  padding: 12px 10px;
-  font-size: var(--text-caption);
+  padding: 8px 6px;
+  font-size: 0.68rem;
   color: var(--text-muted);
   text-align: center;
 }
@@ -599,7 +547,8 @@
 .rmRankList {
   display: flex;
   flex-direction: column;
-  max-height: 360px;
+  gap: 2px;
+  max-height: 115px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
@@ -607,22 +556,20 @@
 .rmRankItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 8px;
-  border-radius: 14px;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background 0.12s ease;
 }
 
 .rmRankItem:hover {
   background: var(--bg-hover);
-  transform: translateY(-1px);
 }
 
 .rmRankTop {
   background: var(--bg-input);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .rmRankTop:hover {
@@ -630,10 +577,10 @@
 }
 
 .rmRank {
-  width: 22px;
+  width: 14px;
   flex-shrink: 0;
   text-align: center;
-  font-size: var(--text-caption);
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--text-disabled);
 }
@@ -642,23 +589,17 @@
 .rmRankItem:nth-child(2) .rmRank { color: #94a3b8; }
 .rmRankItem:nth-child(3) .rmRank { color: #b45309; }
 
-.rmCrown {
-  flex-shrink: 0;
-  color: #f59e0b;
-}
-
 .rmAvatar {
-  width: 40px;
-  height: 40px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   border-radius: 999px;
   display: grid;
   place-items: center;
   color: #fff;
-  font-size: var(--text-caption);
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.2px;
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.16);
 }
 
 .rmRankInfo {
@@ -667,18 +608,17 @@
 }
 
 .rmRankName {
-  font-size: var(--text-body);
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-secondary);
-  line-height: 1.25;
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .rmRankSub {
-  margin-top: 2px;
-  font-size: var(--text-caption);
+  font-size: 0.62rem;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -686,11 +626,11 @@
 }
 
 .rmRankBar {
-  height: 4px;
+  height: 3px;
   border-radius: 999px;
   background: var(--bg-input);
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .rmRankBarFill {
@@ -702,77 +642,74 @@
 
 .rmRankCount {
   flex-shrink: 0;
-  font-size: var(--text-caption);
+  font-size: 0.62rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 1px 5px;
   white-space: nowrap;
 }
 
 .rmEmpty {
-  padding: 40px 20px;
+  padding: 20px 10px;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--text-body);
-  line-height: 1.6;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .rmLoading {
-  padding: 40px 20px;
+  padding: 20px 10px;
   text-align: center;
   color: var(--text-muted);
-  font-size: var(--text-body);
+  font-size: 0.75rem;
 }
 
 /* ── Add partner modal ─────────────────────────────── */
 .rmModal {
-  max-width: 560px;
+  max-width: 500px;
   width: 92%;
-  padding: 26px 26px 24px;
-  border-radius: 22px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28), 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 18px;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
 }
 
 .rmModalHead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .rmModalHead h3 {
-  font-size: var(--text-h2);
-  font-weight: 600;
-  letter-spacing: -0.3px;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
 .rmModalHead p {
-  margin-top: 5px;
-  font-size: var(--text-body);
+  margin-top: 3px;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  line-height: 1.6;
-  max-width: 380px;
+  line-height: 1.4;
 }
 
 .rmModalClose {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--bg-input);
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .rmModalClose:hover {
@@ -783,8 +720,8 @@
 .rmFormGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px 16px;
-  margin: 6px 0 22px;
+  gap: 10px 12px;
+  margin: 4px 0 16px;
 }
 
 .rmFormSpan {
@@ -793,8 +730,8 @@
 
 .rmFormGrid label > span {
   display: block;
-  margin-bottom: 7px;
-  font-size: var(--text-body);
+  margin-bottom: 4px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -807,42 +744,43 @@
 .rmFormGrid :global(.search-input) {
   width: 100%;
   box-sizing: border-box;
+  font-size: 0.78rem;
+  padding: 6px 10px;
 }
 
 .rmFormGrid textarea {
   resize: vertical;
-  min-height: 84px;
+  min-height: 64px;
 }
 
 .rmModal :global(.modal-actions) {
-  padding-top: 18px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color);
 }
 
 .rmModal :global(.btn) {
-  min-height: 42px;
-  border-radius: 12px;
+  min-height: 34px;
+  border-radius: 8px;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 1280px) {
-  .rmKpiGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rmKpiGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1100px) {
   .rmMainGrid { grid-template-columns: 1fr; }
-  .rmSide { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .rmSide { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 }
 
 @media (max-width: 760px) {
-  .rmKpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rmKpiGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rmSide { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
-  .rmKpiGrid { grid-template-columns: 1fr; }
-  .rmSide { grid-template-columns: 1fr; }
-  .rmTitle { font-size: var(--text-h1); }
-  .rmGlobe { width: 44px; height: 44px; border-radius: 14px; }
+  .rmKpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rmFormGrid { grid-template-columns: 1fr; }
 }

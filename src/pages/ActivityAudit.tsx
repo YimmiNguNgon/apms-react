@@ -1,27 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api, API_BASE_URL } from '../services/api';
 import type { AuditLogDto, PageResult } from '../types/domain';
+import {
+  Activity,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Users,
+  Zap,
+} from 'lucide-react';
+import styles from './ActivityAudit.module.css';
 
 type Tab = 'activity' | 'audit';
-
-const ACTION_OPTIONS = [
-  { value: 'all', label: 'All Actions' },
-  { value: 'USER_CREATED', label: 'USER_CREATED (Tạo tài khoản)' },
-  { value: 'USER_UPDATED', label: 'USER_UPDATED (Sửa tài khoản)' },
-  { value: 'USER_STATUS_CHANGED', label: 'USER_STATUS_CHANGED (Khóa/Mở tài khoản)' },
-  { value: 'USER_ROLES_UPDATED', label: 'USER_ROLES_UPDATED (Gán Role)' },
-  { value: 'LOGIN', label: 'LOGIN (Đăng nhập)' },
-  { value: 'LOGOUT', label: 'LOGOUT (Đăng xuất)' },
-  { value: 'COMPANY_PROFILE_UPDATED', label: 'COMPANY_PROFILE_UPDATED' },
-];
-
-const ENTITY_OPTIONS = [
-  { value: 'all', label: 'All Entities' },
-  { value: 'Account', label: 'Account (Tài khoản)' },
-  { value: 'UserProfile', label: 'UserProfile (Hồ sơ)' },
-  { value: 'Project', label: 'Project (Dự án)' },
-  { value: 'System', label: 'System (Hệ thống)' },
-];
 
 const getActionTypePill = (actionStr: string) => {
   const action = (actionStr || '').toUpperCase();
@@ -32,6 +28,7 @@ const getActionTypePill = (actionStr: string) => {
 };
 
 export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'audit' }) => {
+  const { t } = useTranslation('activity-history');
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +51,31 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
   useEffect(() => {
     setTab(defaultTab);
   }, [defaultTab]);
+
+  const actionOptions = useMemo(
+    () => [
+      { value: 'all', label: t('filters.allActions') },
+      { value: 'USER_CREATED', label: 'USER_CREATED' },
+      { value: 'USER_UPDATED', label: 'USER_UPDATED' },
+      { value: 'USER_STATUS_CHANGED', label: 'USER_STATUS_CHANGED' },
+      { value: 'USER_ROLES_UPDATED', label: 'USER_ROLES_UPDATED' },
+      { value: 'LOGIN', label: 'LOGIN' },
+      { value: 'LOGOUT', label: 'LOGOUT' },
+      { value: 'COMPANY_PROFILE_UPDATED', label: 'COMPANY_PROFILE_UPDATED' },
+    ],
+    [t]
+  );
+
+  const entityOptions = useMemo(
+    () => [
+      { value: 'all', label: t('filters.allEntities') },
+      { value: 'Account', label: 'Account' },
+      { value: 'UserProfile', label: 'UserProfile' },
+      { value: 'Project', label: 'Project' },
+      { value: 'System', label: 'System' },
+    ],
+    [t]
+  );
 
   const fetchAuditLogs = () => {
     setLoading(true);
@@ -80,8 +102,8 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
         }
       })
       .catch((err) => {
-        // Fallback to /admin/audit-logs if endpoint not filtered
-          api.get<PageResult<AuditLogDto>>(`/admin/audit-logs?page=${page}&size=${pageSize}`)
+        // Fallback to /admin/audit-logs
+        api.get<PageResult<AuditLogDto>>(`/admin/audit-logs?page=${page}&size=${pageSize}`)
           .then((fallbackRes) => {
             if (fallbackRes?.success && fallbackRes.data) {
               const content = fallbackRes.data.content || [];
@@ -149,7 +171,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
   const userActivityPulse = useMemo(() => {
     const map = new Map<string, { user: string; count: number; lastSeen: string }>();
     auditLogs.forEach((log) => {
-      const user = log.actorEmail || `User #${log.actorAccountId || 'System'}`;
+      const user = log.actorEmail || `User #${log.actorAccountId || t('table.systemActor')}`;
       const existing = map.get(user);
       const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
       map.set(user, {
@@ -159,113 +181,147 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       });
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [auditLogs]);
+  }, [auditLogs, t]);
 
   const pageMeta = {
     activity: {
-      eyebrow: 'User pulse',
-      title: 'Activity history',
-      desc: 'Monitor user participation, security events, and active workspace operators.',
+      eyebrow: t('header.activityEyebrow'),
+      title: t('header.activityTitle'),
+      desc: t('header.activityDesc'),
       meter: userActivityPulse.length,
-      meterLabel: 'active users',
+      meterLabel: t('header.activeUsersMeter'),
       stats: [
-        { label: 'Active users', value: userActivityPulse.length },
-        { label: 'Most active count', value: userActivityPulse[0]?.count || 0 },
-        { label: 'Total log items', value: totalElements },
-        { label: 'Stream state', value: 'Live' },
+        { label: t('stats.activeUsers'), value: userActivityPulse.length, icon: Users, color: styles.statIconBlue },
+        { label: t('stats.mostActiveCount'), value: userActivityPulse[0]?.count || 0, icon: Zap, color: styles.statIconAmber },
+        { label: t('stats.totalLogItems'), value: totalElements, icon: FileText, color: styles.statIconPurple },
+        { label: t('stats.streamState'), value: t('stats.live'), icon: Activity, color: styles.statIconGreen },
       ],
     },
     audit: {
-      eyebrow: 'Immutable trail',
-      title: 'Audit Logs',
-      desc: 'Inspect timestamped security events, role modifications, and system operations with real-time filters.',
+      eyebrow: t('header.auditEyebrow'),
+      title: t('header.auditTitle'),
+      desc: t('header.auditDesc'),
       meter: totalElements,
-      meterLabel: 'recorded events',
+      meterLabel: t('header.recordedEventsMeter'),
       stats: [
-        { label: 'Total audit events', value: totalElements },
-        { label: 'Current page', value: `${page + 1} of ${totalPages}` },
-        { label: 'Actions filtered', value: filterAction === 'all' ? 'All' : filterAction },
-        { label: 'Export format', value: 'CSV' },
+        { label: t('stats.totalAuditEvents'), value: totalElements, icon: FileText, color: styles.statIconBlue },
+        { label: t('stats.currentPage'), value: `${page + 1} / ${totalPages}`, icon: Calendar, color: styles.statIconGreen },
+        { label: t('stats.actionsFiltered'), value: filterAction === 'all' ? t('stats.all') : filterAction, icon: ShieldCheck, color: styles.statIconPurple },
+        { label: t('stats.exportFormat'), value: 'CSV', icon: Download, color: styles.statIconAmber },
       ],
     },
   }[tab];
 
+  const topUser = userActivityPulse[0];
+  const topUserInitials = (topUser?.user || 'U').slice(0, 2).toUpperCase();
+
   return (
-    <section className={`page active admin-console-page admin-security-page ${tab} role-dashboard role-dashboard-admin`}>
-      <div className={`workspace-page-head admin-console-hero admin-security-hero ${tab}`}>
+    <div className={styles.container} id="page-activity-history">
+      {/* Normalized Header */}
+      <section className={styles.hero}>
         <div>
-          <span className="workspace-side-eyebrow">{pageMeta.eyebrow}</span>
-          <h1>{pageMeta.title}</h1>
-          <p>{pageMeta.desc}</p>
+          <span className={styles.heroEyebrow}>{pageMeta.eyebrow}</span>
+          <h1 className={styles.heroTitle}>{pageMeta.title}</h1>
+          <p className={styles.heroDesc}>{pageMeta.desc}</p>
         </div>
-        <div className="admin-hero-meter">
-          <strong>{pageMeta.meter}</strong>
-          <span>{pageMeta.meterLabel}</span>
+        <div className={styles.heroMeter}>
+          <span className={styles.heroMeterCount}>{pageMeta.meter}</span>
+          <span className={styles.heroMeterLabel}>{pageMeta.meterLabel}</span>
         </div>
-      </div>
+      </section>
 
-      <div className={`workspace-stats workspace-stats-compact admin-security-stats ${tab}`}>
-        {pageMeta.stats.map((item) => (
-          <article key={item.label} className="workspace-stat-card">
-            <span className="workspace-stat-label">{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      {/* Standardized Stat Grid */}
+      <section className={styles.statGrid}>
+        {pageMeta.stats.map((item) => {
+          const IconComp = item.icon;
+          return (
+            <article key={item.label} className={styles.statCard}>
+              <div className={`${styles.statIcon} ${item.color}`}>
+                <IconComp size={20} />
+              </div>
+              <div className={styles.statMeta}>
+                <span className={styles.statLabel}>{item.label}</span>
+                <strong className={styles.statValue}>{item.value}</strong>
+              </div>
+            </article>
+          );
+        })}
+      </section>
 
-      <div className="admin-tabs">
-        <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit logs</button>
-        <button className={tab === 'activity' ? 'active' : ''} onClick={() => setTab('activity')}>User activity</button>
+      {/* Navigation Tabs */}
+      <div className={styles.tabsBar}>
+        <button
+          className={`${styles.tabButton} ${tab === 'audit' ? styles.tabButtonActive : ''}`}
+          onClick={() => setTab('audit')}
+        >
+          <FileText size={16} />
+          <span>{t('tabs.auditLogs')}</span>
+        </button>
+        <button
+          className={`${styles.tabButton} ${tab === 'activity' ? styles.tabButtonActive : ''}`}
+          onClick={() => setTab('activity')}
+        >
+          <Activity size={16} />
+          <span>{t('tabs.userActivity')}</span>
+        </button>
       </div>
 
       {error && (
-        <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', margin: '16px 0' }}>
+        <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: '10px' }}>
           ❌ {error}
         </div>
       )}
 
-      <div className={`admin-security-content ${tab}`}>
+      {/* Main Content Area */}
+      <div>
         {tab === 'audit' && (
           <div className="admin-audit-console">
             <div className="admin-toolbar" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
               {/* Action filter */}
               <select className="admin-select" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(0); }}>
-                {ACTION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                {actionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
 
               {/* Entity filter */}
               <select className="admin-select" value={filterEntityType} onChange={(e) => { setFilterEntityType(e.target.value); setPage(0); }}>
-                {ENTITY_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                {entityOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
 
               {/* Search User/Detail */}
-              <input
-                className="admin-input"
-                style={{ width: '200px' }}
-                placeholder="Search user / details"
-                value={searchUser}
-                onChange={(e) => setSearchUser(e.target.value)}
-              />
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
+                <input
+                  className="admin-input"
+                  style={{ width: '220px', paddingLeft: '30px' }}
+                  placeholder={t('filters.searchPlaceholder')}
+                  value={searchUser}
+                  onChange={(e) => setSearchUser(e.target.value)}
+                />
+              </div>
 
               {/* Date Filters */}
               <input
                 className="admin-input"
                 type="date"
-                title="From Date"
+                title={t('filters.fromDate')}
                 value={fromDate}
                 onChange={(e) => { setFromDate(e.target.value); setPage(0); }}
               />
               <input
                 className="admin-input"
                 type="date"
-                title="To Date"
+                title={t('filters.toDate')}
                 value={toDate}
                 onChange={(e) => { setToDate(e.target.value); setPage(0); }}
               />
 
-              <button className="btn btn-outline" onClick={fetchAuditLogs}>Refresh</button>
-              <button className="btn btn-primary" disabled={exporting} onClick={handleExportCsv}>
-                {exporting ? 'Exporting...' : '📥 Export CSV'}
+              <button className="btn btn-outline" onClick={fetchAuditLogs} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <RefreshCw size={14} />
+                <span>{t('filters.refresh')}</span>
+              </button>
+              <button className="btn btn-primary" disabled={exporting} onClick={handleExportCsv} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Download size={14} />
+                <span>{exporting ? t('filters.exporting') : t('filters.exportCsv')}</span>
               </button>
             </div>
 
@@ -276,17 +332,19 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      {['Timestamp', 'User (Actor)', 'Action', 'Entity', 'Details'].map((header) => <th key={header}>{header}</th>)}
+                      <th>{t('table.timestamp')}</th>
+                      <th>{t('table.actor')}</th>
+                      <th>{t('table.action')}</th>
+                      <th>{t('table.entity')}</th>
+                      <th>{t('table.details')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredLogs.map((log, index) => {
                       const pill = getActionTypePill(log.action);
-                      const timeStr = log.timestamp 
+                      const timeStr = log.timestamp
                         ? new Date(log.timestamp).toLocaleString('vi-VN')
-                        : log.timestamp 
-                          ? new Date(log.timestamp).toLocaleString('vi-VN') 
-                          : '-';
+                        : '-';
 
                       return (
                         <tr key={log.id || index}>
@@ -294,7 +352,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                             {timeStr}
                           </td>
                           <td>
-                            <strong>{log.actorEmail || `User #${log.actorAccountId || 'System'}`}</strong>
+                            <strong>{log.actorEmail || `${t('table.actor')} #${log.actorAccountId || t('table.systemActor')}`}</strong>
                             {log.actorAccountId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorAccountId}</small>}
                           </td>
                           <td>
@@ -312,7 +370,11 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                       );
                     })}
                     {filteredLogs.length === 0 && (
-                      <tr><td colSpan={5}><div className="workspace-empty">No audit logs match the current filters.</div></td></tr>
+                      <tr>
+                        <td colSpan={5}>
+                          <div className="workspace-empty">{t('table.noLogs')}</div>
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -320,12 +382,18 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                 {/* Pagination Controls */}
                 {totalPages > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      Page {page + 1} of {totalPages} ({totalElements} total entries)
+                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      {t('table.pagination', { page: page + 1, totalPages, totalElements })}
                     </span>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
-                      <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
+                      <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <ChevronLeft size={14} />
+                        <span>{t('table.prev')}</span>
+                      </button>
+                      <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span>{t('table.next')}</span>
+                        <ChevronRight size={14} />
+                      </button>
                     </div>
                   </div>
                 )}
@@ -335,29 +403,60 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
         )}
 
         {tab === 'activity' && (
-          <div className="admin-activity-pulse">
-            <aside className="admin-activity-focus">
-              <span className="workspace-side-eyebrow">Activity focus</span>
-              <strong>{userActivityPulse[0]?.user || 'No user activity'}</strong>
-              <p>{userActivityPulse[0] ? `${userActivityPulse[0].count} audit actions recorded in this window.` : 'No activity recorded.'}</p>
+          <div className={styles.activityLayout}>
+            {/* ACTIVITY FOCUS Card with Email Overflow Fix */}
+            <aside className={styles.focusCard}>
+              <span className={styles.focusEyebrow}>{t('focus.eyebrow')}</span>
+
+              <div className={styles.focusUserWrap}>
+                <div className={styles.focusAvatar}>{topUserInitials}</div>
+                <h3 className={styles.focusUserEmail} title={topUser?.user || ''}>
+                  {topUser?.user || t('focus.noActivity')}
+                </h3>
+              </div>
+
+              <p className={styles.focusDesc}>
+                {topUser
+                  ? t('focus.recordedCount', { count: topUser.count })
+                  : t('focus.noActivityDesc')}
+              </p>
             </aside>
-            <div className="admin-activity-timeline">
-              {userActivityPulse.map((item, index) => (
-                <article key={item.user} className="admin-activity-card">
-                  <div className="admin-activity-rank">{String(index + 1).padStart(2, '0')}</div>
-                  <div className="admin-avatar">{item.user.slice(0, 2).toUpperCase()}</div>
-                  <div>
-                    <strong>{item.user}</strong>
-                    <p>{item.count} recorded audit event{item.count === 1 ? '' : 's'}</p>
-                    <div className="admin-progress"><div style={{ width: `${Math.min(100, item.count * 15)}%` }} /></div>
-                  </div>
-                  <span>{item.lastSeen}</span>
-                </article>
-              ))}
+
+            {/* Timeline List with Contribution Percentage */}
+            <div className={styles.timelineList}>
+              {userActivityPulse.map((item, index) => {
+                const percent = totalElements > 0 ? Math.min(100, Math.round((item.count / totalElements) * 100)) : Math.min(100, item.count * 15);
+                const eventsText = t(`timeline.events_${item.count === 1 ? 'one' : 'other'}`, { count: item.count });
+
+                return (
+                  <article key={item.user} className={styles.timelineItem}>
+                    <div className={styles.timelineRank}>{String(index + 1).padStart(2, '0')}</div>
+                    <div className={styles.timelineAvatar}>{item.user.slice(0, 2).toUpperCase()}</div>
+
+                    <div className={styles.timelineInfo}>
+                      <span className={styles.timelineUser} title={item.user}>
+                        {item.user}
+                      </span>
+                      <div className={styles.timelineStats}>
+                        <span>{eventsText}</span>
+                        <span>·</span>
+                        <span>{t('timeline.shareOfTotal', { percent })}</span>
+                      </div>
+                      <div className={styles.timelineBarTrack}>
+                        <div className={styles.timelineBarFill} style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+
+                    <span className={styles.timelineTime}>
+                      {t('timeline.lastSeen', { time: item.lastSeen })}
+                    </span>
+                  </article>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 };

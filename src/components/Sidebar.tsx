@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
@@ -22,33 +23,23 @@ interface MenuSection {
 
 const ROLE_CONTEXT: Record<string, { label: string; description: string; accent: string }> = {
   [ROLES.ADMIN]: {
-    label: 'System control',
-    description: 'Users, roles, audit, and platform health.',
+    label: 'role.admin.label',
+    description: 'role.admin.description',
     accent: 'admin',
   },
   [ROLES.OWNER]: {
-    label: 'Business Owner',
-    description: 'Executive oversight, strategic posture, and enterprise audit.',
-    accent: 'director',
-  },
-  [ROLES.DIRECTOR]: {
-    label: 'Executive view',
-    description: 'Market posture, ecosystem movement, and strategic signals.',
+    label: 'role.owner.label',
+    description: 'role.owner.description',
     accent: 'director',
   },
   [ROLES.MANAGER]: {
-    label: 'Operations desk',
-    description: 'Assignments, approvals, delivery risk, and team throughput.',
+    label: 'role.manager.label',
+    description: 'role.manager.description',
     accent: 'manager',
   },
-  [ROLES.KEY_MEMBER]: {
-    label: 'Validation desk',
-    description: 'Review extracted data, resolve ambiguity, and prepare handoff.',
-    accent: 'keymember',
-  },
   [ROLES.STAFF]: {
-    label: 'Research flow',
-    description: 'Daily tasks, evidence collection, and profile completion.',
+    label: 'role.staff.label',
+    description: 'role.staff.description',
     accent: 'staff',
   },
 };
@@ -59,87 +50,84 @@ const ROLE_CONTEXT: Record<string, { label: string; description: string; accent:
 const ADMIN_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'admin-dashboard', label: 'Dashboard' },
+      { id: 'admin-dashboard', label: 'menu.dashboard' },
     ],
   },
   {
-    title: 'User Management',
+    title: 'menu.userManagement',
     items: [
-      { id: 'users',       label: 'Users',       badge: 12, badgeType: 'danger' },
-      { id: 'roles',       label: 'Roles' },
-      { id: 'permissions', label: 'Permissions' },
+      { id: 'users',       label: 'menu.users',       badge: 12, badgeType: 'danger' },
+      { id: 'roles',       label: 'menu.roles' },
+      { id: 'permissions', label: 'menu.permissions' },
     ],
   },
   {
-    title: 'Security',
+    title: 'menu.security',
     items: [
-      { id: 'access-control',   label: 'Access Control' },
-      { id: 'activity-history', label: 'Activity History' },
-      { id: 'audit-logs',       label: 'Audit Logs', badge: 3, badgeType: 'warning' },
+      { id: 'access-control',   label: 'menu.accessControl' },
+      { id: 'activity-history', label: 'menu.activityHistory' },
+      { id: 'audit-logs',       label: 'menu.auditLogs', badge: 3, badgeType: 'warning' },
     ],
   },
   {
-    title: 'System',
+    title: 'menu.system',
     items: [
-      { id: 'project-management', label: 'Project Management' },
-      { id: 'system-chat', label: 'Chat' },
-      { id: 'system-settings',   label: 'System Settings' },
-      { id: 'security-settings', label: 'Security Settings' },
+      { id: 'system-chat', label: 'menu.chat' },
+      { id: 'system-settings',   label: 'menu.systemSettings' },
+      { id: 'security-settings', label: 'menu.securitySettings' },
     ],
   },
   {
-    items: [{ id: 'profile', label: 'Profile' }],
+    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
 const DIRECTOR_MENU: MenuSection[] = [
   {
-    title: 'Executive Command',
+    title: 'menu.executiveCommandSection',
     items: [
-      { id: 'director-dashboard', label: 'Executive Dashboard' },
-      { id: 'risk-monitoring',    label: 'Risk Monitoring' },
+      { id: 'director-dashboard', label: 'menu.executiveDashboard' },
+      { id: 'risk-monitoring',    label: 'menu.riskMonitoring' },
     ],
   },
   {
-    title: 'Ecosystem & Intelligence',
+    title: 'menu.ecosystemIntelligence',
     items: [
-      { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
-      { id: 'competitor-intelligence', label: 'Competitor Intelligence' },
-      { id: 'system-chat',             label: 'Chat' },
+      { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
+      { id: 'competitor-intelligence', label: 'menu.competitorIntelligence' },
+      { id: 'system-chat',             label: 'menu.chat' },
     ],
   },
   {
-    title: 'Strategic Governance',
+    title: 'menu.strategicGovernance',
     items: [
-      { id: 'strategic-reports', label: 'Strategic Reports' },
-      { id: 'score-rules',       label: 'Score Workspace' },
+      { id: 'strategic-reports', label: 'menu.strategicReports' },
     ],
   },
   {
-    title: 'Projects',
+    title: 'menu.projects',
     items: [
-      { id: 'companies',    label: 'Companies' },
-      { id: 'news',         label: 'News & Intelligence' },
-      { id: 'project-management', label: 'Projects Overview' },
+      { id: 'companies',    label: 'menu.companies' },
+      { id: 'news',         label: 'menu.newsIntelligence' },
+      { id: 'project-management', label: 'menu.projectsOverview' },
     ],
   },
   {
-    items: [{ id: 'profile', label: 'Profile' }],
+    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
 const MANAGER_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'manager-dashboard', label: 'Dashboard' },
+      { id: 'manager-dashboard', label: 'menu.dashboard' },
     ],
   },
   {
-    title: 'Operations',
+    title: 'menu.operations',
     items: [
-      { id: 'project-management',      label: 'Project Management' },
-      { id: 'score-rules',             label: 'Score Workspace' },
-      { id: 'system-chat',             label: 'Chat' },
+      { id: 'project-management',      label: 'menu.projectManagement' },
+      { id: 'system-chat',             label: 'menu.chat' },
       // { id: 'competitor-intelligence', label: 'Competitor Intel' },
       // { id: 'analysis-history',        label: 'Analysis History' },
     ],
@@ -160,73 +148,73 @@ const MANAGER_MENU: MenuSection[] = [
   //   ],
   // },
   {
-    title: 'Data',
+    title: 'menu.data',
     items: [
-      { id: 'companies', label: 'Companies' },
-      { id: 'news',      label: 'Crawler Articles' },
+      { id: 'companies', label: 'menu.companies' },
+      { id: 'news',      label: 'menu.crawlerArticles' },
       // { id: 'verify',    label: 'Verify Queue' },
     ],
   },
   {
-    items: [{ id: 'profile', label: 'Profile' }],
+    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
 const KEY_MEMBER_MENU: MenuSection[] = [
   {
-    title: 'Workstation',
+    title: 'menu.workstation',
     items: [
-      { id: 'keymember-dashboard', label: 'Workstation Dashboard' },
-      { id: 'project-management',  label: 'My Projects' },
+      { id: 'keymember-dashboard', label: 'menu.workstationDashboard' },
+      { id: 'project-management',  label: 'menu.myProjects' },
     ],
   },
   {
-    title: 'Validation & Review',
+    title: 'menu.validationReview',
     items: [
-      { id: 'company-validation',     label: 'Validation Queue' },
-      { id: 'review-extracted-data',  label: 'Review Extracted Data' },
-      { id: 'partner-classification', label: 'Score & Classify' },
+      { id: 'company-validation',     label: 'menu.validationQueue' },
+      { id: 'review-extracted-data',  label: 'menu.reviewExtractedData' },
+      { id: 'partner-classification', label: 'menu.scoreClassify' },
     ],
   },
   {
-    title: 'Directory',
+    title: 'menu.directory',
     items: [
-      { id: 'ai-suggestion-review', label: 'AI Suggestion Review' },
-      { id: 'relationship-updates', label: 'Relationship Updates' },
-      { id: 'system-chat',          label: 'Chat' },
-      { id: 'onboarding-support',   label: 'Onboarding Support' },
+      { id: 'ai-suggestion-review', label: 'menu.aiSuggestionReview' },
+      { id: 'relationship-updates', label: 'menu.relationshipUpdates' },
+      { id: 'system-chat',          label: 'menu.chat' },
+      { id: 'onboarding-support',   label: 'menu.onboardingSupport' },
     ],
   },
   {
-    title: 'Data',
+    title: 'menu.data',
     items: [
-      { id: 'companies',        label: 'Companies' },
-      { id: 'validate',         label: 'Validation Queue' },
-      { id: 'company-detail',   label: 'Company Detail' },
-      { id: 'companies', label: 'Companies Directory' },
+      { id: 'companies',        label: 'menu.companies' },
+      { id: 'validate',         label: 'menu.validationQueue' },
+      { id: 'company-detail',   label: 'menu.companyDetail' },
+      { id: 'companies', label: 'menu.companiesDirectory' },
     ],
   },
   {
-    items: [{ id: 'profile', label: 'Profile' }],
+    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
 const STAFF_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'staff-dashboard', label: 'My Dashboard' },
+      { id: 'staff-dashboard', label: 'menu.myDashboard' },
     ],
   },
   {
-    title: 'Work Queue',
+    title: 'menu.workQueue',
     items: [
       // { id: 'my-tasks',            label: 'My Tasks' },
-      { id: 'project-management',  label: 'Project Management' },
-      { id: 'system-chat',         label: 'Chat' },
+      { id: 'project-management',  label: 'menu.projectManagement' },
+      { id: 'system-chat',         label: 'menu.chat' },
       // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       // { id: 'candidate-review',    label: 'Candidate Review' },
-      { id: 'company-profiles',    label: 'Company Profiles' },
-      { id: 'news',                label: 'Crawler Articles' },
+      { id: 'company-profiles',    label: 'menu.companyProfiles' },
+      { id: 'news',                label: 'menu.crawlerArticles' },
     ],
   },
   // {
@@ -256,46 +244,44 @@ const STAFF_MENU: MenuSection[] = [
 const OWNER_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'owner-dashboard', label: 'Executive Command' },
+      { id: 'owner-dashboard', label: 'menu.executiveCommand' },
     ],
   },
   {
-    title: 'Ecosystem & Projects',
+    title: 'menu.ecosystemProjects',
     items: [
-      { id: 'partner-ecosystem',       label: 'Partner Ecosystem' },
-      { id: 'competitor-intelligence', label: 'Competitor Intel' },
-      { id: 'relationship-map',        label: 'Relationship Map' },
-      { id: 'crawler-control',         label: 'Crawler Control' },
-      { id: 'project-management',      label: 'Projects Overview' },
-      { id: 'news',                    label: 'News & Intelligence' },
-      { id: 'system-chat',             label: 'Chat' },
+      { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
+      { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
+      { id: 'relationship-map',        label: 'menu.relationshipMap' },
+      { id: 'crawler-control',         label: 'menu.crawlerControl' },
+      { id: 'project-management',      label: 'menu.projectsOverview' },
+      { id: 'news',                    label: 'menu.newsIntelligence' },
+      { id: 'system-chat',             label: 'menu.chat' },
     ],
   },
   {
-    title: 'Governance & Settings',
+    title: 'menu.governanceSettings',
     items: [
-      { id: 'company-profiles', label: 'Company Profiles' },
-      { id: 'score-rules',      label: 'Score Workspace' },
+      { id: 'company-profiles', label: 'menu.companyProfiles' },
     ],
   },
   {
-    items: [{ id: 'profile', label: 'Profile' }],
+    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
 const MENU_BY_ROLE = {
-  [ROLES.ADMIN]:      ADMIN_MENU,
-  [ROLES.OWNER]:      OWNER_MENU,
-  [ROLES.DIRECTOR]:   DIRECTOR_MENU,
-  [ROLES.MANAGER]:    MANAGER_MENU,
-  [ROLES.KEY_MEMBER]: KEY_MEMBER_MENU,
-  [ROLES.STAFF]:      STAFF_MENU,
+  [ROLES.ADMIN]:   ADMIN_MENU,
+  [ROLES.OWNER]:   OWNER_MENU,
+  [ROLES.MANAGER]: MANAGER_MENU,
+  [ROLES.STAFF]:   STAFF_MENU,
 };
 
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
 export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
+  const { t } = useTranslation('common');
   const { currentUser, logout } = useUser();
   const { totalUnread } = useChatNotifications();
   const [showLogout, setShowLogout] = useState(false);
@@ -334,14 +320,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           </div>
           <div className="logo-text-block">
             <div className="logo-title">APMS</div>
-            <div className="logo-sub">Business Intelligence</div>
+            <div className="logo-sub">{t('app.businessIntelligence')}</div>
           </div>
         </div>
 
         <div className={`sidebar-role-card ${roleContext?.accent || ''}`}>
-          <span className="sidebar-role-chip">{roleContext?.label}</span>
+          <span className="sidebar-role-chip">{roleContext ? t(roleContext.label) : ''}</span>
           <strong>{currentUser.roleName}</strong>
-          <p>{roleContext?.description}</p>
         </div>
 
         {/* Navigation */}
@@ -349,7 +334,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           {menuSections.map((section, si) => (
             <div className="nav-section" key={si}>
               {section.title && (
-                <div className="nav-section-title">{section.title}</div>
+                <div className="nav-section-title">{t(section.title)}</div>
               )}
               {section.items.map(item => (
                 (() => {
@@ -359,10 +344,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                       key={item.id}
                       className={`nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'system-chat' && badgeValue && badgeValue > 0 ? 'has-unread' : ''}`}
                       onClick={() => setActivePage(item.id)}
-                      title={item.label}
+                      title={t(item.label)}
                       style={{ cursor: 'pointer' }}
                     >
-                      <span className="nav-label">{item.label}</span>
+                      <span className="nav-label">{t(item.label)}</span>
                       {badgeValue !== undefined && badgeValue > 0 && (
                         <span className={`nav-badge ${item.id === 'system-chat' ? 'chat-unread' : item.badgeType || ''}`}>
                           {formatBadge(badgeValue)}
@@ -388,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
             </div>
             <button
               className="sidebar-logout-btn"
-              title="Đăng xuất"
+              title={t('logout.button')}
               onClick={e => { e.stopPropagation(); setShowLogout(true); }}
               style={{
                 fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
@@ -396,7 +381,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                 borderRadius: 'var(--radius-sm)',
               }}
             >
-              Thoát
+              {t('logout.button')}
             </button>
           </div>
         </div>

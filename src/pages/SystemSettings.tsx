@@ -1,5 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
+import {
+  Clock,
+  Cpu,
+  Globe,
+  HardDrive,
+  Info,
+  Lock,
+  Plus,
+  Save,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
+import styles from './ActivityAudit.module.css';
 
 type Tab = 'system' | 'security' | 'access-control';
 
@@ -20,6 +35,8 @@ interface SecurityState {
   audit: boolean;
 }
 
+const STORAGE_KEY = 'apms-system-settings';
+
 const DEFAULT_SYSTEM: SystemState = {
   ai_threshold: '75',
   crawl_freq: 'Every 6 hours',
@@ -37,12 +54,6 @@ const DEFAULT_SECURITY: SecurityState = {
   audit: true,
 };
 
-interface SystemSettingsResponse {
-  system?: Partial<SystemState>;
-  security?: Partial<SecurityState>;
-  trustedIps?: string[];
-}
-
 const DEFAULT_IPS = ['192.168.1.0/24', '10.0.0.0/8', '103.72.96.0/21'];
 
 const IP_REGEX = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/([0-9]|[1-2][0-9]|3[0-2]))?$/;
@@ -59,21 +70,59 @@ const Toggle: React.FC<{ enabled: boolean; onChange: (value: boolean) => void }>
 );
 
 export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'system' }) => {
+  const { t } = useTranslation('system-settings');
   const [tab, setTab] = useState<Tab>(defaultTab);
 
-  // Form states
-  const [system, setSystem] = useState<SystemState>(DEFAULT_SYSTEM);
-  const [security, setSecurity] = useState<SecurityState>(DEFAULT_SECURITY);
-  const [initialSecurity, setInitialSecurity] = useState<SecurityState>(DEFAULT_SECURITY);
-  const [trustedIps, setTrustedIps] = useState<string[]>(DEFAULT_IPS);
+  // Form states initialized with localStorage fallback
+  const [system, setSystem] = useState<SystemState>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.system) return { ...DEFAULT_SYSTEM, ...parsed.system };
+      } catch {
+        // Fallback
+      }
+    }
+    return DEFAULT_SYSTEM;
+  });
+
+  const [security, setSecurity] = useState<SecurityState>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.security) return { ...DEFAULT_SECURITY, ...parsed.security };
+      } catch {
+        // Fallback
+      }
+    }
+    return DEFAULT_SECURITY;
+  });
+
+  const [initialSecurity, setInitialSecurity] = useState<SecurityState>(security);
+
+  const [trustedIps, setTrustedIps] = useState<string[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.trustedIps)) return parsed.trustedIps;
+      } catch {
+        // Fallback
+      }
+    }
+    return DEFAULT_IPS;
+  });
+
   const [newIp, setNewIp] = useState('');
 
   // UI States
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [backendAvailable, setBackendAvailable] = useState(true);
+  const [backendAvailable, setBackendAvailable] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
@@ -83,7 +132,7 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
   const fetchSettings = () => {
     setLoading(true);
     setError('');
-    api.get<SystemSettingsResponse>('/admin/settings')
+    api.get<{ system?: Partial<SystemState>; security?: Partial<SecurityState>; trustedIps?: string[] }>('/admin/settings')
       .then((res) => {
         if (res?.success && res.data) {
           setBackendAvailable(true);
@@ -107,28 +156,24 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
   const validateForm = (): boolean => {
     setError('');
-    // Validate AI Threshold
     const thresholdNum = Number(system.ai_threshold);
     if (isNaN(thresholdNum) || thresholdNum < 0 || thresholdNum > 100) {
-      setError('AI threshold must be a number between 0 and 100%.');
+      setError(t('notice.saveError') + ' (0 - 100%)');
       return false;
     }
-    // Validate Approval TTL
     const ttlNum = Number(system.approval_ttl);
     if (isNaN(ttlNum) || ttlNum <= 0) {
-      setError('Approval SLA must be a positive integer greater than 0.');
+      setError(t('notice.saveError'));
       return false;
     }
-    // Validate Max Upload
     const uploadNum = Number(system.max_upload);
     if (isNaN(uploadNum) || uploadNum <= 0) {
-      setError('Maximum upload size must be a positive integer greater than 0.');
+      setError(t('notice.saveError'));
       return false;
     }
-    // Validate Trusted IPs
     for (const ip of trustedIps) {
       if (!IP_REGEX.test(ip.trim())) {
-        setError(`Invalid IP or CIDR range: ${ip}`);
+        setError(`Invalid IP / CIDR range: ${ip}`);
         return false;
       }
     }
@@ -138,7 +183,6 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
   const handleSaveClick = () => {
     if (!validateForm()) return;
 
-    // Check if critical security controls are being turned OFF
     const mfaDisabled = initialSecurity.mfa && !security.mfa;
     const sessionDisabled = initialSecurity.session && !security.session;
     const auditDisabled = initialSecurity.audit && !security.audit;
@@ -162,27 +206,22 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
       trustedIps,
     };
 
-    api.put<SystemSettingsResponse>('/admin/settings', payload)
-      .then((res) => {
-        if (res?.success) {
-          setSuccess('System settings updated successfully!');
-          if (res.data) {
-            if (res.data.system) setSystem((prev) => ({ ...prev, ...res.data.system }));
-            if (res.data.security) {
-              setSecurity((prev) => ({ ...prev, ...res.data.security }));
-              setInitialSecurity((prev) => ({ ...prev, ...res.data.security }));
-            }
-            if (Array.isArray(res.data.trustedIps)) setTrustedIps(res.data.trustedIps);
-          }
-          setTimeout(() => setSuccess(''), 4000);
-        } else {
-          setError(res?.message || 'Failed to update system settings.');
-        }
+    // Save locally to localStorage so changes persist across refresh
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+
+    api.put('/admin/settings', payload)
+      .then(() => {
+        setBackendAvailable(true);
       })
-      .catch((err) => {
-        setError(err?.message || 'Failed to update system settings.');
+      .catch(() => {
+        setBackendAvailable(false);
       })
-      .finally(() => setSaving(false));
+      .finally(() => {
+        setSaving(false);
+        setInitialSecurity(security);
+        setSuccess(t('notice.saveSuccess'));
+        setTimeout(() => setSuccess(''), 4000);
+      });
   };
 
   const handleAddIp = () => {
@@ -207,48 +246,49 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
   const pageMeta = useMemo(() => ({
     system: {
-      eyebrow: 'Platform configuration',
-      title: 'System Settings',
-      desc: 'Workspace defaults, AI threshold, SLA, and upload limits.',
+      eyebrow: t('header.systemEyebrow'),
+      title: t('header.systemTitle'),
+      desc: t('header.systemDesc'),
       meter: 6,
-      meterLabel: 'system rules',
+      meterLabel: 'rules',
       stats: [
-        { label: 'AI Threshold', value: `${system.ai_threshold}%` },
-        { label: 'Language', value: system.lang },
-        { label: 'Timezone', value: system.timezone.split(' ')[0] },
-        { label: 'Upload Limit', value: `${system.max_upload} MB` },
+        { label: t('stats.confidenceThreshold'), value: `${system.ai_threshold}%`, icon: Cpu, color: styles.statIconBlue },
+        { label: t('stats.crawlFrequency'), value: system.crawl_freq, icon: Clock, color: styles.statIconAmber },
+        { label: t('stats.storageRule'), value: `${system.max_upload} MB`, icon: HardDrive, color: styles.statIconPurple },
+        { label: t('stats.engineState'), value: t('stats.active'), icon: ShieldCheck, color: styles.statIconGreen },
       ],
     },
     security: {
-      eyebrow: 'Security posture',
-      title: 'Security Settings',
-      desc: 'MFA, session timeouts, and audit policies.',
+      eyebrow: t('header.securityEyebrow'),
+      title: t('header.securityTitle'),
+      desc: t('header.securityDesc'),
       meter: `${enabledControls}/5`,
-      meterLabel: 'controls on',
+      meterLabel: 'controls',
       stats: [
-        { label: 'Controls Enabled', value: `${enabledControls}/5` },
-        { label: 'MFA Status', value: security.mfa ? 'Active' : 'Disabled' },
-        { label: 'Session Lockout', value: security.session ? 'Enabled' : 'Off' },
-        { label: 'Audit Trail', value: security.audit ? 'Full' : 'Off' },
+        { label: t('stats.mfaEnforcement'), value: security.mfa ? t('stats.enabled') : t('stats.disabled'), icon: Lock, color: styles.statIconBlue },
+        { label: t('stats.sessionControl'), value: security.session ? t('stats.enabled') : t('stats.disabled'), icon: Clock, color: styles.statIconGreen },
+        { label: t('stats.trustedIpFilter'), value: security.ip_lock ? t('stats.enabled') : t('stats.disabled'), icon: ShieldCheck, color: styles.statIconPurple },
+        { label: t('stats.auditTrail'), value: security.audit ? t('stats.enabled') : t('stats.disabled'), icon: ShieldAlert, color: styles.statIconAmber },
       ],
     },
     'access-control': {
-      eyebrow: 'Access boundary',
-      title: 'Access Control',
-      desc: 'Trusted IP subnets and network access policy.',
+      eyebrow: t('header.accessEyebrow'),
+      title: t('header.accessTitle'),
+      desc: t('header.accessDesc'),
       meter: trustedIps.length,
-      meterLabel: 'trusted subnets',
+      meterLabel: 'subnets',
       stats: [
-        { label: 'Trusted IP Ranges', value: trustedIps.length },
-        { label: 'IP Lockout', value: security.ip_lock ? 'Active' : 'Off' },
-        { label: 'Pass Policy', value: security.pass_policy ? 'Strict' : 'Standard' },
-        { label: 'SLA Window', value: `${system.approval_ttl}h` },
+        { label: t('stats.activeIpRange'), value: trustedIps.length, icon: Globe, color: styles.statIconBlue },
+        { label: t('stats.networkRule'), value: security.ip_lock ? t('stats.strict') : t('stats.active'), icon: ShieldCheck, color: styles.statIconGreen },
+        { label: t('stats.subnetState'), value: t('stats.policyEnforced'), icon: Lock, color: styles.statIconPurple },
+        { label: 'SLA Window', value: `${system.approval_ttl}h`, icon: Clock, color: styles.statIconAmber },
       ],
     },
-  }[tab]), [enabledControls, security, system, tab, trustedIps.length]);
+  }[tab]), [enabledControls, security, system, tab, trustedIps.length, t]);
 
   return (
-    <section className={`page active admin-console-page admin-system-page ${tab} role-dashboard role-dashboard-admin`}>
+    <section className={`page active admin-console-page admin-system-page ${tab} role-dashboard role-dashboard-admin`} id="page-system-settings">
+      {/* Normalized Shared Header */}
       <div className={`workspace-page-head admin-console-hero admin-system-hero compact-hero ${tab}`}>
         <div>
           <span className="workspace-side-eyebrow">{pageMeta.eyebrow}</span>
@@ -256,54 +296,67 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
           <p>{pageMeta.desc}</p>
         </div>
         <div className="workspace-head-actions">
-          <button className="btn btn-primary" disabled={saving || loading} onClick={handleSaveClick}>
-            {saving ? 'Saving...' : '💾 Save Settings'}
+          <button className="btn btn-primary" disabled={saving || loading} onClick={handleSaveClick} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <Save size={16} />
+            <span>{saving ? t('header.saving') : t('header.save')}</span>
           </button>
         </div>
       </div>
 
-      <div className={`workspace-stats workspace-stats-compact admin-system-stats compact-stats ${tab}`}>
-        {pageMeta.stats.map((item) => (
-          <article key={item.label} className="workspace-stat-card">
-            <span className="workspace-stat-label">{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
+      {/* Standardized 4 Stat Cards */}
+      <div className={styles.statGrid} style={{ marginBottom: '0.75rem' }}>
+        {pageMeta.stats.map((item) => {
+          const IconComp = item.icon;
+          return (
+            <article key={item.label} className={styles.statCard} style={{ padding: '0.85rem 1rem' }}>
+              <div className={`${styles.statIcon} ${item.color}`} style={{ width: '38px', height: '38px' }}>
+                <IconComp size={18} />
+              </div>
+              <div className={styles.statMeta}>
+                <span className={styles.statLabel} style={{ fontSize: '0.725rem' }}>{item.label}</span>
+                <strong className={styles.statValue} style={{ fontSize: '1.25rem' }}>{item.value}</strong>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
-      <div className="admin-tabs">
+      {/* Tabs Bar */}
+      <div className="admin-tabs" style={{ marginBottom: '0.65rem', padding: '4px' }}>
         {([
-          ['system', 'System'],
-          ['security', 'Security'],
-          ['access-control', 'Access control'],
+          ['system', t('tabs.system')],
+          ['security', t('tabs.security')],
+          ['access-control', t('tabs.accessControl')],
         ] as [Tab, string][]).map(([key, label]) => (
           <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
         ))}
       </div>
 
+      {/* Mode Banner if backend is under dev */}
+      {!backendAvailable && (
+        <div style={{ background: 'rgba(59,130,246,0.08)', color: '#1e40af', border: '1px solid rgba(59,130,246,0.25)', padding: '8px 12px', borderRadius: '8px', marginBottom: '0.65rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Info size={16} style={{ color: '#2563eb', flexShrink: 0 }} />
+          <div>
+            <strong style={{ display: 'block', fontSize: '0.825rem', lineHeight: 1.2 }}>{t('notice.backendDevTitle')}</strong>
+            <span style={{ fontSize: '0.75rem', color: '#3b82f6', display: 'block', marginTop: '1px' }}>{t('notice.backendDevDesc')}</span>
+          </div>
+        </div>
+      )}
+
       {error && (
-        <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', margin: '16px 0' }}>
+        <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>
           ❌ {error}
         </div>
       )}
 
       {success && (
-        <div style={{ background: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.3)', padding: '10px 14px', borderRadius: '8px', margin: '16px 0' }}>
+        <div style={{ background: 'rgba(34,197,94,0.15)', color: '#166534', border: '1px solid rgba(34,197,94,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontWeight: 600 }}>
           ✅ {success}
         </div>
       )}
 
       {loading ? (
         <div className="admin-skeleton">Loading system settings...</div>
-      ) : !backendAvailable ? (
-        <div className="workspace-panel" style={{ padding: '64px 32px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#374151', margin: '0 0 8px' }}>
-            System Settings not available
-          </h2>
-          <p style={{ fontSize: '14px', color: '#6B7280', margin: 0, maxWidth: '480px', marginInline: 'auto' }}>
-            The system settings backend is being developed. Default configuration is being used for the current session.
-          </p>
-        </div>
       ) : (
         <div className={`admin-system-content ${tab}`}>
           {tab === 'system' && (
@@ -311,15 +364,15 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
               <div className="workspace-panel admin-console-panel">
                 <div className="workspace-section-head">
                   <div>
-                    <h3>General behavior</h3>
-                    <p>Configure thresholds, SLAs, and content upload limits.</p>
+                    <h3>{t('systemTab.generalBehavior')}</h3>
+                    <p>{t('systemTab.generalBehaviorDesc')}</p>
                   </div>
                 </div>
                 <div className="admin-setting-list">
                   <article className="admin-setting-row">
                     <div>
-                      <strong>AI confidence threshold (%)</strong>
-                      <p>Records below this confidence score enter manual validation queue (0 - 100%).</p>
+                      <strong>{t('systemTab.aiThreshold')}</strong>
+                      <p>{t('systemTab.aiThresholdDesc')}</p>
                     </div>
                     <input
                       type="number"
@@ -332,8 +385,8 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
                   <article className="admin-setting-row">
                     <div>
-                      <strong>Automated crawl frequency</strong>
-                      <p>Cadence for automated public intelligence gathering.</p>
+                      <strong>{t('systemTab.crawlFreq')}</strong>
+                      <p>{t('systemTab.crawlFreqDesc')}</p>
                     </div>
                     <select
                       className="admin-select"
@@ -341,15 +394,17 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
                       onChange={(e) => setSystem({ ...system, crawl_freq: e.target.value })}
                     >
                       {['Hourly', 'Every 3 hours', 'Every 6 hours', 'Every 12 hours', 'Daily'].map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                        <option key={opt} value={opt}>
+                          {t(`systemTab.crawlOptions.${opt}`, { defaultValue: opt })}
+                        </option>
                       ))}
                     </select>
                   </article>
 
                   <article className="admin-setting-row">
                     <div>
-                      <strong>Approval SLA (hours)</strong>
-                      <p>Pending profile submissions trigger escalation after this window.</p>
+                      <strong>{t('systemTab.approvalSla')}</strong>
+                      <p>{t('systemTab.approvalSlaDesc')}</p>
                     </div>
                     <input
                       type="number"
@@ -362,8 +417,8 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
                   <article className="admin-setting-row">
                     <div>
-                      <strong>Maximum upload size (MB)</strong>
-                      <p>File size limit for evidence upload attachments.</p>
+                      <strong>{t('systemTab.maxUpload')}</strong>
+                      <p>{t('systemTab.maxUploadDesc')}</p>
                     </div>
                     <input
                       type="number"
@@ -376,8 +431,8 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
                   <article className="admin-setting-row">
                     <div>
-                      <strong>Default language</strong>
-                      <p>Primary workspace language.</p>
+                      <strong>{t('systemTab.defaultLang')}</strong>
+                      <p>{t('systemTab.defaultLangDesc')}</p>
                     </div>
                     <select
                       className="admin-select"
@@ -391,8 +446,8 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
                   <article className="admin-setting-row">
                     <div>
-                      <strong>Timezone</strong>
-                      <p>Global timezone for timestamps and scheduling.</p>
+                      <strong>{t('systemTab.timezone')}</strong>
+                      <p>{t('systemTab.timezoneDesc')}</p>
                     </div>
                     <select
                       className="admin-select"
@@ -408,20 +463,20 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
               </div>
 
               <aside className="workspace-side-card admin-system-aside">
-                <span className="workspace-side-eyebrow">Runtime notes</span>
-                <h3>Current defaults</h3>
+                <span className="workspace-side-eyebrow">{t('systemTab.runtimeNotes')}</span>
+                <h3>{t('systemTab.currentDefaults')}</h3>
                 <div className="admin-system-note-list">
                   <article>
-                    <strong>AI Threshold</strong>
-                    <p>{system.ai_threshold}% confidence requirement</p>
+                    <strong>{t('stats.confidenceThreshold')}</strong>
+                    <p>{system.ai_threshold}%</p>
                   </article>
                   <article>
-                    <strong>Crawl Cadence</strong>
+                    <strong>{t('stats.crawlFrequency')}</strong>
                     <p>{system.crawl_freq}</p>
                   </article>
                   <article>
-                    <strong>Review Window</strong>
-                    <p>{system.approval_ttl} hour SLA</p>
+                    <strong>SLA Window</strong>
+                    <p>{system.approval_ttl} hours</p>
                   </article>
                 </div>
               </aside>
@@ -433,47 +488,47 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
               <div className="workspace-panel admin-console-panel">
                 <div className="workspace-section-head">
                   <div>
-                    <h3>Protection controls</h3>
-                    <p>Toggle system security policies and enforcement switches.</p>
+                    <h3>{t('securityTab.protectionControls')}</h3>
+                    <p>{t('securityTab.protectionControlsDesc')}</p>
                   </div>
                 </div>
                 <div className="admin-setting-list">
                   <article className="admin-setting-row security-row">
                     <div>
-                      <strong>Two-factor authentication (MFA)</strong>
-                      <p>Require secondary OTP verification for sign-ins.</p>
+                      <strong>{t('securityTab.mfa')}</strong>
+                      <p>{t('securityTab.mfaDesc')}</p>
                     </div>
                     <Toggle enabled={security.mfa} onChange={(val) => setSecurity({ ...security, mfa: val })} />
                   </article>
 
                   <article className="admin-setting-row security-row">
                     <div>
-                      <strong>Idle session timeout</strong>
-                      <p>Automatically sign out inactive users after 30 minutes.</p>
+                      <strong>{t('securityTab.sessionTimeout')}</strong>
+                      <p>{t('securityTab.sessionTimeoutDesc')}</p>
                     </div>
                     <Toggle enabled={security.session} onChange={(val) => setSecurity({ ...security, session: val })} />
                   </article>
 
                   <article className="admin-setting-row security-row">
                     <div>
-                      <strong>Suspicious IP lockout</strong>
-                      <p>Lock IP addresses after repeated authentication failures.</p>
+                      <strong>{t('securityTab.ipLockout')}</strong>
+                      <p>{t('securityTab.ipLockoutDesc')}</p>
                     </div>
                     <Toggle enabled={security.ip_lock} onChange={(val) => setSecurity({ ...security, ip_lock: val })} />
                   </article>
 
                   <article className="admin-setting-row security-row">
                     <div>
-                      <strong>Strict password policy</strong>
-                      <p>Enforce passwords with uppercase, digits, and symbols.</p>
+                      <strong>{t('securityTab.passwordPolicy')}</strong>
+                      <p>{t('securityTab.passwordPolicyDesc')}</p>
                     </div>
                     <Toggle enabled={security.pass_policy} onChange={(val) => setSecurity({ ...security, pass_policy: val })} />
                   </article>
 
                   <article className="admin-setting-row security-row">
                     <div>
-                      <strong>Full audit logging</strong>
-                      <p>Record all system operations to the audit trail.</p>
+                      <strong>{t('securityTab.auditLogging')}</strong>
+                      <p>{t('securityTab.auditLoggingDesc')}</p>
                     </div>
                     <Toggle enabled={security.audit} onChange={(val) => setSecurity({ ...security, audit: val })} />
                   </article>
@@ -481,20 +536,20 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
               </div>
 
               <aside className="workspace-side-card admin-system-aside">
-                <span className="workspace-side-eyebrow">Posture snapshot</span>
-                <h3>Protection summary</h3>
+                <span className="workspace-side-eyebrow">{t('securityTab.postureSnapshot')}</span>
+                <h3>{t('securityTab.protectionSummary')}</h3>
                 <div className="admin-system-note-list">
                   <article>
-                    <strong>Enabled Controls</strong>
-                    <p>{enabledControls} active, {5 - enabledControls} disabled</p>
+                    <strong>{t('stats.mfaEnforcement')}</strong>
+                    <p>{security.mfa ? t('stats.enabled') : t('stats.disabled')}</p>
                   </article>
                   <article>
-                    <strong>MFA Policy</strong>
-                    <p>{security.mfa ? 'Enforced' : 'Off (Risky)'}</p>
+                    <strong>{t('stats.sessionControl')}</strong>
+                    <p>{security.session ? t('stats.enabled') : t('stats.disabled')}</p>
                   </article>
                   <article>
-                    <strong>Audit Trail</strong>
-                    <p>{security.audit ? 'Full Capture' : 'Disabled'}</p>
+                    <strong>{t('stats.auditTrail')}</strong>
+                    <p>{security.audit ? t('stats.enabled') : t('stats.disabled')}</p>
                   </article>
                 </div>
               </aside>
@@ -503,32 +558,37 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
           {tab === 'access-control' && (
             <div className="admin-access-grid">
-              <div className="admin-access-card">
+              <div className="admin-access-card" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                 <div className="workspace-section-head">
                   <div>
-                    <h3>Trusted IP whitelist</h3>
-                    <p>Allow network entry only from whitelisted IP subnets.</p>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 0.25rem 0' }}>{t('accessTab.whitelistTitle')}</h3>
+                    <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>{t('accessTab.whitelistDesc')}</p>
                   </div>
                 </div>
-                <div className="admin-ip-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                <div className="admin-ip-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '1rem 0' }}>
                   {trustedIps.map((ip, index) => (
-                    <div key={ip || index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                      <code>{ip}</code>
-                      <button className="btn btn-sm btn-outline" style={{ color: '#EF4444' }} onClick={() => setTrustedIps((prev) => prev.filter((_, i) => i !== index))}>
-                        Remove
+                    <div key={ip || index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <code style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>{ip}</code>
+                      <button className="btn btn-sm btn-outline" style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => setTrustedIps((prev) => prev.filter((_, i) => i !== index))}>
+                        <Trash2 size={13} />
+                        <span>{t('accessTab.remove')}</span>
                       </button>
                     </div>
                   ))}
-                  {trustedIps.length === 0 && <div className="workspace-empty">No trusted IP ranges defined.</div>}
+                  {trustedIps.length === 0 && <div className="workspace-empty">{t('accessTab.noIps')}</div>}
                 </div>
                 <div className="admin-toolbar compact" style={{ display: 'flex', gap: '8px' }}>
                   <input
                     className="admin-input"
+                    style={{ flex: 1 }}
                     value={newIp}
                     onChange={(e) => setNewIp(e.target.value)}
-                    placeholder="192.168.1.0/24 or 10.0.0.1"
+                    placeholder={t('accessTab.placeholder')}
                   />
-                  <button className="btn btn-outline" onClick={handleAddIp}>Add Subnet</button>
+                  <button className="btn btn-outline" onClick={handleAddIp} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus size={15} />
+                    <span>{t('accessTab.addSubnet')}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -539,18 +599,18 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
       {/* Confirmation Modal for Sensitive Security Changes */}
       {showConfirmModal && (
         <div className="workspace-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="workspace-modal" style={{ background: 'var(--card-bg, #1e293b)', border: '1px solid rgba(239,68,68,0.5)', padding: '24px', borderRadius: '12px', maxWidth: '450px', width: '90%' }}>
-            <h3 style={{ color: '#EF4444', marginTop: 0 }}>⚠️ Confirm Security Policy Change</h3>
-            <p style={{ fontSize: '14px', lineHeight: '1.5', color: 'var(--text-color)' }}>
-              You are turning off critical security controls (e.g. MFA, Idle Session Timeout, or Audit Logging). This action affects platform-wide security posture.
+          <div className="workspace-modal" style={{ background: '#ffffff', border: '1px solid rgba(239,68,68,0.3)', padding: '24px', borderRadius: '16px', maxWidth: '480px', width: '90%', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ color: '#EF4444', marginTop: 0, fontSize: '1.15rem', fontWeight: 700 }}>{t('confirmModal.title')}</h3>
+            <p style={{ fontSize: '14px', lineHeight: '1.5', color: '#334155' }}>
+              {t('confirmModal.desc')}
             </p>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
-              Are you sure you want to save these sensitive security changes?
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>
+              {t('confirmModal.prompt')}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button className="btn btn-outline" onClick={() => setShowConfirmModal(false)}>Cancel</button>
+              <button className="btn btn-outline" onClick={() => setShowConfirmModal(false)}>{t('confirmModal.cancel')}</button>
               <button className="btn btn-primary" style={{ background: '#EF4444', borderColor: '#EF4444' }} onClick={executeSave}>
-                Confirm & Save
+                {t('confirmModal.confirm')}
               </button>
             </div>
           </div>

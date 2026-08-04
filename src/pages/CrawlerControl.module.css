@@ -1,0 +1,634 @@
+/* ============================================================
+   Crawler Control – Compact, No Icons, Fit 100% Screen View
+   ============================================================ */
+
+.ccPage {
+  max-width: var(--workspace-shell-max);
+  margin: 0 auto;
+  padding: 0 0 4px;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.ccHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ccHeaderLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ccTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.ccSub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ccHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ccForceLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ccBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ccBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ccBtnPrimary {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  border: 1px solid rgba(30, 64, 175, 0.6);
+  color: #fff;
+}
+
+.ccBtnPrimary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+}
+
+.ccBtnSecondary {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.ccBtnSecondary:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: var(--bg-input);
+}
+
+.ccBtnGhost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+
+.ccBtnGhost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.ccBtnSm {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+  border-radius: 6px;
+}
+
+/* ── Stats Grid ─────────────────────────────────────────── */
+.ccStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ccStatCard {
+  padding: 5px 10px;
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ccStatLabel {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ccStatValRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.ccStatValue {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.ccStatNote {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Main Navigation Tabs ───────────────────────────────── */
+.ccMainTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+  padding-bottom: 2px;
+}
+
+.ccTabBtn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ccTabBtnActive {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--brand-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Main Layout Grid (72 / 28) ────────────────────────── */
+.ccMainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 8px;
+  align-items: start;
+}
+
+.ccPanel {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.ccPanel:last-child {
+  margin-bottom: 0;
+}
+
+.ccSectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ccSectionHead h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ── Filter Bar ─────────────────────────────────────────── */
+.ccFilterBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.ccSubTabs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.ccSubTab {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ccSubTabActive {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.ccSubTabCount {
+  font-size: 0.62rem;
+  font-weight: 700;
+  margin-left: 3px;
+  opacity: 0.85;
+}
+
+.ccSearchInput {
+  flex: 1;
+  min-width: 140px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 0.72rem;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.ccSelect {
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 0.72rem;
+  color: var(--text-primary);
+  outline: none;
+}
+
+/* ── Table Styling ──────────────────────────────────────── */
+.ccTableWrap {
+  overflow-x: auto;
+  max-height: calc(100vh - 275px);
+  min-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ccTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.ccTable th {
+  text-align: left;
+  padding: 5px 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--bg-card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ccTable td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+  color: var(--text-secondary);
+}
+
+.ccTable tr:last-child td {
+  border-bottom: none;
+}
+
+.ccTable tr:hover td {
+  background: var(--bg-hover);
+}
+
+.ccItemTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.25;
+  margin-bottom: 2px;
+}
+
+.ccItemSummary {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ccPill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.ccPillDanger {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+}
+
+.ccPillSuccess {
+  background: #f0fdf4;
+  color: #10b981;
+  border-color: #bbf7d0;
+}
+
+.ccPillInfo {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.ccPillMuted {
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+/* ── Pagination ─────────────────────────────────────────── */
+.ccPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.ccPaginationBtns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── AI Pipeline Metrics Grid ───────────────────────────── */
+.ccAiGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ccAiBox {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+}
+
+.ccAiLabel {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.ccAiValue {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+  margin: 2px 0 1px;
+}
+
+.ccAiSub {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.ccSectionHead h3 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+/* ── Whitelist Form & Typography ─────────────────────────────────────── */
+.ccFormRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.ccFormInput {
+  flex: 1;
+  min-width: 120px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+/* ── Sidebar ────────────────────────────────────────────── */
+.ccSide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ccSideCard {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  padding: 8px 10px;
+}
+
+.ccSideTitle {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.1px;
+}
+
+.ccSideItem {
+  padding: 4px 8px;
+  background: var(--bg-input);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
+.ccSideItem:last-child {
+  margin-bottom: 0;
+}
+
+.ccSideLabel {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.ccSideVal {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ccAlert {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  margin-bottom: 8px;
+}
+
+.ccAlertSuccess {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.ccAlertInfo {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.ccAlertDanger {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.ccInlineEdit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ccEditField {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.ccEditField:disabled {
+  cursor: default;
+}
+
+.ccEditField:not(:disabled) {
+  cursor: pointer;
+}
+
+.ccEditIcon {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.ccEditField:hover .ccEditIcon {
+  opacity: 1;
+}
+
+.ccIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.ccIconBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.ccIconBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ccEmpty {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .ccMainGrid { grid-template-columns: 1fr; }
+  .ccSide { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+}
+
+@media (max-width: 760px) {
+  .ccStatsGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ccSide { grid-template-columns: 1fr; }
+  .ccAiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .ccStatsGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

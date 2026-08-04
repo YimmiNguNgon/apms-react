@@ -1,0 +1,63 @@
+{
+  "header": {
+    "activityEyebrow": "User pulse",
+    "activityTitle": "Activity history",
+    "activityDesc": "Monitor user participation, security events, and active workspace operators.",
+    "activeUsersMeter": "active users",
+    "auditEyebrow": "Immutable trail",
+    "auditTitle": "Audit Logs",
+    "auditDesc": "Inspect timestamped security events, role modifications, and system operations with real-time filters.",
+    "recordedEventsMeter": "recorded events"
+  },
+  "stats": {
+    "activeUsers": "Active users",
+    "mostActiveCount": "Most active count",
+    "totalLogItems": "Total log items",
+    "streamState": "Stream state",
+    "live": "Live",
+    "totalAuditEvents": "Total audit events",
+    "currentPage": "Page {{page}} of {{totalPages}}",
+    "actionsFiltered": "Actions filtered",
+    "exportFormat": "Export format",
+    "all": "All"
+  },
+  "tabs": {
+    "auditLogs": "Audit logs",
+    "userActivity": "User activity"
+  },
+  "filters": {
+    "allActions": "All Actions",
+    "allEntities": "All Entities",
+    "searchPlaceholder": "Search user / details...",
+    "fromDate": "From Date",
+    "toDate": "To Date",
+    "refresh": "Refresh",
+    "exportCsv": "📥 Export CSV",
+    "exporting": "Exporting..."
+  },
+  "table": {
+    "timestamp": "Timestamp",
+    "actor": "User (Actor)",
+    "action": "Action",
+    "entity": "Entity",
+    "details": "Details",
+    "noLogs": "No audit logs match the current filters.",
+    "systemActor": "System",
+    "pagination": "Page {{page}} of {{totalPages}} ({{totalElements}} total entries)",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "focus": {
+    "eyebrow": "ACTIVITY FOCUS",
+    "noActivity": "No user activity",
+    "recordedCount_one": "{{count}} audit action recorded in this window.",
+    "recordedCount_other": "{{count}} audit actions recorded in this window.",
+    "noActivityDesc": "No activity recorded."
+  },
+  "timeline": {
+    "events_one": "{{count}} recorded audit event",
+    "events_other": "{{count}} recorded audit events",
+    "shareOfTotal": "{{percent}}% of total log items",
+    "lastSeen": "Last active: {{time}}"
+  }
+}

@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../hooks/useTheme';
 import { LogoutModal } from './LogoutModal';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { api, type PageResponse } from '../services/api';
 
 interface TopbarProps {
@@ -27,76 +30,76 @@ const notificationColor: Record<NotificationItem['type'], string> = {
   RISK: '#EF4444',
 };
 
-const formatNotificationTime = (value?: string | null) => {
-  if (!value) return 'Just now';
+function formatNotificationTime(value?: string | null): string {
+  if (!value) return i18n.t('topbar.time.justNow');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Just now';
+  if (Number.isNaN(date.getTime())) return i18n.t('topbar.time.justNow');
   const seconds = Math.max(1, Math.floor((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return 'Just now';
+  if (seconds < 60) return i18n.t('topbar.time.justNow');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return i18n.t('topbar.time.minAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hr ago`;
-  return date.toLocaleDateString();
-};
+  if (hours < 24) return i18n.t('topbar.time.hrAgo', { count: hours });
+  return date.toLocaleDateString(i18n.language?.startsWith('en') ? 'en-US' : 'vi-VN');
+}
 
-const PAGE_LABELS: Record<string, string> = {
-  'admin-dashboard': 'Platform Command Center',
-  'director-dashboard': 'Director Workspace',
-  'manager-dashboard': 'Approval and Delivery Board',
-  'keymember-dashboard': 'Key Member Dashboard',
-  'staff-dashboard': 'Research Staff Dashboard',
-  users: 'User Management',
-  roles: 'Role Management',
-  permissions: 'Permissions',
-  'access-control': 'Access Control',
-  'activity-history': 'Activity History',
-  'audit-logs': 'Audit Logs',
-  'system-settings': 'System Settings',
-  'security-settings': 'Security Settings',
-  'partner-ecosystem': 'Partner Ecosystem',
-  'competitor-intelligence': 'Competitor Intelligence',
-  'relationship-map': 'Relationship Map',
-  'market-opportunities': 'Market Opportunities',
-  'ai-recommendations': 'AI Recommendations',
-  'strategic-reports': 'Strategic Reports',
-  'score-rules': 'Score Workspace',
-  'partner-evaluation': 'Partner Evaluation',
-  'company-assignment': 'Company Assignment',
-  'analysis-history': 'Analysis History',
-  'risk-monitoring': 'Risk Monitoring',
-  'partner-status': 'Partner Status',
-  'suggested-actions-approval': 'Approvals',
-  'team-kpi': 'Team KPI',
-  reports: 'Reports',
-  'review-extracted-data': 'Review Extracted Data',
-  'company-validation': 'Company Validation',
-  'partner-classification': 'Partner Classification',
-  'competitor-classification': 'Competitor Classification',
-  'ai-suggestion-review': 'AI Suggestion Review',
-  'relationship-updates': 'Relationship Updates',
-  'onboarding-support': 'Onboarding Support',
-  'upload-documents': 'My Tasks',
-  'company-profiles': 'Company Profiles',
-  'partner-management': 'Partner Directory',
-  'competitor-management': 'Competitor Watchlist',
-  'ai-extracted-data': 'AI Extraction Queue',
-  'search-companies': 'Search Companies',
-  'personal-ai-agent': 'Research AI Assistant',
-  'ai-training-mode': 'Training Mode',
-  'learning-center': 'Learning Center',
-  companies: 'Company Profiles',
-  'company-detail': 'Company Detail',
-  verify: 'Approval Queue',
-  validate: 'Validation Queue',
-  'add-company': 'Create Company Profile',
-  'ai-agent': 'AI Agent',
-  news: 'News & Intelligence',
-  'system-chat': 'System Chat',
-  profile: 'My Profile',
+const PAGE_LABEL_KEYS: Record<string, string> = {
+  'admin-dashboard': 'page.adminDashboard',
+  'director-dashboard': 'page.directorDashboard',
+  'manager-dashboard': 'page.managerDashboard',
+  'keymember-dashboard': 'page.keymemberDashboard',
+  'staff-dashboard': 'page.staffDashboard',
+  users: 'page.users',
+  roles: 'page.roles',
+  permissions: 'page.permissions',
+  'access-control': 'page.accessControl',
+  'activity-history': 'page.activityHistory',
+  'audit-logs': 'page.auditLogs',
+  'system-settings': 'page.systemSettings',
+  'security-settings': 'page.securitySettings',
+  'partner-ecosystem': 'page.partnerEcosystem',
+  'competitor-intelligence': 'page.competitorIntelligence',
+  'relationship-map': 'page.relationshipMap',
+  'market-opportunities': 'page.marketOpportunities',
+  'ai-recommendations': 'page.aiRecommendations',
+  'strategic-reports': 'page.strategicReports',
+  'partner-evaluation': 'page.partnerEvaluation',
+  'company-assignment': 'page.companyAssignment',
+  'analysis-history': 'page.analysisHistory',
+  'risk-monitoring': 'page.riskMonitoring',
+  'partner-status': 'page.partnerStatus',
+  'suggested-actions-approval': 'page.suggestedActionsApproval',
+  'team-kpi': 'page.teamKpi',
+  reports: 'page.reports',
+  'review-extracted-data': 'page.reviewExtractedData',
+  'company-validation': 'page.companyValidation',
+  'partner-classification': 'page.partnerClassification',
+  'competitor-classification': 'page.competitorClassification',
+  'ai-suggestion-review': 'page.aiSuggestionReview',
+  'relationship-updates': 'page.relationshipUpdates',
+  'onboarding-support': 'page.onboardingSupport',
+  'upload-documents': 'page.uploadDocuments',
+  'company-profiles': 'page.companyProfiles',
+  'partner-management': 'page.partnerManagement',
+  'competitor-management': 'page.competitorManagement',
+  'ai-extracted-data': 'page.aiExtractedData',
+  'search-companies': 'page.searchCompanies',
+  'personal-ai-agent': 'page.personalAiAgent',
+  'ai-training-mode': 'page.aiTrainingMode',
+  'learning-center': 'page.learningCenter',
+  companies: 'page.companies',
+  'company-detail': 'page.companyDetail',
+  verify: 'page.verify',
+  validate: 'page.validate',
+  'add-company': 'page.addCompany',
+  'ai-agent': 'page.aiAgent',
+  news: 'page.news',
+  'system-chat': 'page.systemChat',
+  profile: 'page.profile',
 };
 
 export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => {
+  const { t } = useTranslation('common');
   const { currentUser, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
   const [showNotif, setShowNotif] = useState(false);
@@ -158,7 +161,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
   if (!currentUser) return null;
 
-  const pageLabel = PAGE_LABELS[activePage] || 'Dashboard';
+  const pageLabelKey = PAGE_LABEL_KEYS[activePage] || 'topbar.dashboard';
   const unreadCount = notifications.filter((item) => !item.isRead).length;
 
   return (
@@ -168,13 +171,13 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
           <div className="breadcrumb">
             <span>APMS</span>
             <span className="breadcrumb-sep">›</span>
-            <span className="breadcrumb-current">{pageLabel}</span>
+            <span className="breadcrumb-current">{t(pageLabelKey)}</span>
           </div>
 
           <div className="topbar-search">
             <input
               type="text"
-              placeholder="Search workspace..."
+              placeholder={t('topbar.searchPlaceholder')}
               value={searchVal}
               onChange={(event) => setSearchVal(event.target.value)}
             />
@@ -182,16 +185,18 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
         </div>
 
         <div className="topbar-right">
-          <button className="topbar-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {theme === 'dark' ? 'Light' : 'Dark'}
+          <button className="topbar-btn" onClick={toggleTheme} title={theme === 'dark' ? t('topbar.theme.switchToLight') : t('topbar.theme.switchToDark')}>
+            {theme === 'dark' ? t('topbar.theme.light') : t('topbar.theme.dark')}
           </button>
+
+          <LanguageSwitcher />
 
           <div className="relative" ref={notifRef}>
             <button
               className="topbar-btn topbar-icon-btn"
               onClick={() => { setShowNotif((value) => !value); setShowProfile(false); }}
-              title="Notifications"
-              aria-label="Notifications"
+              title={t('topbar.notifications.aria')}
+              aria-label={t('topbar.notifications.aria')}
               aria-haspopup="menu"
               aria-expanded={showNotif}
             >
@@ -211,17 +216,17 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
               <div className="notif-panel">
                 <div className="notif-header">
                   <div>
-                    <div className="notif-title-line">Notifications</div>
-                    <div className="notif-subtitle">Recent workspace updates</div>
+                    <div className="notif-title-line">{t('topbar.notifications.title')}</div>
+                    <div className="notif-subtitle">{t('topbar.notifications.subtitle')}</div>
                   </div>
                   <span className="notif-count">{unreadCount}</span>
                 </div>
                 <div className="notif-list">
                   {notificationsLoading && notifications.length === 0 && (
-                    <div className="notif-empty">Loading notifications...</div>
+                    <div className="notif-empty">{t('topbar.notifications.loading')}</div>
                   )}
                   {!notificationsLoading && notifications.length === 0 && (
-                    <div className="notif-empty">No notifications yet.</div>
+                    <div className="notif-empty">{t('topbar.notifications.empty')}</div>
                   )}
                   {notifications.map((item) => (
                     <div key={item.id} className={`notif-item ${item.isRead ? '' : 'unread'}`}>
@@ -237,7 +242,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                 </div>
                 <div className="notif-footer">
                   <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-caption)' }} onClick={() => void fetchNotifications()}>
-                    Refresh notifications
+                    {t('topbar.notifications.refresh')}
                   </button>
                 </div>
               </div>
@@ -265,13 +270,13 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                     {currentUser.roleName}
                   </span>
                 </div>
-                <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>Profile</div>
+                <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>{t('topbar.profile')}</div>
                 {currentUser.allowedPages.includes('system-settings') && (
-                  <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>Settings</div>
+                  <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>{t('topbar.settings')}</div>
                 )}
-                <div className="dropdown-item" onClick={toggleTheme}>Use {theme === 'dark' ? 'light' : 'dark'} mode</div>
+                <div className="dropdown-item" onClick={toggleTheme}>{theme === 'dark' ? t('topbar.useLightMode') : t('topbar.useDarkMode')}</div>
                 <div className="dropdown-divider" />
-                <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>Sign out</div>
+                <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>{t('topbar.signOut')}</div>
               </div>
             )}
           </div>

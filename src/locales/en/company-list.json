@@ -1,0 +1,63 @@
+{
+  "title": "Company Profiles",
+  "subtitle": "Database of partner & competitor company information",
+  "errors": {
+    "loadFailed": "Unable to load company profiles."
+  },
+  "profile": {
+    "nameFallback": "No company name",
+    "industryFallback": "Unclassified"
+  },
+  "status": {
+    "verified": "Verified",
+    "pendingReview": "Pending review",
+    "needsUpdate": "Needs update",
+    "notVerified": "Unverified"
+  },
+  "stats": {
+    "profiles": {
+      "label": "Company Profiles",
+      "note": "Official business records"
+    },
+    "verified": {
+      "note": "Approved and ready to use"
+    },
+    "needsUpdate": {
+      "note": "Awaiting review or additional news"
+    },
+    "industries": {
+      "label": "Industries",
+      "note": "{{count}} companies with website"
+    }
+  },
+  "filters": {
+    "searchPlaceholder": "Search by company name, tax code, website...",
+    "allStatuses": "All statuses",
+    "allRelationships": "All relationships",
+    "partner": "Partner",
+    "competitor": "Competitor",
+    "supplier": "Supplier",
+    "customer": "Customer",
+    "investorShareholder": "Investor – Shareholder",
+    "searchButton": "Search"
+  },
+  "table": {
+    "company": "Company",
+    "ticker": "Ticker",
+    "industry": "Industry",
+    "status": "Status",
+    "updated": "Updated",
+    "actions": "Actions",
+    "loading": "Loading company profiles...",
+    "empty": "No company profiles found.",
+    "notUpdated": "Not updated",
+    "viewTitle": "View company profile details",
+    "viewButton": "View"
+  },
+  "pagination": {
+    "showing": "Showing {{shown}} / {{total}} profiles",
+    "prev": "Previous",
+    "page": "Page {{current}} / {{total}}",
+    "next": "Next"
+  }
+}

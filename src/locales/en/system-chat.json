@@ -1,0 +1,17 @@
+{
+  "title": "Project Chat & Discussions",
+  "subtitle": "Real-time communication channels per project for team collaboration",
+  "searchPlaceholder": "Search projects or keywords...",
+  "filterAll": "All Projects",
+  "filterUnread": "Unread",
+  "noProjects": "No projects available",
+  "selectProject": "Select a project to start discussion",
+  "inputPlaceholder": "Type a message (Press Enter to send)...",
+  "send": "Send",
+  "sending": "Sending...",
+  "soundNotice": "Sound notifications",
+  "soundOn": "Enabled",
+  "soundOff": "Disabled",
+  "members": "Project Members",
+  "projectInfo": "Project Info"
+}

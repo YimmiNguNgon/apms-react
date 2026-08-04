@@ -1,68 +1,55 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  AlertTriangle,
-  BrainCircuit,
-  Building2,
-  CalendarDays,
-  ExternalLink,
-  FileText,
-  Globe,
-  Newspaper,
-  Play,
-  Plus,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Trash2,
-  TrendingUp,
-} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   externalDataApi,
+  type ArticleAiStats,
   type CrawlRejectionSummary,
   type CrawlRunStats,
   type ExternalDataCategory,
   type ExternalDataItem,
   type TrustedSource,
+  type TrustedSourceInput,
 } from '../API/externalDataApi';
 import { ROLES, useUser } from '../context/UserContext';
+import i18n from '../i18n';
+import { Check, Pencil, X } from 'lucide-react';
+import { formatDate as formatDateUtil } from '../utils/format';
+import styles from './CrawlerControl.module.css';
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 8;
 
 const CATEGORY_TABS: { value: ExternalDataCategory; label: string }[] = [
-  { value: 'NEWS', label: 'News' },
-  { value: 'OPPORTUNITY', label: 'Opportunities' },
-  { value: 'RISK', label: 'Risks' },
+  { value: 'NEWS', label: i18n.t('crawler-control:categories.news') },
+  { value: 'OPPORTUNITY', label: i18n.t('crawler-control:categories.opportunity') },
+  { value: 'RISK', label: i18n.t('crawler-control:categories.risk') },
 ];
 
-const categoryClass = (category?: ExternalDataCategory | null) => {
-  if (category === 'RISK') return 'danger';
-  if (category === 'OPPORTUNITY') return 'success';
-  return 'info';
+const categoryPillClass = (category?: ExternalDataCategory | null) => {
+  if (category === 'RISK') return styles.ccPillDanger;
+  if (category === 'OPPORTUNITY') return styles.ccPillSuccess;
+  return styles.ccPillInfo;
 };
 
-const levelClass = (level?: string | null) => {
+const levelPillClass = (level?: string | null) => {
   const value = String(level || '').toUpperCase();
-  if (value === 'HIGH') return 'danger';
-  if (value === 'MEDIUM') return 'warning';
-  if (value === 'LOW') return 'success';
-  return 'neutral';
+  if (value === 'HIGH') return styles.ccPillDanger;
+  if (value === 'MEDIUM') return styles.ccPillInfo;
+  if (value === 'LOW') return styles.ccPillSuccess;
+  return styles.ccPillMuted;
 };
 
 const formatDate = (value?: string | null) => {
-  if (!value) return 'No date';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  if (!value) return i18n.t('crawler-control:common.noDate');
+  const formatted = formatDateUtil(value);
+  return formatted || value;
 };
 
 const cardSummary = (item: ExternalDataItem) =>
-  item.summary?.trim() || 'No summary is available for this item yet.';
+  item.summary?.trim() || i18n.t('crawler-control:table.noSummary');
 
 export const CrawlerControl: React.FC = () => {
+  const { t } = useTranslation('crawler-control');
+  const [mainTab, setMainTab] = useState<'data' | 'settings'>('data');
   const [activeTab, setActiveTab] = useState<ExternalDataCategory>('NEWS');
   const [items, setItems] = useState<ExternalDataItem[]>([]);
   const [counts, setCounts] = useState<Record<ExternalDataCategory, number>>({
@@ -94,19 +81,28 @@ export const CrawlerControl: React.FC = () => {
   const [sourceDraft, setSourceDraft] = useState({ domain: '', sourceName: '', category: '' });
   const [savingSource, setSavingSource] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  const [editingSource, setEditingSource] = useState<{ id: string; field: 'sourceName' | 'category'; value: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const [aiStats, setAiStats] = useState<ArticleAiStats | null>(null);
+  const [runningProcess, setRunningProcess] = useState(false);
+  const [runningEnqueue, setRunningEnqueue] = useState(false);
 
   const { currentUser } = useUser();
   const isAdmin = currentUser?.role === ROLES.ADMIN;
+  const isOwner = currentUser?.role === ROLES.OWNER;
+  const canEditSourceFields = isAdmin || isOwner;
 
   const activeProjectId = localStorage.getItem('apms-active-project') || '';
 
   const loadTrustedSources = useCallback(async () => {
     try {
       setTrustedSources(await externalDataApi.listTrustedSources());
-    } catch {
-      // whitelist may be unavailable to the current role; keep whatever we had
+      setSourceError(null);
+    } catch (err: unknown) {
+      setSourceError(err instanceof Error ? err.message : t('errors.loadSourceFailed'));
     }
-  }, []);
+  }, [t]);
 
   const loadCrawlStats = useCallback(async () => {
     try {
@@ -119,6 +115,10 @@ export const CrawlerControl: React.FC = () => {
     } catch {
       // non-critical
     }
+  }, []);
+
+  const loadAiStats = useCallback(async () => {
+    setAiStats(await externalDataApi.getArticleAiStats());
   }, []);
 
   const loadCounts = useCallback(async () => {
@@ -151,31 +151,24 @@ export const CrawlerControl: React.FC = () => {
       setItems([]);
       setTotalPages(1);
       setTotalElements(0);
-      setError(err instanceof Error ? err.message : 'Cannot load crawler data.');
+      setError(err instanceof Error ? err.message : t('errors.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const refreshAll = useCallback(() => {
     loadCounts();
     loadItems(activeTab, page, keyword, selectedSource);
     loadTrustedSources();
     loadCrawlStats();
-  }, [loadCounts, loadItems, activeTab, page, keyword, selectedSource, loadTrustedSources, loadCrawlStats]);
+    loadAiStats();
+  }, [loadCounts, loadItems, activeTab, page, keyword, selectedSource, loadTrustedSources, loadCrawlStats, loadAiStats]);
 
-  useEffect(() => {
-    loadCounts();
-  }, [loadCounts]);
-
-  useEffect(() => {
-    loadItems(activeTab, page, keyword, selectedSource);
-  }, [activeTab, page, keyword, selectedSource, loadItems]);
-
-  useEffect(() => {
-    loadTrustedSources();
-    loadCrawlStats();
-  }, [loadTrustedSources, loadCrawlStats]);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
+  useEffect(() => { loadItems(activeTab, page, keyword, selectedSource); }, [activeTab, page, keyword, selectedSource, loadItems]);
+  useEffect(() => { loadTrustedSources(); loadCrawlStats(); }, [loadTrustedSources, loadCrawlStats]);
+  useEffect(() => { loadAiStats(); }, [loadAiStats]);
 
   useEffect(() => {
     const interval = window.setInterval(() => refreshAll(), 30000);
@@ -197,7 +190,7 @@ export const CrawlerControl: React.FC = () => {
     } catch (err: unknown) {
       setActionMessage({
         kind: 'danger',
-        text: err instanceof Error ? err.message : 'Failed to run crawl.',
+        text: err instanceof Error ? err.message : t('errors.crawlFailed'),
       });
     } finally {
       setRunningFetch(false);
@@ -218,7 +211,7 @@ export const CrawlerControl: React.FC = () => {
     } catch (err: unknown) {
       setActionMessage({
         kind: 'danger',
-        text: err instanceof Error ? err.message : 'Failed to run analysis.',
+        text: err instanceof Error ? err.message : t('errors.analyzeFailed'),
       });
     } finally {
       setRunningAnalyze(false);
@@ -227,7 +220,7 @@ export const CrawlerControl: React.FC = () => {
 
   const addTrustedSource = async () => {
     if (!sourceDraft.domain.trim() || !sourceDraft.sourceName.trim()) {
-      setSourceError('Domain and source name are required.');
+      setSourceError(t('errors.sourceFieldsRequired'));
       return;
     }
     setSavingSource(true);
@@ -241,7 +234,7 @@ export const CrawlerControl: React.FC = () => {
       setSourceDraft({ domain: '', sourceName: '', category: '' });
       await loadTrustedSources();
     } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : 'Failed to add trusted source.');
+      setSourceError(err instanceof Error ? err.message : t('errors.addSourceFailed'));
     } finally {
       setSavingSource(false);
     }
@@ -252,7 +245,45 @@ export const CrawlerControl: React.FC = () => {
       await externalDataApi.setTrustedSourceActive(source.id, !source.active);
       await loadTrustedSources();
     } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : 'Failed to toggle trusted source.');
+      setSourceError(err instanceof Error ? err.message : t('errors.toggleSourceFailed'));
+    }
+  };
+
+  const startEditSourceField = (source: TrustedSource, field: 'sourceName' | 'category') => {
+    setEditingSource({
+      id: source.id,
+      field,
+      value: field === 'sourceName' ? source.sourceName : (source.category || ''),
+    });
+    setSourceError(null);
+  };
+
+  const cancelEditSourceField = () => {
+    if (!savingEdit) {
+      setEditingSource(null);
+    }
+  };
+
+  const saveEditSourceField = async () => {
+    if (!editingSource) return;
+    const { id, field, value } = editingSource;
+    setSavingEdit(true);
+    try {
+      const current = trustedSources.find((source) => source.id === id);
+      if (!current) return;
+      const input: TrustedSourceInput = {
+        domain: current.domain,
+        sourceName: field === 'sourceName' ? value.trim() : current.sourceName,
+        category: field === 'category' ? value.trim() : (current.category || undefined),
+        active: current.active,
+      };
+      await externalDataApi.updateTrustedSource(id, input);
+      await loadTrustedSources();
+    } catch (err: unknown) {
+      setSourceError(err instanceof Error ? err.message : t('errors.updateSourceFailed'));
+    } finally {
+      setSavingEdit(false);
+      setEditingSource(null);
     }
   };
 
@@ -261,7 +292,7 @@ export const CrawlerControl: React.FC = () => {
       await externalDataApi.deleteTrustedSource(source.id);
       await loadTrustedSources();
     } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : 'Failed to remove trusted source.');
+      setSourceError(err instanceof Error ? err.message : t('errors.removeSourceFailed'));
     }
   };
 
@@ -271,402 +302,605 @@ export const CrawlerControl: React.FC = () => {
     setPage(0);
   };
 
+  const runProcessPending = async () => {
+    setRunningProcess(true);
+    setActionMessage(null);
+    try {
+      const message = await externalDataApi.runArticleAiProcessPending();
+      setActionMessage({ kind: 'success', text: message });
+      await loadAiStats();
+      await loadItems(activeTab, page, keyword, selectedSource);
+    } catch (err: unknown) {
+      setActionMessage({
+        kind: 'danger',
+        text: err instanceof Error ? err.message : t('errors.processQueueFailed'),
+      });
+    } finally {
+      setRunningProcess(false);
+    }
+  };
+
+  const runEnqueueAll = async () => {
+    setRunningEnqueue(true);
+    setActionMessage(null);
+    try {
+      const message = await externalDataApi.runArticleAiEnqueueAll();
+      setActionMessage({ kind: 'success', text: message });
+      await loadAiStats();
+      await loadItems(activeTab, page, keyword, selectedSource);
+    } catch (err: unknown) {
+      setActionMessage({
+        kind: 'danger',
+        text: err instanceof Error ? err.message : t('errors.enqueueFailed'),
+      });
+    } finally {
+      setRunningEnqueue(false);
+    }
+  };
+
   const totalItems = counts.NEWS + counts.OPPORTUNITY + counts.RISK;
 
   const statCards = [
-    { label: 'Total items', value: totalItems },
-    { label: 'News', value: counts.NEWS },
-    { label: 'Opportunities', value: counts.OPPORTUNITY },
-    { label: 'Risks', value: counts.RISK },
+    { label: t('stats.totalArticles'), value: totalItems },
+    { label: t('stats.news'), value: counts.NEWS },
+    { label: t('stats.opportunity'), value: counts.OPPORTUNITY },
+    { label: t('stats.risk'), value: counts.RISK },
+    {
+      label: t('stats.uniqueEvents'),
+      value: aiStats?.uniqueArticles ?? 0,
+      note: t('stats.duplicateNote', { count: aiStats?.duplicateArticles ?? 0 }),
+    },
   ];
 
   return (
-    <section className="workspace-page crawler-news-page" id="page-crawler-control">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Intelligence <span>/</span> Crawler Control</div>
+    <div className={styles.ccPage}>
+      {/* ── Header ── */}
+      <header className={styles.ccHeader}>
+        <div className={styles.ccHeaderLeft}>
+          <h1 className={styles.ccTitle}>{t('title')}</h1>
+          <span className={styles.ccSub}>{t('subtitle')}</span>
+        </div>
+        <div className={styles.ccHeaderActions}>
+          <label className={styles.ccForceLabel} title={t('header.forceRefreshTitle')}>
+            <input
+              type="checkbox"
+              checked={forceRefresh}
+              onChange={(event) => setForceRefresh(event.target.checked)}
+            />
+            {t('header.forceRefresh')}
+          </label>
+          <button
+            className={`${styles.ccBtn} ${styles.ccBtnPrimary}`}
+            onClick={runCrawl}
+            disabled={runningFetch}
+          >
+            {runningFetch ? t('header.runCrawlRunning') : t('header.runCrawl')}
+          </button>
+          <button
+            className={`${styles.ccBtn} ${styles.ccBtnSecondary}`}
+            onClick={runAnalyze}
+            disabled={runningAnalyze}
+          >
+            {runningAnalyze ? t('header.runAnalyzeRunning') : t('header.runAnalyze')}
+          </button>
+        </div>
+      </header>
 
-          <div className="workspace-page-head crawler-news-head compact-hero">
-            <div>
-              <h1>Crawler Intelligence Control</h1>
-            </div>
-            <div className="workspace-head-actions" style={{ gap: 8 }}>
-              <label
-                className="btn btn-ghost"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-                title="Ignore the per-company crawl cooldown and re-fetch everything"
-              >
-                <input
-                  type="checkbox"
-                  checked={forceRefresh}
-                  onChange={(event) => setForceRefresh(event.target.checked)}
-                />
-                Force refresh
-              </label>
-              <button
-                className="btn btn-primary"
-                onClick={runCrawl}
-                disabled={runningFetch}
-              >
-                {runningFetch ? <RefreshCw size={15} className="spin" /> : <Play size={15} />}
-                {runningFetch ? 'Crawling…' : 'Run Crawl'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={runAnalyze}
-                disabled={runningAnalyze}
-              >
-                {runningAnalyze ? <RefreshCw size={15} className="spin" /> : <BrainCircuit size={15} />}
-                {runningAnalyze ? 'Analyzing…' : 'Run Analysis'}
-              </button>
+      {/* ── Action Message ── */}
+      {actionMessage && (
+        <div className={`${styles.ccAlert} ${actionMessage.kind === 'success' ? styles.ccAlertSuccess : styles.ccAlertDanger}`}>
+          {actionMessage.text}
+        </div>
+      )}
+
+      {/* ── KPI Row ── */}
+      <section className={styles.ccStatsGrid}>
+        {statCards.map((item) => (
+          <div key={item.label} className={styles.ccStatCard}>
+            <div className={styles.ccStatLabel}>{item.label}</div>
+            <div className={styles.ccStatValRow}>
+              <span className={styles.ccStatValue}>{item.value}</span>
+              {item.note && <span className={styles.ccStatNote}>{item.note}</span>}
             </div>
           </div>
+        ))}
+      </section>
 
-          {actionMessage && (
-            <div className={`workspace-alert ${actionMessage.kind}`}>
-              {actionMessage.text}
-            </div>
-          )}
+      {/* ── Main Navigation Tabs ── */}
+      <nav className={styles.ccMainTabs} aria-label={t('tabs.ariaLabel')}>
+        <button
+          className={`${styles.ccTabBtn} ${mainTab === 'data' ? styles.ccTabBtnActive : ''}`}
+          onClick={() => setMainTab('data')}
+        >
+          {t('tabs.dataLabel', { total: totalElements })}
+        </button>
+        <button
+          className={`${styles.ccTabBtn} ${mainTab === 'settings' ? styles.ccTabBtnActive : ''}`}
+          onClick={() => setMainTab('settings')}
+        >
+          {t('tabs.settingsLabel')}
+        </button>
+      </nav>
 
-          <div className="workspace-stats crawler-news-stats compact-stats">
-            {statCards.map((item) => (
-              <article key={item.label} className="workspace-stat-card">
-                <span className="workspace-stat-label">{item.label}</span>
-                <strong>{item.value}</strong>
-              </article>
-            ))}
-          </div>
+      {/* ── TAB 1: Dữ liệu thu thập ── */}
+      {mainTab === 'data' && (
+        <div className={styles.ccMainGrid}>
+          <main className={styles.ccPanel}>
+            {/* Filter Bar */}
+            <div className={styles.ccFilterBar}>
+              <div className={styles.ccSubTabs}>
+                {CATEGORY_TABS.map((tab) => (
+                  <button
+                    key={tab.value}
+                    className={`${styles.ccSubTab} ${activeTab === tab.value ? styles.ccSubTabActive : ''}`}
+                    onClick={() => {
+                      setActiveTab(tab.value);
+                      setPage(0);
+                    }}
+                  >
+                    {tab.label}
+                    <span className={styles.ccSubTabCount}>({counts[tab.value]})</span>
+                  </button>
+                ))}
+              </div>
 
-          <nav className="tabs" aria-label="Crawler category tabs">
-            {CATEGORY_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                className={`tab ${activeTab === tab.value ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab(tab.value);
-                  setPage(0);
-                }}
-              >
-                {tab.label}
-                <span className="workspace-badge neutral" style={{ marginLeft: 8 }}>
-                  {counts[tab.value]}
-                </span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="workspace-panel crawler-news-filter-panel">
-            <div className="crawler-news-search">
-              <Search size={18} />
               <input
+                className={styles.ccSearchInput}
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
-                placeholder="Search title or summary..."
+                placeholder={t('filters.searchPlaceholder')}
               />
-            </div>
 
-            <label className="crawler-news-select">
-              <Building2 size={16} />
               <select
+                className={styles.ccSelect}
                 value={selectedSource}
                 onChange={(event) => {
                   setSelectedSource(event.target.value);
                   setPage(0);
                 }}
               >
-                <option value="">All sources</option>
+                <option value="">{t('filters.allSources')}</option>
                 {sources.map((source) => (
                   <option key={source} value={source}>{source}</option>
                 ))}
               </select>
-            </label>
 
-            <button className="btn btn-ghost" onClick={resetFilters}>Reset</button>
-          </div>
-
-          {error && <div className="workspace-alert danger">{error}</div>}
-
-          {loading ? (
-            <div className="crawler-news-grid">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <article key={index} className="crawler-news-card crawler-news-card-loading" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="workspace-panel">
-              <div className="workspace-empty">
-                No items found in this category. Run a crawl to collect data.
-              </div>
-            </div>
-          ) : (
-            <div className="crawler-news-grid">
-              {items.map((item) => (
-                <article key={item.id} className="crawler-news-card">
-                  <div className="crawler-news-thumb">
-                    {item.category === 'RISK' ? (
-                      <AlertTriangle size={30} />
-                    ) : item.category === 'OPPORTUNITY' ? (
-                      <TrendingUp size={30} />
-                    ) : (
-                      <Newspaper size={30} />
-                    )}
-                    <span className={`workspace-badge ${categoryClass(item.category)}`}>
-                      {item.category || 'NEWS'}
-                    </span>
-                  </div>
-
-                  <div className="crawler-news-card-body">
-                    <div className="crawler-news-company-row">
-                      <span className="crawler-company-pill">
-                        {item.relatedCompanyName || 'No company match'}
-                      </span>
-                      {item.sentiment && (
-                        <span className="crawler-company-pill muted">{item.sentiment}</span>
-                      )}
-                    </div>
-
-                    <h3>{item.title || 'Untitled item'}</h3>
-                    <p>{cardSummary(item)}</p>
-
-                    <div className="crawler-news-meta">
-                      <span><CalendarDays size={14} /> {formatDate(item.publishedAt)}</span>
-                      <span><FileText size={14} /> {item.source || 'Unknown source'}{item.sourceDomain ? ` · ${item.sourceDomain}` : ''}</span>
-                    </div>
-
-                    <div className="crawler-news-footer">
-                      <span>
-                        {item.riskLevel && (
-                          <span className={`workspace-badge ${levelClass(item.riskLevel)}`}>
-                            Risk {item.riskLevel}
-                          </span>
-                        )}
-                        {item.opportunityLevel && (
-                          <span className={`workspace-badge ${levelClass(item.opportunityLevel)}`}>
-                            Opportunity {item.opportunityLevel}
-                          </span>
-                        )}
-                        {!item.riskLevel && !item.opportunityLevel && (
-                          <span className="workspace-badge neutral">GENERAL</span>
-                        )}
-                      </span>
-                      <div className="crawler-news-actions">
-                        {item.url && (
-                          <a className="btn btn-primary btn-sm" href={item.url} target="_blank" rel="noreferrer">
-                            Original
-                            <ExternalLink size={14} />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-
-          <div className="workspace-pagination crawler-news-pagination">
-            <span>
-              Showing {items.length} of {totalElements} items
-            </span>
-            <div>
-              <button
-                className="btn btn-secondary"
-                disabled={page === 0 || loading}
-                onClick={() => setPage((value) => Math.max(value - 1, 0))}
-              >
-                Previous
-              </button>
-              <strong>Page {page + 1} / {totalPages}</strong>
-              <button
-                className="btn btn-secondary"
-                disabled={page + 1 >= totalPages || loading}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                Next
+              <button className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`} onClick={resetFilters}>
+                {t('filters.reset')}
               </button>
             </div>
-          </div>
 
-          <div className="workspace-panel" style={{ marginTop: 28 }}>
-            <div className="workspace-section-head">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ShieldCheck size={18} />
-                <div>
-                  <h3>Trusted press whitelist</h3>
-                  <p>
-                    Only articles whose original publisher is an approved domain are kept during a crawl.
-                    Aggregator links with no resolvable publisher are dropped. Changes apply on the next crawl.
-                  </p>
-                </div>
-              </div>
-              <span className="workspace-badge neutral">
-                {trustedSources.filter((source) => source.active).length} active of {trustedSources.length}
-              </span>
+            {error && <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`}>{error}</div>}
+
+            {/* Items Table */}
+            <div className={styles.ccTableWrap}>
+              {loading ? (
+                <div className={styles.ccEmpty}>{t('table.loading')}</div>
+              ) : items.length === 0 ? (
+                <div className={styles.ccEmpty}>{t('table.empty')}</div>
+              ) : (
+                <table className={styles.ccTable}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 80 }}>{t('table.headers.type')}</th>
+                      <th>{t('table.headers.titleSummary')}</th>
+                      <th style={{ width: 140 }}>{t('table.headers.company')}</th>
+                      <th style={{ width: 140 }}>{t('table.headers.sourceDate')}</th>
+                      <th style={{ width: 90 }}>{t('table.headers.rating')}</th>
+                      <th style={{ width: 70, textAlign: 'right' }}>{t('table.headers.details')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <span className={`${styles.ccPill} ${categoryPillClass(item.category)}`}>
+                            {item.category || 'NEWS'}
+                          </span>
+                        </td>
+                        <td>
+                          <div className={styles.ccItemTitle}>{item.title || t('table.noTitle')}</div>
+                          <div className={styles.ccItemSummary}>{cardSummary(item)}</div>
+                        </td>
+                        <td>
+                          <span className={`${styles.ccPill} ${styles.ccPillCompany}`}>
+                            {item.relatedCompanyName || t('table.noMatch')}
+                          </span>
+                          {item.sentiment && (
+                            <span className={`${styles.ccPill} ${styles.ccPillMuted}`} style={{ marginLeft: 4 }}>
+                              {item.sentiment}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <div><strong>{item.source || t('table.unknownSource')}</strong></div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatDate(item.publishedAt)}</div>
+                        </td>
+                        <td>
+                          {item.riskLevel && (
+                            <span className={`${styles.ccPill} ${levelPillClass(item.riskLevel)}`}>
+                              {t('table.riskLevel', { level: item.riskLevel })}
+                            </span>
+                          )}
+                          {item.opportunityLevel && (
+                            <span className={`${styles.ccPill} ${levelPillClass(item.opportunityLevel)}`}>
+                              {t('table.opportunityLevel', { level: item.opportunityLevel })}
+                            </span>
+                          )}
+                          {!item.riskLevel && !item.opportunityLevel && (
+                            <span className={`${styles.ccPill} ${styles.ccPillMuted}`}>{t('table.genericLevel')}</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {item.url && (
+                            <a
+                              className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {t('table.sourceLink')}
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
-            {isAdmin ? (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  padding: '14px 0',
-                  borderBottom: '1px solid var(--border-color)',
-                }}
-              >
-                <input
-                  value={sourceDraft.domain}
-                  onChange={(event) => setSourceDraft({ ...sourceDraft, domain: event.target.value })}
-                  placeholder="domain e.g. vnexpress.net"
-                  style={{ flex: '1 1 220px', minWidth: 0 }}
-                  className="crawler-news-search"
-                />
-                <input
-                  value={sourceDraft.sourceName}
-                  onChange={(event) => setSourceDraft({ ...sourceDraft, sourceName: event.target.value })}
-                  placeholder="Source name e.g. VnExpress"
-                  style={{ flex: '1 1 180px', minWidth: 0 }}
-                  className="crawler-news-search"
-                />
-                <input
-                  value={sourceDraft.category}
-                  onChange={(event) => setSourceDraft({ ...sourceDraft, category: event.target.value })}
-                  placeholder="Category (optional)"
-                  style={{ flex: '1 1 140px', minWidth: 0 }}
-                  className="crawler-news-search"
-                />
-                <button className="btn btn-primary" onClick={addTrustedSource} disabled={savingSource}>
-                  {savingSource ? <RefreshCw size={15} className="spin" /> : <Plus size={15} />}
-                  Add source
+            {/* Pagination */}
+            <div className={styles.ccPagination}>
+              <span>{t('pagination.showing', { shown: items.length, total: totalElements })}</span>
+              <div className={styles.ccPaginationBtns}>
+                <button
+                  className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
+                  disabled={page === 0 || loading}
+                  onClick={() => setPage((value) => Math.max(value - 1, 0))}
+                >
+                  {t('pagination.previous')}
+                </button>
+                <strong>{t('pagination.page', { current: page + 1, total: totalPages })}</strong>
+                <button
+                  className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
+                  disabled={page + 1 >= totalPages || loading}
+                  onClick={() => setPage((value) => value + 1)}
+                >
+                  {t('pagination.next')}
                 </button>
               </div>
-            ) : (
-              <div className="workspace-alert" style={{ margin: '12px 0' }}>
-                Only administrators can manage the trusted-source whitelist.
-              </div>
-            )}
-
-            {sourceError && <div className="workspace-alert danger" style={{ marginTop: 12 }}>{sourceError}</div>}
-
-            <div className="workspace-table" style={{ marginTop: 12 }}>
-              <div className="workspace-table-row workspace-table-head">
-                <span>Domain</span>
-                <span>Source name</span>
-                <span>Category</span>
-                <span>Status</span>
-                {isAdmin && <span>Actions</span>}
-              </div>
-              {trustedSources.length === 0 ? (
-                <div className="workspace-empty">No trusted sources configured.</div>
-              ) : (
-                trustedSources.map((source) => (
-                  <div key={source.id} className="workspace-table-row">
-                    <div>
-                      <strong><Globe size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />{source.domain}</strong>
-                    </div>
-                    <span>{source.sourceName}</span>
-                    <span>{source.category || '—'}</span>
-                    <span>
-                      <span className={`workspace-badge ${source.active ? 'success' : 'danger'}`}>
-                        {source.active ? 'Active' : 'Disabled'}
-                      </span>
-                    </span>
-                    {isAdmin && (
-                      <span className="workspace-table-actions">
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title={source.active ? 'Disable' : 'Enable'}
-                          onClick={() => toggleTrustedSource(source)}
-                        >
-                          {source.active ? 'Disable' : 'Enable'}
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Remove from whitelist"
-                          onClick={() => removeTrustedSource(source)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                ))
-              )}
             </div>
-          </div>
+          </main>
+
+          {/* Sidebar */}
+          <aside className={styles.ccSide}>
+            <div className={styles.ccSideCard}>
+              <div className={styles.ccSideTitle}>{t('sidebar.crawlerInfo')}</div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.crawled')}</span>
+                <span className={styles.ccSideVal} style={{ color: '#2563eb' }}>{t('sidebar.articleCount', { count: totalItems })}</span>
+              </div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.scope')}</span>
+                <span className={styles.ccSideVal}>
+                  {activeProjectId ? t('sidebar.projectScope', { id: activeProjectId }) : t('sidebar.allCompanies')}
+                </span>
+              </div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.autoRefresh')}</span>
+                <span className={styles.ccSideVal} style={{ color: '#10b981' }}>{t('sidebar.refreshInterval')}</span>
+              </div>
+            </div>
+
+            <div className={styles.ccSideCard}>
+              <div className={styles.ccSideTitle}>{t('sidebar.rejectionsTitle', { count: rejectionSummary.totalRuns })}</div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.rejectedUntrusted')}</span>
+                <span className={styles.ccSideVal} style={{ color: '#f59e0b' }}>{rejectionSummary.rejectedUntrusted}</span>
+              </div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.rejectedUnknownDomain')}</span>
+                <span className={styles.ccSideVal} style={{ color: '#ef4444' }}>{rejectionSummary.rejectedUnknownDomain}</span>
+              </div>
+              <div className={styles.ccSideItem}>
+                <span className={styles.ccSideLabel}>{t('sidebar.rejectedNoCompany')}</span>
+                <span className={styles.ccSideVal} style={{ color: '#6b7280' }}>{rejectionSummary.rejectedNoCompany}</span>
+              </div>
+            </div>
+          </aside>
         </div>
+      )}
 
-        <aside className="workspace-side">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Crawler engine</span>
-            <h3>Run summary</h3>
-            <div className="admin-side-metrics" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Collected</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#3B82F6' }}>{totalItems} items</strong>
+      {/* ── TAB 2: Cấu hình AI & Nguồn tin uy tín ── */}
+      {mainTab === 'settings' && (
+        <div className={styles.ccMainGrid}>
+          <main>
+            {/* AI Pipeline Section */}
+            <div className={styles.ccPanel}>
+              <div className={styles.ccSectionHead}>
+                <h3>{t('aiProcessing.title')}</h3>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
+                    onClick={runEnqueueAll}
+                    disabled={runningEnqueue}
+                  >
+                    {runningEnqueue ? t('aiProcessing.enqueueing') : t('aiProcessing.enqueueAll')}
+                  </button>
+                  <button
+                    className={`${styles.ccBtn} ${styles.ccBtnPrimary} ${styles.ccBtnSm}`}
+                    onClick={runProcessPending}
+                    disabled={runningProcess}
+                  >
+                    {runningProcess ? t('aiProcessing.processing') : t('aiProcessing.processQueue')}
+                  </button>
+                </div>
               </div>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Crawl scope</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#3B82F6' }}>
-                  {activeProjectId ? `Project ${activeProjectId} companies` : 'All project companies'}
-                </strong>
-              </div>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Auto refresh</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#22C55E' }}>Every 30 seconds</strong>
-              </div>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Trigger access</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#F59E0B' }}>Admin, Owner, BD Manager</strong>
+
+              <div className={styles.ccAiGrid}>
+                <div className={styles.ccAiBox}>
+                  <span className={styles.ccAiLabel}>{t('aiProcessing.analyzed')}</span>
+                  <div className={styles.ccAiValue}>{aiStats?.articlesCompleted ?? 0}</div>
+                  <span className={styles.ccAiSub}>{t('aiProcessing.ofTotal', { count: aiStats?.totalArticles ?? 0 })}</span>
+                </div>
+                <div className={styles.ccAiBox}>
+                  <span className={styles.ccAiLabel}>{t('aiProcessing.queue')}</span>
+                  <div className={styles.ccAiValue}>{aiStats?.pendingJobs ?? 0}</div>
+                  <span className={styles.ccAiSub}>{t('aiProcessing.runningJobs', { count: aiStats?.runningJobs ?? 0 })}</span>
+                </div>
+                <div className={styles.ccAiBox}>
+                  <span className={styles.ccAiLabel}>{t('aiProcessing.uniqueEvents')}</span>
+                  <div className={styles.ccAiValue}>{aiStats?.uniqueArticles ?? 0}</div>
+                  <span className={styles.ccAiSub}>{t('aiProcessing.duplicates', { count: aiStats?.duplicateArticles ?? 0 })}</span>
+                </div>
+                <div className={styles.ccAiBox}>
+                  <span className={styles.ccAiLabel}>{t('aiProcessing.failed')}</span>
+                  <div className={styles.ccAiValue} style={{ color: (aiStats?.articlesFailed ?? 0) > 0 ? '#ef4444' : undefined }}>
+                    {aiStats?.articlesFailed ?? 0}
+                  </div>
+                  <span className={styles.ccAiSub}>{t('aiProcessing.failedJobs', { count: aiStats?.failedJobs ?? 0 })}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Source quality</span>
-            <h3>Rejected by crawler ({rejectionSummary.totalRuns} runs)</h3>
-            <div className="admin-side-metrics" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Not in trusted whitelist</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#F59E0B' }}>{rejectionSummary.rejectedUntrusted}</strong>
+            {/* Trusted Whitelist Section */}
+            <div className={styles.ccPanel}>
+              <div className={styles.ccSectionHead}>
+                <h3>{t('whitelist.title')}</h3>
+                <span className={`${styles.ccPill} ${styles.ccPillInfo}`}>
+                  {t('whitelist.activeSummary', { active: trustedSources.filter((source) => source.active).length, total: trustedSources.length })}
+                </span>
               </div>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Aggregator / unknown publisher</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#EF4444' }}>{rejectionSummary.rejectedUnknownDomain}</strong>
-              </div>
-              <div style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Trusted domain, no company mention</span>
-                <strong style={{ display: 'block', fontSize: '14px', color: '#6B7280' }}>{rejectionSummary.rejectedNoCompany}</strong>
+
+              {isAdmin ? (
+                <div className={styles.ccFormRow}>
+                  <input
+                    value={sourceDraft.domain}
+                    onChange={(event) => setSourceDraft({ ...sourceDraft, domain: event.target.value })}
+                    placeholder={t('whitelist.domainPlaceholder')}
+                    className={styles.ccFormInput}
+                  />
+                  <input
+                    value={sourceDraft.sourceName}
+                    onChange={(event) => setSourceDraft({ ...sourceDraft, sourceName: event.target.value })}
+                    placeholder={t('whitelist.sourceNamePlaceholder')}
+                    className={styles.ccFormInput}
+                  />
+                  <input
+                    value={sourceDraft.category}
+                    onChange={(event) => setSourceDraft({ ...sourceDraft, category: event.target.value })}
+                    placeholder={t('whitelist.categoryPlaceholder')}
+                    className={styles.ccFormInput}
+                  />
+                  <button className={`${styles.ccBtn} ${styles.ccBtnPrimary} ${styles.ccBtnSm}`} onClick={addTrustedSource} disabled={savingSource}>
+                    {savingSource ? t('whitelist.adding') : t('whitelist.addSource')}
+                  </button>
+                </div>
+              ) : isOwner ? (
+                <div className={`${styles.ccAlert} ${styles.ccAlertInfo}`}>
+                  {t('whitelist.ownerNotice')}
+                </div>
+              ) : (
+                <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`}>
+                  {t('whitelist.adminOnly')}
+                </div>
+              )}
+
+              {sourceError && (
+                <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>{sourceError}</span>
+                  <button
+                    type="button"
+                    className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
+                    onClick={() => { setSourceError(null); loadTrustedSources(); }}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {t('whitelist.retry')}
+                  </button>
+                </div>
+              )}
+
+              <div className={styles.ccTableWrap} style={{ maxHeight: 220, minHeight: 'auto' }}>
+                <table className={styles.ccTable}>
+                  <thead>
+                    <tr>
+                      <th>{t('whitelist.headers.domain')}</th>
+                      <th>{t('whitelist.headers.sourceName')}</th>
+                      <th>{t('whitelist.headers.category')}</th>
+                      <th>{t('whitelist.headers.status')}</th>
+                      {isAdmin && <th style={{ textAlign: 'right' }}>{t('whitelist.headers.actions')}</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trustedSources.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className={styles.ccEmpty}>{t('whitelist.empty')}</td>
+                      </tr>
+                    ) : (
+                      trustedSources.map((source) => (
+                        <tr key={source.id}>
+                          <td style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {source.domain}
+                          </td>
+                          <td style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {canEditSourceFields && editingSource?.id === source.id && editingSource.field === 'sourceName' ? (
+                              <div className={styles.ccInlineEdit}>
+                                <input
+                                  autoFocus
+                                  className={styles.ccFormInput}
+                                  value={editingSource.value}
+                                  onChange={(event) => setEditingSource({ ...editingSource, value: event.target.value })}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') saveEditSourceField();
+                                    if (event.key === 'Escape') cancelEditSourceField();
+                                  }}
+                                  onBlur={saveEditSourceField}
+                                  disabled={savingEdit}
+                                  style={{ fontSize: '0.75rem', padding: '2px 6px' }}
+                                />
+                                <button
+                                  type="button"
+                                  className={styles.ccIconBtn}
+                                  title={t('whitelist.save')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={saveEditSourceField}
+                                  disabled={savingEdit}
+                                >
+                                  <Check size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.ccIconBtn}
+                                  title={t('whitelist.cancel')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={cancelEditSourceField}
+                                  disabled={savingEdit}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className={styles.ccEditField}
+                                title={canEditSourceFields ? t('whitelist.editHint') : undefined}
+                                onClick={() => canEditSourceFields && startEditSourceField(source, 'sourceName')}
+                                disabled={!canEditSourceFields}
+                              >
+                                {source.sourceName}
+                                {canEditSourceFields && <Pencil size={12} className={styles.ccEditIcon} />}
+                              </button>
+                            )}
+                          </td>
+                          <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {canEditSourceFields && editingSource?.id === source.id && editingSource.field === 'category' ? (
+                              <div className={styles.ccInlineEdit}>
+                                <input
+                                  autoFocus
+                                  className={styles.ccFormInput}
+                                  value={editingSource.value}
+                                  onChange={(event) => setEditingSource({ ...editingSource, value: event.target.value })}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') saveEditSourceField();
+                                    if (event.key === 'Escape') cancelEditSourceField();
+                                  }}
+                                  onBlur={saveEditSourceField}
+                                  disabled={savingEdit}
+                                  style={{ fontSize: '0.72rem', padding: '2px 6px' }}
+                                />
+                                <button
+                                  type="button"
+                                  className={styles.ccIconBtn}
+                                  title={t('whitelist.save')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={saveEditSourceField}
+                                  disabled={savingEdit}
+                                >
+                                  <Check size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.ccIconBtn}
+                                  title={t('whitelist.cancel')}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={cancelEditSourceField}
+                                  disabled={savingEdit}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className={styles.ccEditField}
+                                title={canEditSourceFields ? t('whitelist.editHint') : undefined}
+                                onClick={() => canEditSourceFields && startEditSourceField(source, 'category')}
+                                disabled={!canEditSourceFields}
+                              >
+                                {source.category || '—'}
+                                {canEditSourceFields && <Pencil size={12} className={styles.ccEditIcon} />}
+                              </button>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`${styles.ccPill} ${source.active ? styles.ccPillSuccess : styles.ccPillDanger}`} style={{ fontSize: '0.68rem', fontWeight: 700 }}>
+                              {source.active ? t('whitelist.statusActive') : t('whitelist.statusInactive')}
+                            </span>
+                          </td>
+                          {isAdmin && (
+                            <td style={{ textAlign: 'right' }}>
+                              <button
+                                className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
+                                onClick={() => toggleTrustedSource(source)}
+                                style={{ fontSize: '0.72rem', fontWeight: 600 }}
+                              >
+                                {source.active ? t('whitelist.disable') : t('whitelist.enable')}
+                              </button>
+                              <button
+                                className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
+                                style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 600 }}
+                                onClick={() => removeTrustedSource(source)}
+                              >
+                                {t('whitelist.delete')}
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
+          </main>
 
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Recent runs</span>
-            <h3>Crawl history</h3>
-            <div className="admin-side-metrics" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {/* Sidebar - Crawl History */}
+          <aside className={styles.ccSide}>
+            <div className={styles.ccSideCard}>
+              <div className={styles.ccSideTitle}>{t('crawlHistory.title')}</div>
               {crawlRuns.length === 0 ? (
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No crawl runs recorded yet.</div>
+                <div className={styles.ccEmpty}>{t('crawlHistory.empty')}</div>
               ) : (
                 crawlRuns.slice(0, 5).map((run) => (
-                  <div key={run.id} style={{ padding: '8px 12px', background: 'var(--card-bg)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      {formatDate(run.runAt)} · {run.trigger || 'manual'}
+                  <div key={run.id} className={styles.ccSideItem}>
+                    <span className={styles.ccSideLabel}>
+                      {formatDate(run.runAt)} · {run.trigger || t('crawlHistory.manual')}
                     </span>
-                    <strong style={{ display: 'block', fontSize: '13px', color: '#3B82F6' }}>
-                      {run.saved} saved / {run.totalFetched} fetched
-                    </strong>
-                    <small style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)' }}>
-                      {run.duplicates} dup, {run.skippedCooldown} cooldown, {run.sourcesFailed} failed sources · reject: {run.rejectedUntrusted} untrusted, {run.rejectedUnknownDomain} unknown, {run.rejectedNoCompany} no-company
-                    </small>
+                    <span className={styles.ccSideVal} style={{ color: '#2563eb' }}>
+                      {t('crawlHistory.savedFetched', { saved: run.saved, fetched: run.totalFetched })}
+                    </span>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      {t('crawlHistory.duplicatesRejected', { duplicates: run.duplicates, rejected: run.rejectedUntrusted })}
+                    </div>
                   </div>
                 ))
               )}
             </div>
-          </div>
-        </aside>
-      </div>
-    </section>
+          </aside>
+        </div>
+      )}
+    </div>
   );
 };
 

@@ -3,9 +3,7 @@ import type { PageResponse } from '../services/api';
 export type Role =
   | 'ROLE_ADMIN'
   | 'ROLE_BUSINESS_OWNER'
-  | 'ROLE_DIRECTOR'
   | 'ROLE_MANAGER'
-  | 'ROLE_KEY_MEMBER'
   | 'ROLE_STAFF';
 
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED';
@@ -89,6 +87,7 @@ export interface ProfileResponse {
   companySize?: CompanyProfileSize;
   contact?: CompanyProfileContact;
   insights?: CompanyProfileInsights;
+  companyMembers?: Array<{ name?: string; fullName?: string; position?: string; role?: string; phone?: string; email?: string }>;
   reviewStatus?: string;
   tags?: string[];
   stockTicker?: string;

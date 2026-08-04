@@ -1,0 +1,77 @@
+{
+  "tabs": {
+    "users": "Tài khoản",
+    "roles": "Vai trò",
+    "permissions": "Quyền hạn"
+  },
+  "meta": {
+    "users": {
+      "eyebrow": "Vận hành tài khoản",
+      "title": "Tài khoản người dùng",
+      "desc": "Tạo, tìm kiếm, khóa và xem xét danh sách người dùng đăng nhập hệ thống.",
+      "meterLabel": "tài khoản",
+      "totalAccounts": "Tổng số tài khoản",
+      "activeAccounts": "Tài khoản hoạt động",
+      "disabledAccounts": "Tài khoản đã khóa",
+      "provisioning": "Cấp phát"
+    },
+    "roles": {
+      "eyebrow": "Kiến trúc RBAC",
+      "title": "Vai trò hệ thống",
+      "desc": "Kiểm tra các cấp độ trách nhiệm điều hành trong hệ thống.",
+      "meterLabel": "vai trò",
+      "roleLanes": "Các vai trò",
+      "adminRole": "Quản trị viên",
+      "businessRoles": "Vai trò nghiệp vụ",
+      "researchRole": "Vai trò nghiên cứu"
+    },
+    "permissions": {
+      "eyebrow": "Ma trận phân quyền",
+      "title": "Bảng phân quyền",
+      "desc": "Theo dõi ma trận truy cập cấp module theo hành động và vai trò hệ thống.",
+      "meterLabel": "cho phép / chặn",
+      "matrixMode": "Chế độ ma trận",
+      "roleColumns": "Cột vai trò",
+      "policyState": "Trạng thái",
+      "reviewCadence": "Định kỳ xem xét"
+    }
+  },
+  "users": {
+    "title": "Quản lý tài khoản",
+    "desc": "Tạo mới, xem thông tin, chỉnh sửa vai trò và quản lý truy cập người dùng.",
+    "createAccount": "+ Tạo tài khoản mới",
+    "searchLabel": "Tìm kiếm danh mục",
+    "searchPlaceholder": "Tên, username hoặc email...",
+    "statusFilter": "Lọc trạng thái",
+    "allStatuses": "Tất cả trạng thái",
+    "active": "Đang hoạt động",
+    "disabled": "Đã vô hiệu hóa",
+    "refresh": "Làm mới danh sách",
+    "visibleAccounts": "tài khoản hiển thị",
+    "table": {
+      "id": "ID",
+      "user": "Người dùng",
+      "email": "Email",
+      "role": "Vai trò",
+      "status": "Trạng thái",
+      "actions": "Thao tác",
+      "you": "(Bạn)",
+      "edit": "Sửa",
+      "changeRole": "Đổi Role",
+      "toggleStatus": "Khóa/Mở"
+    },
+    "modal": {
+      "createTitle": "Tạo tài khoản mới",
+      "editTitle": "Chỉnh sửa tài khoản",
+      "roleTitle": "Cập nhật vai trò",
+      "fullName": "Họ và tên *",
+      "username": "Tên đăng nhập *",
+      "email": "Địa chỉ Email *",
+      "role": "Vai trò truy cập *",
+      "password": "Mật khẩu ban đầu *",
+      "save": "Lưu thay đổi",
+      "create": "Tạo tài khoản",
+      "cancel": "Hủy"
+    }
+  }
+}

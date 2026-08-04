@@ -1,0 +1,42 @@
+{
+  "breadcrumb": {
+    "intelligence": "Intelligence",
+    "title": "Enterprise Ecosystem Overview"
+  },
+  "banner": {
+    "kicker": "Executive Intelligence",
+    "title": "Enterprise Ecosystem Overview"
+  },
+  "tabs": {
+    "partners": "Partners",
+    "competitors": "Competitors",
+    "suppliers": "Suppliers",
+    "potentialPartners": "Potential Partners"
+  },
+  "scores": {
+    "title": "Recent AI Evaluation Scores",
+    "subtitle": "Latest assessment of partner fit and risk.",
+    "collapse": "Collapse",
+    "viewAll": "View all ({{count}})",
+    "emptyTitle": "No AI evaluation results yet",
+    "emptyBody": "No score snapshots recorded for the ecosystem."
+  },
+  "filters": {
+    "searchPlaceholder": "Search by company name, ID, or industry..."
+  },
+  "table": {
+    "noCompanyName": "No company name available",
+    "emptyGroup": "No companies found in the \"{{group}}\" group",
+    "emptyHint": "Try changing the filter or search keyword.",
+    "company": "Company",
+    "industry": "Industry",
+    "relationship": "Relationship",
+    "fitScore": "Fit Score",
+    "risk": "Risk",
+    "actions": "Actions",
+    "generalIndustry": "General",
+    "relationshipsCount_one": "{{count}} relationship",
+    "relationshipsCount_other": "{{count}} relationships",
+    "viewProfile": "View Profile"
+  }
+}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useUser } from '../context/UserContext';
 
 const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
@@ -14,6 +15,7 @@ const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
   : {};
 
 export const Login: React.FC = () => {
+  const { t } = useTranslation('login');
   const { login } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,12 +34,12 @@ export const Login: React.FC = () => {
     setError('');
 
     if (!email.trim()) {
-      setError('Please enter your email or username.');
+      setError(t('errorEmptyEmail'));
       return;
     }
 
     if (!password.trim()) {
-      setError('Please enter your password.');
+      setError(t('errorEmptyPassword'));
       return;
     }
 
@@ -45,14 +47,16 @@ export const Login: React.FC = () => {
     try {
       const ok = await login(normalizeIdentity(email), password);
       if (!ok) {
-        setError('Sign-in failed. Please verify your credentials.');
+        setError(t('errorSignInFailed'));
       }
     } catch (err: unknown) {
-      setError(`Connection error: ${err instanceof Error ? err.message : 'Cannot reach the server.'}`);
+      setError(t('errorConnection', { message: err instanceof Error ? err.message : t('errorCannotReach') }));
     } finally {
       setLoading(false);
     }
   };
+
+  const features = t('features', { returnObjects: true }) as string[];
 
   return (
     <div className="login-page">
@@ -60,23 +64,18 @@ export const Login: React.FC = () => {
         <div className="login-left">
           <div className="login-hero-badge">
             <span>*</span>
-            Business Ecosystem Intelligence
+            {t('heroBadge')}
           </div>
           <h1 className="login-hero-title">
-            Alliance<br />
-            <span>Partner</span><br />
-            Management
+            {t('heroTitle1')}<br />
+            <span>{t('heroTitle2')}</span><br />
+            {t('heroTitle3')}
           </h1>
           <p className="login-hero-sub">
-            APMS connects partner, competitor, and market intelligence into one operational workspace backed by your live backend data.
+            {t('heroSub')}
           </p>
           <div className="login-hero-features">
-            {[
-              'Relationship map and company profiles',
-              'Competitive and partnership intelligence',
-              'Role-based workspaces for review and approvals',
-              'Backend-connected research and scoring flows',
-            ].map((feature) => (
+            {features.map((feature) => (
               <div key={feature} className="hero-feature">
                 <div className="hero-feature-dot" />
                 {feature}
@@ -99,20 +98,20 @@ export const Login: React.FC = () => {
             </div>
             <div>
               <div className="login-logo-title">APMS</div>
-              <div className="login-logo-sub">Business Intelligence Platform</div>
+              <div className="login-logo-sub">{t('logoSub')}</div>
             </div>
           </div>
 
-          <div className="login-form-title">Sign in</div>
-          <div className="login-form-sub">Use your backend account credentials.</div>
+          <div className="login-form-title">{t('signIn')}</div>
+          <div className="login-form-sub">{t('signInSub')}</div>
 
           <div className="form-field">
-            <label className="form-label">Email or username</label>
+            <label className="form-label">{t('emailLabel')}</label>
             <input
               className="form-input"
               type="text"
               autoComplete="username"
-              placeholder="owner@apms.com or manager"
+              placeholder={t('emailPlaceholder')}
               value={email}
               disabled={loading}
               onChange={(event) => setEmail(event.target.value)}
@@ -121,7 +120,7 @@ export const Login: React.FC = () => {
 
           <div className="form-field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>Password</label>
+              <label className="form-label" style={{ marginBottom: 0 }}>{t('passwordLabel')}</label>
             </div>
             <input
               className="form-input"
@@ -136,11 +135,11 @@ export const Login: React.FC = () => {
               style={{ fontSize: 'var(--text-caption)', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
               onClick={() => { window.location.href = '/forgot-password'; }}
             >
-              Forgot password?
+              {t('forgotPassword')}
             </span>
           </div>
 
-          {error && <div className="form-error">Warning: {error}</div>}
+          {error && <div className="form-error">{t('warning')}: {error}</div>}
 
           <button
             className="btn btn-primary btn-block"
@@ -148,7 +147,7 @@ export const Login: React.FC = () => {
             type="submit"
             disabled={loading}
           >
-            {loading ? 'Authenticating...' : 'Sign in'}
+            {loading ? t('authenticating') : t('signIn')}
           </button>
         </form>
       </div>

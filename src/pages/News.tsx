@@ -1,58 +1,64 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ArrowUpRight,
-  Building2,
-  CalendarDays,
-  ExternalLink,
-  FileText,
-  Newspaper,
-  RefreshCw,
-  Search,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   externalDataApi,
   type ExternalDataItem,
 } from '../API/externalDataApi';
+import i18n from '../i18n';
+import { formatDate } from '../utils/format';
+import styles from './News.module.css';
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 8;
 
-const priorityClass = (item: ExternalDataItem) => {
+const priorityPillClass = (item: ExternalDataItem) => {
   const level = String(item.riskLevel || item.opportunityLevel || '').toUpperCase();
-  if (level === 'HIGH') return 'danger';
-  if (level === 'MEDIUM') return 'warning';
-  if (level === 'LOW') return 'success';
-  return 'neutral';
+  if (level === 'HIGH') return styles.newsPillDanger;
+  if (level === 'MEDIUM') return styles.newsPillInfo;
+  if (level === 'LOW') return styles.newsPillSuccess;
+  return styles.newsPillMuted;
 };
 
-const categoryClass = (category?: string | null) => {
+const categoryPillClass = (category?: string | null) => {
   const value = String(category || '').toUpperCase();
-  if (value === 'RISK') return 'danger';
-  if (value === 'OPPORTUNITY') return 'success';
-  return 'info';
+  if (value === 'RISK') return styles.newsPillDanger;
+  if (value === 'OPPORTUNITY') return styles.newsPillSuccess;
+  return styles.newsPillInfo;
 };
 
-const formatDate = (value?: string | null) => {
-  if (!value) return 'No date';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+const formatDateLabel = (value?: string | null) => {
+  const formatted = formatDate(value);
+  return formatted || i18n.t('news:date.noDate');
 };
 
 const articleSummary = (item: ExternalDataItem) =>
-  item.summary?.trim() || 'No summary is available for this article yet.';
+  item.summary?.trim() || i18n.t('news:summary.empty');
 
 const companyNames = (item: ExternalDataItem) => {
   const name = item.relatedCompanyName?.trim();
-  return name ? [name] : ['No company match'];
+  return name ? [name] : [i18n.t('news:company.noMatch')];
+};
+
+const topicsWithLabels = (item: ExternalDataItem) =>
+  (item.topics || []).map((code, index) => (item.topicLabels && item.topicLabels[index]) || code);
+
+const isDuplicate = (item: ExternalDataItem) =>
+  Boolean(item.duplicateOf) && item.duplicateOf !== item.id;
+
+const aiStateLabel = (item: ExternalDataItem) => {
+  if (item.aiStatus === 'COMPLETED') return i18n.t('news:aiState.completed');
+  if (item.aiStatus === 'FAILED') return i18n.t('news:aiState.failed');
+  return i18n.t('news:aiState.inProgress');
+};
+
+const sentimentPillClass = (sentiment?: string | null) => {
+  const value = String(sentiment || '').toLowerCase();
+  if (value.includes('posit')) return styles.newsPillSuccess;
+  if (value.includes('negat')) return styles.newsPillDanger;
+  return styles.newsPillMuted;
 };
 
 export const News: React.FC = () => {
+  const { t } = useTranslation('news');
   const [articles, setArticles] = useState<ExternalDataItem[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState('');
@@ -85,11 +91,11 @@ export const News: React.FC = () => {
       setArticles([]);
       setTotalPages(1);
       setTotalElements(0);
-      setError(err instanceof Error ? err.message : 'Cannot load news articles.');
+      setError(err instanceof Error ? err.message : t('errors.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [page, selectedSource, searchTerm]);
+  }, [page, selectedSource, searchTerm, t]);
 
   useEffect(() => {
     loadArticles();
@@ -117,232 +123,280 @@ export const News: React.FC = () => {
   )).length;
 
   const statCards = [
-    { label: 'News articles', value: totalElements, note: 'Total articles collected by crawler' },
-    { label: 'Sources', value: sources.length, note: 'Feeds available for filtering' },
-    { label: 'Companies', value: companyCount, note: 'Companies matched on this page' },
+    { label: t('stats.articles'), value: totalElements, note: t('stats.articlesNote') },
+    { label: t('stats.sources'), value: sources.length, note: t('stats.sourcesNote') },
+    { label: t('company.related'), value: companyCount, note: t('stats.companiesNote') },
   ];
 
   return (
-    <section className="workspace-page crawler-news-page" id="page-news">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Intelligence <span>/</span> Crawler Articles</div>
+    <div className={styles.newsPage}>
+      {/* ── Header ── */}
+      <header className={styles.newsHeader}>
+        <div className={styles.newsHeaderLeft}>
+          <h1 className={styles.newsTitle}>{t('title')}</h1>
+          <span className={styles.newsSub}>{t('subtitle')}</span>
+        </div>
+        <div>
+          <span className={styles.newsSyncBadge}>{t('syncBadge')}</span>
+        </div>
+      </header>
 
-          <div className="workspace-page-head crawler-news-head compact-hero">
-            <div>
-              <span className="workspace-side-eyebrow">Crawler feed</span>
-              <h1>Company related articles</h1>
-            </div>
-            <div className="workspace-head-actions">
-              <span className="crawler-auto-sync">
-                <RefreshCw size={16} />
-                Auto updating
-              </span>
+      {/* ── KPI Row ── */}
+      <section className={styles.newsStatsGrid}>
+        {statCards.map((item) => (
+          <div key={item.label} className={styles.newsStatCard}>
+            <div className={styles.newsStatLabel}>{item.label}</div>
+            <div className={styles.newsStatValRow}>
+              <span className={styles.newsStatValue}>{item.value}</span>
+              <span className={styles.newsStatNote}>{item.note}</span>
             </div>
           </div>
+        ))}
+      </section>
 
-          <div className="workspace-stats crawler-news-stats compact-stats">
-            {statCards.map((item) => (
-              <article key={item.label} className="workspace-stat-card">
-                <span className="workspace-stat-label">{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </article>
+      {/* ── Main Panel ── */}
+      <main className={styles.newsPanel}>
+        {/* Filter Bar */}
+        <div className={styles.newsFilterBar}>
+          <input
+            className={styles.newsSearchInput}
+            value={searchTerm}
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              setPage(0);
+            }}
+            placeholder={t('filters.searchPlaceholder')}
+          />
+
+          <select
+            className={styles.newsSelect}
+            value={selectedSource}
+            onChange={(event) => {
+              setSelectedSource(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t('filters.allSources')}</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>{source}</option>
             ))}
-          </div>
+          </select>
 
-          <div className="workspace-panel crawler-news-filter-panel">
-            <div className="crawler-news-search">
-              <Search size={18} />
-              <input
-                value={searchTerm}
-                onChange={(event) => {
-                  setSearchTerm(event.target.value);
-                  setPage(0);
-                }}
-                placeholder="Search title, summary, source, or company..."
-              />
-            </div>
+          <button className={`${styles.newsBtn} ${styles.newsBtnGhost}`} onClick={resetFilters}>
+            {t('filters.reset')}
+          </button>
+        </div>
 
-            <label className="crawler-news-select">
-              <Building2 size={16} />
-              <select
-                value={selectedSource}
-                onChange={(event) => {
-                  setSelectedSource(event.target.value);
-                  setPage(0);
-                }}
-              >
-                <option value="">All sources</option>
-                {sources.map((source) => (
-                  <option key={source} value={source}>{source}</option>
-                ))}
-              </select>
-            </label>
+        {error && <div className={styles.newsAlertDanger}>{error}</div>}
 
-            <button className="btn btn-ghost" onClick={resetFilters}>Reset</button>
-          </div>
-
-          {error && <div className="workspace-alert danger">{error}</div>}
-
+        {/* Articles Table */}
+        <div className={styles.newsTableWrap}>
           {loading ? (
-            <div className="crawler-news-grid">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <article key={index} className="crawler-news-card crawler-news-card-loading" />
-              ))}
-            </div>
+            <div className={styles.newsEmpty}>{t('empty.loading')}</div>
           ) : articles.length === 0 ? (
-            <div className="workspace-panel">
-              <div className="workspace-empty">No articles match the current filters.</div>
-            </div>
+            <div className={styles.newsEmpty}>{t('empty.noResults')}</div>
           ) : (
-            <div className="crawler-news-grid">
-              {articles.map((article) => {
-                const companiesForArticle = companyNames(article);
-                const levelLabel = article.riskLevel
-                  ? `Risk ${article.riskLevel}`
-                  : article.opportunityLevel
-                    ? `Opportunity ${article.opportunityLevel}`
-                    : 'GENERAL';
-                return (
-                  <article key={article.id} className="crawler-news-card">
-                    <div className="crawler-news-thumb">
-                      <Newspaper size={30} />
-                      <span className={`workspace-badge ${categoryClass(article.category)}`}>
-                        {article.category || 'NEWS'}
-                      </span>
-                    </div>
-
-                    <div className="crawler-news-card-body">
-                      <div className="crawler-news-company-row">
-                        {companiesForArticle.slice(0, 3).map((name) => (
-                          <span key={name} className="crawler-company-pill">{name}</span>
+            <table className={styles.newsTable}>
+              <thead>
+                <tr>
+                  <th style={{ width: 80 }}>{t('table.type')}</th>
+                  <th>{t('table.title')}</th>
+                  <th style={{ width: 140 }}>{t('table.company')}</th>
+                  <th style={{ width: 140 }}>{t('table.sourceDate')}</th>
+                  <th style={{ width: 90 }}>{t('table.rating')}</th>
+                  <th style={{ width: 110, textAlign: 'right' }}>{t('table.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {articles.map((article) => {
+                  const companiesForArticle = companyNames(article);
+                  const levelLabel = article.riskLevel
+                    ? t('level.risk', { level: article.riskLevel })
+                    : article.opportunityLevel
+                      ? t('level.opportunity', { level: article.opportunityLevel })
+                      : t('level.general');
+                  return (
+                    <tr key={article.id}>
+                      <td>
+                        <span className={`${styles.newsPill} ${categoryPillClass(article.category)}`}>
+                          {article.category || 'NEWS'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles.newsItemTitle}>{article.title || t('article.noTitle')}</div>
+                        <div className={styles.newsItemSummary}>{articleSummary(article)}</div>
+                      </td>
+                      <td>
+                        {companiesForArticle.slice(0, 2).map((name) => (
+                          <span key={name} className={`${styles.newsPill} ${styles.newsPillCompany}`}>
+                            {name}
+                          </span>
                         ))}
-                        {companiesForArticle.length > 3 && <span className="crawler-company-pill muted">+{companiesForArticle.length - 3}</span>}
-                      </div>
-
-                      <h3>{article.title || 'Untitled article'}</h3>
-                      <p>{articleSummary(article)}</p>
-
-                      <div className="crawler-news-meta">
-                        <span><CalendarDays size={14} /> {formatDate(article.publishedAt)}</span>
-                        <span><FileText size={14} /> {article.source || 'Unknown source'}</span>
-                      </div>
-
-                      <div className="crawler-news-footer">
-                        <span className={`workspace-badge ${priorityClass(article)}`}>
+                      </td>
+                      <td>
+                        <div><strong>{article.source || t('source.unknown')}</strong></div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatDateLabel(article.publishedAt)}</div>
+                      </td>
+                      <td>
+                        <span className={`${styles.newsPill} ${priorityPillClass(article)}`}>
                           {levelLabel}
                         </span>
-                        <div className="crawler-news-actions">
-                          <button className="btn btn-secondary btn-sm" onClick={() => openDetail(article)}>
-                            Detail
-                          </button>
-                          {article.url && (
-                            <a className="btn btn-primary btn-sm" href={article.url} target="_blank" rel="noreferrer">
-                              Original
-                              <ExternalLink size={14} />
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                        {isDuplicate(article) && (
+                          <span className={`${styles.newsPill} ${styles.newsPillDanger}`} style={{ marginLeft: 3 }}>
+                            {t('duplicate')}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className={`${styles.newsBtn} ${styles.newsBtnSecondary} ${styles.newsBtnSm}`}
+                          onClick={() => openDetail(article)}
+                          style={{ marginRight: 4 }}
+                        >
+                          {t('actions.details')}
+                        </button>
+                        {article.url && (
+                          <a
+                            className={`${styles.newsBtn} ${styles.newsBtnPrimary} ${styles.newsBtnSm}`}
+                            href={article.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t('actions.original')}
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
+        </div>
 
-          <div className="workspace-pagination crawler-news-pagination">
-            <span>
-              Showing {articles.length} of {totalElements} articles
-            </span>
-            <div>
-              <button className="btn btn-secondary" disabled={page === 0 || loading} onClick={() => setPage((value) => Math.max(value - 1, 0))}>
-                Previous
-              </button>
-              <strong>Page {page + 1} / {totalPages}</strong>
-              <button className="btn btn-secondary" disabled={page + 1 >= totalPages || loading} onClick={() => setPage((value) => value + 1)}>
-                Next
-              </button>
-            </div>
+        {/* Pagination */}
+        <div className={styles.newsPagination}>
+          <span>{t('pagination.showing', { count: articles.length, total: totalElements })}</span>
+          <div className={styles.newsPaginationBtns}>
+            <button
+              className={`${styles.newsBtn} ${styles.newsBtnSecondary} ${styles.newsBtnSm}`}
+              disabled={page === 0 || loading}
+              onClick={() => setPage((value) => Math.max(value - 1, 0))}
+            >
+              {t('pagination.previous')}
+            </button>
+            <strong>{t('pagination.page', { page: page + 1, total: totalPages })}</strong>
+            <button
+              className={`${styles.newsBtn} ${styles.newsBtnSecondary} ${styles.newsBtnSm}`}
+              disabled={page + 1 >= totalPages || loading}
+              onClick={() => setPage((value) => value + 1)}
+            >
+              {t('pagination.next')}
+            </button>
           </div>
         </div>
-      </div>
+      </main>
 
+      {/* ── Article Detail Modal ── */}
       {selectedArticle && (
-        <div className="crawler-article-modal-backdrop" onClick={() => setSelectedArticle(null)}>
-          <div className="crawler-article-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="crawler-article-close" onClick={() => setSelectedArticle(null)} aria-label="Close article detail">
-              <X size={20} />
+        <div className={styles.newsModalBackdrop} onClick={() => setSelectedArticle(null)}>
+          <div className={styles.newsModal} onClick={(event) => event.stopPropagation()}>
+            <button
+              className={styles.newsModalClose}
+              onClick={() => setSelectedArticle(null)}
+              aria-label={t('modal.close')}
+            >
+              &times;
             </button>
 
-            <div className="crawler-article-modal-head">
-              <div>
-                <span className="workspace-side-eyebrow">Article detail</span>
-                <h2>{selectedArticle.title || 'Untitled article'}</h2>
-                <div className="crawler-news-meta">
-                  <span><CalendarDays size={14} /> {formatDate(selectedArticle.publishedAt)}</span>
-                  <span><FileText size={14} /> {selectedArticle.source || 'Unknown source'}</span>
-                </div>
-              </div>
-              {selectedArticle.url && (
-                <a className="btn btn-primary" href={selectedArticle.url} target="_blank" rel="noreferrer">
-                  Open original
-                  <ArrowUpRight size={16} />
+            <h2 className={styles.newsModalTitle}>{selectedArticle.title || t('article.noTitle')}</h2>
+            <div className={styles.newsModalMeta}>
+              {t('modal.sourceLabel')}: <strong>{selectedArticle.source || t('source.unknown')}</strong> · {t('modal.dateLabel')}: {formatDateLabel(selectedArticle.publishedAt)}
+            </div>
+
+            {selectedArticle.url && (
+              <div style={{ marginBottom: 12 }}>
+                <a
+                  className={`${styles.newsBtn} ${styles.newsBtnPrimary} ${styles.newsBtnSm}`}
+                  href={selectedArticle.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('modal.openOriginal')}
                 </a>
+              </div>
+            )}
+
+            <div className={styles.newsModalSection}>
+              <div className={styles.newsModalSectionTitle}>{t('company.related')}</div>
+              <div>
+                {selectedArticle.relatedCompanyName ? (
+                  <span className={`${styles.newsPill} ${styles.newsPillCompany}`}>
+                    {selectedArticle.relatedCompanyName}
+                  </span>
+                ) : (
+                  <span className={`${styles.newsPill} ${styles.newsPillMuted}`}>{t('company.noMatch')}</span>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.newsModalSection}>
+              <div className={styles.newsModalSectionTitle}>{t('modal.aiSummaryTitle')}</div>
+              <p className={styles.newsModalText}>
+                {selectedArticle.aiSummary || selectedArticle.summary || t('modal.aiSummaryEmpty')}
+              </p>
+              <div style={{ marginTop: 4 }}>
+                <span className={`${styles.newsPill} ${styles.newsPillMuted}`}>
+                  {aiStateLabel(selectedArticle)}
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.newsModalSection}>
+              <div className={styles.newsModalSectionTitle}>{t('modal.assessmentTitle')}</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <span className={`${styles.newsPill} ${priorityPillClass(selectedArticle)}`}>
+                  {selectedArticle.riskLevel
+                    ? t('level.risk', { level: selectedArticle.riskLevel })
+                    : selectedArticle.opportunityLevel
+                      ? t('level.opportunity', { level: selectedArticle.opportunityLevel })
+                      : t('level.general')}
+                </span>
+                {selectedArticle.sentiment && (
+                  <span className={`${styles.newsPill} ${sentimentPillClass(selectedArticle.sentiment)}`}>
+                    {selectedArticle.sentiment}
+                  </span>
+                )}
+              </div>
+              {selectedArticle.riskReason && (
+                <p className={styles.newsModalText} style={{ marginTop: 4, color: '#ef4444' }}>
+                  {t('modal.riskReason', { reason: selectedArticle.riskReason })}
+                </p>
               )}
             </div>
 
-            <div className="crawler-detail-section">
-              <h3>Related companies</h3>
-              <div className="crawler-detail-companies">
-                {selectedArticle.relatedCompanyName ? (
-                  <div className="crawler-detail-company">
-                    <strong>{selectedArticle.relatedCompanyName}</strong>
-                    <span>MATCH</span>
-                  </div>
-                ) : (
-                  <span className="crawler-company-pill muted">No matched company</span>
-                )}
-              </div>
-            </div>
-
-            <div className="crawler-detail-grid">
-              <section className="crawler-detail-section">
-                <h3><Sparkles size={18} /> AI summary</h3>
-                <p>{selectedArticle.summary || 'No summary was generated for this article yet.'}</p>
-              </section>
-
-              <section className="crawler-detail-section">
-                <h3>Priority</h3>
-                <div className="crawler-detail-kpis">
-                  <span className={`workspace-badge ${priorityClass(selectedArticle)}`}>
-                    {selectedArticle.riskLevel
-                      ? `Risk ${selectedArticle.riskLevel}`
-                      : selectedArticle.opportunityLevel
-                        ? `Opportunity ${selectedArticle.opportunityLevel}`
-                        : 'N/A'}
-                  </span>
-                  <span className="workspace-badge neutral">{selectedArticle.category || 'GENERAL'}</span>
-                  {selectedArticle.sentiment && (
-                    <span className="workspace-badge info">{selectedArticle.sentiment}</span>
-                  )}
+            {topicsWithLabels(selectedArticle).length > 0 && (
+              <div className={styles.newsModalSection}>
+                <div className={styles.newsModalSectionTitle}>{t('modal.topics')}</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {topicsWithLabels(selectedArticle).map((topic) => (
+                    <span key={topic} className={`${styles.newsPill} ${styles.newsPillInfo}`}>{topic}</span>
+                  ))}
                 </div>
-                {!selectedArticle.riskLevel && !selectedArticle.opportunityLevel && (
-                  <p>No priority level was stored for this article.</p>
-                )}
-              </section>
-            </div>
+              </div>
+            )}
 
-            <section className="crawler-detail-section">
-              <h3>Extracted content</h3>
-              <p className="crawler-detail-content">
-                {selectedArticle.summary || 'No extracted content is available.'}
+            <div className={styles.newsModalSection}>
+              <div className={styles.newsModalSectionTitle}>{t('modal.collectedContent')}</div>
+              <p className={styles.newsModalText}>
+                {selectedArticle.summary || t('modal.noContent')}
               </p>
-            </section>
+            </div>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 };
+
+export default News;
