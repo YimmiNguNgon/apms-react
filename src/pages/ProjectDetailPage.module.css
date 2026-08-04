@@ -1096,6 +1096,63 @@
   padding: 8px 10px;
 }
 
+.companyMembersProfileHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(150px, 0.55fr));
+  gap: 12px;
+  margin-bottom: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 56%, #f8fafc 100%);
+  padding: 18px;
+}
+
+.companyMembersProfileHero > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid rgba(203, 216, 234, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px;
+}
+
+.companyMembersProfileHero > div:first-child {
+  background: transparent;
+  border-color: transparent;
+  padding-left: 0;
+}
+
+.companyMembersProfileHero span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.companyMembersProfileHero strong {
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.companyMembersProfileHero > div:first-child strong {
+  font-size: 24px;
+}
+
+.companyMembersProfileHero p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
 .documentEmptyState {
   display: grid;
   min-height: 220px;
@@ -2392,6 +2449,10 @@
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
   align-items: start;
+}
+
+.companyMemberWorkbenchGrid {
+  grid-template-columns: minmax(0, 1fr) 240px;
 }
 
 .workbenchMain,
@@ -5234,7 +5295,7 @@
 
 .memberResearchHero {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  grid-template-columns: 1fr;
   gap: 16px;
   margin-bottom: 16px;
   border: 1px solid #dbeafe;
@@ -5273,23 +5334,24 @@
 
 .memberResearchStats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
 }
 
 .memberResearchStats > div {
   display: grid;
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
   min-width: 0;
   border: 1px solid #dbe4f0;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
-  padding: 13px;
+  padding: 16px;
 }
 
 .memberResearchStats strong {
   color: #0f172a;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 950;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -5303,7 +5365,7 @@
 
 .memberResearchLayout {
   display: grid;
-  grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(430px, 0.9fr) minmax(520px, 1.1fr);
   gap: 16px;
   align-items: start;
 }
@@ -5320,14 +5382,25 @@
 }
 
 .memberResearchForm {
-  position: sticky;
-  top: 0;
+  position: static;
 }
 
 .memberResearchFormGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.memberResearchHalfField {
+  grid-column: auto;
+}
+
+.memberResearchList .memberLayerGrid {
+  grid-template-columns: minmax(220px, 0.88fr) minmax(220px, 1.12fr);
+}
+
+.memberResearchList .memberLayerCompactGrid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
 
 .memberResearchListHead {
@@ -5469,7 +5542,7 @@
 .memberLayerBoard {
   display: grid;
   gap: 20px;
-  max-height: 720px;
+  max-height: 760px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -5529,7 +5602,7 @@
 
 .memberLayerCompactGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -6040,6 +6113,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .companyMembersProfileHero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .companyMembersProfileHero > div:first-child {
+    grid-column: 1 / -1;
+  }
+
   .profileReviewSection .readOnlyFieldGrid,
   .profileReviewSection .candidateExtractedFieldStack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6053,6 +6134,18 @@
 
 @media (max-width: 980px) {
   .aiExtractGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .memberResearchStats {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .memberResearchFormGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memberResearchLayout {
     grid-template-columns: 1fr;
   }
 
@@ -6181,6 +6274,19 @@
   .aiExtractSummary p {
     max-width: none;
     text-align: left;
+  }
+
+  .memberResearchFormGrid,
+  .memberResearchStats {
+    grid-template-columns: 1fr;
+  }
+
+  .companyMembersProfileHero {
+    grid-template-columns: 1fr;
+  }
+
+  .memberResearchHalfField {
+    grid-column: 1 / -1;
   }
 
   .evidenceGroupHead {

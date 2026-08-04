@@ -31,6 +31,7 @@ import {
   TrendingUp,
   type LucideIcon,
   UserPlus,
+  Users,
   X,
 } from 'lucide-react';
 import styles from './ProjectDetailPage.module.css';
@@ -54,12 +55,14 @@ import type {
   AiExtractionResult,
   CandidateResponse,
   CandidateStatus,
+  CompanyProfileMember,
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
   CreateProjectTaskRequest,
   MergeCandidateResponse,
   PageResult,
   ProjectMemberResponse,
+  ProfileResponse,
   ProjectResponse,
   ProjectStatus as ApiProjectStatus,
   ProjectType as ApiProjectType,
@@ -75,7 +78,7 @@ import type {
   UpdateCandidateRequest,
 } from '../types/domain';
 
-const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Members'];
+const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Company Members', 'Members'];
 const SELECTED_PROJECT_STORAGE_KEY = 'apms-selected-project';
 const PROJECT_DETAIL_TAB_STORAGE_KEY = 'apms-project-detail-active-tab';
 
@@ -2933,20 +2936,20 @@ type CompanyMemberLayerId = 'board' | 'executive' | 'management' | 'other';
 
 const companyMemberLayerMeta: Record<CompanyMemberLayerId, { title: string; description: string }> = {
   board: {
-    title: 'Board of directors',
-    description: 'Chairperson, board members, and governance representatives.',
+    title: 'Corporate Board',
+    description: '',
   },
   executive: {
-    title: 'Executive management',
-    description: 'CEO, general director, CFO, CTO, and executive operators.',
+    title: 'Executive & Financial Leadership',
+    description: '',
   },
   management: {
-    title: 'Functional leaders',
-    description: 'Department heads, managers, founders, and public representatives.',
+    title: 'Audit & Oversight Committee',
+    description: '',
   },
   other: {
-    title: 'Other verified members',
-    description: 'People that do not clearly belong to another leadership layer.',
+    title: 'Other Leadership Roles',
+    description: '',
   },
 };
 
@@ -2956,8 +2959,17 @@ const companyMemberInitials = (name: string) => {
   return Array.from(name.trim()).slice(0, 2).join('').toUpperCase() || 'NA';
 };
 
+const normalizeCompanyMemberPosition = (position: string) =>
+  position
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+
 const companyMemberLayerId = (position: string): CompanyMemberLayerId => {
-  const normalized = position.toLowerCase();
+  const normalized = normalizeCompanyMemberPosition(position);
+  if (/(bks|ban kiem soat|kiem soat|kiem toan|audit|oversight|supervisory|control board)/i.test(normalized)) return 'management';
   if (/(hđqt|hdqt|hội đồng|hoi dong|board|chairman|chairwoman|chairperson)/i.test(normalized)) return 'board';
   if (/(ceo|cfo|coo|cto|chief|tổng giám|tong giam|phó tổng|pho tong|general director|giám đốc|giam doc|president|kế toán trưởng|ke toan truong)/i.test(normalized)) return 'executive';
   if (/(founder|co-founder|manager|head|leader|trưởng|truong|phó|pho|director|representative|đại diện|dai dien)/i.test(normalized)) return 'management';
@@ -2976,6 +2988,15 @@ const groupCompanyMemberLayers = (members: CompanyMemberResearchItem[]) => {
     .map((id) => ({ id, ...companyMemberLayerMeta[id], members: buckets[id] }))
     .filter((layer) => layer.members.length > 0);
 };
+
+const profileMembersToResearchItems = (members: CompanyProfileMember[] = []): CompanyMemberResearchItem[] =>
+  members.map((member) => ({
+    fullName: member.fullName || '',
+    position: member.position || '',
+    imageUrl: member.imageUrl || '',
+    sourceUrl: member.sourceUrl || '',
+    notes: member.notes || '',
+  }));
 
 const CompanyMemberLayerCard: React.FC<{
   member: CompanyMemberResearchItem;
@@ -3032,7 +3053,7 @@ const CompanyMemberLayerBoard: React.FC<{
                 <h4>{layer.title}</h4>
                 <p>{layer.description}</p>
               </div>
-              <span>{layer.members.length} member(s)</span>
+              {/* <span>{layer.members.length} member(s)</span> */}
             </div>
             <div className={styles.memberLayerGrid}>
               <CompanyMemberLayerCard
@@ -3098,6 +3119,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [documentsTabItems, setDocumentsTabItems] = useState<WorkbenchDocumentResponse[]>([]);
   const [documentsTabLoading, setDocumentsTabLoading] = useState(false);
   const [documentsTabError, setDocumentsTabError] = useState<string | null>(null);
+  const [companyMembersProfile, setCompanyMembersProfile] = useState<ProfileResponse | null>(null);
+  const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
+  const [companyMembersError, setCompanyMembersError] = useState<string | null>(null);
   const [documentSearch, setDocumentSearch] = useState('');
   const [documentSort, setDocumentSort] = useState<'newest' | 'oldest' | 'name' | 'type' | 'size'>('newest');
   const [selectedProjectDocumentIds, setSelectedProjectDocumentIds] = useState<number[]>([]);
@@ -3217,7 +3241,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (step === 'Complete task' || step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
     return false;
   };
-  const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Documents', 'Members'] : tabs), [isStaffView]);
+  const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Documents', 'Company Members', 'Members'] : tabs), [isStaffView]);
   const staffAccountId = useMemo(() => {
     if (!isStaffView) return null;
     if (currentUser?.id && currentUser.id > 0) return currentUser.id;
@@ -3492,6 +3516,39 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       cancelled = true;
     };
   }, [activeTab, currentProjectId]);
+
+  useEffect(() => {
+    if (activeTab !== 'Company Members') return;
+
+    const profileId = apiProject?.targetCompanyProfileId;
+    if (!profileId) {
+      setCompanyMembersProfile(null);
+      setCompanyMembersError('No approved Company Profile is linked to this project yet.');
+      return;
+    }
+
+    let cancelled = false;
+    setCompanyMembersLoading(true);
+    setCompanyMembersError(null);
+
+    api.get<ProfileResponse>(`/profiles/${profileId}`)
+      .then((payload) => {
+        if (!cancelled) setCompanyMembersProfile(payload.data ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCompanyMembersProfile(null);
+          setCompanyMembersError(error instanceof Error ? error.message : 'Cannot load company members.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyMembersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, apiProject?.targetCompanyProfileId]);
 
   const assignableMembers = useMemo(
     () => projectMembers.filter((member) => member.memberRole === 'STAFF'),
@@ -3890,7 +3947,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await taskApi.getTaskWorkbench(task.projectId, task.id);
       setWorkbench(payload.data);
 
-      const firstDraftId = payload.data?.candidateDrafts?.[0]?.candidateId;
+      const firstDraftId = (
+        payload.data?.candidateDrafts?.find((draft) => draft.status === 'DRAFT')
+        ?? payload.data?.candidateDrafts?.[0]
+      )?.candidateId;
       if (options.loadCandidateDraft && firstDraftId) {
         const candidatePayload = await candidateApi.getCandidateById(firstDraftId);
         setStaffCandidate(candidatePayload.data);
@@ -4059,7 +4119,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const submitCompanyMemberResearchDraft = async () => {
     if (!selectedStaffTask) return;
-    const savedDraft = companyMemberDraft || await saveCompanyMemberResearchDraft();
+    const savedDraft = await saveCompanyMemberResearchDraft();
     if (!savedDraft) return;
 
     setCompanyMemberSubmitting(true);
@@ -4482,12 +4542,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       }
 
       setAiProgress({ percent: 90, label: 'Creating candidate draft from reviewed extractions' });
+      const mergeRequest: {
+        extractionIds: string[];
+        note: string;
+      } = {
+        extractionIds: pendingExtractionReviews.map((review) => review.id),
+        note: `Created from ${pendingExtractionReviews.length} reviewed project document extraction(s).`,
+      };
       const mergePayload = await api.post<MergeCandidateResponse>(
         `/projects/${selectedStaffTask.projectId}/tasks/${selectedStaffTask.id}/candidates/from-extractions`,
-        {
-          extractionIds: pendingExtractionReviews.map((review) => review.id),
-          note: `Created from ${pendingExtractionReviews.length} reviewed project document extraction(s).`,
-        },
+        mergeRequest,
         { timeoutMs: null }
       );
 
@@ -4504,7 +4568,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setPendingExtractionReviews([]);
       setSelectedProjectDocumentIds([]);
       setWorkbenchMessage(`Candidate draft created from ${pendingExtractionReviews.length} reviewed extraction(s).`);
-      await loadStaffWorkbench(selectedStaffTask);
+      await loadTaskWorkbench(selectedStaffTask);
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot create candidate from reviewed extractions.');
     } finally {
@@ -4549,7 +4613,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setStaffCandidate(payload.data);
       setStaffCandidateEdit(candidateToEditForm(payload.data));
       setWorkbenchMessage('Candidate draft created. Review and correct fields before submitting.');
-      await loadStaffWorkbench(selectedStaffTask);
+      await loadTaskWorkbench(selectedStaffTask);
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot create candidate from extraction.');
     } finally {
@@ -4783,6 +4847,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbench((current) => current ? { ...current, taskStatus: nextStatus } : current);
       setWorkbenchMessage(decision === 'APPROVE' ? 'Task approved and moved to Done.' : 'Task rejected and returned to staff.');
       await loadManagerWorkbench(updatedTask);
+      setTaskRefreshTick((current) => current + 1);
       setSelectedManagerReviewTask(null);
       setManagerReviewComment('');
     } catch (error) {
@@ -4909,7 +4974,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 )}
                 {isManager && (
                   <>
-                    <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button>
+                    {/* <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button> */}
                     <button
                       className={`${styles.button} ${styles.primaryButton}`}
                       type="button"
@@ -4919,7 +4984,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     >
                       <UserPlus size={16} />Invite Member
                     </button>
-                    <button className={styles.iconButton} type="button" aria-label="More actions"><MoreHorizontal size={18} /></button>
+                    {/* <button className={styles.iconButton} type="button" aria-label="More actions"><MoreHorizontal size={18} /></button> */}
                   </>
                 )}
               </div>
@@ -5189,6 +5254,56 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </article>
                 ))}
               </div>
+            </motion.section>
+          ) : activeTab === 'Company Members' ? (
+            <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className={styles.memberPanelHead}>
+                <div>
+                  <h2>Company members</h2>
+                </div>
+                <span className={styles.count}>{companyMembersProfile?.companyMembers?.length ?? 0}</span>
+              </div>
+
+              {companyMembersError && <div className={styles.inlineError}>{companyMembersError}</div>}
+
+              <div className={styles.companyMembersProfileHero}>
+                <div>
+                  <span>Official company profile</span>
+                  <strong>
+                    {companyMembersProfile?.identity?.tradeName
+                      || companyMembersProfile?.identity?.legalName
+                      || displayedProject.targetCompanyName
+                      || displayedProject.name}
+                  </strong>
+                </div>
+                <div>
+                  <span>Profile version</span>
+                  <strong>{companyMembersProfile?.version ?? 'N/A'}</strong>
+                </div>
+                <div>
+                  <span>Review status</span>
+                  <strong>{companyMembersProfile?.reviewStatus === 'VERIFIED' ? 'APPROVED' : companyMembersProfile?.reviewStatus || 'N/A'}</strong>
+                </div>
+                <div>
+                  <span>Total members</span>
+                  <strong>{companyMembersProfile?.companyMembers?.length ?? 0}</strong>
+                </div>
+              </div>
+
+              {companyMembersError ? null : companyMembersLoading ? (
+                <div className={styles.empty}>Loading company members...</div>
+              ) : !companyMembersError && (companyMembersProfile?.companyMembers?.length ?? 0) === 0 ? (
+                <div className={styles.documentEmptyState}>
+                  <Users size={26} />
+                  <strong>No company members yet</strong>
+                  <span>After manager approves a Company Member Research task, approved people will appear in this tab.</span>
+                </div>
+              ) : (
+                <CompanyMemberLayerBoard
+                  members={profileMembersToResearchItems(companyMembersProfile?.companyMembers)}
+                  emptyText="No company members yet."
+                />
+              )}
             </motion.section>
           ) : activeTab === 'Members' ? (
             <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -5642,7 +5757,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 ))}
               </div>
 
-              <div className={styles.staffWorkbenchGrid}>
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''}`}>
                 <main className={styles.workbenchMain}>
                   {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' ? (
                   <>
@@ -5992,7 +6107,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <div className={styles.workbenchPanelHead}>
                       <div>
                         <h3>Company member research</h3>
-                        <p>Research key people, leadership, board members, founders, or public representatives and attach a source URL for each person.</p>
                       </div>
                       <span className={styles.taskTypeBadge}>{companyMemberItems.length} member(s)</span>
                     </div>
@@ -6001,9 +6115,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div>
                         <span>Research target</span>
                         <h4>{workbench?.targetCompanyName || displayedProject.targetCompanyName || displayedProject.name}</h4>
-                        <p>
-                          Add verified people related to this company. Each member must have name, position, and a public source URL so the manager can review the evidence.
-                        </p>
                       </div>
                       <div className={styles.memberResearchStats}>
                         <div>
@@ -6036,7 +6147,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             </div>
 
                             <div className={styles.memberResearchFormGrid}>
-                              <label className={styles.inviteField}>
+                              <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
                                 <span>Full name</span>
                                 <input
                                   value={companyMemberForm.fullName}
@@ -6045,7 +6156,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   disabled={!canUseStaffWorkbench}
                                 />
                               </label>
-                              <label className={styles.inviteField}>
+                              <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
                                 <span>Position</span>
                                 <input
                                   value={companyMemberForm.position}
@@ -6054,7 +6165,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   disabled={!canUseStaffWorkbench}
                                 />
                               </label>
-                              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                              <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
                                 <span>Image URL</span>
                                 <input
                                   value={companyMemberForm.imageUrl || ''}
@@ -6063,7 +6174,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   disabled={!canUseStaffWorkbench}
                                 />
                               </label>
-                              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                              <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
                                 <span>Source URL</span>
                                 <input
                                   value={companyMemberForm.sourceUrl}
@@ -6384,6 +6495,49 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                 <aside className={styles.workbenchSidebar}>
                   {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' ? (
+                    <>
+                    <section className={styles.workbenchPanel}>
+                      <h3>Candidate drafts</h3>
+                      <div className={styles.draftList}>
+                        {(workbench?.candidateDrafts?.filter((draft) => draft.status === 'DRAFT').length ?? 0) === 0 && (
+                          <div className={styles.empty}>No active candidate draft yet.</div>
+                        )}
+                        {workbench?.candidateDrafts?.filter((draft) => draft.status === 'DRAFT').map((draft) => {
+                          const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
+                          const isDeleting = deletingCandidateDraftId === draft.candidateId;
+
+                          return (
+                            <article
+                              className={`${styles.draftItem} ${styles.draftItemWithActions} ${staffCandidate?.id === draft.candidateId ? styles.draftItemActive : ''}`}
+                              key={draft.candidateId}
+                            >
+                              <button
+                                className={styles.draftItemMain}
+                                type="button"
+                                onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                disabled={!canUseStaffWorkbench || isDeleting}
+                              >
+                                <strong>{draftLabel}</strong>
+                                {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
+                                <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                {draft.hasConflicts && <small>{draft.conflictCount || 0} conflict(s)</small>}
+                              </button>
+                              <button
+                                className={styles.draftDeleteButton}
+                                type="button"
+                                onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
+                                disabled={!canUseStaffWorkbench || isDeleting}
+                                aria-label={`Delete ${draftLabel}`}
+                                title="Delete draft"
+                              >
+                                <Trash2 size={15} />
+                                {isDeleting ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
                     <section className={styles.workbenchPanel}>
                       <h3>Rejected drafts</h3>
                       <div className={styles.draftList}>
@@ -6429,7 +6583,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         })}
                       </div>
                     </section>
-                  ) : (
+                    </>
+                  ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? null : (
                     <section className={styles.workbenchPanel}>
                       <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
                       <div className={styles.workbenchHintList}>
@@ -6445,13 +6600,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <span>Review project relationship and target company.</span>
                             <span>Attach sources that support the evaluation.</span>
                             <span>Submit clear notes for manager approval.</span>
-                          </>
-                        )}
-                        {selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (
-                          <>
-                            <span>Identify key people related to the target company.</span>
-                            <span>Add a reliable source URL for every member.</span>
-                            <span>Save the draft, then submit it for manager review.</span>
                           </>
                         )}
                         {selectedStaffTask.taskType === 'GENERAL_TASK' && (
@@ -6733,7 +6881,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <div>
                           <h3>Company member research</h3>
                         </div>
-                        <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span>
+                        {/* <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span> */}
                       </div>
                       {managerCompanyMemberLoading ? (
                         <div className={styles.empty}>Loading submitted members...</div>
@@ -6743,7 +6891,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <CompanyMemberLayerBoard
                           members={managerCompanyMemberDraft.members}
                           emptyText="No company members were submitted for review."
-                          statusLabel="Ready to apply"
                         />
                       )}
                     </section>

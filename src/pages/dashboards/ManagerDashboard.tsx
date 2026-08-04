@@ -165,13 +165,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
           <div className="workspace-breadcrumbs">Operations <span>/</span> Manager workspace</div>
           <div className="workspace-page-head">
             <div>
-              <span className="workspace-side-eyebrow">Operations command center</span>
+              {/* <span className="workspace-side-eyebrow">Operations command center</span> */}
               <h1>Manager Dashboard</h1>
-              <p>
-                {loading
-                  ? 'Loading project execution, candidate approvals, and company profile signals.'
-                  : `${currentUser?.name}, review candidate bottlenecks, project task flow, and company profile health from live backend data.`}
-              </p>
             </div>
             <div className="workspace-head-actions">
               <button className="btn btn-outline" onClick={() => setActivePage?.('project-management')}>Open projects</button>
@@ -183,9 +178,9 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
 
           <div className="workspace-focus-card role-focus-card manager manager-dashboard-focus">
             <div>
-              <span className="workspace-chip">Live manager queue</span>
-              <h3>{pendingCandidates.length} candidates need review across {projects.length} loaded projects.</h3>
-              <p>Approve clean candidates to create official Company Profiles, and use task signals to unblock project execution.</p>
+              {/* <span className="workspace-chip">Live manager queue</span> */}
+              {/* <h3>{pendingCandidates.length} candidates need review across {projects.length} loaded projects.</h3> */}
+              {/* <p>Approve clean candidates to create official Company Profiles, and use task signals to unblock project execution.</p> */}
             </div>
             <div className="workspace-focus-metrics">
               <article><strong>{pendingCandidates.length}</strong><span>candidate reviews</span></article>
@@ -284,7 +279,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
                   ))}
                 </div>
               </div>
-
+{/* 
               <div className="workspace-panel">
                 <div className="workspace-section-head">
                   <div>
@@ -297,12 +292,12 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
                     <div key={item.label}><strong>{item.label}</strong><span>{item.value}</span></div>
                   ))}
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
 
-        <aside className="workspace-sidebar">
+        {/* <aside className="workspace-sidebar">
           <div className="workspace-side-card">
             <span className="workspace-side-eyebrow">Immediate focus</span>
             <h3>Review pressure</h3>
@@ -339,7 +334,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
               <article><strong>Unblock overdue tasks</strong><p>Use the project Kanban board to reassign or complete blocked work.</p></article>
             </div>
           </div>
-        </aside>
+        </aside> */}
       </div>
     </section>
   );

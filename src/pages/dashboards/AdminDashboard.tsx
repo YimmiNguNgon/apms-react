@@ -157,7 +157,7 @@ export const AdminDashboard: React.FC = () => {
 
   // Filtered activity stream
   const filteredActivities = useMemo(() => {
-    let list = activityData.length > 0 ? activityData : [
+    let list: (AuditLogDto | { action: string; detail: string; timestamp: string })[] = activityData.length > 0 ? activityData : [
       { action: 'ROLE_UPDATE', detail: 'User role changed to ROLE_BUSINESS_DIRECTOR for user ID #142', timestamp: '2 minutes ago' },
       { action: 'SECURITY_ALERT', detail: 'Failed password attempt threshold triggered from IP 192.168.1.45', timestamp: '14 minutes ago' },
       { action: 'USER_CREATED', detail: 'New account registered: le.hoang@company.vn (Research Staff)', timestamp: '45 minutes ago' },
