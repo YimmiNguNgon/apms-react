@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { UserProvider, useUser, ROLES, ROLE_DEFAULT_PAGE } from './context/UserContext';
 import { ChatNotificationProvider } from './context/ChatNotificationContext';
 import { useTheme } from './hooks/useTheme';
@@ -66,7 +67,6 @@ import {
 } from './pages/DirectorPages';
 import { DirectorRiskMonitoring } from './pages/DirectorRiskMonitoring';
 import { StrategicReportsView } from './pages/StrategicReportsView';
-import { ScoreRulesViewer } from './pages/ScoreRulesViewer';
 import { RelationshipMap } from './pages/RelationshipMap';
 
 // ─── Manager pages ──
@@ -113,6 +113,7 @@ import { ProfilePage } from './pages/ProfilePage';
 // INNER APP
 // ─────────────────────────────────────────────────────────────
 const MainApp: React.FC = () => {
+  const { t } = useTranslation('common');
   const { currentUser, loading } = useUser();
   useTheme();
 
@@ -211,7 +212,7 @@ const MainApp: React.FC = () => {
             <line x1="15.5" y1="12" x2="21" y2="12" stroke="white" strokeWidth="1.5" />
           </svg>
         </div>
-        <div style={{ color: '#94A3B8', fontSize: 'var(--text-body)' }}>Đang tải APMS Platform…</div>
+        <div style={{ color: '#94A3B8', fontSize: 'var(--text-body)' }}>{t('app.loading')}</div>
         <style>{`@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }`}</style>
       </div>
     );
@@ -223,16 +224,13 @@ const MainApp: React.FC = () => {
     if (path === '/reset-password') return <ResetPassword onBackToLogin={() => window.location.href = '/'} />;
     return <Login />;
   }
-  // ── Role dashboard ──
   const renderDashboard = () => {
     switch (currentUser.role) {
-      case ROLES.ADMIN:      return <AdminDashboard />;
-      case ROLES.OWNER:      return <OwnerDashboard />;
-      case ROLES.DIRECTOR:   return <DirectorDashboard />;
-      case ROLES.MANAGER:    return <ManagerDashboard setActivePage={navigateToPage} />;
-      case ROLES.KEY_MEMBER: return <KeyMemberDashboard setActivePage={navigateToPage} />;
-      case ROLES.STAFF:      return <StaffDashboard setActivePage={navigateToPage} />;
-      default:               return <DirectorDashboard />;
+      case ROLES.ADMIN:   return <AdminDashboard />;
+      case ROLES.OWNER:   return <OwnerDashboard />;
+      case ROLES.MANAGER: return <ManagerDashboard setActivePage={navigateToPage} />;
+      case ROLES.STAFF:   return <StaffDashboard setActivePage={navigateToPage} />;
+      default:            return <OwnerDashboard />;
     }
   };
 
@@ -248,10 +246,10 @@ const MainApp: React.FC = () => {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
           <div style={{ fontSize: 48 }}>🔒</div>
-          <h2 style={{ color: 'var(--text-primary)' }}>Không có quyền truy cập</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Bạn không có quyền xem trang này.</p>
+          <h2 style={{ color: 'var(--text-primary)' }}>{t('app.accessDeniedTitle')}</h2>
+          <p style={{ color: 'var(--text-muted)' }}>{t('app.accessDeniedBody')}</p>
           <button className="btn btn-primary" onClick={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}>
-            ← Về Dashboard
+            {t('app.backToDashboard')}
           </button>
         </div>
       );
@@ -286,24 +284,23 @@ const MainApp: React.FC = () => {
       case 'access-control':   return <SystemSettingsPage defaultTab="access-control" />;
 
       // ── Director & Owner pages ──
-      case 'partner-ecosystem':        return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <EcosystemOverview setActivePage={navigateToPage} /> : <PartnerEcosystem />;
+      case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <EcosystemOverview setActivePage={navigateToPage} /> : <PartnerEcosystem />;
       case 'competitor-intelligence':  return <CompetitorIntelligence />;
       case 'relationship-map':         return <RelationshipMap setActivePage={navigateToPage} />;
       case 'market-opportunities':     return <MarketOpportunities />;
       case 'ai-recommendations':       return <AIRecommendations />;
-      case 'strategic-reports':        return currentUser.role === ROLES.DIRECTOR ? <StrategicReportsView /> : <StrategicReports />;
-      case 'score-rules':              return <ScoreRulesViewer />;
+      case 'strategic-reports':        return <StrategicReports />;
 
       // ── Manager pages ──
       case 'partner-evaluation':         return <PartnerEvaluation />;
       case 'company-assignment':         return <CompanyAssignment setActivePage={navigateToPage} />;
       case 'analysis-history':           return <AnalysisHistory />;
-      case 'risk-monitoring':            return currentUser.role === ROLES.DIRECTOR ? <DirectorRiskMonitoring setActivePage={navigateToPage} /> : <RiskMonitoring />;
+      case 'risk-monitoring':            return <RiskMonitoring />;
       case 'partner-status':             return <PartnerStatus />;
       case 'suggested-actions-approval': return <ApprovalsPage />;
       case 'team-kpi':                   return <TeamKPI />;
       case 'reports':                    return <ManagerReports />;
-      case 'project-management':         return (currentUser.role === ROLES.OWNER || currentUser.role === ROLES.DIRECTOR) ? <ProjectsOverview /> : <ProjectManagement setActivePage={navigateToPage} />;
+      case 'project-management':         return currentUser.role === ROLES.OWNER ? <ProjectsOverview /> : <ProjectManagement setActivePage={navigateToPage} />;
       case 'project-detail':             return <ProjectDetailPage setActivePage={navigateToPage} />;
 
       // ── Key Member pages ──
@@ -334,10 +331,10 @@ const MainApp: React.FC = () => {
               {activePage.replace(/-/g, ' ')}
             </h2>
             <p style={{ color: 'var(--text-muted)', maxWidth: 400 }}>
-              Trang này đang trong quá trình phát triển. Các tính năng sẽ sớm được ra mắt.
+              {t('app.comingSoon')}
             </p>
             <button className="btn btn-primary" onClick={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}>
-              ← Về Dashboard
+              {t('app.backToDashboard')}
             </button>
           </div>
         );

@@ -1,0 +1,100 @@
+{
+  "header": {
+    "systemEyebrow": "Platform configuration",
+    "systemTitle": "System Settings",
+    "systemDesc": "Manage AI thresholds, crawler frequencies, upload constraints, and approval timeout policies.",
+    "securityEyebrow": "Security policy",
+    "securityTitle": "Security Settings",
+    "securityDesc": "Configure MFA enforcement, active session tracking, and password policy rules.",
+    "accessEyebrow": "Network perimeter",
+    "accessTitle": "Access Control & Trusted IPs",
+    "accessDesc": "Manage allowed IP address ranges and trusted corporate subnets.",
+    "save": "💾 Save Settings",
+    "saving": "Saving..."
+  },
+  "notice": {
+    "backendDevTitle": "Session Configuration Mode",
+    "backendDevDesc": "The system settings backend is under active development. Configuration parameters are active and persisted locally for this session.",
+    "saveSuccess": "System settings saved successfully!",
+    "saveError": "Could not save system settings."
+  },
+  "tabs": {
+    "system": "System",
+    "security": "Security",
+    "accessControl": "Access control"
+  },
+  "stats": {
+    "confidenceThreshold": "Confidence threshold",
+    "crawlFrequency": "Crawl frequency",
+    "storageRule": "Storage rule",
+    "engineState": "Engine state",
+    "active": "Active",
+    "mfaEnforcement": "MFA enforcement",
+    "sessionControl": "Session control",
+    "trustedIpFilter": "Trusted IP filter",
+    "auditTrail": "Audit trail",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "activeIpRange": "Active IP range",
+    "networkRule": "Network rule",
+    "subnetState": "Subnet state",
+    "strict": "Strict",
+    "policyEnforced": "Policy enforced"
+  },
+  "systemTab": {
+    "generalBehavior": "General behavior",
+    "generalBehaviorDesc": "Configure AI detection thresholds, SLA response windows, and attachment upload limits.",
+    "aiThreshold": "AI confidence threshold (%)",
+    "aiThresholdDesc": "Records below this confidence score enter manual validation queue (0 - 100%).",
+    "crawlFreq": "Automated crawl frequency",
+    "crawlFreqDesc": "Cadence for automated public intelligence gathering.",
+    "crawlOptions": {
+      "Hourly": "Hourly",
+      "Every 3 hours": "Every 3 hours",
+      "Every 6 hours": "Every 6 hours",
+      "Every 12 hours": "Every 12 hours",
+      "Daily": "Daily"
+    },
+    "approvalSla": "Approval SLA (hours)",
+    "approvalSlaDesc": "Pending profile submissions trigger escalation after this window.",
+    "maxUpload": "Maximum upload size (MB)",
+    "maxUploadDesc": "File size limit for evidence upload attachments.",
+    "defaultLang": "Default language",
+    "defaultLangDesc": "Primary workspace language.",
+    "timezone": "Timezone",
+    "timezoneDesc": "Global timezone for timestamps and scheduling.",
+    "runtimeNotes": "Runtime notes",
+    "currentDefaults": "Current defaults"
+  },
+  "securityTab": {
+    "protectionControls": "Protection controls",
+    "protectionControlsDesc": "Toggle system security policies and enforcement switches.",
+    "mfa": "Two-factor authentication (MFA)",
+    "mfaDesc": "Require secondary OTP verification for sign-ins.",
+    "sessionTimeout": "Idle session timeout",
+    "sessionTimeoutDesc": "Automatically sign out inactive users after 30 minutes.",
+    "ipLockout": "Suspicious IP lockout",
+    "ipLockoutDesc": "Lock IP addresses after repeated authentication failures.",
+    "passwordPolicy": "Strict password policy",
+    "passwordPolicyDesc": "Enforce passwords with uppercase, digits, and symbols.",
+    "auditLogging": "Full audit logging",
+    "auditLoggingDesc": "Record all system operations to the audit trail.",
+    "postureSnapshot": "Posture snapshot",
+    "protectionSummary": "Protection summary"
+  },
+  "accessTab": {
+    "whitelistTitle": "Trusted IP whitelist",
+    "whitelistDesc": "Allow network entry only from whitelisted IP subnets.",
+    "remove": "Remove",
+    "noIps": "No trusted IP ranges defined.",
+    "placeholder": "e.g. 192.168.1.0/24 or 10.0.0.1",
+    "addSubnet": "+ Add Subnet"
+  },
+  "confirmModal": {
+    "title": "⚠️ Confirm Security Policy Change",
+    "desc": "You are turning off critical security controls (e.g. MFA, Idle Session Timeout, or Audit Logging). This action affects platform-wide security posture.",
+    "prompt": "Are you sure you want to save these sensitive security changes?",
+    "cancel": "Cancel",
+    "confirm": "Confirm & Save"
+  }
+}

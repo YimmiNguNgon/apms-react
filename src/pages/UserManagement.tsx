@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
 import { useUser } from '../context/UserContext';
 import type { AccountAdminResponse, RoleDto, PermissionDto } from '../types/domain';
@@ -46,9 +47,7 @@ const ROLE_BADGE: Record<string, string> = {
 const ALL_ROLE_OPTIONS = [
   { value: 'ROLE_SYSTEM_ADMIN', label: 'System Administrator (Admin)' },
   { value: 'ROLE_BUSINESS_OWNER', label: 'Business Owner (Owner)' },
-  { value: 'ROLE_BUSINESS_DIRECTOR', label: 'Business Director' },
   { value: 'ROLE_BUSINESS_DEVELOPMENT_MANAGER', label: 'BD Manager' },
-  { value: 'ROLE_KEY_MEMBER', label: 'Key Member' },
   { value: 'ROLE_RESEARCH_STAFF', label: 'Research Staff' },
 ];
 
@@ -86,6 +85,7 @@ const roleAccent = (role: string) => {
 };
 
 const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: number }) => void }> = ({ onStats }) => {
+  const { t } = useTranslation('user-management');
   const { currentUser } = useUser();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [, setRoles] = useState<RoleDto[]>([]);
@@ -263,38 +263,38 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
     <div className="admin-users-view">
       <div className="admin-users-header">
         <div>
-          <span className="workspace-side-eyebrow">Account directory</span>
-          <h2>Account Management</h2>
-          <p>Create, inspect, modify roles, and toggle access for system users.</p>
+          <span className="workspace-side-eyebrow">{t('users.searchLabel')}</span>
+          <h2>{t('users.title')}</h2>
+          <p>{t('users.desc')}</p>
         </div>
         <button className="btn btn-primary" onClick={() => { setError(''); setNotice(''); setShowCreateModal(true); }}>
-          + Create account
+          {t('users.createAccount')}
         </button>
       </div>
 
       <div className="admin-users-layout">
         <aside className="admin-directory-rail">
           <label>
-            <span>Search directory</span>
+            <span>{t('users.searchLabel')}</span>
             <input
               className="admin-input"
-              placeholder="Name, username, or email"
+              placeholder={t('users.searchPlaceholder')}
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             />
           </label>
           <label>
-            <span>Status filter</span>
+            <span>{t('users.statusFilter')}</span>
             <select className="admin-select" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0); }}>
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Disabled</option>
+              <option value="all">{t('users.allStatuses')}</option>
+              <option value="active">{t('users.active')}</option>
+              <option value="inactive">{t('users.disabled')}</option>
             </select>
           </label>
-          <button className="btn btn-outline" onClick={fetchUsers}>Refresh directory</button>
+          <button className="btn btn-outline" onClick={fetchUsers}>{t('users.refresh')}</button>
           <div className="admin-directory-summary">
             <strong>{filtered.length}</strong>
-            <span>visible accounts</span>
+            <span>{t('users.visibleAccounts')}</span>
           </div>
         </aside>
 
@@ -308,7 +308,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
               <table className="admin-table">
                 <thead>
                   <tr>
-                    {['ID', 'User', 'Email', 'Role', 'Status', 'Actions'].map((header) => <th key={header}>{header}</th>)}
+                    {[t('users.table.id'), t('users.table.user'), t('users.table.email'), t('users.table.role'), t('users.table.status'), t('users.table.actions')].map((header) => <th key={header}>{header}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -321,8 +321,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
                       <tr key={user.id || user.email}>
                         <td className="admin-mono">#{user.id ?? '-'}</td>
                         <td>
-                          <strong>{user.name || user.fullName || user.username || 'Unnamed user'} {isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(You)</span>}</strong>
-                          <small>{user.username || 'No username'}</small>
+                          <strong>{user.name || user.fullName || user.username || 'Unnamed user'} {isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>{t('users.table.you')}</span>}</strong>
+                          <small>{user.username || ''}</small>
                         </td>
                         <td>{user.email || '-'}</td>
                         <td>
@@ -332,7 +332,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
                         </td>
                         <td>
                           <span className={`admin-status ${isActive ? 'active' : ''}`}>
-                            {isActive ? 'Active' : 'Disabled'}
+                            {isActive ? t('users.active') : t('users.disabled')}
                           </span>
                         </td>
                         <td>
@@ -647,6 +647,7 @@ const PermissionsTab: React.FC = () => {
 };
 
 export const UserManagement: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'users' }) => {
+  const { t } = useTranslation('user-management');
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0, totalRoles: 0 });
 
@@ -656,48 +657,48 @@ export const UserManagement: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'u
 
   const pageMeta = useMemo(() => ({
     users: {
-      eyebrow: 'Account operations',
-      title: 'Users',
-      desc: 'Create, search, lock, and review people who can sign in to APMS.',
+      eyebrow: t('meta.users.eyebrow'),
+      title: t('meta.users.title'),
+      desc: t('meta.users.desc'),
       meter: stats.totalUsers || '-',
-      meterLabel: 'accounts',
+      meterLabel: t('meta.users.meterLabel'),
       skin: 'users',
       stats: [
-        { label: 'Total accounts', value: stats.totalUsers || '-' },
-        { label: 'Active accounts', value: stats.activeUsers || '-' },
-        { label: 'Disabled accounts', value: Math.max(0, stats.totalUsers - stats.activeUsers) || '-' },
-        { label: 'Provisioning', value: 'Open' },
+        { label: t('meta.users.totalAccounts'), value: stats.totalUsers || '-' },
+        { label: t('meta.users.activeAccounts'), value: stats.activeUsers || '-' },
+        { label: t('meta.users.disabledAccounts'), value: Math.max(0, stats.totalUsers - stats.activeUsers) || '-' },
+        { label: t('meta.users.provisioning'), value: 'Open' },
       ],
     },
     roles: {
-      eyebrow: 'RBAC architecture',
-      title: 'Roles',
-      desc: 'Inspect the operating lanes that define APMS workspace responsibility.',
-      meter: stats.totalRoles || '6',
-      meterLabel: 'role lanes',
+      eyebrow: t('meta.roles.eyebrow'),
+      title: t('meta.roles.title'),
+      desc: t('meta.roles.desc'),
+      meter: stats.totalRoles || '4',
+      meterLabel: t('meta.roles.meterLabel'),
       skin: 'roles',
       stats: [
-        { label: 'Role lanes', value: stats.totalRoles || '6' },
-        { label: 'Admin role', value: 'Full' },
-        { label: 'Business roles', value: '3' },
-        { label: 'Research role', value: '1' },
+        { label: t('meta.roles.roleLanes'), value: stats.totalRoles || '4' },
+        { label: t('meta.roles.adminRole'), value: 'Full' },
+        { label: t('meta.roles.businessRoles'), value: '2' },
+        { label: t('meta.roles.researchRole'), value: '1' },
       ],
     },
     permissions: {
-      eyebrow: 'Policy matrix',
-      title: 'Permissions',
-      desc: 'Scan module-level access rules by action and role without reading account rows.',
+      eyebrow: t('meta.permissions.eyebrow'),
+      title: t('meta.permissions.title'),
+      desc: t('meta.permissions.desc'),
       meter: 'A/D',
-      meterLabel: 'allow / deny',
+      meterLabel: t('meta.permissions.meterLabel'),
       skin: 'permissions',
       stats: [
-        { label: 'Matrix mode', value: 'Module' },
-        { label: 'Role columns', value: '6' },
-        { label: 'Policy state', value: 'Live' },
-        { label: 'Review cadence', value: 'Monthly' },
+        { label: t('meta.permissions.matrixMode'), value: 'Module' },
+        { label: t('meta.permissions.roleColumns'), value: '4' },
+        { label: t('meta.permissions.policyState'), value: 'Live' },
+        { label: t('meta.permissions.reviewCadence'), value: 'Monthly' },
       ],
     },
-  }), [stats]);
+  }), [stats, t]);
 
   const current = pageMeta[tab];
 
@@ -726,9 +727,9 @@ export const UserManagement: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'u
 
       <div className="admin-tabs">
         {([
-          ['users', 'Accounts'],
-          ['roles', 'Roles'],
-          ['permissions', 'Permissions'],
+          ['users', t('tabs.users')],
+          ['roles', t('tabs.roles')],
+          ['permissions', t('tabs.permissions')],
         ] as [Tab, string][]).map(([key, label]) => (
           <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>
         ))}

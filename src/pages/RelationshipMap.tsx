@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ArrowUpRight, Building2, Crown, Download, Gem, Globe, LayoutGrid, Plus,
-  RefreshCw, SlidersHorizontal, TriangleAlert, Users, Zap, ZoomIn, ZoomOut,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
+import i18n from '../i18n';
+import { formatDate } from '../utils/format';
 import styles from './RelationshipMap.module.css';
 
 type GroupKey = 'ALL' | 'project' | 'supplier' | 'customer' | 'competitor' | 'investment' | 'other';
@@ -63,19 +61,24 @@ interface GraphState {
 }
 
 const TYPE_META: Record<string, { color: string; label: string; dashed: boolean; group: GroupKey }> = {
-  PARTNER_WITH: { color: '#10B981', label: 'Hợp tác dự án', dashed: false, group: 'project' },
-  SUPPLIER_OF: { color: '#2563EB', label: 'Nhà cung cấp', dashed: true, group: 'supplier' },
-  CUSTOMER_OF: { color: '#F97316', label: 'Khách hàng', dashed: false, group: 'customer' },
-  COMPETITOR_OF: { color: '#EF4444', label: 'Đối thủ cạnh tranh', dashed: true, group: 'competitor' },
-  POTENTIAL_PARTNER_OF: { color: '#8B5CF6', label: 'Đầu tư – Cổ đông', dashed: true, group: 'investment' },
+  PARTNER_WITH: { color: '#10B981', label: i18n.t('relationship-map:relationshipTypes.partnerWith'), dashed: false, group: 'project' },
+  SUPPLIER_OF: { color: '#2563EB', label: i18n.t('relationship-map:relationshipTypes.supplierOf'), dashed: true, group: 'supplier' },
+  CUSTOMER_OF: { color: '#F97316', label: i18n.t('relationship-map:relationshipTypes.customerOf'), dashed: false, group: 'customer' },
+  COMPETITOR_OF: { color: '#EF4444', label: i18n.t('relationship-map:relationshipTypes.competitorOf'), dashed: true, group: 'competitor' },
+  POTENTIAL_PARTNER_OF: { color: '#8B5CF6', label: i18n.t('relationship-map:relationshipTypes.potentialPartnerOf'), dashed: true, group: 'investment' },
 };
 
-const FALLBACK_META = { color: '#64748B', label: 'Liên kết khác', dashed: false, group: 'other' as GroupKey };
+const FALLBACK_META = { color: '#64748B', label: i18n.t('relationship-map:relationshipTypes.fallback'), dashed: false, group: 'other' as GroupKey };
 
 const LEGEND_ORDER = ['PARTNER_WITH', 'SUPPLIER_OF', 'CUSTOMER_OF', 'COMPETITOR_OF', 'POTENTIAL_PARTNER_OF'];
 
 const CHIP_LABELS: Record<string, string> = {
-  ALL: 'Tất cả', project: 'Dự án', supplier: 'NCC', customer: 'KH', competitor: 'Đối thủ', investment: 'Đầu tư',
+  ALL: i18n.t('relationship-map:chips.all'),
+  project: i18n.t('relationship-map:chips.project'),
+  supplier: i18n.t('relationship-map:chips.supplier'),
+  customer: i18n.t('relationship-map:chips.customer'),
+  competitor: i18n.t('relationship-map:chips.competitor'),
+  investment: i18n.t('relationship-map:chips.investment'),
 };
 
 const SAMPLE_COUNTS: Record<string, number> = {
@@ -92,11 +95,11 @@ const CHIP_DEFS: Array<{ key: GroupKey; color: string }> = [
 ];
 
 const PARTNER_TYPE_OPTIONS = [
-  { value: 'PARTNER_WITH', label: 'Hợp tác dự án' },
-  { value: 'SUPPLIER_OF', label: 'Nhà cung cấp' },
-  { value: 'CUSTOMER_OF', label: 'Khách hàng' },
-  { value: 'COMPETITOR_OF', label: 'Đối thủ cạnh tranh' },
-  { value: 'POTENTIAL_PARTNER_OF', label: 'Đầu tư – Cổ đông' },
+  { value: 'PARTNER_WITH', label: i18n.t('relationship-map:relationshipTypes.partnerWith') },
+  { value: 'SUPPLIER_OF', label: i18n.t('relationship-map:relationshipTypes.supplierOf') },
+  { value: 'CUSTOMER_OF', label: i18n.t('relationship-map:relationshipTypes.customerOf') },
+  { value: 'COMPETITOR_OF', label: i18n.t('relationship-map:relationshipTypes.competitorOf') },
+  { value: 'POTENTIAL_PARTNER_OF', label: i18n.t('relationship-map:relationshipTypes.potentialPartnerOf') },
 ] as const;
 
 interface PartnerForm {
@@ -126,9 +129,6 @@ const darken = (hex: string, amt: number) => {
   const [r, g, b] = hexToRgb(hex).map((v) => Math.max(0, Math.round(v * (1 - amt))));
   return `rgb(${r},${g},${b})`;
 };
-
-const iconGrad = (hex: string) =>
-  `radial-gradient(circle at 32% 26%, ${hexToRgba(hex, 0.28)}, ${hexToRgba(hex, 0.1)} 55%, ${hexToRgba(hex, 0.04)} 100%)`;
 
 const avatarGrad = (hex: string) => `linear-gradient(135deg, ${hex} 0%, ${darken(hex, 0.28)} 100%)`;
 
@@ -175,11 +175,12 @@ function buildGraph(raw: GraphCompanyDto[]): GraphState {
     types.forEach((t) => { freq[t] = (freq[t] || 0) + 1; });
     const domType = Object.keys(freq).sort((a, b) => (freq[b] || 0) - (freq[a] || 0))[0];
     const meta = TYPE_META[domType] || FALLBACK_META;
+    const displayName = c.name || i18n.t('relationship-map:node.noName');
     return {
       id: c.companyId,
-      name: c.name || 'Chưa có tên',
-      initials: initialsOf(c.name || 'Chưa có tên'),
-      short: shortOf(c.name || 'Chưa có tên'),
+      name: displayName,
+      initials: initialsOf(displayName),
+      short: shortOf(displayName),
       connections: types.length,
       color: meta.color,
       label: meta.label,
@@ -225,9 +226,15 @@ interface RelationshipMapProps {
 }
 
 export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage }) => {
+  const { t } = useTranslation('relationship-map');
   const [graph, setGraph] = useState<GraphState | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<GroupKey>('ALL');
+  const [industryFilter, setIndustryFilter] = useState<string[]>(() => {
+    const raw = new URLSearchParams(window.location.search).get('industry');
+    return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
+  const [industrySearch, setIndustrySearch] = useState('');
   const [layout, setLayout] = useState<LayoutMode>('radial');
   const [zoom, setZoom] = useState(1);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
@@ -260,50 +267,89 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const today = formatDate(new Date());
 
-  const kpis: Array<{ label: string; value: number | string; growth: string; icon: LucideIcon; color: string; bg: string }> = useMemo(() => {
+  const updateIndustryFilter = useCallback((next: string[]) => {
+    setIndustryFilter(next);
+    const params = new URLSearchParams(window.location.search);
+    if (next.length) params.set('industry', next.join(','));
+    else params.delete('industry');
+    const qs = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`);
+  }, []);
+
+  const kpis: Array<{ label: string; value: number | string; growth: string; color: string }> = useMemo(() => {
     const n = graph?.nodes.length ?? 48;
     const e = graph?.edges.length ?? 18;
     const p = graph?.projectCount ?? 3;
     return [
-      { label: 'Tổng đối tác', value: n, growth: '+5 tháng này', icon: Building2, color: '#2563EB', bg: iconGrad('#2563EB') },
-      { label: 'Quan hệ hoạt động', value: e, growth: '+12 mới', icon: Zap, color: '#F59E0B', bg: iconGrad('#F59E0B') },
-      { label: 'Dự án chung', value: p, growth: '+3 Q2', icon: Zap, color: '#F97316', bg: iconGrad('#F97316') },
-      { label: 'Cảnh báo nguy cơ', value: riskWarnings, growth: '+2 mới', icon: TriangleAlert, color: '#EF4444', bg: iconGrad('#EF4444') },
-      { label: 'AI Score TB', value: aiScore, growth: '+0.3', icon: Gem, color: '#8B5CF6', bg: iconGrad('#8B5CF6') },
+      { label: t('stats.totalPartners'), value: n, growth: t('stats.totalPartnersGrowth'), color: '#2563EB' },
+      { label: t('stats.activeRelations'), value: e, growth: t('stats.activeRelationsGrowth'), color: '#F59E0B' },
+      { label: t('stats.sharedProjects'), value: p, growth: t('stats.sharedProjectsGrowth'), color: '#F97316' },
+      { label: t('stats.riskWarnings'), value: riskWarnings, growth: t('stats.riskWarningsGrowth'), color: '#EF4444' },
+      { label: t('stats.avgAiScore'), value: aiScore, growth: t('stats.avgAiScoreGrowth'), color: '#8B5CF6' },
     ];
-  }, [graph, riskWarnings, aiScore]);
+  }, [graph, riskWarnings, aiScore, t]);
 
   const visibleNodes = useMemo(() => {
     if (!graph) return [];
-    if (filter === 'ALL') return graph.nodes;
-    const ids = new Set<string>();
-    graph.edges.forEach((e) => { if (e.group === filter) { ids.add(e.from); ids.add(e.to); } });
-    return graph.nodes.filter((n) => ids.has(n.id));
-  }, [graph, filter]);
+    const hasTypeFilter = filter !== 'ALL';
+    const hasIndustryFilter = industryFilter.length > 0;
+    if (!hasTypeFilter && !hasIndustryFilter) return graph.nodes;
+    const typeIds = new Set<string>();
+    if (hasTypeFilter) {
+      graph.edges.forEach((e) => { if (e.group === filter) { typeIds.add(e.from); typeIds.add(e.to); } });
+    }
+    return graph.nodes.filter((n) => {
+      if (hasTypeFilter && !typeIds.has(n.id)) return false;
+      if (hasIndustryFilter) {
+        const nodeIndustry = (n.industry || '').trim() || t('filters.noIndustry');
+        if (!industryFilter.includes(nodeIndustry)) return false;
+      }
+      return true;
+    });
+  }, [graph, filter, industryFilter, t]);
 
   const visibleEdges = useMemo(() => {
     if (!graph) return [];
-    return filter === 'ALL' ? graph.edges : graph.edges.filter((e) => e.group === filter);
-  }, [graph, filter]);
+    const hasTypeFilter = filter !== 'ALL';
+    const hasIndustryFilter = industryFilter.length > 0;
+    if (!hasTypeFilter && !hasIndustryFilter) return graph.edges;
+    const ids = new Set(visibleNodes.map((n) => n.id));
+    return graph.edges.filter((e) => {
+      if (hasTypeFilter && e.group !== filter) return false;
+      return ids.has(e.from) && ids.has(e.to);
+    });
+  }, [graph, filter, industryFilter, visibleNodes]);
+
+  const industryOptions = useMemo(() => {
+    if (!graph) return [];
+    const map = new Map<string, number>();
+    graph.nodes.forEach((n) => {
+      const key = (n.industry || '').trim() || t('filters.noIndustry');
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return [...map.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+  }, [graph, t]);
 
   const positions = useMemo(() => {
     const n = visibleNodes.length;
-    if (layout === 'grid') return gridPositions(n, 430, 300, 580, 340);
-    return radialPositions(n, 430, 300, 205);
+    if (layout === 'grid') return gridPositions(n, 430, 220, 560, 260);
+    return radialPositions(n, 430, 220, 150);
   }, [layout, visibleNodes.length]);
 
   const posById = useMemo(() => {
     const m = new Map<string, { x: number; y: number }>();
-    visibleNodes.forEach((node, i) => m.set(node.id, positions[i] || { x: 430, y: 300 }));
+    visibleNodes.forEach((node, i) => m.set(node.id, positions[i] || { x: 430, y: 220 }));
     return m;
   }, [visibleNodes, positions]);
 
   const topPartners = useMemo(() => {
     if (!graph) return [];
-    return [...graph.nodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
-  }, [graph]);
+    return [...visibleNodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
+  }, [graph, visibleNodes]);
 
   const handleViewCompany = (companyId?: string) => {
     if (!companyId) return;
@@ -316,7 +362,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   const handleExportCSV = () => {
     const edges = graph?.edges ?? [];
-    const header = ['Nguồn', 'Loại quan hệ', 'Nhóm', 'Đích'];
+    const header = [t('exportCsv.source'), t('exportCsv.type'), t('exportCsv.group'), t('exportCsv.target')];
     const rows = edges.map((e) => {
       const src = graph?.nodes.find((n) => n.id === e.from);
       const dst = graph?.nodes.find((n) => n.id === e.to);
@@ -348,7 +394,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   const handleCreatePartner = async () => {
     if (!partnerForm.name.trim()) {
-      setPartnerError('Vui lòng nhập tên công ty đối tác.');
+      setPartnerError(t('errors.requiredName'));
       return;
     }
     setPartnerSubmitting(true);
@@ -363,7 +409,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       setPartnerModalOpen(false);
       await load();
     } catch (err) {
-      setPartnerError(err instanceof Error ? err.message : 'Không thể tạo đối tác. Vui lòng thử lại.');
+      setPartnerError(err instanceof Error ? err.message : t('errors.createFailed'));
     } finally {
       setPartnerSubmitting(false);
     }
@@ -374,37 +420,30 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       {/* ── Header ── */}
       <header className={styles.rmHeader}>
         <div className={styles.rmHeaderLeft}>
-          <div className={styles.rmGlobe}><Globe strokeWidth={1.8} /></div>
-          <div>
-            <h1 className={styles.rmTitle}>Mạng lưới Quan hệ đối tác</h1>
-            <p className={styles.rmSub}>Bản đồ quan hệ đa chiều – Cập nhật: {today}</p>
-          </div>
+          <h1 className={styles.rmTitle}>{t('title')}</h1>
+          <span className={styles.rmSub}>{t('subtitle', { date: today })}</span>
         </div>
         <div className={styles.rmHeaderActions}>
           <button className={`${styles.rmBtn} ${styles.rmBtnOutline}`} onClick={handleExportCSV}>
-            <Download size={15} /> Xuất báo cáo
+            {t('actions.export')}
           </button>
           <button className={`${styles.rmBtn} ${styles.rmBtnPrimary}`} onClick={openPartnerModal}>
-            <Plus size={16} /> Thêm đối tác
+            {t('actions.addPartner')}
           </button>
         </div>
       </header>
 
       {/* ── KPI row ── */}
       <section className={styles.rmKpiGrid}>
-        {kpis.map((kpi, idx) => {
-          const Icon = kpi.icon;
-          return (
-            <div key={kpi.label} className={styles.rmKpi} style={{ animationDelay: `${idx * 70}ms` }}>
-              <div className={styles.rmKpiLabel}>{kpi.label}</div>
-              <div className={styles.rmKpiValue}>{kpi.value}</div>
-              <div className={styles.rmKpiGrowth}><ArrowUpRight size={13} strokeWidth={2.4} />{kpi.growth}</div>
-              <div className={styles.rmKpiIcon} style={{ background: kpi.bg }}>
-                <Icon size={19} color={kpi.color} strokeWidth={2} />
-              </div>
+        {kpis.map((kpi, idx) => (
+          <div key={kpi.label} className={styles.rmKpi} style={{ animationDelay: `${idx * 40}ms` }}>
+            <div className={styles.rmKpiLabel}>{kpi.label}</div>
+            <div className={styles.rmKpiBottom}>
+              <span className={styles.rmKpiValue}>{kpi.value}</span>
+              <span className={styles.rmKpiGrowth} style={{ color: kpi.color }}>{kpi.growth}</span>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </section>
 
       {/* ── Main grid ── */}
@@ -413,122 +452,128 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         <section className={styles.rmNetwork}>
           <div className={styles.rmNetworkHead}>
             <div className={styles.rmNetworkTitle}>
-              <h2>Mạng lưới Quan hệ</h2>
-              <span className={styles.rmTag}>[{graph?.nodes.length ?? 12}] Doanh nghiệp</span>
-              <span className={styles.rmTag}>[{graph?.edges.length ?? 18}] Kết nối</span>
+              <h2>{t('network.title')}</h2>
+              <span className={styles.rmTag}>{t('network.companies', { count: graph ? visibleNodes.length : 12 })}</span>
+              <span className={styles.rmTag}>{t('network.connections', { count: graph ? visibleEdges.length : 18 })}</span>
             </div>
             <div className={styles.rmControls}>
-              <button className={styles.rmCtrlBtn} title="Thu nhỏ" onClick={() => setZoom((z) => clamp(z - 0.2))}><ZoomOut size={16} /></button>
-              <button className={styles.rmCtrlBtn} title="Phóng to" onClick={() => setZoom((z) => clamp(z + 0.2))}><ZoomIn size={16} /></button>
-              <button className={styles.rmCtrlBtn} title="Làm mới" onClick={load}><RefreshCw size={16} /></button>
-              <button className={styles.rmCtrlBtn} title="Đổi bố cục" onClick={() => setLayout((l) => (l === 'radial' ? 'grid' : 'radial'))}><LayoutGrid size={16} /></button>
+              <button className={styles.rmCtrlBtn} title={t('network.zoomOut')} onClick={() => setZoom((z) => clamp(z - 0.2))}>-</button>
+              <button className={styles.rmCtrlBtn} title={t('network.zoomIn')} onClick={() => setZoom((z) => clamp(z + 0.2))}>+</button>
+              <button className={styles.rmCtrlBtn} title={t('network.refresh')} onClick={load}>{t('network.refresh')}</button>
+              <button className={styles.rmCtrlBtn} title={t('network.toggleLayout')} onClick={() => setLayout((l) => (l === 'radial' ? 'grid' : 'radial'))}>
+                {layout === 'radial' ? t('network.grid') : t('network.radial')}
+              </button>
             </div>
           </div>
 
           <div className={styles.rmGraphWrap}>
             {loading ? (
-              <div className={styles.rmLoading}>Đang tải mạng lưới quan hệ...</div>
+              <div className={styles.rmLoading}>{t('network.loading')}</div>
             ) : graph && graph.nodes.length > 0 ? (
-              <svg className={styles.rmGraph} viewBox="0 0 860 600" role="img" aria-label="Mạng lưới quan hệ doanh nghiệp">
-                <defs>
-                  <pattern id="rmDotGrid" width="26" height="26" patternUnits="userSpaceOnUse">
-                    <circle cx="2" cy="2" r="1.4" fill="rgba(148,163,184,0.28)" />
-                  </pattern>
-                  <radialGradient id="rmCenterGrad" cx="50%" cy="42%" r="72%">
-                    <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="100%" stopColor="#1e3a8a" />
-                  </radialGradient>
-                  <radialGradient id="rmCenterHalo" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="rgba(59,130,246,0.35)" />
-                    <stop offset="100%" stopColor="rgba(59,130,246,0)" />
-                  </radialGradient>
-                </defs>
+              visibleNodes.length === 0 ? (
+                <div className={styles.rmEmpty}>{t('network.emptyFiltered')}</div>
+              ) : (
+                <svg className={styles.rmGraph} viewBox="0 0 860 440" role="img" aria-label={t('network.ariaLabel')}>
+                  <defs>
+                    <pattern id="rmDotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+                      <circle cx="2" cy="2" r="1.2" fill="rgba(148,163,184,0.28)" />
+                    </pattern>
+                    <radialGradient id="rmCenterGrad" cx="50%" cy="42%" r="72%">
+                      <stop offset="0%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#1e3a8a" />
+                    </radialGradient>
+                    <radialGradient id="rmCenterHalo" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="rgba(59,130,246,0.35)" />
+                      <stop offset="100%" stopColor="rgba(59,130,246,0)" />
+                    </radialGradient>
+                  </defs>
 
-                <rect x="0" y="0" width="860" height="600" fill="url(#rmDotGrid)" />
-                <ellipse cx="430" cy="300" rx="300" ry="230" fill="url(#rmCenterHalo)" />
+                  <rect x="0" y="0" width="860" height="440" fill="url(#rmDotGrid)" />
+                  <ellipse cx="430" cy="220" rx="270" ry="165" fill="url(#rmCenterHalo)" />
 
-                <g
-                  className={styles.rmGraphGroup}
-                  style={{
-                    transform: `translate(${(430 * (1 - zoom)).toFixed(2)}px, ${(300 * (1 - zoom)).toFixed(2)}px) scale(${zoom})`,
-                  }}
-                >
-                  {/* mesh edges */}
-                  {visibleEdges.map((e, i) => {
-                    const p1 = posById.get(e.from);
-                    const p2 = posById.get(e.to);
-                    if (!p1 || !p2) return null;
-                    const active = hoverNode === null || e.from === hoverNode || e.to === hoverNode;
-                    return (
-                      <line
-                        key={e.id}
-                        className={styles.rmEdge}
-                        x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                        stroke={e.color}
-                        strokeOpacity={active ? (hoverNode ? 0.9 : 0.35) : 0.12}
-                        strokeWidth={active && hoverNode ? 2.2 : 1.2}
-                        strokeDasharray={e.dashed ? '5 5' : undefined}
-                        style={{ animationDelay: `${i * 20}ms` }}
-                      />
-                    );
-                  })}
-
-                  {/* hub edges from center */}
-                  {visibleNodes.map((n) => {
-                    const p = posById.get(n.id);
-                    if (!p) return null;
-                    const active = hoverNode === null || n.id === hoverNode;
-                    return (
-                      <line
-                        key={`hub-${n.id}`}
-                        className={styles.rmHubEdge}
-                        x1={430} y1={300} x2={p.x} y2={p.y}
-                        stroke={n.color}
-                        strokeOpacity={active ? (hoverNode ? 0.55 : 0.25) : 0.08}
-                        strokeWidth={active && hoverNode ? 1.8 : 1.2}
-                        strokeDasharray={nodeDashed(n.group) ? '4 5' : undefined}
-                      />
-                    );
-                  })}
-
-                  {/* satellite nodes */}
-                  {visibleNodes.map((n, i) => {
-                    const p = posById.get(n.id)!;
-                    const dimmed = hoverNode !== null && hoverNode !== n.id;
-                    return (
-                      <g
-                        key={n.id}
-                        className={styles.rmNodeGroup}
-                        style={{ opacity: dimmed ? 0.35 : 1, animationDelay: `${i * 45}ms` }}
-                        onClick={() => handleViewCompany(n.id)}
-                        onMouseEnter={() => setHoverNode(n.id)}
-                        onMouseLeave={() => setHoverNode(null)}
-                      >
-                        <title>{n.name}</title>
-                        <circle
-                          cx={p.x} cy={p.y} r={24}
-                          fill={`${n.color}1f`} stroke={n.color} strokeWidth={2.5}
-                          style={{ cursor: 'pointer', filter: `drop-shadow(0 4px 10px ${hexToRgba(n.color, 0.35)})` }}
+                  <g
+                    className={styles.rmGraphGroup}
+                    style={{
+                      transform: `translate(${(430 * (1 - zoom)).toFixed(2)}px, ${(220 * (1 - zoom)).toFixed(2)}px) scale(${zoom})`,
+                    }}
+                  >
+                    {/* mesh edges */}
+                    {visibleEdges.map((e, i) => {
+                      const p1 = posById.get(e.from);
+                      const p2 = posById.get(e.to);
+                      if (!p1 || !p2) return null;
+                      const active = hoverNode === null || e.from === hoverNode || e.to === hoverNode;
+                      return (
+                        <line
+                          key={e.id}
+                          className={styles.rmEdge}
+                          x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                          stroke={e.color}
+                          strokeOpacity={active ? (hoverNode ? 0.9 : 0.35) : 0.12}
+                          strokeWidth={active && hoverNode ? 2.2 : 1.2}
+                          strokeDasharray={e.dashed ? '5 5' : undefined}
+                          style={{ animationDelay: `${i * 20}ms` }}
                         />
-                        <text x={p.x} y={p.y + 4} textAnchor="middle" className={styles.rmNodeText} fill={n.color}>{n.initials}</text>
-                        <circle cx={p.x + 17} cy={p.y - 17} r={9} fill={n.color} stroke="#fff" strokeWidth={2} />
-                        <text x={p.x + 17} y={p.y - 13.5} textAnchor="middle" className={styles.rmBadgeText}>{n.connections}</text>
-                        <text x={p.x} y={p.y + 40} textAnchor="middle" className={styles.rmNodeLabel}>{n.short}</text>
-                      </g>
-                    );
-                  })}
+                      );
+                    })}
 
-                  {/* center node */}
-                  <g className={styles.rmCenterHalo} pointerEvents="none">
-                    <circle cx={430} cy={300} r={64} fill="rgba(59,130,246,0.15)" />
-                    <circle cx={430} cy={300} r={58} fill="url(#rmCenterGrad)" stroke="#1e40af" strokeWidth={3} />
-                    <text x={430} y={293} textAnchor="middle" className={styles.rmCenterText}>MC</text>
-                    <text x={430} y={312} textAnchor="middle" className={styles.rmCenterSub}>My Company</text>
+                    {/* hub edges from center */}
+                    {visibleNodes.map((n) => {
+                      const p = posById.get(n.id);
+                      if (!p) return null;
+                      const active = hoverNode === null || n.id === hoverNode;
+                      return (
+                        <line
+                          key={`hub-${n.id}`}
+                          className={styles.rmHubEdge}
+                          x1={430} y1={220} x2={p.x} y2={p.y}
+                          stroke={n.color}
+                          strokeOpacity={active ? (hoverNode ? 0.55 : 0.25) : 0.08}
+                          strokeWidth={active && hoverNode ? 1.8 : 1.2}
+                          strokeDasharray={nodeDashed(n.group) ? '4 5' : undefined}
+                        />
+                      );
+                    })}
+
+                    {/* satellite nodes */}
+                    {visibleNodes.map((n, i) => {
+                      const p = posById.get(n.id)!;
+                      const dimmed = hoverNode !== null && hoverNode !== n.id;
+                      return (
+                        <g
+                          key={n.id}
+                          className={styles.rmNodeGroup}
+                          style={{ opacity: dimmed ? 0.35 : 1, animationDelay: `${i * 45}ms` }}
+                          onClick={() => handleViewCompany(n.id)}
+                          onMouseEnter={() => setHoverNode(n.id)}
+                          onMouseLeave={() => setHoverNode(null)}
+                        >
+                          <title>{n.name}</title>
+                          <circle
+                            cx={p.x} cy={p.y} r={18}
+                            fill={`${n.color}1f`} stroke={n.color} strokeWidth={2}
+                            style={{ cursor: 'pointer', filter: `drop-shadow(0 3px 8px ${hexToRgba(n.color, 0.35)})` }}
+                          />
+                          <text x={p.x} y={p.y + 3.5} textAnchor="middle" className={styles.rmNodeText} fill={n.color}>{n.initials}</text>
+                          <circle cx={p.x + 13} cy={p.y - 13} r={7} fill={n.color} stroke="#fff" strokeWidth={1.5} />
+                          <text x={p.x + 13} y={p.y - 10.5} textAnchor="middle" className={styles.rmBadgeText}>{n.connections}</text>
+                          <text x={p.x} y={p.y + 30} textAnchor="middle" className={styles.rmNodeLabel}>{n.short}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* center node */}
+                    <g className={styles.rmCenterHalo} pointerEvents="none">
+                      <circle cx={430} cy={220} r={46} fill="rgba(59,130,246,0.15)" />
+                      <circle cx={430} cy={220} r={40} fill="url(#rmCenterGrad)" stroke="#1e40af" strokeWidth={2.5} />
+                      <text x={430} y={215} textAnchor="middle" className={styles.rmCenterText}>MC</text>
+                      <text x={430} y={229} textAnchor="middle" className={styles.rmCenterSub}>{t('network.centerSub')}</text>
+                    </g>
                   </g>
-                </g>
-              </svg>
+                </svg>
+              )
             ) : (
-              <div className={styles.rmEmpty}>Chưa có dữ liệu quan hệ doanh nghiệp. Hãy thử làm mới lại.</div>
+              <div className={styles.rmEmpty}>{t('network.emptyData')}</div>
             )}
           </div>
 
@@ -551,7 +596,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         {/* Sidebar */}
         <aside className={styles.rmSide}>
           <div className={styles.rmSideCard}>
-            <div className={styles.rmSideTitle}><SlidersHorizontal size={16} /> Bộ lọc nhanh</div>
+            <div className={styles.rmSideTitle}>{t('filters.title')}</div>
             <div className={styles.rmChips}>
               {CHIP_DEFS.map((chip) => {
                 const count = graph ? (graph.counts[chip.key] ?? 0) : (SAMPLE_COUNTS[chip.key] ?? 0);
@@ -573,7 +618,61 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           </div>
 
           <div className={styles.rmSideCard}>
-            <div className={styles.rmSideTitle}><Users size={16} /> Top Đối tác Kết nối</div>
+            <div className={styles.rmSideTitle}>{t('filters.industry')}</div>
+            <div className={styles.rmIndustrySearch}>
+              <input
+                type="text"
+                className={styles.rmIndustrySearchInput}
+                placeholder={t('filters.searchPlaceholder')}
+                value={industrySearch}
+                onChange={(e) => setIndustrySearch(e.target.value)}
+              />
+            </div>
+            <div className={styles.rmIndustryList}>
+              <label className={`${styles.rmIndustryItem} ${industryFilter.length === 0 ? styles.rmIndustryItemActive : ''}`}>
+                <input
+                  type="checkbox"
+                  className={styles.rmIndustryCheck}
+                  checked={industryFilter.length === 0}
+                  onChange={() => updateIndustryFilter([])}
+                />
+                <span className={styles.rmIndustryName}>{t('filters.allIndustries')}</span>
+                <span className={styles.rmIndustryCount}>{graph?.nodes.length ?? 0}</span>
+              </label>
+              {industryOptions
+                .filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase()))
+                .map((opt) => {
+                  const checked = industryFilter.includes(opt.name);
+                  return (
+                    <label key={opt.name} className={`${styles.rmIndustryItem} ${checked ? styles.rmIndustryItemActive : ''}`}>
+                      <input
+                        type="checkbox"
+                        className={styles.rmIndustryCheck}
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? industryFilter.filter((x) => x !== opt.name)
+                            : [...industryFilter, opt.name];
+                          updateIndustryFilter(next);
+                        }}
+                      />
+                      <span className={styles.rmIndustryName}>{opt.name}</span>
+                      <span className={styles.rmIndustryCount}>{opt.count}</span>
+                    </label>
+                  );
+                })}
+              {industryOptions.length === 0 && !loading && (
+                <div className={styles.rmIndustryEmpty}>{t('filters.empty')}</div>
+              )}
+              {industryOptions.length > 0 && industrySearch.trim() !== '' &&
+                industryOptions.filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase())).length === 0 && (
+                <div className={styles.rmIndustryEmpty}>{t('filters.notFound')}</div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.rmSideCard}>
+            <div className={styles.rmSideTitle}>{t('topPartners.title')}</div>
             <div className={styles.rmRankList}>
               {topPartners.map((node, i) => {
                 const maxConn = Math.max(1, ...topPartners.map((t) => t.connections));
@@ -583,7 +682,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     className={`${styles.rmRankItem} ${i === 0 ? styles.rmRankTop : ''}`}
                     onClick={() => handleViewCompany(node.id)}
                   >
-                    {i === 0 ? <Crown size={16} className={styles.rmCrown} strokeWidth={2.4} /> : <span className={styles.rmRank}>{i + 1}</span>}
+                    <span className={styles.rmRank}>{i + 1}</span>
                     <span className={styles.rmAvatar} style={{ background: avatarGrad(node.color) }}>{node.initials}</span>
                     <div className={styles.rmRankInfo}>
                       <div className={styles.rmRankName}>{node.short}</div>
@@ -592,12 +691,14 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         <span className={styles.rmRankBarFill} style={{ width: `${Math.round((node.connections / maxConn) * 100)}%`, background: node.color }} />
                       </div>
                     </div>
-                    <span className={styles.rmRankCount}>{node.connections} kết nối</span>
+                    <span className={styles.rmRankCount}>{t('topPartners.connections', { count: node.connections })}</span>
                   </div>
                 );
               })}
               {topPartners.length === 0 && !loading && (
-                <div className={styles.rmEmpty}>Chưa có dữ liệu đối tác.</div>
+                <div className={styles.rmEmpty}>
+                  {graph && graph.nodes.length > 0 ? t('topPartners.emptyFiltered') : t('topPartners.emptyData')}
+                </div>
               )}
             </div>
           </div>
@@ -610,37 +711,37 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           <div className={`modal ${styles.rmModal}`} role="dialog" aria-modal="true" aria-labelledby="add-partner-title" onClick={(e) => e.stopPropagation()}>
             <div className={styles.rmModalHead}>
               <div>
-                <h3 id="add-partner-title">Thêm đối tác mới</h3>
-                <p>Thêm một doanh nghiệp vào mạng lưới quan hệ và gắn liên kết với công ty của bạn.</p>
+                <h3 id="add-partner-title">{t('modal.addTitle')}</h3>
+                <p>{t('modal.description')}</p>
               </div>
-              <button className={styles.rmModalClose} type="button" aria-label="Đóng" onClick={closePartnerModal}>&times;</button>
+              <button className={styles.rmModalClose} type="button" aria-label={t('modal.close')} onClick={closePartnerModal}>&times;</button>
             </div>
 
             {partnerError && <div className="workspace-inline-error">{partnerError}</div>}
 
             <div className={styles.rmFormGrid}>
               <label>
-                <span>Tên công ty <em>*</em></span>
+                <span>{t('modal.companyName')} <em>*</em></span>
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="Ví dụ: Công ty Cổ phần FPT"
+                  placeholder={t('modal.companyNamePlaceholder')}
                   value={partnerForm.name}
                   onChange={(e) => setPartnerForm((cur) => ({ ...cur, name: e.target.value }))}
                 />
               </label>
               <label>
-                <span>Ngành nghề</span>
+                <span>{t('modal.industry')}</span>
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="Ví dụ: Công nghệ thông tin"
+                  placeholder={t('modal.industryPlaceholder')}
                   value={partnerForm.industry}
                   onChange={(e) => setPartnerForm((cur) => ({ ...cur, industry: e.target.value }))}
                 />
               </label>
               <label className={styles.rmFormSpan}>
-                <span>Loại quan hệ <em>*</em></span>
+                <span>{t('modal.relationshipType')} <em>*</em></span>
                 <select
                   className="search-input"
                   value={partnerForm.relationshipType}
@@ -652,11 +753,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                 </select>
               </label>
               <label className={styles.rmFormSpan}>
-                <span>Ghi chú</span>
+                <span>{t('modal.notes')}</span>
                 <textarea
                   className="search-input"
                   rows={4}
-                  placeholder="Bối cảnh hợp tác, điểm mạnh, hay lý do thêm đối tác này..."
+                  placeholder={t('modal.notesPlaceholder')}
                   value={partnerForm.notes}
                   onChange={(e) => setPartnerForm((cur) => ({ ...cur, notes: e.target.value }))}
                 />
@@ -664,9 +765,9 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={closePartnerModal} disabled={partnerSubmitting}>Hủy</button>
+              <button className="btn btn-outline" onClick={closePartnerModal} disabled={partnerSubmitting}>{t('modal.cancel')}</button>
               <button className="btn btn-primary" onClick={() => void handleCreatePartner()} disabled={partnerSubmitting}>
-                {partnerSubmitting ? 'Đang lưu...' : 'Thêm đối tác'}
+                {partnerSubmitting ? t('modal.saving') : t('modal.addPartner')}
               </button>
             </div>
           </div>

@@ -1,0 +1,63 @@
+{
+  "title": "Hồ sơ Doanh nghiệp (Company Profiles)",
+  "subtitle": "Cơ sở dữ liệu thông tin đối tác & đối thủ",
+  "errors": {
+    "loadFailed": "Không thể tải hồ sơ công ty."
+  },
+  "profile": {
+    "nameFallback": "Chưa có tên công ty",
+    "industryFallback": "Chưa phân loại"
+  },
+  "status": {
+    "verified": "Đã xác minh",
+    "pendingReview": "Chờ duyệt",
+    "needsUpdate": "Cần cập nhật",
+    "notVerified": "Chưa xác minh"
+  },
+  "stats": {
+    "profiles": {
+      "label": "Hồ sơ công ty",
+      "note": "Hồ sơ doanh nghiệp chính thức"
+    },
+    "verified": {
+      "note": "Đã phê duyệt và sẵn sàng sử dụng"
+    },
+    "needsUpdate": {
+      "note": "Chờ xem xét hoặc bổ sung tin tức"
+    },
+    "industries": {
+      "label": "Ngành nghề",
+      "note": "{{count}} công ty có website"
+    }
+  },
+  "filters": {
+    "searchPlaceholder": "Tìm theo tên công ty, mã số thuế, website...",
+    "allStatuses": "Tất cả trạng thái",
+    "allRelationships": "Tất cả quan hệ",
+    "partner": "Đối tác",
+    "competitor": "Đối thủ",
+    "supplier": "Nhà cung cấp",
+    "customer": "Khách hàng",
+    "investorShareholder": "Đầu tư – Cổ đông",
+    "searchButton": "Tìm kiếm"
+  },
+  "table": {
+    "company": "Doanh nghiệp",
+    "ticker": "Mã CK",
+    "industry": "Ngành nghề",
+    "status": "Trạng thái",
+    "updated": "Cập nhật",
+    "actions": "Thao tác",
+    "loading": "Đang tải hồ sơ doanh nghiệp...",
+    "empty": "Không tìm thấy hồ sơ doanh nghiệp nào.",
+    "notUpdated": "Chưa cập nhật",
+    "viewTitle": "Xem hồ sơ chi tiết",
+    "viewButton": "Xem"
+  },
+  "pagination": {
+    "showing": "Hiển thị {{shown}} / {{total}} hồ sơ",
+    "prev": "Trước",
+    "page": "Trang {{current}} / {{total}}",
+    "next": "Sau"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "tabs": {
+    "users": "Accounts",
+    "roles": "Roles",
+    "permissions": "Permissions"
+  },
+  "meta": {
+    "users": {
+      "eyebrow": "Account operations",
+      "title": "Users",
+      "desc": "Create, search, lock, and review people who can sign in to APMS.",
+      "meterLabel": "accounts",
+      "totalAccounts": "Total accounts",
+      "activeAccounts": "Active accounts",
+      "disabledAccounts": "Disabled accounts",
+      "provisioning": "Provisioning"
+    },
+    "roles": {
+      "eyebrow": "RBAC architecture",
+      "title": "Roles",
+      "desc": "Inspect the operating lanes that define APMS workspace responsibility.",
+      "meterLabel": "role lanes",
+      "roleLanes": "Role lanes",
+      "adminRole": "Admin role",
+      "businessRoles": "Business roles",
+      "researchRole": "Research role"
+    },
+    "permissions": {
+      "eyebrow": "Policy matrix",
+      "title": "Permissions",
+      "desc": "Scan module-level access rules by action and role without reading account rows.",
+      "meterLabel": "allow / deny",
+      "matrixMode": "Matrix mode",
+      "roleColumns": "Role columns",
+      "policyState": "Policy state",
+      "reviewCadence": "Review cadence"
+    }
+  },
+  "users": {
+    "title": "Account Management",
+    "desc": "Create, inspect, modify roles, and toggle access for system users.",
+    "createAccount": "+ Create account",
+    "searchLabel": "Search directory",
+    "searchPlaceholder": "Name, username, or email...",
+    "statusFilter": "Status filter",
+    "allStatuses": "All statuses",
+    "active": "Active",
+    "disabled": "Disabled",
+    "refresh": "Refresh directory",
+    "visibleAccounts": "visible accounts",
+    "table": {
+      "id": "ID",
+      "user": "User",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions",
+      "you": "(You)",
+      "edit": "Edit",
+      "changeRole": "Role",
+      "toggleStatus": "Toggle Status"
+    },
+    "modal": {
+      "createTitle": "Provision New Account",
+      "editTitle": "Edit Account Details",
+      "roleTitle": "Update Assigned Role",
+      "fullName": "Full Name *",
+      "username": "Username *",
+      "email": "Email Address *",
+      "role": "Assigned Access Role *",
+      "password": "Initial Password *",
+      "save": "Save Changes",
+      "create": "Create Account",
+      "cancel": "Cancel"
+    }
+  }
+}

@@ -299,53 +299,66 @@ export const CompetitorIntelligence: React.FC = () => {
   };
 
   const getThreatBadge = (v: number | null) => {
-    if (v === null) return { bg: '#F3F4F6', color: '#6B7280', label: 'Chưa chấm điểm' };
-    if (v >= 70) return { bg: '#FEE2E2', color: '#991B1B', label: 'Nguy hiểm cao' };
-    if (v >= 40) return { bg: '#FEF3C7', color: '#92400E', label: 'Trung bình' };
-    return { bg: '#D1FAE5', color: '#065F46', label: 'Thấp' };
+    if (v === null) return { bg: 'var(--bg-input)', color: 'var(--text-muted)', label: 'Chưa chấm điểm' };
+    if (v >= 70) return { bg: '#fef2f2', color: '#ef4444', label: 'Nguy hiểm cao' };
+    if (v >= 40) return { bg: '#fef3c7', color: '#b45309', label: 'Trung bình' };
+    return { bg: '#f0fdf4', color: '#10b981', label: 'Thấp' };
   };
 
   const summary = [
-    { label: 'Competitors tracked', value: competitors.length },
-    { label: 'On Watchlist', value: watchlist.size },
-    { label: 'High threat', value: competitors.filter((c) => (c.threatValue ?? 0) >= 70).length },
-    { label: 'Unscored', value: competitors.filter((c) => c.threatValue === null).length },
+    { label: 'Đối thủ theo dõi', value: competitors.length },
+    { label: 'Watchlist', value: watchlist.size },
+    { label: 'Nguy cơ cao', value: competitors.filter((c) => (c.threatValue ?? 0) >= 70).length },
+    { label: 'Chưa chấm', value: competitors.filter((c) => c.threatValue === null).length },
   ];
 
   return (
-    <section className="workspace-page director-page role-dashboard role-dashboard-manager manager-page" id="page-competitor-intelligence">
-      <DirectorSummaryGrid items={summary} />
-
-      {/* Search & Threat Filter */}
-      <div style={{ backgroundColor: '#FFFFFF', padding: '14px 18px', borderRadius: '10px', border: '1px solid #E5E7EB', marginBottom: '16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#F3F4F6', padding: '8px 12px', borderRadius: '8px', flex: 1, minWidth: '220px' }}>
-          <span style={{ color: '#9CA3AF' }}>🔍</span>
-          <input
-            type="text"
-            placeholder="Tìm theo tên, phân khúc hoặc thông tin tình báo..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '14px', color: '#1F2937' }}
-          />
+    <section className="workspace-page director-page role-dashboard role-dashboard-manager manager-page" id="page-competitor-intelligence" style={{ padding: '0 0 4px' }}>
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '8px 14px', marginBottom: '8px', border: '1px solid var(--workspace-panel-border)', borderRadius: '12px', backgroundColor: 'var(--bg-card)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div>
+          <h1 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px', margin: '1px 0 0' }}>Competitor Intelligence</h1>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Phân tích tình báo đối thủ & mức độ đe dọa cạnh tranh</span>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>Mức đe dọa:</span>
+      </header>
+
+      {/* KPI Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginBottom: '8px' }}>
+        {summary.map((item) => (
+          <div key={item.label} style={{ padding: '5px 10px', border: '1px solid var(--workspace-panel-border)', borderRadius: '10px', backgroundColor: 'var(--bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+            <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{item.label}</span>
+            <strong style={{ display: 'block', fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px', lineHeight: 1 }}>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Bar */}
+      <div style={{ backgroundColor: 'var(--bg-card)', padding: '5px 8px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="Tìm theo tên, phân khúc hoặc thông tin tình báo..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', outline: 'none', padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', color: 'var(--text-primary)', flex: 1, minWidth: '180px' }}
+        />
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Mức đe dọa:</span>
           {[
             { key: 'ALL', label: 'Tất cả' },
-            { key: 'HIGH', label: '🔴 Cao' },
-            { key: 'MEDIUM', label: '🟡 Trung bình' },
-            { key: 'LOW', label: '🟢 Thấp' },
-            { key: 'UNSCORED', label: '⚪ Chưa chấm' },
+            { key: 'HIGH', label: 'Cao' },
+            { key: 'MEDIUM', label: 'Trung bình' },
+            { key: 'LOW', label: 'Thấp' },
+            { key: 'UNSCORED', label: 'Chưa chấm' },
           ].map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setFilterThreat(key)}
               style={{
-                padding: '6px 12px', borderRadius: '6px', border: '1px solid',
-                borderColor: filterThreat === key ? '#4F46E5' : '#E5E7EB',
-                backgroundColor: filterThreat === key ? '#EEF2FF' : '#FFFFFF',
-                color: filterThreat === key ? '#4F46E5' : '#4B5563',
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                padding: '3px 8px', borderRadius: '999px', border: '1px solid',
+                borderColor: filterThreat === key ? 'var(--brand-primary)' : 'var(--border-color)',
+                backgroundColor: filterThreat === key ? 'var(--brand-primary)' : 'var(--bg-surface)',
+                color: filterThreat === key ? '#FFFFFF' : 'var(--text-secondary)',
+                fontSize: '0.7rem', fontWeight: filterThreat === key ? 700 : 500, cursor: 'pointer',
               }}
             >
               {label}
@@ -355,147 +368,153 @@ export const CompetitorIntelligence: React.FC = () => {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyDirectorState message="No competitor intelligence records were returned by the backend." />
+        <EmptyDirectorState message="Chưa có dữ liệu tình báo đối thủ nào." />
       ) : (
-        <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB', color: '#4B5563', fontWeight: 600 }}>
-                <th style={{ padding: '14px 20px' }}>Tên công ty</th>
-                <th style={{ padding: '14px 20px' }}>Phân khúc</th>
-                <th style={{ padding: '14px 20px' }}>Điểm đe dọa</th>
-                <th style={{ padding: '14px 20px' }}>Mức nguy hiểm</th>
-                <th style={{ padding: '14px 20px' }}>Tóm tắt tình báo</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => {
-                const badge = getThreatBadge(c.threatValue);
-                const inWatchlist = watchlist.has(c.id);
-                return (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: 600, color: '#111827' }}>
-                      {c.name}
-                      {inWatchlist && <span style={{ marginLeft: '6px', fontSize: '11px', backgroundColor: '#FEF3C7', color: '#92400E', padding: '2px 6px', borderRadius: '10px', fontWeight: 700 }}>Theo dõi</span>}
-                    </td>
-                    <td style={{ padding: '14px 20px', color: '#4B5563' }}>
-                      <span style={{ backgroundColor: '#F3F4F6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600 }}>{c.segment}</span>
-                    </td>
-                    <td style={{ padding: '14px 20px', fontWeight: 700, color: c.threatValue !== null ? (c.threatValue >= 70 ? '#DC2626' : c.threatValue >= 40 ? '#D97706' : '#059669') : '#9CA3AF' }}>
-                      {c.threatValue !== null ? c.threatValue : '—'}
-                    </td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600, backgroundColor: badge.bg, color: badge.color }}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 20px', color: '#4B5563', maxWidth: '280px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {c.intel}
-                    </td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => setSelected(c)}
-                          style={{ padding: '6px 12px', backgroundColor: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          Chi tiết
-                        </button>
-                        <button
-                          onClick={() => toggleWatchlist(c.id)}
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: inWatchlist ? '#FEF3C7' : '#F9FAFB',
-                            color: inWatchlist ? '#92400E' : '#4B5563',
-                            border: `1px solid ${inWatchlist ? '#FCD34D' : '#E5E7EB'}`,
-                            borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                          }}
-                        >
-                          {inWatchlist ? '★ Bỏ theo dõi' : '☆ Theo dõi'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--workspace-panel-border)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 240px)', minHeight: '200px', overflowY: 'auto', scrollbarWidth: 'thin' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.72rem' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '5px 8px', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Tên công ty</th>
+                  <th style={{ padding: '5px 8px', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Phân khúc</th>
+                  <th style={{ padding: '5px 8px', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Điểm đe dọa</th>
+                  <th style={{ padding: '5px 8px', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Mức nguy hiểm</th>
+                  <th style={{ padding: '5px 8px', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Tóm tắt tình báo</th>
+                  <th style={{ padding: '5px 8px', textAlign: 'right', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => {
+                  const badge = getThreatBadge(c.threatValue);
+                  const inWatchlist = watchlist.has(c.id);
+                  return (
+                    <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '5px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {c.name}
+                        {inWatchlist && (
+                          <span style={{ marginLeft: '6px', fontSize: '0.62rem', backgroundColor: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '1px 6px', borderRadius: '999px', fontWeight: 700 }}>
+                            Theo dõi
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '5px 8px', color: 'var(--text-secondary)' }}>
+                        <span style={{ backgroundColor: 'var(--bg-input)', border: '1px solid var(--border-color)', padding: '1px 6px', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 600 }}>{c.segment}</span>
+                      </td>
+                      <td style={{ padding: '5px 8px', fontWeight: 800, color: c.threatValue !== null ? (c.threatValue >= 70 ? '#ef4444' : c.threatValue >= 40 ? '#b45309' : '#10b981') : 'var(--text-muted)' }}>
+                        {c.threatValue !== null ? c.threatValue : '—'}
+                      </td>
+                      <td style={{ padding: '5px 8px' }}>
+                        <span style={{ padding: '1px 6px', borderRadius: '999px', fontSize: '0.62rem', fontWeight: 600, backgroundColor: badge.bg, color: badge.color }}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '5px 8px', color: 'var(--text-muted)', maxWidth: '280px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.65rem' }}>
+                        {c.intel}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => setSelected(c)}
+                            style={{ padding: '2px 8px', backgroundColor: 'var(--bg-surface)', color: 'var(--brand-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Chi tiết
+                          </button>
+                          <button
+                            onClick={() => toggleWatchlist(c.id)}
+                            style={{
+                              padding: '2px 8px',
+                              backgroundColor: inWatchlist ? '#fef3c7' : 'var(--bg-surface)',
+                              color: inWatchlist ? '#b45309' : 'var(--text-secondary)',
+                              border: `1px solid ${inWatchlist ? '#fde68a' : 'var(--border-color)'}`,
+                              borderRadius: '6px', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer',
+                            }}
+                          >
+                            {inWatchlist ? 'Đang theo dõi' : 'Theo dõi'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* Competitor Detail Modal */}
       {selected && (
-        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(17, 24, 39, 0.5)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div style={{ width: '100%', maxWidth: '720px', maxHeight: '85vh', backgroundColor: '#FFFFFF', borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.18)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ width: '100%', maxWidth: '540px', maxHeight: '85vh', backgroundColor: 'var(--bg-card)', borderRadius: '14px', boxShadow: '0 20px 50px rgba(15,23,42,0.25)', border: '1px solid var(--workspace-panel-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Modal Header */}
-            <div style={{ padding: '24px 28px 18px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Phân tích Đối thủ Cạnh tranh
                 </span>
-                <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '4px 0 8px 0' }}>{selected.name}</h2>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <span style={{ backgroundColor: '#F3F4F6', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, color: '#374151' }}>{selected.segment}</span>
-                  <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700, backgroundColor: getThreatBadge(selected.threatValue).bg, color: getThreatBadge(selected.threatValue).color }}>
+                <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0 6px 0' }}>{selected.name}</h2>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ backgroundColor: 'var(--bg-input)', padding: '1px 6px', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{selected.segment}</span>
+                  <span style={{ padding: '1px 6px', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 700, backgroundColor: getThreatBadge(selected.threatValue).bg, color: getThreatBadge(selected.threatValue).color }}>
                     {getThreatBadge(selected.threatValue).label}
                   </span>
                   {selected.marketShare !== 'Not available' && (
-                    <span style={{ backgroundColor: '#EEF2FF', color: '#4F46E5', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>
-                      Market share: {selected.marketShare}
+                    <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '1px 6px', borderRadius: '999px', fontSize: '0.65rem', fontWeight: 600 }}>
+                      Thị phần: {selected.marketShare}
                     </span>
                   )}
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} style={{ padding: '8px', border: 'none', background: '#F3F4F6', borderRadius: '8px', cursor: 'pointer', color: '#4B5563', marginLeft: '12px', flexShrink: 0 }}>
-                ✕
+              <button onClick={() => setSelected(null)} style={{ padding: '2px 8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1 }}>
+                &times;
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
+            <div style={{ padding: '14px 16px', overflowY: 'auto', flex: 1, fontSize: '0.72rem' }}>
               {/* Threat Score visualization */}
-              <div style={{ marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '10px' }}>📊 Điểm Đe dọa (Threat Score)</h3>
+              <div style={{ marginBottom: '14px' }}>
+                <h3 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>Điểm Đe dọa (Threat Score)</h3>
                 {selected.threatValue !== null ? (
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '13px', color: '#6B7280' }}>Mức độ đe dọa hiện tại</span>
-                      <strong style={{ fontSize: '16px', color: selected.threatValue >= 70 ? '#DC2626' : selected.threatValue >= 40 ? '#D97706' : '#059669' }}>{selected.threatValue}/100</strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Mức độ đe dọa hiện tại</span>
+                      <strong style={{ fontSize: '0.85rem', color: selected.threatValue >= 70 ? '#ef4444' : selected.threatValue >= 40 ? '#b45309' : '#10b981' }}>{selected.threatValue}/100</strong>
                     </div>
-                    <div style={{ height: '10px', backgroundColor: '#F3F4F6', borderRadius: '5px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${selected.threatValue}%`, backgroundColor: selected.threatValue >= 70 ? '#DC2626' : selected.threatValue >= 40 ? '#D97706' : '#059669', borderRadius: '5px', transition: 'width 0.5s ease' }} />
+                    <div style={{ height: '6px', backgroundColor: 'var(--bg-input)', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${selected.threatValue}%`, backgroundColor: selected.threatValue >= 70 ? '#ef4444' : selected.threatValue >= 40 ? '#b45309' : '#10b981', borderRadius: '999px', transition: 'width 0.5s ease' }} />
                     </div>
                   </div>
                 ) : (
-                  <div style={{ padding: '12px', backgroundColor: '#F9FAFB', borderRadius: '8px', color: '#6B7280', fontSize: '13px' }}>
-                    Backend chưa trả về điểm đe dọa cho đối thủ này.
+                  <div style={{ padding: '8px 10px', backgroundColor: 'var(--bg-input)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    Chưa có dữ liệu điểm đe dọa cho đối thủ này.
                   </div>
                 )}
               </div>
 
               {/* Intelligence Summary */}
-              <div style={{ marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '10px' }}>🕵️ Tóm tắt Tình báo Cạnh tranh</h3>
-                <p style={{ fontSize: '14px', color: '#374151', lineHeight: '1.7', backgroundColor: '#FFF8F8', padding: '16px', borderRadius: '10px', border: '1px solid #FEE2E2', margin: 0 }}>
+              <div style={{ marginBottom: '14px' }}>
+                <h3 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>Tóm tắt Tình báo Cạnh tranh</h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: '1.4', backgroundColor: 'var(--bg-input)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', margin: 0 }}>
                   {selected.intel}
                 </p>
               </div>
 
-              {/* Actions available to Director */}
+              {/* Actions */}
               <div>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>⚡ Hành động Chiến lược</h3>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>Hành động Chiến lược</h3>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => { toggleWatchlist(selected.id); }}
-                    style={{ padding: '10px 16px', backgroundColor: watchlist.has(selected.id) ? '#FEF3C7' : '#EEF2FF', color: watchlist.has(selected.id) ? '#92400E' : '#4F46E5', border: '1px solid', borderColor: watchlist.has(selected.id) ? '#FCD34D' : '#C7D2FE', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '5px 12px', backgroundColor: watchlist.has(selected.id) ? '#fef3c7' : '#eff6ff', color: watchlist.has(selected.id) ? '#2563eb' : '#2563eb', border: '1px solid', borderColor: watchlist.has(selected.id) ? '#fde68a' : '#bfdbfe', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
                   >
-                    {watchlist.has(selected.id) ? '★ Đang theo dõi' : '☆ Thêm vào Watchlist'}
+                    {watchlist.has(selected.id) ? 'Đang theo dõi' : 'Thêm vào Watchlist'}
                   </button>
                   <button
                     onClick={() => alert(`Yêu cầu phân tích sâu hơn cho "${selected.name}" đã được ghi nhận.`)}
-                    style={{ padding: '10px 16px', backgroundColor: '#F9FAFB', color: '#374151', border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '5px 12px', backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
                   >
-                    📋 Yêu cầu Phân tích sâu
+                    Yêu cầu Phân tích sâu
                   </button>
                 </div>
               </div>

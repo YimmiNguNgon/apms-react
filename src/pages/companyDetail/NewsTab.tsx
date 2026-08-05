@@ -74,7 +74,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
     <ListingTabShell
       loading={loading}
       error={error}
-      hasData={data?.hasData ?? false}
+      hasData={true}
       crawledAt={data?.crawledAt}
       onRetry={reload}
     >

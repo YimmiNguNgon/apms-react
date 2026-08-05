@@ -1,20 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import {
-  ArrowLeft,
-  Building2,
-  Download,
-  FileText,
-  FolderKanban,
-  ShieldCheck,
-  Users,
-  Award,
-  Hash,
-  Database,
-  Info,
-  ShieldAlert,
-} from 'lucide-react';
 import { api } from '../services/api';
+import { useUser, ROLES } from '../context/UserContext';
+import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
+import {
+  ListingTabBar,
+  ListingTabContent,
+  type ListingTabId,
+} from './companyDetail/ListingTabs';
 
 export interface ScoreSnapshot {
   scoreSnapshotId: number;
@@ -38,30 +31,87 @@ interface CompanyDetailProps {
   setActivePage?: (page: string) => void;
 }
 
-const displayReviewStatus = (status?: string | null) => {
-  if (status === 'VERIFIED') return 'APPROVED';
-  return status || 'APPROVED';
-};
-
-const formatCompanyName = (name?: string | null, rawId?: string | null): string => {
+const formatCompanyName = (name?: string | null): string => {
   if (name && name.trim() && !/^[0-9a-fA-F]{24}$/.test(name.trim())) {
     return name.trim();
-  }
-  if (rawId && rawId.trim()) {
-    if (/^[0-9a-fA-F]{24}$/.test(rawId.trim())) {
-      return `Công ty (ID: ${rawId.trim().substring(0, 8)}...)`;
-    }
-    return rawId.trim();
   }
   return 'Chưa có tên công ty';
 };
 
+/* ── Compact layout & design-token helpers (Overview tab) ────────── */
+const C = {
+  page: {
+    background: '#F8FAFC',
+    minHeight: '100vh',
+    padding: '8px 16px 16px',
+    color: '#0F172A',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  } as const,
+  container: { maxWidth: '1440px', margin: '0 auto' } as const,
+  card: {
+    background: '#FFFFFF',
+    border: '1px solid #E2E8F0',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+  } as const,
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '6px',
+    marginBottom: '6px',
+    borderBottom: '1px solid #F1F5F9',
+    paddingBottom: '4px',
+  } as const,
+  h2: { margin: 0, fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' } as const,
+  h3: { margin: 0, fontSize: '0.75rem', fontWeight: 700, color: '#0F172A' } as const,
+  fieldGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' } as const,
+  fieldCell: {
+    background: '#F8FAFC',
+    padding: '5px 8px',
+    borderRadius: '6px',
+    border: '1px solid #F1F5F9',
+    minWidth: 0,
+  } as const,
+  fieldLabel: {
+    fontSize: '0.62rem',
+    color: '#64748B',
+    fontWeight: 500,
+    display: 'block',
+    marginBottom: '2px',
+  } as const,
+  value: {
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    color: '#0F172A',
+    wordBreak: 'break-word' as const,
+  } as const,
+  muted: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#94A3B8',
+    wordBreak: 'break-word' as const,
+  } as const,
+};
+
 export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActivePage }) => {
+  const { currentUser } = useUser();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [sources, setSources] = useState<ProfileSourcesResponse | null>(null);
   const [recentScore, setRecentScore] = useState<ScoreSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [listingEditing, setListingEditing] = useState(false);
+  const [tickerDraft, setTickerDraft] = useState('');
+  const [exchangeDraft, setExchangeDraft] = useState('NONE');
+  const [listingSaving, setListingSaving] = useState(false);
+  const [listingMsg, setListingMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<ListingTabId>('overview');
+
+  const canEditListing =
+    !!currentUser &&
+    ([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER] as Role[]).includes(currentUser.role);
 
   const resolvedId = companyId ?? localStorage.getItem('apms-selected-company') ?? '';
 
@@ -109,18 +159,62 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
-  const displayName = formatCompanyName(tradeName || legalName, resolvedId);
+  const displayName = formatCompanyName(tradeName || legalName);
   const initials = displayName.substring(0, 2).toUpperCase();
 
   const handleExportPdf = () => {
     alert(`Đang khởi tạo tải báo cáo PDF hồ sơ doanh nghiệp [${displayName}]...`);
   };
 
+  const ticker = profile?.stockTicker?.trim() || '';
+  const exchange = profile?.stockExchange || 'NONE';
+  const exchangeLabel = (ex?: string) => (ex && ex !== 'NONE' ? ex : 'Chưa niêm yết');
+
+  const startListingEdit = () => {
+    setTickerDraft(ticker);
+    setExchangeDraft(exchange);
+    setListingMsg(null);
+    setListingEditing(true);
+  };
+
+  const handleSaveListing = async () => {
+    setListingSaving(true);
+    setListingMsg(null);
+    try {
+      const res = await api.patch<ProfileResponse>(
+        `/company-profiles/${resolvedId}/listing-info`,
+        {
+          stockTicker: tickerDraft.trim().toUpperCase(),
+          stockExchange: exchangeDraft,
+        },
+      );
+      if (res?.data) {
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                stockTicker: res.data!.stockTicker,
+                stockExchange: res.data!.stockExchange,
+              }
+            : prev,
+        );
+        setListingEditing(false);
+        setListingMsg({ ok: true, text: 'Đã lưu thông tin niêm yết thành công.' });
+      }
+    } catch (err) {
+      setListingMsg({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Lưu thông tin niêm yết thất bại.',
+      });
+    } finally {
+      setListingSaving(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '32px 40px', color: '#0F172A' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#64748B' }}>
-          <div className="spinner" />
+      <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#64748B', fontSize: '0.78rem' }}>
           <span>Đang tải thông tin chi tiết hồ sơ doanh nghiệp...</span>
         </div>
       </div>
@@ -129,44 +223,43 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   if (error || !profile) {
     return (
-      <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '32px 40px', color: '#0F172A' }}>
+      <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
         <button
           onClick={() => (setActivePage ? setActivePage('partner-ecosystem') : history.back())}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '6px',
             background: '#FFFFFF',
             border: '1px solid #E2E8F0',
-            borderRadius: '8px',
-            padding: '8px 16px',
+            borderRadius: '6px',
+            padding: '4px 10px',
             color: '#334155',
-            fontSize: '14px',
-            fontWeight: '500',
+            fontSize: '0.72rem',
+            fontWeight: '600',
             cursor: 'pointer',
-            marginBottom: '24px',
+            marginBottom: '16px',
           }}
         >
-          <ArrowLeft size={16} /> Quay lại Partner Ecosystem
+          Quay lại Ecosystem
         </button>
 
         <div
           style={{
             background: '#FFFFFF',
             border: '1px solid #E2E8F0',
-            borderRadius: '12px',
-            padding: '40px',
+            borderRadius: '10px',
+            padding: '24px',
             textAlign: 'center',
-            maxWidth: '600px',
+            maxWidth: '480px',
             margin: '0 auto',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
           }}
         >
-          <ShieldAlert size={48} style={{ color: '#EF4444', marginBottom: '16px' }} />
-          <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: '700', color: '#0F172A', margin: '0 0 6px' }}>
             {error || 'Không tìm thấy hồ sơ doanh nghiệp'}
           </h2>
-          <p style={{ color: '#64748B', fontSize: '14px', margin: 0 }}>
+          <p style={{ color: '#64748B', fontSize: '0.72rem', margin: 0 }}>
             Hồ sơ có thể chưa được tạo hoặc bạn không có quyền truy cập.
           </p>
         </div>
@@ -175,473 +268,506 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   }
 
   return (
-    <div
-      style={{
-        background: '#F8FAFC',
-        minHeight: '100vh',
-        padding: '24px 36px 48px',
-        color: '#0F172A',
-        fontFamily: 'Inter, system-ui, sans-serif',
-      }}
-      id="page-company-detail-light"
-    >
-      {/* Top Navigation & Breadcrumb */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ fontSize: '12px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>APMS</span>
-            <span>/</span>
-            <span>Partner Ecosystem</span>
-            <span>/</span>
-            <strong style={{ color: '#1E293B' }}>{displayName}</strong>
-          </div>
-          <button
-            onClick={() => (setActivePage ? setActivePage('partner-ecosystem') : history.back())}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'transparent',
-              border: 'none',
-              color: '#2563EB',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              padding: 0,
-              marginTop: '4px',
-            }}
-            id="btn-back-to-ecosystem"
-          >
-            <ArrowLeft size={16} /> ← Quay lại Ecosystem
-          </button>
-        </div>
-
-        <div>
-          <button
-            onClick={handleExportPdf}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              borderRadius: '8px',
-              padding: '9px 16px',
-              color: '#1E293B',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              transition: 'all 0.15s ease',
-            }}
-            id="btn-export-company-pdf"
-          >
-            <Download size={16} style={{ color: '#2563EB' }} /> Export PDF Hồ sơ
-          </button>
-        </div>
-      </div>
-
-      {/* Main Header Hero Card */}
-      <div
-        style={{
-          background: '#FFFFFF',
-          border: '1px solid #E2E8F0',
-          borderRadius: '16px',
-          padding: '28px 32px',
-          marginBottom: '28px',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '24px',
-          flexWrap: 'wrap',
-        }}
-      >
-        {/* Logo Avatar */}
+    <div style={C.page} id="page-company-detail-light">
+      <div style={C.container}>
+        {/* Top Navigation & Breadcrumb */}
         <div
           style={{
-            width: '68px',
-            height: '68px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
             display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            justifyContent: 'center',
-            color: '#FFFFFF',
-            fontWeight: '700',
-            fontSize: '24px',
-            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.25)',
-            flexShrink: 0,
+            marginBottom: '8px',
+            flexWrap: 'wrap',
+            gap: '8px',
           }}
         >
-          {initials}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => (setActivePage ? setActivePage('partner-ecosystem') : history.back())}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: 'transparent',
+                border: 'none',
+                color: '#2563EB',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+              id="btn-back-to-ecosystem"
+            >
+              &larr; Quay lại Ecosystem
+            </button>
+            <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
+            <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>APMS</span>
+              <span>/</span>
+              <span>Company Detail</span>
+              <span>/</span>
+              <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
+            </div>
+          </div>
+
+          <div>
+            <button
+              onClick={handleExportPdf}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: '#FFFFFF',
+                border: '1px solid #CBD5E1',
+                borderRadius: '6px',
+                padding: '3px 9px',
+                color: '#1E293B',
+                fontSize: '0.68rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              }}
+              id="btn-export-company-pdf"
+            >
+              Export PDF Hồ sơ
+            </button>
+          </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: '280px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-            <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '800', color: '#0F172A', letterSpacing: '-0.5px' }}>
-              {displayName}
-            </h1>
-            <span
-              style={{
-                background: '#EFF6FF',
-                border: '1px solid #BFDBFE',
-                color: '#1D4ED8',
-                fontSize: '12px',
-                fontWeight: '700',
-                padding: '4px 12px',
-                borderRadius: '20px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-              }}
-            >
-              PARTNER ECOSYSTEM
-            </span>
-            {profile.business?.industries?.[0] && (
+        {/* Main Header Hero Card */}
+        <div
+          style={{
+            background: '#FFFFFF',
+            border: '1px solid #E2E8F0',
+            borderRadius: '10px',
+            padding: '8px 12px',
+            marginBottom: '8px',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {/* Logo Avatar */}
+          <div
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FFFFFF',
+              fontWeight: '700',
+              fontSize: '0.85rem',
+              boxShadow: '0 2px 6px rgba(37, 99, 235, 0.18)',
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </div>
+
+          <div style={{ flex: 1, minWidth: '220px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px' }}>
+                {displayName}
+              </h1>
               <span
                 style={{
-                  background: '#F1F5F9',
-                  border: '1px solid #E2E8F0',
-                  color: '#475569',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  padding: '4px 12px',
-                  borderRadius: '20px',
+                  background: '#EFF6FF',
+                  border: '1px solid #BFDBFE',
+                  color: '#1D4ED8',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  padding: '1px 7px',
+                  borderRadius: '999px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.3px',
                 }}
               >
-                {profile.business.industries[0]}
+                PARTNER ECOSYSTEM
               </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '13px', color: '#64748B' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Hash size={14} style={{ color: '#94A3B8' }} /> Company ID:{' '}
-              <strong style={{ color: '#334155', fontFamily: 'monospace' }}>{resolvedId}</strong>
-            </span>
-            <span>•</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <ShieldCheck size={14} style={{ color: '#16A34A' }} /> Status:{' '}
-              <strong style={{ color: '#15803D' }}>{displayReviewStatus(profile.reviewStatus)}</strong>
-            </span>
+              {profile.business?.industries?.[0] && (
+                <span
+                  style={{
+                    background: '#F1F5F9',
+                    border: '1px solid #E2E8F0',
+                    color: '#475569',
+                    fontSize: '0.62rem',
+                    fontWeight: 600,
+                    padding: '1px 7px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  {profile.business.industries[0]}
+                </span>
+              )}
+              <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto' }}>
+                Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{profile.reviewStatus || 'VERIFIED'}</strong>
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* 2-Column CRM Dashboard Layout */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1fr',
-          gap: '28px',
-          alignItems: 'start',
-        }}
-        id="company-detail-2col-grid"
-      >
-        {/* Left Column (Primary Details) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          {/* Card 1: Identity & Registration */}
-          <section
-            style={{
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '16px',
-              padding: '24px 28px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-            }}
-          >
+        {/* Tab Navigation */}
+        <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId={resolvedId} />
+
+        {activeTab === 'overview' ? (
+          <>
+            {/* 2-Column Grid */}
             <div
               style={{
-                display: 'flex',
-                alignItems: 'center',
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr',
                 gap: '10px',
-                marginBottom: '20px',
-                borderBottom: '1px solid #F1F5F9',
-                paddingBottom: '14px',
+                alignItems: 'start',
               }}
+              id="company-detail-2col-grid"
             >
-              <Building2 size={20} style={{ color: '#2563EB' }} />
-              <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0F172A' }}>
-                Thông tin Pháp lý & Định danh Doanh nghiệp
-              </h2>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #F1F5F9' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748B', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                  Tên Thương Mại (Trade Name)
-                </span>
-                <strong style={{ fontSize: '15px', color: tradeName ? '#0F172A' : '#94A3B8', fontWeight: '700' }}>
-                  {tradeName || 'Chưa cập nhật'}
-                </strong>
-              </div>
-
-              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #F1F5F9' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748B', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                  Tên Pháp Lý (Legal Name)
-                </span>
-                <strong style={{ fontSize: '15px', color: legalName ? '#0F172A' : '#94A3B8', fontWeight: '700' }}>
-                  {legalName || 'Chưa cập nhật'}
-                </strong>
-              </div>
-
-              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #F1F5F9' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748B', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                  Mã Số Thuế (Tax Code)
-                </span>
-                <strong style={{ fontSize: '15px', color: profile.identity?.taxCode ? '#0F172A' : '#94A3B8', fontFamily: 'monospace', fontWeight: '700' }}>
-                  {profile.identity?.taxCode || 'Chưa cập nhật'}
-                </strong>
-              </div>
-
-              <div style={{ background: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #F1F5F9' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#64748B', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                  Số Giấy Đăng Ký KD (Registration No)
-                </span>
-                <strong style={{ fontSize: '15px', color: profile.identity?.registrationNumber ? '#0F172A' : '#94A3B8', fontFamily: 'monospace', fontWeight: '700' }}>
-                  {profile.identity?.registrationNumber || 'Chưa cập nhật'}
-                </strong>
-              </div>
-            </div>
-          </section>
-
-          {/* Card 2: AI Strategic & Risk Assessment */}
-          <section
-            style={{
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '16px',
-              padding: '24px 28px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                marginBottom: '20px',
-                borderBottom: '1px solid #F1F5F9',
-                paddingBottom: '14px',
-              }}
-            >
-              <Award size={20} style={{ color: '#16A34A' }} />
-              <h2 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: '#0F172A' }}>
-                Đánh giá Chiến lược & Rủi ro (AI Assessment)
-              </h2>
-            </div>
-
-            {recentScore ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {/* Fit Score Progress Bar */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span style={{ fontWeight: '600', color: '#334155' }}>Điểm Phù Hợp Đối Tác (Partner Fit Score)</span>
-                    <strong style={{ color: '#16A34A', fontWeight: '800' }}>{recentScore.partnerFitScore} / 100</strong>
-                  </div>
-                  <div style={{ height: '10px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${recentScore.partnerFitScore}%`,
-                        height: '100%',
-                        background: recentScore.partnerFitScore >= 70 ? '#16A34A' : '#D97706',
-                        borderRadius: '6px',
-                        transition: 'width 0.5s ease',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Risk Level Progress Bar */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span style={{ fontWeight: '600', color: '#334155' }}>Mức Độ Rủi Ro (Risk Level)</span>
-                    <strong style={{ color: recentScore.riskLevel <= 30 ? '#16A34A' : '#D97706', fontWeight: '800' }}>
-                      {recentScore.riskLevel} / 100 (Thấp)
-                    </strong>
-                  </div>
-                  <div style={{ height: '10px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${recentScore.riskLevel}%`,
-                        height: '100%',
-                        background: recentScore.riskLevel <= 30 ? '#16A34A' : recentScore.riskLevel <= 60 ? '#D97706' : '#DC2626',
-                        borderRadius: '6px',
-                        transition: 'width 0.5s ease',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Competition Level */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                    <span style={{ fontWeight: '600', color: '#334155' }}>Mức Độ Cạnh Tranh (Competition Level)</span>
-                    <strong style={{ color: '#2563EB', fontWeight: '800' }}>{recentScore.competitionLevel} / 100</strong>
-                  </div>
-                  <div style={{ height: '10px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${recentScore.competitionLevel}%`,
-                        height: '100%',
-                        background: '#2563EB',
-                        borderRadius: '6px',
-                        transition: 'width 0.5s ease',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Light theme empty state */
-              <div
-                style={{
-                  padding: '36px 20px',
-                  textAlign: 'center',
-                  background: '#F8FAFC',
-                  borderRadius: '12px',
-                  border: '1px dashed #CBD5E1',
-                }}
-              >
-                <Award size={36} style={{ color: '#94A3B8', marginBottom: '10px' }} />
-                <h3 style={{ margin: '0 0 6px', fontSize: '15px', fontWeight: '700', color: '#334155' }}>
-                  Chưa có kết quả chấm điểm AI
-                </h3>
-                <p style={{ margin: 0, fontSize: '13px', color: '#64748B', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
-                  Doanh nghiệp này chưa thực hiện quy trình đánh giá điểm số rủi ro & phù hợp tự động.
-                </p>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Right Column (Sidebar Summary Cards) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-          {/* Card 3: Quick Info Summary */}
-          <section
-            style={{
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '16px',
-              padding: '24px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '16px',
-                borderBottom: '1px solid #F1F5F9',
-                paddingBottom: '12px',
-              }}
-            >
-              <Info size={18} style={{ color: '#2563EB' }} />
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#0F172A' }}>Tóm tắt Nhanh</h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748B' }}>Ngành nghề:</span>
-                <span style={{ fontWeight: '700', color: '#1E293B', background: '#F1F5F9', padding: '2px 8px', borderRadius: '6px' }}>
-                  {profile.business?.industries?.[0] || 'Chung'}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748B' }}>Trạng thái xác minh:</span>
-                <span style={{ fontWeight: '700', color: '#15803D', background: '#DCFCE7', padding: '2px 8px', borderRadius: '6px' }}>
-                  {displayReviewStatus(profile.reviewStatus)}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748B' }}>Cập nhật lần cuối:</span>
-                <span style={{ fontWeight: '600', color: '#334155' }}>
-                  {profile.metadata?.updatedAt ? new Date(profile.metadata.updatedAt).toLocaleDateString() : 'Vừa xong'}
-                </span>
-              </div>
-            </div>
-          </section>
-
-          {/* Card 4: Evidence Sources & Linked Artifacts */}
-          <section
-            style={{
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '16px',
-              padding: '24px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '16px',
-                borderBottom: '1px solid #F1F5F9',
-                paddingBottom: '12px',
-              }}
-            >
-              <Database size={18} style={{ color: '#7C3AED' }} />
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#0F172A' }}>Nguồn Bằng Chứng</h2>
-            </div>
-
-            {!sources || (!sources.projectIds?.length && !sources.importJobIds?.length && !sources.rawDocumentIds?.length && !sources.candidateIds?.length) ? (
-              <div
-                style={{
-                  padding: '24px 16px',
-                  textAlign: 'center',
-                  background: '#F8FAFC',
-                  borderRadius: '10px',
-                  border: '1px dashed #E2E8F0',
-                }}
-              >
-                <FileText size={28} style={{ color: '#94A3B8', marginBottom: '8px' }} />
-                <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: '#475569' }}>
-                  Chưa liên kết tài liệu
-                </p>
-                <span style={{ fontSize: '12px', color: '#64748B' }}>Không tìm thấy dự án hoặc bản ghi crawling liên quan.</span>
-              </div>
-            ) : (
+              {/* Left Column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #F1F5F9' }}>
-                  <FolderKanban size={16} style={{ color: '#2563EB' }} />
-                  <div>
-                    <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Dự án nghiên cứu</span>
-                    <strong style={{ fontSize: '14px', color: '#0F172A' }}>{sources.projectIds?.length || 0} dự án</strong>
+                {/* Panel 1: Identity & Registration */}
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2>
                   </div>
-                </div>
 
-                <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #F1F5F9' }}>
-                  <Users size={16} style={{ color: '#16A34A' }} />
-                  <div>
-                    <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Hồ sơ Candidate</span>
-                    <strong style={{ fontSize: '14px', color: '#0F172A' }}>{sources.candidateIds?.length || 0} ứng viên</strong>
-                  </div>
-                </div>
+                  <div style={C.fieldGrid}>
+                    <div style={C.fieldCell}>
+                      <span style={C.fieldLabel}>Tên Thương Mại (Trade Name)</span>
+                      <strong style={tradeName ? C.value : C.muted}>{tradeName || 'Chưa cập nhật'}</strong>
+                    </div>
 
-                <div style={{ background: '#F8FAFC', padding: '12px 14px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #F1F5F9' }}>
-                  <FileText size={16} style={{ color: '#D97706' }} />
-                  <div>
-                    <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Tài liệu thô</span>
-                    <strong style={{ fontSize: '14px', color: '#0F172A' }}>{sources.rawDocumentIds?.length || 0} tài liệu</strong>
+                    <div style={C.fieldCell}>
+                      <span style={C.fieldLabel}>Tên Pháp Lý (Legal Name)</span>
+                      <strong style={legalName ? C.value : C.muted}>{legalName || 'Chưa cập nhật'}</strong>
+                    </div>
+
+                    <div style={C.fieldCell}>
+                      <span style={C.fieldLabel}>Mã Số Thuế (Tax Code)</span>
+                      <strong style={{ ...(profile.identity?.taxCode ? C.value : C.muted), fontFamily: 'monospace' }}>
+                        {profile.identity?.taxCode || 'Chưa cập nhật'}
+                      </strong>
+                    </div>
+
+                    <div style={C.fieldCell}>
+                      <span style={C.fieldLabel}>Số Giấy Đăng Ký KD (Registration No)</span>
+                      <strong style={{ ...(profile.identity?.registrationNumber ? C.value : C.muted), fontFamily: 'monospace' }}>
+                        {profile.identity?.registrationNumber || 'Chưa cập nhật'}
+                      </strong>
+                    </div>
                   </div>
-                </div>
+
+                  {/* Panel 2: Listing Info inside Panel 1 footer */}
+                  <div style={{ marginTop: '8px', borderTop: '1px solid #F1F5F9', paddingTop: '8px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <h3 style={C.h3}>Thông Tin Niêm Yết (Mã Cổ Phiếu)</h3>
+                      {canEditListing && !listingEditing && (
+                        <button
+                          type="button"
+                          onClick={startListingEdit}
+                          style={{
+                            background: '#EFF6FF',
+                            border: '1px solid #BFDBFE',
+                            color: '#1D4ED8',
+                            fontSize: '0.62rem',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cập nhật mã CK
+                        </button>
+                      )}
+                    </div>
+
+                    {!listingEditing ? (
+                      <div style={C.fieldGrid}>
+                        <div style={C.fieldCell}>
+                          <span style={C.fieldLabel}>Mã Cổ Phiếu (Ticker)</span>
+                          <strong style={{ ...(ticker ? C.value : C.muted), color: ticker ? '#1E40AF' : '#94A3B8', fontFamily: 'monospace' }}>
+                            {ticker || 'Chưa niêm yết'}
+                          </strong>
+                        </div>
+                        <div style={C.fieldCell}>
+                          <span style={C.fieldLabel}>Sàn Giao Dịch (Exchange)</span>
+                          <strong style={exchange !== 'NONE' ? C.value : C.muted}>{exchangeLabel(exchange)}</strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
+                        <div>
+                          <span style={C.fieldLabel}>Mã Cổ Phiếu</span>
+                          <input
+                            type="text"
+                            value={tickerDraft}
+                            disabled={exchangeDraft === 'NONE'}
+                            onChange={(event) => setTickerDraft(event.target.value.toUpperCase())}
+                            placeholder="VD: FPT"
+                            style={{
+                              width: '100%',
+                              padding: '4px 8px',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '6px',
+                              fontSize: '0.72rem',
+                              fontFamily: 'monospace',
+                              textTransform: 'uppercase',
+                              background: exchangeDraft === 'NONE' ? '#F1F5F9' : '#FFFFFF',
+                              color: '#0F172A',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <span style={C.fieldLabel}>Sàn Giao Dịch</span>
+                          <select
+                            value={exchangeDraft}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setExchangeDraft(next);
+                              if (next === 'NONE') setTickerDraft('');
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '4px 8px',
+                              border: '1px solid #CBD5E1',
+                              borderRadius: '6px',
+                              fontSize: '0.72rem',
+                              background: '#FFFFFF',
+                              color: '#0F172A',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                          >
+                            <option value="HOSE">HOSE</option>
+                            <option value="HNX">HNX</option>
+                            <option value="UPCOM">UPCOM</option>
+                            <option value="NONE">Chưa niêm yết</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveListing()}
+                            disabled={listingSaving || (exchangeDraft !== 'NONE' && !tickerDraft.trim())}
+                            style={{
+                              background: '#2563EB',
+                              border: 'none',
+                              color: '#FFFFFF',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              opacity: listingSaving || (exchangeDraft !== 'NONE' && !tickerDraft.trim()) ? 0.5 : 1,
+                            }}
+                          >
+                            {listingSaving ? 'Đang lưu...' : 'Lưu'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setListingEditing(false)}
+                            style={{
+                              background: '#FFFFFF',
+                              border: '1px solid #CBD5E1',
+                              color: '#334155',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {listingMsg && (
+                      <div style={{ marginTop: '6px', fontSize: '0.62rem', fontWeight: 500, color: listingMsg.ok ? '#15803D' : '#B91C1C' }}>
+                        {listingMsg.text}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* Panel 3: AI Strategic & Risk Assessment */}
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Đánh giá Chiến lược & Rủi ro (AI Assessment)</h2>
+                  </div>
+
+                  {recentScore ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Fit Score Progress Bar */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
+                          <span style={{ fontWeight: 600, color: '#334155' }}>Điểm Phù Hợp Đối Tác (Partner Fit Score)</span>
+                          <strong style={{ color: '#16A34A', fontWeight: 700 }}>{recentScore.partnerFitScore} / 100</strong>
+                        </div>
+                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${recentScore.partnerFitScore}%`,
+                              height: '100%',
+                              background: recentScore.partnerFitScore >= 70 ? '#16A34A' : '#D97706',
+                              borderRadius: '6px',
+                              transition: 'width 0.5s ease',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Risk Level Progress Bar */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
+                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Rủi Ro (Risk Level)</span>
+                          <strong style={{ color: recentScore.riskLevel <= 30 ? '#16A34A' : '#D97706', fontWeight: 700 }}>
+                            {recentScore.riskLevel} / 100 (Thấp)
+                          </strong>
+                        </div>
+                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${recentScore.riskLevel}%`,
+                              height: '100%',
+                              background: recentScore.riskLevel <= 30 ? '#16A34A' : recentScore.riskLevel <= 60 ? '#D97706' : '#DC2626',
+                              borderRadius: '6px',
+                              transition: 'width 0.5s ease',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Competition Level */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
+                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Cạnh Tranh (Competition Level)</span>
+                          <strong style={{ color: '#2563EB', fontWeight: 700 }}>{recentScore.competitionLevel} / 100</strong>
+                        </div>
+                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${recentScore.competitionLevel}%`,
+                              height: '100%',
+                              background: '#2563EB',
+                              borderRadius: '6px',
+                              transition: 'width 0.5s ease',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Light theme empty state */
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        textAlign: 'center',
+                        background: '#F8FAFC',
+                        borderRadius: '8px',
+                        border: '1px dashed #CBD5E1',
+                      }}
+                    >
+                      <h3 style={{ margin: '0 0 2px', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
+                        Chưa có kết quả chấm điểm AI
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748B' }}>
+                        Doanh nghiệp này chưa thực hiện quy trình đánh giá điểm số rủi ro & phù hợp tự động.
+                      </p>
+                    </div>
+                  )}
+                </section>
               </div>
-            )}
-          </section>
-        </div>
+
+              {/* Right Column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Card 3: Quick Info Summary */}
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Tóm tắt Nhanh</h2>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Ngành nghề</span>
+                      <span style={{ fontWeight: 600, color: '#1E293B', background: '#F1F5F9', padding: '1px 6px', borderRadius: '4px' }}>
+                        {profile.business?.industries?.[0] || 'Chung'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Trạng thái xác minh</span>
+                      <span style={{ fontWeight: 600, color: '#15803D', background: '#DCFCE7', padding: '1px 6px', borderRadius: '4px' }}>
+                        {profile.reviewStatus || 'VERIFIED'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Cập nhật lần cuối</span>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>
+                        {profile.metadata?.updatedAt ? new Date(profile.metadata.updatedAt).toLocaleDateString() : 'Vừa xong'}
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Card 4: Evidence Sources */}
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Nguồn Bằng Chứng</h2>
+                  </div>
+
+                  {!sources || (!sources.projectIds?.length && !sources.importJobIds?.length && !sources.rawDocumentIds?.length && !sources.candidateIds?.length) ? (
+                    <div
+                      style={{
+                        padding: '12px 10px',
+                        textAlign: 'center',
+                        background: '#F8FAFC',
+                        borderRadius: '6px',
+                        border: '1px dashed #E2E8F0',
+                      }}
+                    >
+                      <p style={{ margin: '0 0 2px', fontSize: '0.72rem', fontWeight: 600, color: '#475569' }}>
+                        Chưa liên kết tài liệu
+                      </p>
+                      <span style={{ fontSize: '0.62rem', color: '#64748B' }}>Không tìm thấy dự án hoặc bản ghi crawling liên quan.</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ background: '#F8FAFC', padding: '5px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #F1F5F9' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Dự án nghiên cứu</span>
+                        <strong style={{ fontSize: '0.72rem', color: '#0F172A' }}>{sources.projectIds?.length || 0} dự án</strong>
+                      </div>
+
+                      <div style={{ background: '#F8FAFC', padding: '5px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #F1F5F9' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Hồ sơ Candidate</span>
+                        <strong style={{ fontSize: '0.72rem', color: '#0F172A' }}>{sources.candidateIds?.length || 0} ứng viên</strong>
+                      </div>
+
+                      <div style={{ background: '#F8FAFC', padding: '5px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #F1F5F9' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Tài liệu thô</span>
+                        <strong style={{ fontSize: '0.72rem', color: '#0F172A' }}>{sources.rawDocumentIds?.length || 0} tài liệu</strong>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          </>
+        ) : (
+          <ListingTabContent companyId={resolvedId} activeTab={activeTab} />
+        )}
       </div>
     </div>
   );

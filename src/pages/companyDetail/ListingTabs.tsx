@@ -32,7 +32,6 @@ export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChan
         className={`${styles.tab}${activeTab === tab.id ? ` ${styles.tabActive}` : ''}`}
         onClick={() => onTabChange(tab.id)}
       >
-        {tab.icon}
         {tab.label}
       </button>
     ))}

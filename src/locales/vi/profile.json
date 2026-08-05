@@ -1,0 +1,32 @@
+{
+  "header": {
+    "accountProfile": "Hồ sơ Tài khoản",
+    "title": "Hồ sơ Tài khoản - {{name}}",
+    "saved": "Đã lưu thay đổi",
+    "editProfile": "Chỉnh sửa hồ sơ",
+    "cancel": "Hủy",
+    "saving": "Đang lưu...",
+    "save": "Lưu thay đổi"
+  },
+  "summary": {
+    "permissionSummary": "Tóm tắt phân quyền",
+    "allowedPages": "Trang được phép truy cập",
+    "morePages": "+{{count}} trang khác"
+  },
+  "info": {
+    "personalInfo": "Thông tin cá nhân",
+    "fullName": "Họ và tên",
+    "email": "Email",
+    "phone": "Số điện thoại",
+    "dept": "Phòng ban",
+    "bio": "Mô tả / Tiểu sử"
+  },
+  "security": {
+    "securityAccount": "Bảo mật & Mật khẩu",
+    "currentPassword": "Mật khẩu hiện tại *",
+    "newPassword": "Mật khẩu mới *",
+    "confirmNewPassword": "Xác nhận mật khẩu mới *",
+    "changing": "Đang cập nhật...",
+    "changePassword": "Đổi mật khẩu"
+  }
+}

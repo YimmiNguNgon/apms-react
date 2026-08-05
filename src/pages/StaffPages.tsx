@@ -423,8 +423,8 @@ export const PartnerManagement: React.FC = () => {
         if (res?.success && Array.isArray(res?.data)) {
           const mapped = res.data.map((c: PartnerListItem, i: number) => ({
             id: i + 1,
-            company: c.tradeName || c.legalName || c.name || 'Doanh nghiá»‡p',
-            contact: c.keyContact || c.contactPerson || 'ChÆ°a cáº­p nháº­t',
+            company: c.tradeName || c.legalName || c.name || 'Doanh nghiệp',
+            contact: c.keyContact || c.contactPerson || 'Chưa cập nhật',
             phone: c.phone || 'N/A',
             email: c.email || 'N/A',
             tier: c.tier || c.partnerTier || 'Silver',
@@ -438,16 +438,16 @@ export const PartnerManagement: React.FC = () => {
   }, []);
 
   const handleAdd = () => {
-    const name = window.prompt("Nháº­p tĂªn cĂ´ng ty Ä‘á»‘i tĂ¡c má»›i:");
+    const name = window.prompt("Nhập tên công ty đối tác mới:");
     if (!name) return;
-    const contact = window.prompt("Nháº­p tĂªn ngÆ°á»i liĂªn há»‡:") || 'ChÆ°a cáº­p nháº­t';
+    const contact = window.prompt("Nhập tên người liên hệ:") || 'Chưa cập nhật';
     setPartners([{ id: Date.now(), company: name, contact, phone: 'N/A', email: 'N/A', tier: 'Silver', lastContact: new Date().toLocaleDateString('en-GB') }, ...partners]);
   };
 
   const summary = [
     { label: 'Tracked partners', value: partners.length, note: 'Active records in your directory' },
     { label: 'Priority tier', value: partners.filter((item) => item.tier === 'Platinum' || item.tier === 'Gold').length, note: 'Needs tighter relationship follow-up' },
-    { label: 'Needs contact update', value: partners.filter((item) => item.contact === 'ChÆ°a cáº­p nháº­t').length, note: 'Missing verified owner details' },
+    { label: 'Needs contact update', value: partners.filter((item) => item.contact === 'Chưa cập nhật').length, note: 'Missing verified owner details' },
   ];
 
   return (
@@ -570,10 +570,10 @@ export const CompetitorManagement: React.FC = () => {
         if (res?.success && Array.isArray(res?.data)) {
           const mapped = res.data.map((c: CompetitorListItem, i: number) => ({
             id: i + 1,
-            company: c.tradeName || c.legalName || c.name || 'Äá»‘i thá»§',
-            segment: c.industry || c.segment || 'ChÆ°a phĂ¢n loáº¡i',
+            company: c.tradeName || c.legalName || c.name || 'Đối thủ',
+            segment: c.industry || c.segment || 'Chưa phân loại',
             threat: c.threatLevel || c.riskLevel || 'Medium',
-            lastActivity: c.recentActivity || c.latestNews || 'ChÆ°a cáº­p nháº­t',
+            lastActivity: c.recentActivity || c.latestNews || 'Chưa cập nhật',
             date: c.updatedAt ? new Date(c.updatedAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB'),
           }));
           setCompetitors(mapped);
@@ -584,18 +584,18 @@ export const CompetitorManagement: React.FC = () => {
   }, []);
 
   const handleAdd = () => {
-    const name = window.prompt("Nháº­p tĂªn Ä‘á»‘i thá»§ má»›i:");
+    const name = window.prompt("Nhập tên đối thủ mới:");
     if (!name) return;
-    const segment = window.prompt("LÄ©nh vá»±c hoáº¡t Ä‘á»™ng:") || 'ChÆ°a cáº­p nháº­t';
-    setCompetitors([{ id: Date.now(), company: name, segment, threat: 'Medium', lastActivity: 'Má»›i Ä‘Æ°á»£c thĂªm vĂ o há»‡ thá»‘ng', date: new Date().toLocaleDateString('en-GB') }, ...competitors]);
+    const segment = window.prompt("Lĩnh vực hoạt động:") || 'Chưa cập nhật';
+    setCompetitors([{ id: Date.now(), company: name, segment, threat: 'Medium', lastActivity: 'Mới được thêm vào hệ thống', date: new Date().toLocaleDateString('en-GB') }, ...competitors]);
   };
 
   return (
     <section className="enterprise-theme page active" style={{ minHeight: '100dvh', paddingBottom: '80px' }}>
       <div className="page-header">
-        <h1>Competitor Management {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Äang táº£i...)</span>}</h1>
+        <h1>Competitor Management {loading && <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 'normal' }}>(Đang tải...)</span>}</h1>
         <div className="page-header-actions">
-          <button className="btn btn-primary" onClick={handleAdd}>+ ThĂªm Ä‘á»‘i thá»§</button>
+          <button className="btn btn-primary" onClick={handleAdd}>+ Thêm đối thủ</button>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -613,8 +613,8 @@ export const CompetitorManagement: React.FC = () => {
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{c.date}</div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-sm btn-outline">Chi tiáº¿t</button>
-              <button className="btn btn-sm btn-outline">Ghi nháº­n</button>
+              <button className="btn btn-sm btn-outline">Chi tiết</button>
+              <button className="btn btn-sm btn-outline">Ghi nhận</button>
             </div>
           </div>
         ))}
@@ -623,7 +623,7 @@ export const CompetitorManagement: React.FC = () => {
   );
 };
 
-// â”€â”€â”€ AI Extracted Data â”€â”€â”€
+// ——— AI Extracted Data ———
 
 interface AiExtraction {
   id: string;
@@ -970,7 +970,7 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Map backend CompanyProfile â†’ CompanySearchItem
+  // Map backend CompanyProfile → CompanySearchItem
   const mapProfile = (p: Record<string, unknown>): CompanySearchItem => {
     const identity = p.identity as { tradeName?: string; legalName?: string } | undefined;
     const business = p.business as { industries?: string[] } | undefined;
@@ -978,10 +978,10 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
     const companySize = p.companySize as { employeeCount?: number | string } | undefined;
     return {
       companyId: (p.companyId as string) || (p.id as string) || String(Math.random()),
-      name: identity?.tradeName || identity?.legalName || '\u0110\u1ED3\u0111\u1EA1n nghi\u1EC7p',
-      industry: business?.industries?.join(', ') || 'Ch\u01B0a ph\u00E2n lo\u1EA1i',
-      city: contact?.addresses?.[0]?.city || '\u2014',
-      employeeCount: companySize?.employeeCount ? String(companySize.employeeCount) : '\u2014',
+      name: identity?.tradeName || identity?.legalName || 'Doanh nghiệp',
+      industry: business?.industries?.join(', ') || 'Chưa phân loại',
+      city: contact?.addresses?.[0]?.city || '—',
+      employeeCount: companySize?.employeeCount ? String(companySize.employeeCount) : '—',
       reviewStatus: (p.reviewStatus as string) || 'UNVERIFIED',
     };
   };
@@ -1017,9 +1017,9 @@ export const SearchCompanies: React.FC<SearchCompaniesProps> = ({ setActivePage 
     fetchCompanies(page, query);
   };
 
-  const STATUS_LBL: Record<string, string> = { VERIFIED: 'ÄĂ£ xĂ¡c thá»±c', PENDING: 'Chá» duyá»‡t', UNVERIFIED: 'ChÆ°a xĂ¡c thá»±c' };
+  const STATUS_LBL: Record<string, string> = { VERIFIED: 'Đã xác thực', PENDING: 'Chờ duyệt', UNVERIFIED: 'Chưa xác thực' };
 
-  // Filter tráº¡ng thĂ¡i phĂ­a client (backend chÆ°a há»— trá»£ query param nĂ y)
+  // Filter trạng thái phía client (backend chưa hỗ trợ query param này)
   const displayList = statusF === 'all' ? companies : companies.filter(c => c.reviewStatus === statusF);
 
   const summary = [

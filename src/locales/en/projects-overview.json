@@ -1,0 +1,78 @@
+{
+  "breadcrumb": {
+    "section": "Portfolio Governance",
+    "current": "Projects Overview"
+  },
+  "title": {
+    "eyebrow": "Enterprise Project Directory",
+    "heading": "System-wide Projects Overview"
+  },
+  "filters": {
+    "statusLabel": "Status filter",
+    "statusAll": "All statuses",
+    "typeLabel": "Type filter",
+    "typeAll": "All types",
+    "searchLabel": "Search projects",
+    "searchPlaceholder": "Search by project or company name..."
+  },
+  "states": {
+    "loading": "Loading project list...",
+    "notFound": "No projects found."
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "There are no projects in the system yet. Create the first project to set up a research workspace and track target companies."
+  },
+  "table": {
+    "projectId": "Project ID",
+    "projectName": "Project name",
+    "targetCompany": "Target company",
+    "type": "Type",
+    "status": "Status",
+    "actions": "Actions",
+    "viewDetail": "View details"
+  },
+  "pagination": {
+    "summary": "{{total}} projects total (Page {{page}} of {{totalPages}})",
+    "previous": "← Previous",
+    "next": "Next →"
+  },
+  "create": {
+    "eyebrow": "New workspace",
+    "title": "Create new project",
+    "description": "Set up a research workspace and assign the target company context.",
+    "closeAria": "Close create project modal",
+    "projectNameLabel": "Project name",
+    "projectNamePlaceholder": "E.g., CMC cloud partnership review Q3",
+    "projectTypeLabel": "Project type",
+    "typeNewCompany": "New company research",
+    "typeUpdateCompany": "Update existing company",
+    "existingCompanyLabel": "Existing company",
+    "selectCompany": "Select an existing company",
+    "loadingCompanies": "Loading companies...",
+    "relationshipLabel": "Target relationship",
+    "selectRelationship": "Select target relationship type",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Describe the project goal (optional)",
+    "cancel": "Cancel",
+    "submit": "Create project",
+    "submitting": "Creating..."
+  },
+  "relationships": {
+    "partner": "Partner",
+    "competitor": "Competitor",
+    "supplier": "Supplier",
+    "customer": "Customer",
+    "potentialPartner": "Potential partner"
+  },
+  "errors": {
+    "loadFailed": "Unable to load the project list. Please try again.",
+    "nameRequired": "Please enter a project name.",
+    "targetCompanyRequired": "Please select a target company.",
+    "relationshipRequired": "Please select a target relationship type.",
+    "createFailed": "Unable to create project. Please try again."
+  },
+  "companyName": {
+    "unknown": "Not specified"
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "title": "Crawler Intelligence Control",
+  "subtitle": "News crawling & AI analysis control panel",
+  "categories": {
+    "news": "News",
+    "opportunity": "Opportunity",
+    "risk": "Risk"
+  },
+  "common": {
+    "noDate": "No date"
+  },
+  "table": {
+    "noSummary": "No summary available for this item.",
+    "noTitle": "Article has no title",
+    "noMatch": "No match",
+    "unknownSource": "Unknown",
+    "riskLevel": "Risk {{level}}",
+    "opportunityLevel": "Opp {{level}}",
+    "genericLevel": "General",
+    "sourceLink": "Original",
+    "loading": "Loading article list...",
+    "empty": "No articles found. Run a crawl to collect data.",
+    "headers": {
+      "type": "Type",
+      "titleSummary": "Title & Summary",
+      "company": "Company",
+      "sourceDate": "Source & Date",
+      "rating": "Assessment",
+      "details": "Details"
+    }
+  },
+  "header": {
+    "forceRefreshTitle": "Skip per-company crawl wait time and re-fetch everything",
+    "forceRefresh": "Re-crawl all",
+    "runCrawl": "Run Crawl",
+    "runCrawlRunning": "Crawling…",
+    "runAnalyze": "Run Analysis",
+    "runAnalyzeRunning": "Analyzing…"
+  },
+  "tabs": {
+    "ariaLabel": "Crawler Control Tabs",
+    "dataLabel": "Crawled data [{{total}}]",
+    "settingsLabel": "AI Configuration & Trusted Sources"
+  },
+  "filters": {
+    "searchPlaceholder": "Search title or content...",
+    "allSources": "All sources",
+    "reset": "Reset"
+  },
+  "pagination": {
+    "showing": "Showing {{shown}} / {{total}} items",
+    "previous": "Previous",
+    "page": "Page {{current}} / {{total}}",
+    "next": "Next"
+  },
+  "stats": {
+    "totalArticles": "Total articles",
+    "news": "News",
+    "opportunity": "Opportunity",
+    "risk": "Risk",
+    "uniqueEvents": "Unique events",
+    "duplicateNote": "{{count}} duplicates"
+  },
+  "sidebar": {
+    "crawlerInfo": "Crawler Info",
+    "crawled": "Crawled",
+    "articleCount": "{{count}} articles",
+    "scope": "Crawl scope",
+    "projectScope": "Project {{id}}",
+    "allCompanies": "All companies",
+    "autoRefresh": "Auto refresh",
+    "refreshInterval": "Every 30 seconds",
+    "rejectionsTitle": "Crawl rejections ({{count}} runs)",
+    "rejectedUntrusted": "Not in trusted list",
+    "rejectedUnknownDomain": "Unknown domain",
+    "rejectedNoCompany": "No company mentioned"
+  },
+  "aiProcessing": {
+    "title": "AI article processing progress",
+    "enqueueAll": "Enqueue all articles",
+    "enqueueing": "Enqueueing…",
+    "processQueue": "Process queue",
+    "processing": "Processing…",
+    "analyzed": "Analyzed",
+    "ofTotal": "of {{count}} articles",
+    "queue": "Queue",
+    "runningJobs": "{{count}} running",
+    "uniqueEvents": "Unique events",
+    "duplicates": "{{count}} duplicates",
+    "failed": "Processing errors",
+    "failedJobs": "{{count}} failed jobs"
+  },
+  "whitelist": {
+    "title": "Trusted Source Whitelist",
+    "activeSummary": "{{active}} active / {{total}} sources",
+    "domainPlaceholder": "Domain e.g. vnexpress.net",
+    "sourceNamePlaceholder": "Source name e.g. VnExpress",
+    "categoryPlaceholder": "Category (optional)",
+    "adding": "Adding…",
+    "addSource": "Add source",
+    "adminOnly": "Only Administrators can manage the trusted source whitelist.",
+    "ownerNotice": "You can edit the source name and category. Other actions (adding/removing sources, changing status) are reserved for Administrators.",
+    "editHint": "Click to edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "empty": "No trusted sources configured yet.",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "enable": "Enable",
+    "disable": "Disable",
+    "delete": "Delete",
+    "headers": {
+      "domain": "Domain",
+      "sourceName": "Source name",
+      "category": "Category",
+      "status": "Status",
+      "actions": "Actions"
+    }
+  },
+  "crawlHistory": {
+    "title": "Recent Crawl History",
+    "empty": "No crawl runs recorded yet.",
+    "manual": "manual",
+    "savedFetched": "{{saved}} saved / {{fetched}} fetched",
+    "duplicatesRejected": "Duplicates: {{duplicates}} | Rejected: {{rejected}}"
+  },
+  "errors": {
+    "loadFailed": "Failed to load crawler data.",
+    "crawlFailed": "Failed to run crawl.",
+    "analyzeFailed": "Failed to run analysis.",
+    "sourceFieldsRequired": "Please enter a domain and a source name.",
+    "addSourceFailed": "Failed to add trusted source.",
+    "loadSourceFailed": "Failed to load the trusted source list.",
+    "updateSourceFailed": "Failed to save trusted source changes.",
+    "toggleSourceFailed": "Failed to change status.",
+    "removeSourceFailed": "Failed to delete source.",
+    "processQueueFailed": "Failed to process the AI queue.",
+    "enqueueFailed": "Failed to enqueue articles to the AI queue."
+  }
+}

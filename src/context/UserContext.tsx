@@ -7,9 +7,7 @@ import { loginApi } from '../API/loginApi';
 export const ROLES = {
   ADMIN: 'ROLE_ADMIN',
   OWNER: 'ROLE_BUSINESS_OWNER',
-  DIRECTOR: 'ROLE_DIRECTOR',
   MANAGER: 'ROLE_MANAGER',
-  KEY_MEMBER: 'ROLE_KEY_MEMBER',
   STAFF: 'ROLE_STAFF',
 } as const;
 
@@ -17,11 +15,9 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'project-management', 'project-detail', 'system-chat'],
-  [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'crawler-control', 'project-management', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'score-rules', 'news', 'profile', 'system-chat'],
-  [ROLES.DIRECTOR]: ['director-dashboard', 'risk-monitoring', 'partner-ecosystem', 'competitor-intelligence', 'market-opportunities', 'ai-recommendations', 'strategic-reports', 'score-rules', 'audit-logs', 'companies', 'company-profiles', 'company-detail', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
-  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail', 'score-rules', 'system-chat'],
-  [ROLES.KEY_MEMBER]: ['keymember-dashboard', 'review-extracted-data', 'company-validation', 'partner-classification', 'competitor-classification', 'ai-suggestion-review', 'relationship-updates', 'onboarding-support', 'companies', 'company-profiles', 'company-detail', 'validate', 'profile', 'project-management', 'project-detail', 'system-chat'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat'],
+  [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'crawler-control', 'project-management', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'news', 'profile', 'system-chat'],
+  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile', 'system-chat'],
 };
 
@@ -29,9 +25,7 @@ export const ROLE_PAGES: Record<Role, string[]> = {
 export const ROLE_DEFAULT_PAGE: Record<Role, string> = {
   [ROLES.ADMIN]: 'admin-dashboard',
   [ROLES.OWNER]: 'owner-dashboard',
-  [ROLES.DIRECTOR]: 'director-dashboard',
   [ROLES.MANAGER]: 'manager-dashboard',
-  [ROLES.KEY_MEMBER]: 'keymember-dashboard',
   [ROLES.STAFF]: 'staff-dashboard',
 };
 
@@ -50,9 +44,7 @@ export interface User {
 const ROLE_COLORS: Record<Role, string> = {
   [ROLES.ADMIN]: 'linear-gradient(135deg, #64748b, #475569)',
   [ROLES.OWNER]: 'linear-gradient(135deg, #A855F7, #7E22CE)',
-  [ROLES.DIRECTOR]: 'linear-gradient(135deg, #10B981, #059669)',
   [ROLES.MANAGER]: 'linear-gradient(135deg, #F59E0B, #D97706)',
-  [ROLES.KEY_MEMBER]: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
   [ROLES.STAFF]: 'linear-gradient(135deg, #3B82F6, #2563EB)',
 };
 
@@ -81,29 +73,23 @@ const mapBackendRoles = (id: number, email: string, backendRoles: string[]): Use
     console.error('[UserContext] No roles provided for user:', email, '— defaulting to STAFF. Contact admin if this is unexpected.');
   }
 
-  const role = roles.includes('SYSTEM_ADMIN')
+  const role = roles.includes('SYSTEM_ADMIN') || roles.includes('ADMIN')
     ? ROLES.ADMIN
-    : roles.includes('BUSINESS_OWNER') || roles.includes('OWNER')
+    : roles.includes('BUSINESS_OWNER') || roles.includes('OWNER') || roles.includes('DIRECTOR')
       ? ROLES.OWNER
-      : roles.includes('DIRECTOR')
-        ? ROLES.DIRECTOR
-        : roles.includes('MANAGER')
-          ? ROLES.MANAGER
-          : roles.includes('KEY_MEMBER')
-            ? ROLES.KEY_MEMBER
-            : ROLES.STAFF;
+      : roles.includes('MANAGER')
+        ? ROLES.MANAGER
+        : ROLES.STAFF;
 
-  if (!roles.includes('SYSTEM_ADMIN') && !roles.includes('BUSINESS_OWNER') && !roles.includes('OWNER') &&
-      !roles.includes('DIRECTOR') && !roles.includes('MANAGER') && !roles.includes('KEY_MEMBER')) {
+  if (!roles.includes('SYSTEM_ADMIN') && !roles.includes('ADMIN') && !roles.includes('BUSINESS_OWNER') && !roles.includes('OWNER') &&
+      !roles.includes('DIRECTOR') && !roles.includes('MANAGER') && !roles.includes('KEY_MEMBER') && !roles.includes('STAFF')) {
     console.error('[UserContext] Unrecognized role(s) for user:', email, '— received:', backendRoles, '— defaulting to STAFF. Contact admin.');
   }
 
   const roleName =
     role === ROLES.ADMIN ? 'System Administrator' :
     role === ROLES.OWNER ? 'Business Owner' :
-    role === ROLES.DIRECTOR ? 'Business Director' :
     role === ROLES.MANAGER ? 'BD Manager' :
-    role === ROLES.KEY_MEMBER ? 'Key Member' :
     'Research Staff';
 
   const name = toDisplayName(email);

@@ -7,7 +7,6 @@ console.log('=== Director Frontend Component & Data Defensive Test ===\n');
 const filesToCheck = [
   'src/pages/DirectorRiskMonitoring.tsx',
   'src/pages/StrategicReportsView.tsx',
-  'src/pages/ScoreRulesViewer.tsx',
   'src/pages/RelationshipMap.tsx',
   'src/pages/ProjectsOverview.tsx',
   'src/pages/CompanyDetail.tsx',

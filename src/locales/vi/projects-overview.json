@@ -1,0 +1,78 @@
+{
+  "breadcrumb": {
+    "section": "Portfolio Governance",
+    "current": "Tổng quan các dự án"
+  },
+  "title": {
+    "eyebrow": "Danh mục dự án doanh nghiệp",
+    "heading": "Tổng quan về các dự án toàn hệ thống"
+  },
+  "filters": {
+    "statusLabel": "Bộ lọc trạng thái",
+    "statusAll": "Tất cả trạng thái",
+    "typeLabel": "Bộ lọc loại",
+    "typeAll": "Tất cả loại",
+    "searchLabel": "Dự án tìm kiếm",
+    "searchPlaceholder": "Tìm theo tên dự án hoặc công ty..."
+  },
+  "states": {
+    "loading": "Đang tải danh sách dự án...",
+    "notFound": "Không tìm thấy dự án nào."
+  },
+  "empty": {
+    "title": "Chưa có project nào",
+    "description": "Hệ thống chưa có dự án nào. Hãy tạo dự án đầu tiên để thiết lập không gian nghiên cứu và theo dõi công ty mục tiêu."
+  },
+  "table": {
+    "projectId": "ID dự án",
+    "projectName": "Tên dự án",
+    "targetCompany": "Công ty mục tiêu",
+    "type": "Loại",
+    "status": "Trạng thái",
+    "actions": "Hành động",
+    "viewDetail": "Kiểm tra chi tiết"
+  },
+  "pagination": {
+    "summary": "Tổng số {{total}} dự án (Trang {{page}} trên {{totalPages}})",
+    "previous": "← Trước",
+    "next": "Sau →"
+  },
+  "create": {
+    "eyebrow": "New workspace",
+    "title": "Tạo dự án mới",
+    "description": "Thiết lập không gian nghiên cứu và gán bối cảnh công ty mục tiêu.",
+    "closeAria": "Đóng modal tạo dự án",
+    "projectNameLabel": "Project name",
+    "projectNamePlaceholder": "VD: CMC cloud partnership review Q3",
+    "projectTypeLabel": "Project type",
+    "typeNewCompany": "New company research",
+    "typeUpdateCompany": "Update existing company",
+    "existingCompanyLabel": "Existing company",
+    "selectCompany": "Chọn công ty hiện có",
+    "loadingCompanies": "Đang tải công ty...",
+    "relationshipLabel": "Target relationship",
+    "selectRelationship": "Chọn loại quan hệ mục tiêu",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Mô tả mục tiêu dự án (tuỳ chọn)",
+    "cancel": "Huỷ",
+    "submit": "Tạo dự án",
+    "submitting": "Đang tạo..."
+  },
+  "relationships": {
+    "partner": "Partner",
+    "competitor": "Competitor",
+    "supplier": "Supplier",
+    "customer": "Customer",
+    "potentialPartner": "Potential partner"
+  },
+  "errors": {
+    "loadFailed": "Không thể tải danh sách dự án. Vui lòng thử lại.",
+    "nameRequired": "Vui lòng nhập tên dự án.",
+    "targetCompanyRequired": "Vui lòng chọn công ty mục tiêu.",
+    "relationshipRequired": "Vui lòng chọn loại quan hệ mục tiêu.",
+    "createFailed": "Không thể tạo dự án. Vui lòng thử lại."
+  },
+  "companyName": {
+    "unknown": "Chưa xác định"
+  }
+}

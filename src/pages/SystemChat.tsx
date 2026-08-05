@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   Check,
@@ -774,6 +775,7 @@ const ChatToastStack: React.FC<{ toasts: ChatToast[]; onView: (projectId: number
 };
 
 export const SystemChat: React.FC = () => {
+  const { t } = useTranslation('system-chat');
   const { currentUser } = useUser();
   const {
     markProjectRead: markGlobalProjectRead,

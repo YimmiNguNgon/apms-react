@@ -2,6 +2,15 @@ import { api, type PageResponse } from '../services/api';
 
 export type ExternalDataCategory = 'NEWS' | 'OPPORTUNITY' | 'RISK';
 
+export type ArticleAiStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+
+export interface CompanySentiment {
+  companyId?: string | null;
+  companyName?: string | null;
+  sentiment?: string | null;
+  confidence?: number | null;
+}
+
 export interface ExternalDataItem {
   id: string;
   title?: string | null;
@@ -18,6 +27,19 @@ export interface ExternalDataItem {
   relatedCompanyId?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  aiStatus?: ArticleAiStatus | null;
+  aiError?: string | null;
+  aiSummary?: string | null;
+  summaryGeneratedAt?: string | null;
+  topics?: string[] | null;
+  topicLabels?: string[] | null;
+  keywords?: string[] | null;
+  sentimentConfidence?: number | null;
+  riskReason?: string | null;
+  duplicateOf?: string | null;
+  duplicateGroupId?: string | null;
+  mergedSourceNames?: string[] | null;
+  companySentiments?: CompanySentiment[] | null;
 }
 
 export interface TrustedSource {
@@ -58,6 +80,20 @@ export interface CrawlRejectionSummary {
   rejectedUntrusted: number;
   rejectedUnknownDomain: number;
   rejectedNoCompany: number;
+}
+
+export interface ArticleAiStats {
+  pendingJobs: number;
+  runningJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  skippedJobs: number;
+  articlesPending: number;
+  articlesCompleted: number;
+  articlesFailed: number;
+  totalArticles: number;
+  duplicateArticles: number;
+  uniqueArticles: number;
 }
 
 export interface ExternalDataQuery {
@@ -154,5 +190,28 @@ export const externalDataApi = {
     return (
       response.data ?? { totalRuns: 0, rejectedUntrusted: 0, rejectedUnknownDomain: 0, rejectedNoCompany: 0 }
     );
+  },
+
+  getArticleAiStats: async (): Promise<ArticleAiStats | null> => {
+    try {
+      const response = await api.get<ArticleAiStats>('/article-ai/stats');
+      return response.data ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  runArticleAiProcessPending: async (): Promise<string> => {
+    const response = await api.post<{ message?: string } | string>('/article-ai/process-pending');
+    const data = response.data as unknown;
+    if (typeof data === 'string') return data;
+    return (data as { message?: string } | null)?.message || 'Article AI queue processed.';
+  },
+
+  runArticleAiEnqueueAll: async (): Promise<string> => {
+    const response = await api.post<{ message?: string } | string>('/article-ai/enqueue-all');
+    const data = response.data as unknown;
+    if (typeof data === 'string') return data;
+    return (data as { message?: string } | null)?.message || 'All articles enqueued for AI analysis.';
   },
 };

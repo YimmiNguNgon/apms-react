@@ -1,0 +1,82 @@
+{
+  "title": "Company Related Articles",
+  "subtitle": "Automatically collected company news",
+  "syncBadge": "Auto-refresh (30s)",
+  "stats": {
+    "articles": "News Articles",
+    "articlesNote": "Total articles collected by crawler",
+    "sources": "Sources",
+    "sourcesNote": "Active news channels",
+    "companiesNote": "Companies matched on this page"
+  },
+  "filters": {
+    "searchPlaceholder": "Search title, summary, source, or company...",
+    "allSources": "All sources",
+    "reset": "Reset"
+  },
+  "table": {
+    "type": "Type",
+    "title": "Title & Summary",
+    "company": "Company",
+    "sourceDate": "Source & Date",
+    "rating": "Rating",
+    "actions": "Actions"
+  },
+  "level": {
+    "risk": "Risk {{level}}",
+    "opportunity": "Opp {{level}}",
+    "general": "General"
+  },
+  "empty": {
+    "loading": "Loading articles...",
+    "noResults": "No articles match your filters."
+  },
+  "article": {
+    "noTitle": "Article has no title"
+  },
+  "summary": {
+    "empty": "No summary available for this article."
+  },
+  "company": {
+    "noMatch": "No match",
+    "related": "Related Companies"
+  },
+  "source": {
+    "unknown": "Unknown"
+  },
+  "duplicate": "Duplicate",
+  "actions": {
+    "details": "Details",
+    "original": "Original"
+  },
+  "pagination": {
+    "showing": "Showing {{count}} / {{total}} articles",
+    "page": "Page {{page}} / {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "modal": {
+    "close": "Close",
+    "sourceLabel": "Source",
+    "dateLabel": "Date",
+    "openOriginal": "Open original article",
+    "aiSummaryTitle": "AI Summary",
+    "aiSummaryEmpty": "No AI summary generated yet.",
+    "assessmentTitle": "Assessment & Sentiment",
+    "riskReason": "Reason: {{reason}}",
+    "topics": "Topics",
+    "collectedContent": "Collected Content",
+    "noContent": "No content."
+  },
+  "aiState": {
+    "completed": "AI analyzed",
+    "failed": "AI failed",
+    "inProgress": "Analyzing..."
+  },
+  "date": {
+    "noDate": "No date"
+  },
+  "errors": {
+    "loadFailed": "Could not load the article list."
+  }
+}

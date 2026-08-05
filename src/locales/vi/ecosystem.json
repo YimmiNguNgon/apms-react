@@ -1,0 +1,42 @@
+{
+  "breadcrumb": {
+    "intelligence": "Intelligence",
+    "title": "Enterprise Ecosystem Overview"
+  },
+  "banner": {
+    "kicker": "Executive Intelligence",
+    "title": "Enterprise Ecosystem Overview"
+  },
+  "tabs": {
+    "partners": "Đối tác",
+    "competitors": "Đối thủ",
+    "suppliers": "Nhà cung cấp",
+    "potentialPartners": "Đối tác tiềm năng"
+  },
+  "scores": {
+    "title": "Điểm đánh giá AI gần đây",
+    "subtitle": "Đánh giá mức độ phù hợp và rủi ro của đối tác mới nhất.",
+    "collapse": "Thu gọn",
+    "viewAll": "Xem tất cả ({{count}})",
+    "emptyTitle": "Chưa có kết quả đánh giá AI",
+    "emptyBody": "Chưa ghi nhận snapshot điểm số nào cho hệ sinh thái."
+  },
+  "filters": {
+    "searchPlaceholder": "Tìm theo tên công ty, ID hoặc ngành..."
+  },
+  "table": {
+    "noCompanyName": "Chưa có tên công ty",
+    "emptyGroup": "Không tìm thấy công ty nào trong nhóm \"{{group}}\"",
+    "emptyHint": "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.",
+    "company": "Tên công ty",
+    "industry": "Ngành",
+    "relationship": "Quan hệ",
+    "fitScore": "Fit Score",
+    "risk": "Risk",
+    "actions": "Thao tác",
+    "generalIndustry": "Chung",
+    "relationshipsCount_one": "{{count}} mối quan hệ",
+    "relationshipsCount_other": "{{count}} mối quan hệ",
+    "viewProfile": "Xem hồ sơ"
+  }
+}

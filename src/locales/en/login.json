@@ -1,0 +1,27 @@
+{
+  "heroBadge": "Business Ecosystem Intelligence",
+  "heroTitle1": "Alliance",
+  "heroTitle2": "Partner",
+  "heroTitle3": "Management",
+  "heroSub": "APMS connects partner, competitor, and market intelligence into one operational workspace backed by your live backend data.",
+  "features": [
+    "Relationship map and company profiles",
+    "Competitive and partnership intelligence",
+    "Role-based workspaces for review and approvals",
+    "Backend-connected research and scoring flows"
+  ],
+  "logoSub": "Business Intelligence Platform",
+  "signIn": "Sign in",
+  "signInSub": "Use your backend account credentials.",
+  "emailLabel": "Email or username",
+  "emailPlaceholder": "owner@apms.com or manager",
+  "passwordLabel": "Password",
+  "forgotPassword": "Forgot password?",
+  "authenticating": "Authenticating...",
+  "errorEmptyEmail": "Please enter your email or username.",
+  "errorEmptyPassword": "Please enter your password.",
+  "errorSignInFailed": "Sign-in failed. Please verify your credentials.",
+  "errorConnection": "Connection error: {{message}}",
+  "errorCannotReach": "Cannot reach the server.",
+  "warning": "Warning"
+}

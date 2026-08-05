@@ -1,0 +1,95 @@
+{
+  "title": "Partner Relationship Network",
+  "subtitle": "Multidimensional relationship map – Updated: {{date}}",
+  "actions": {
+    "export": "Export report",
+    "addPartner": "Add partner"
+  },
+  "stats": {
+    "totalPartners": "Total partners",
+    "activeRelations": "Active relationships",
+    "sharedProjects": "Shared projects",
+    "riskWarnings": "Risk warnings",
+    "avgAiScore": "Avg AI Score",
+    "totalPartnersGrowth": "+5 this month",
+    "activeRelationsGrowth": "+12 new",
+    "sharedProjectsGrowth": "+3 Q2",
+    "riskWarningsGrowth": "+2 new",
+    "avgAiScoreGrowth": "+0.3"
+  },
+  "network": {
+    "title": "Relationship Network",
+    "companies": "[{{count}}] Companies",
+    "connections": "[{{count}}] Connections",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "refresh": "Refresh",
+    "toggleLayout": "Change layout",
+    "grid": "Grid",
+    "radial": "Radial",
+    "loading": "Loading relationship network...",
+    "emptyFiltered": "No partners match the current filters. Please adjust the industry or relationship type filters.",
+    "emptyData": "No business relationship data yet. Please try refreshing.",
+    "ariaLabel": "Business relationship network",
+    "centerSub": "My Company"
+  },
+  "relationshipTypes": {
+    "partnerWith": "Project partner",
+    "supplierOf": "Supplier",
+    "customerOf": "Customer",
+    "competitorOf": "Competitor",
+    "potentialPartnerOf": "Investment – Shareholder",
+    "fallback": "Other link"
+  },
+  "chips": {
+    "all": "All",
+    "project": "Project",
+    "supplier": "Supplier",
+    "customer": "Customer",
+    "competitor": "Competitor",
+    "investment": "Investment"
+  },
+  "filters": {
+    "title": "Quick filters",
+    "industry": "Industry",
+    "searchPlaceholder": "Search industries...",
+    "allIndustries": "All",
+    "noIndustry": "(None)",
+    "empty": "No industry data yet.",
+    "notFound": "No matching industries found."
+  },
+  "topPartners": {
+    "title": "Top Connected Partners",
+    "connections": "{{count}} connections",
+    "emptyFiltered": "No partners match the current filters.",
+    "emptyData": "No partner data yet."
+  },
+  "exportCsv": {
+    "source": "Source",
+    "type": "Relationship type",
+    "group": "Group",
+    "target": "Target"
+  },
+  "errors": {
+    "requiredName": "Please enter the partner company name.",
+    "createFailed": "Unable to create partner. Please try again."
+  },
+  "modal": {
+    "addTitle": "Add new partner",
+    "description": "Add a company to the relationship network and link it to your company.",
+    "close": "Close",
+    "companyName": "Company name",
+    "companyNamePlaceholder": "e.g. FPT Corporation",
+    "industry": "Industry",
+    "industryPlaceholder": "e.g. Information Technology",
+    "relationshipType": "Relationship type",
+    "notes": "Notes",
+    "notesPlaceholder": "Cooperation context, strengths, or reasons for adding this partner...",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "addPartner": "Add partner"
+  },
+  "node": {
+    "noName": "No name"
+  }
+}

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Eye, FileText, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
+import i18n from '../i18n';
+import { formatDate as utilFormatDate } from '../utils/format';
 import type { PageResult, ProfileResponse } from '../types/domain';
 import styles from './CompanyProfiles.module.css';
 
@@ -8,16 +10,16 @@ interface CompanyListProps {
   setActivePage: (page: string) => void;
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 8;
 
 const profileName = (profile: ProfileResponse) =>
-  profile.identity?.tradeName || profile.identity?.legalName || 'Chưa có tên công ty';
+  profile.identity?.tradeName || profile.identity?.legalName || i18n.t('company-list:profile.nameFallback');
 
 const profileLegalName = (profile: ProfileResponse) =>
   profile.identity?.legalName || profileName(profile);
 
 const profileIndustry = (profile: ProfileResponse) =>
-  profile.business?.industries?.filter(Boolean).join(', ') || 'Unclassified';
+  profile.business?.industries?.filter(Boolean).join(', ') || i18n.t('company-list:profile.industryFallback');
 
 const profileTicker = (profile: ProfileResponse) => {
   const ticker = profile.stockTicker?.trim();
@@ -30,10 +32,9 @@ const profileExchange = (profile: ProfileResponse) => {
 };
 
 const formatDate = (value?: string | null) => {
-  if (!value) return 'No update';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  if (!value) return i18n.t('company-list:table.notUpdated');
+  const formatted = utilFormatDate(value);
+  return formatted || value;
 };
 
 const statusTone = (status?: string) => {
@@ -44,8 +45,10 @@ const statusTone = (status?: string) => {
 };
 
 const displayReviewStatus = (status?: string | null) => {
-  if (status === 'VERIFIED') return 'APPROVED';
-  return status || 'UNVERIFIED';
+  if (status === 'VERIFIED' || status === 'APPROVED') return i18n.t('company-list:status.verified');
+  if (status === 'PENDING_REVIEW') return i18n.t('company-list:status.pendingReview');
+  if (status === 'NEEDS_UPDATE') return i18n.t('company-list:status.needsUpdate');
+  return status || i18n.t('company-list:status.notVerified');
 };
 
 const profileUpdatedTime = (profile: ProfileResponse) => {
@@ -58,6 +61,7 @@ const newestProfilesFirst = (profiles: ProfileResponse[]) =>
   [...profiles].sort((a, b) => profileUpdatedTime(b) - profileUpdatedTime(a));
 
 export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
+  const { t } = useTranslation('company-list');
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -91,7 +95,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
     } catch (err) {
       setProfiles([]);
       setTotalElements(0);
-      setError(err instanceof Error ? err.message : 'Cannot load company profiles.');
+      setError(err instanceof Error ? err.message : t('errors.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -108,12 +112,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
     const industries = new Set(profiles.flatMap((profile) => profile.business?.industries ?? []));
 
     return [
-      { label: 'Profiles', value: totalElements || profiles.length, note: 'Official company records', icon: Building2 },
-      { label: 'Verified', value: verified, note: 'Approved and ready to use', icon: ShieldCheck },
-      { label: 'Need update', value: needsUpdate, note: 'Waiting review or enrichment', icon: RefreshCw },
-      { label: 'Industries', value: industries.size, note: `${withWebsite} profiles include website`, icon: FileText },
+      { label: t('stats.profiles.label'), value: totalElements || profiles.length, note: t('stats.profiles.note') },
+      { label: t('status.verified'), value: verified, note: t('stats.verified.note') },
+      { label: t('status.needsUpdate'), value: needsUpdate, note: t('stats.needsUpdate.note') },
+      { label: t('stats.industries.label'), value: industries.size, note: t('stats.industries.note', { count: withWebsite }) },
     ];
-  }, [profiles, totalElements]);
+  }, [profiles, totalElements, t]);
 
   const openProfile = (profile: ProfileResponse) => {
     const id = profile.companyId || profile.id;
@@ -122,84 +126,83 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   };
 
   return (
-    <section className={styles.page}>
-      <div className={styles.header}>
+    <div className={styles.page}>
+      {/* ── Header ── */}
+      <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Company intelligence</span>
-          <h1>Company Profiles</h1>
+          <h1 className={styles.headerTitle}>{t('title')}</h1>
+          <span className={styles.eyebrow}>{t('subtitle')}</span>
         </div>
-        <div className={styles.actions}>
-        </div>
-      </div>
+      </header>
 
       {error && <div className={styles.error}>{error}</div>}
 
-      <div className={styles.metricGrid}>
-        {metrics.map((item) => {
-          const Icon = item.icon;
-          return (
-            <article className={styles.metricCard} key={item.label}>
-              <span><Icon size={14} />{item.label}</span>
-              <strong>{loading ? '...' : item.value}</strong>
-              <p>{item.note}</p>
-            </article>
-          );
-        })}
-      </div>
+      {/* ── KPI Row ── */}
+      <section className={styles.metricGrid}>
+        {metrics.map((item) => (
+          <article className={styles.metricCard} key={item.label}>
+            <span>{item.label}</span>
+            <strong>{loading ? '...' : item.value}</strong>
+            <p>{item.note}</p>
+          </article>
+        ))}
+      </section>
 
-      <section className={styles.panel}>
+      {/* ── Main Panel ── */}
+      <main className={styles.panel}>
+        {/* Toolbar */}
         <div className={styles.toolbar}>
-          <label className={styles.searchBox}>
-            <Search size={15} />
+          <div className={styles.searchBox}>
             <input
               value={searchQuery}
-              placeholder="Search by company name, tax ID, website..."
+              placeholder={t('filters.searchPlaceholder')}
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void fetchProfiles(0);
               }}
             />
-          </label>
+          </div>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">All status</option>
-            <option value="APPROVED">Approved</option>
-            <option value="NEEDS_UPDATE">Needs update</option>
-            <option value="PENDING_REVIEW">Pending review</option>
+            <option value="">{t('filters.allStatuses')}</option>
+            <option value="APPROVED">{t('status.verified')}</option>
+            <option value="NEEDS_UPDATE">{t('status.needsUpdate')}</option>
+            <option value="PENDING_REVIEW">{t('status.pendingReview')}</option>
           </select>
           <select value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
-            <option value="">All relationships</option>
-            <option value="PARTNER_WITH">Partner</option>
-            <option value="COMPETITOR_OF">Competitor</option>
-            <option value="SUPPLIER_OF">Supplier</option>
-            <option value="CUSTOMER_OF">Customer</option>
-            <option value="POTENTIAL_PARTNER_OF">Potential partner</option>
+            <option value="">{t('filters.allRelationships')}</option>
+            <option value="PARTNER_WITH">{t('filters.partner')}</option>
+            <option value="COMPETITOR_OF">{t('filters.competitor')}</option>
+            <option value="SUPPLIER_OF">{t('filters.supplier')}</option>
+            <option value="CUSTOMER_OF">{t('filters.customer')}</option>
+            <option value="POTENTIAL_PARTNER_OF">{t('filters.investorShareholder')}</option>
           </select>
           <button className={styles.primaryButton} type="button" onClick={() => void fetchProfiles(0)}>
-            Search
+            {t('filters.searchButton')}
           </button>
         </div>
 
+        {/* Table */}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Company</th>
-                <th>Mã CK</th>
-                <th>Industry</th>
-                <th>Status</th>
-                <th>Last updated</th>
-                <th>Action</th>
+                <th>{t('table.company')}</th>
+                <th>{t('table.ticker')}</th>
+                <th>{t('table.industry')}</th>
+                <th>{t('table.status')}</th>
+                <th>{t('table.updated')}</th>
+                <th style={{ textAlign: 'right' }}>{t('table.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>Loading company profiles...</div></td>
+                  <td colSpan={6}><div className={styles.empty}>{t('table.loading')}</div></td>
                 </tr>
               )}
               {!loading && profiles.length === 0 && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>No company profiles found.</div></td>
+                  <td colSpan={6}><div className={styles.empty}>{t('table.empty')}</div></td>
                 </tr>
               )}
               {!loading && profiles.map((profile) => (
@@ -226,9 +229,9 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                   <td>{profileIndustry(profile)}</td>
                   <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
                   <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
-                  <td>
-                    <button className={styles.iconButton} type="button" onClick={() => openProfile(profile)} title="View profile">
-                      <Eye size={14} />
+                  <td style={{ textAlign: 'right' }}>
+                    <button className={styles.secondaryButton} type="button" onClick={() => openProfile(profile)} title={t('table.viewTitle')}>
+                      {t('table.viewButton')}
                     </button>
                   </td>
                 </tr>
@@ -237,15 +240,16 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
           </table>
         </div>
 
+        {/* Pagination */}
         <div className={styles.pagination}>
-          <span>Showing {profiles.length} of {totalElements} profiles</span>
+          <span>{t('pagination.showing', { shown: profiles.length, total: totalElements })}</span>
           <div>
-            <button type="button" disabled={currentPage === 0 || loading} onClick={() => void fetchProfiles(currentPage - 1)}>Prev</button>
-            <strong>{currentPage + 1} / {totalPages}</strong>
-            <button type="button" disabled={currentPage >= totalPages - 1 || loading} onClick={() => void fetchProfiles(currentPage + 1)}>Next</button>
+            <button type="button" disabled={currentPage === 0 || loading} onClick={() => void fetchProfiles(currentPage - 1)}>{t('pagination.prev')}</button>
+            <strong>{t('pagination.page', { current: currentPage + 1, total: totalPages })}</strong>
+            <button type="button" disabled={currentPage >= totalPages - 1 || loading} onClick={() => void fetchProfiles(currentPage + 1)}>{t('pagination.next')}</button>
           </div>
         </div>
-      </section>
-    </section>
+      </main>
+    </div>
   );
 };
