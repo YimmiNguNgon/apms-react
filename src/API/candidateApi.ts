@@ -49,4 +49,23 @@ export const candidateApi = {
       data
     );
   },
+
+  reviewCandidateFields: async (projectId: number | string, candidateId: string, fields: Record<string, unknown>) => {
+    return api.patch<CandidateResponse>(
+      `/projects/${projectId}/candidates/${candidateId}/review`,
+      { fields }
+    );
+  },
+
+  completeFieldReview: async (projectId: number | string, candidateId: string) => {
+    return api.post<CandidateResponse>(
+      `/projects/${projectId}/candidates/${candidateId}/review/complete`
+    );
+  },
+
+  sendBackCandidate: async (projectId: number | string, candidateId: string) => {
+    return api.post<CandidateResponse>(
+      `/projects/${projectId}/candidates/${candidateId}/send-back`
+    );
+  },
 };

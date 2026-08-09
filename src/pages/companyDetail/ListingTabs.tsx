@@ -6,6 +6,7 @@ import BoardMembersTab from './BoardMembersTab';
 import FinancialsTab from './FinancialsTab';
 import NewsTab from './NewsTab';
 import DocumentsTab from './DocumentsTab';
+import ConfidentialNewsTab from './ConfidentialNewsTab';
 import styles from '../CompanyDetail.module.css';
 
 export type { ListingTabId };
@@ -19,6 +20,7 @@ interface ListingTabsProps {
 interface ListingTabContentProps {
   companyId: string;
   activeTab: ListingTabId;
+  userRole?: string | null;
 }
 
 export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange }) => (
@@ -38,7 +40,7 @@ export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChan
   </div>
 );
 
-export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId, activeTab }) => {
+export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId, activeTab, userRole }) => {
   switch (activeTab) {
     case 'listing-info':
       return <ListingInfoTab companyId={companyId} />;
@@ -50,6 +52,8 @@ export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId,
       return <NewsTab companyId={companyId} />;
     case 'documents':
       return <DocumentsTab companyId={companyId} />;
+    case 'confidential-news':
+      return <ConfidentialNewsTab companyId={companyId} userRole={userRole} />;
     default:
       return null;
   }

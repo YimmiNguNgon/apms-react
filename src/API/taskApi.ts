@@ -62,4 +62,16 @@ export const taskApi = {
       data
     );
   },
+
+  getSubmissions: async (projectId: number, taskId: number, params?: { page?: number; size?: number }) => {
+    return api.get<PageResult<ProjectTaskSubmissionResponse>>(
+      `/projects/${projectId}/tasks/${taskId}/submissions`,
+      {
+        params: {
+          page: params?.page ?? 0,
+          size: params?.size ?? 50,
+        },
+      }
+    );
+  },
 };

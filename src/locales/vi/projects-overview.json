@@ -56,7 +56,12 @@
     "descriptionPlaceholder": "Mô tả mục tiêu dự án (tuỳ chọn)",
     "cancel": "Huỷ",
     "submit": "Tạo dự án",
-    "submitting": "Đang tạo..."
+    "submitting": "Đang tạo...",
+    "plannedEndDateLabel": "Ngày kết thúc dự kiến",
+    "duplicateWarningTitle": "Phát hiện dự án trùng tên doanh nghiệp",
+    "duplicateWarningDesc": "Đã có {{count}} dự án với tên doanh nghiệp tương tự:",
+    "duplicateWarningNote": "Bạn vẫn có thể tiếp tục tạo dự án mới.",
+    "checkingDuplicate": "Đang kiểm tra trùng lặp..."
   },
   "relationships": {
     "partner": "Partner",
@@ -70,7 +75,8 @@
     "nameRequired": "Vui lòng nhập tên dự án.",
     "targetCompanyRequired": "Vui lòng chọn công ty mục tiêu.",
     "relationshipRequired": "Vui lòng chọn loại quan hệ mục tiêu.",
-    "createFailed": "Không thể tạo dự án. Vui lòng thử lại."
+    "createFailed": "Không thể tạo dự án. Vui lòng thử lại.",
+    "dateRequired": "Vui lòng chọn ngày kết thúc dự kiến."
   },
   "companyName": {
     "unknown": "Chưa xác định"

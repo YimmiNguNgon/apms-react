@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, FileText, LayoutGrid, Newspaper, TrendingUp, Users } from 'lucide-react';
+import { Building2, FileText, LayoutGrid, Newspaper, TrendingUp, Users, Shield } from 'lucide-react';
 import type { ListingTabResponse } from '../../types/listingData';
 
 export type ListingTabId =
@@ -8,7 +8,8 @@ export type ListingTabId =
   | 'board-members'
   | 'financials'
   | 'news'
-  | 'documents';
+  | 'documents'
+  | 'confidential-news';
 
 export interface ListingTabDef {
   id: ListingTabId;
@@ -23,6 +24,7 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'financials', label: 'Tài chính', icon: <TrendingUp size={14} /> },
   { id: 'news', label: 'Tin tức', icon: <Newspaper size={14} /> },
   { id: 'documents', label: 'Tài liệu', icon: <FileText size={14} /> },
+  { id: 'confidential-news', label: 'Tin tức nội bộ', icon: <Shield size={14} /> },
 ];
 
 const tabDataCache = new Map<string, unknown>();

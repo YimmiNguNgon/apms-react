@@ -21,6 +21,7 @@ interface DashboardCandidate extends CandidateResponse {
 const STATUS_META: Record<CandidateStatus, { label: string; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
   DRAFT: { label: 'Draft', tone: 'neutral' },
   PENDING_REVIEW: { label: 'Pending review', tone: 'success' },
+  REVISION_REQUIRED: { label: 'Changes Requested', tone: 'danger' },
   REJECTED: { label: 'Rejected', tone: 'danger' },
   CORRECTED: { label: 'Corrected', tone: 'info' },
   APPROVED: { label: 'Approved', tone: 'success' },

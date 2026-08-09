@@ -766,7 +766,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
           </>
         ) : (
-          <ListingTabContent companyId={resolvedId} activeTab={activeTab} />
+          <ListingTabContent companyId={resolvedId} activeTab={activeTab} userRole={currentUser?.role} />
         )}
       </div>
     </div>

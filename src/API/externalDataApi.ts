@@ -1,4 +1,9 @@
-import { api, type PageResponse } from '../services/api';
+import { api, API_BASE_URL, type PageResponse } from '../services/api';
+
+const getAuthHeader = () => {
+  const token = localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export type ExternalDataCategory = 'NEWS' | 'OPPORTUNITY' | 'RISK';
 
@@ -20,6 +25,7 @@ export interface ExternalDataItem {
   url?: string | null;
   publishedAt?: string | null;
   category?: ExternalDataCategory | null;
+  imageUrl?: string | null;
   sentiment?: string | null;
   riskLevel?: string | null;
   opportunityLevel?: string | null;
@@ -99,6 +105,7 @@ export interface ArticleAiStats {
 export interface ExternalDataQuery {
   keyword?: string;
   source?: string;
+  companyName?: string;
   page?: number;
   size?: number;
 }
@@ -117,6 +124,7 @@ export const externalDataApi = {
         size: query.size ?? 20,
         keyword: query.keyword || undefined,
         source: query.source || undefined,
+        companyName: query.companyName || undefined,
       },
     });
     return response.data ?? { content: [], pageNumber: 0, pageSize: 0, totalElements: 0, totalPages: 0, last: true };
@@ -128,6 +136,22 @@ export const externalDataApi = {
       return Number(page.totalElements ?? 0);
     } catch {
       return 0;
+    }
+  },
+
+  getTrackedCompanies: async (activeOnly: boolean = true) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/tracked-companies?activeOnly=${activeOnly}`, {
+        headers: { ...getAuthHeader() } as Record<string, string>,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error('Failed to fetch tracked companies');
+      }
+      return payload; // Returns List<TrackedCompanyResponse> directly, not wrapped in ApiResponse!
+    } catch (error) {
+      console.error('Error fetching tracked companies:', error);
+      throw error;
     }
   },
 

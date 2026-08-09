@@ -62,6 +62,7 @@ export const News: React.FC = () => {
   const [articles, setArticles] = useState<ExternalDataItem[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState('');
+  const [selectedCompany, setSelectedCompany] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -69,6 +70,19 @@ export const News: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<ExternalDataItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trackedCompanies, setTrackedCompanies] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const companies = await externalDataApi.getTrackedCompanies(true);
+        setTrackedCompanies(companies || []);
+      } catch (err) {
+        console.error('Failed to load tracked companies', err);
+      }
+    };
+    fetchCompanies();
+  }, []);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -79,6 +93,7 @@ export const News: React.FC = () => {
         size: PAGE_SIZE,
         keyword: searchTerm.trim() || undefined,
         source: selectedSource || undefined,
+        companyName: selectedCompany || undefined,
       });
       setArticles(Array.isArray(data?.content) ? data.content : []);
       setTotalPages(Math.max(Number(data?.totalPages || 1), 1));
@@ -95,7 +110,7 @@ export const News: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, selectedSource, searchTerm, t]);
+  }, [page, selectedSource, searchTerm, selectedCompany, t]);
 
   useEffect(() => {
     loadArticles();
@@ -114,18 +129,15 @@ export const News: React.FC = () => {
 
   const resetFilters = () => {
     setSelectedSource('');
+    setSelectedCompany('');
     setSearchTerm('');
     setPage(0);
   };
 
-  const companyCount = Array.from(new Set(
-    articles.map((item) => item.relatedCompanyName?.trim()).filter(Boolean),
-  )).length;
-
   const statCards = [
     { label: t('stats.articles'), value: totalElements, note: t('stats.articlesNote') },
     { label: t('stats.sources'), value: sources.length, note: t('stats.sourcesNote') },
-    { label: t('company.related'), value: companyCount, note: t('stats.companiesNote') },
+    { label: t('company.related'), value: trackedCompanies.length, note: t('stats.companiesNote') },
   ];
 
   return (
@@ -182,6 +194,20 @@ export const News: React.FC = () => {
             ))}
           </select>
 
+          <select
+            className={styles.newsSelect}
+            value={selectedCompany}
+            onChange={(event) => {
+              setSelectedCompany(event.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">{t('filters.allCompanies', 'All Companies')}</option>
+            {trackedCompanies.map((c) => (
+              <option key={c.id} value={c.companyName}>{c.companyName}</option>
+            ))}
+          </select>
+
           <button className={`${styles.newsBtn} ${styles.newsBtnGhost}`} onClick={resetFilters}>
             {t('filters.reset')}
           </button>
@@ -189,88 +215,96 @@ export const News: React.FC = () => {
 
         {error && <div className={styles.newsAlertDanger}>{error}</div>}
 
-        {/* Articles Table */}
-        <div className={styles.newsTableWrap}>
+        {/* Articles Grid */}
+        <div className={styles.newsGridWrap}>
           {loading ? (
             <div className={styles.newsEmpty}>{t('empty.loading')}</div>
           ) : articles.length === 0 ? (
             <div className={styles.newsEmpty}>{t('empty.noResults')}</div>
           ) : (
-            <table className={styles.newsTable}>
-              <thead>
-                <tr>
-                  <th style={{ width: 80 }}>{t('table.type')}</th>
-                  <th>{t('table.title')}</th>
-                  <th style={{ width: 140 }}>{t('table.company')}</th>
-                  <th style={{ width: 140 }}>{t('table.sourceDate')}</th>
-                  <th style={{ width: 90 }}>{t('table.rating')}</th>
-                  <th style={{ width: 110, textAlign: 'right' }}>{t('table.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {articles.map((article) => {
-                  const companiesForArticle = companyNames(article);
-                  const levelLabel = article.riskLevel
-                    ? t('level.risk', { level: article.riskLevel })
-                    : article.opportunityLevel
-                      ? t('level.opportunity', { level: article.opportunityLevel })
-                      : t('level.general');
-                  return (
-                    <tr key={article.id}>
-                      <td>
+            <div className={styles.newsGrid}>
+              {articles.map((article) => {
+                const companiesForArticle = companyNames(article);
+                const levelLabel = article.riskLevel
+                  ? t('level.risk', { level: article.riskLevel })
+                  : article.opportunityLevel
+                    ? t('level.opportunity', { level: article.opportunityLevel })
+                    : t('level.general');
+                return (
+                  <div key={article.id} className={styles.newsCard}>
+                    <div className={styles.newsCardHeader}>
+                      <div className={styles.newsCardBadges}>
                         <span className={`${styles.newsPill} ${categoryPillClass(article.category)}`}>
                           {article.category || 'NEWS'}
                         </span>
-                      </td>
-                      <td>
-                        <div className={styles.newsItemTitle}>{article.title || t('article.noTitle')}</div>
-                        <div className={styles.newsItemSummary}>{articleSummary(article)}</div>
-                      </td>
-                      <td>
+                        <span className={`${styles.newsPill} ${priorityPillClass(article)}`}>
+                          {levelLabel}
+                        </span>
+                        {isDuplicate(article) && (
+                          <span className={`${styles.newsPill} ${styles.newsPillDanger}`}>
+                            {t('duplicate')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {article.imageUrl ? (
+                      <img src={article.imageUrl} className={styles.newsThumb} alt="" />
+                    ) : (
+                      <div style={{ height: '140px', backgroundColor: 'var(--bg-input)', borderRadius: '8px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                          <polyline points="21 15 16 10 5 21"></polyline>
+                        </svg>
+                      </div>
+                    )}
+
+                    <div className={styles.newsCardTitle} title={article.title || t('article.noTitle')}>
+                      {article.title || t('article.noTitle')}
+                    </div>
+                    
+                    <div className={styles.newsCardSummary}>
+                      {articleSummary(article)}
+                    </div>
+                    
+                    <div className={styles.newsCardMeta}>
+                      <div>
+                        <strong>{article.source || t('source.unknown')}</strong>
+                        <br />
+                        <span style={{ fontSize: '0.85em' }}>{formatDateLabel(article.publishedAt)}</span>
+                      </div>
+                      <div className={styles.newsCardCompanies}>
                         {companiesForArticle.slice(0, 2).map((name) => (
                           <span key={name} className={`${styles.newsPill} ${styles.newsPillCompany}`}>
                             {name}
                           </span>
                         ))}
-                      </td>
-                      <td>
-                        <div><strong>{article.source || t('source.unknown')}</strong></div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatDateLabel(article.publishedAt)}</div>
-                      </td>
-                      <td>
-                        <span className={`${styles.newsPill} ${priorityPillClass(article)}`}>
-                          {levelLabel}
-                        </span>
-                        {isDuplicate(article) && (
-                          <span className={`${styles.newsPill} ${styles.newsPillDanger}`} style={{ marginLeft: 3 }}>
-                            {t('duplicate')}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className={`${styles.newsBtn} ${styles.newsBtnSecondary} ${styles.newsBtnSm}`}
-                          onClick={() => openDetail(article)}
-                          style={{ marginRight: 4 }}
+                      </div>
+                    </div>
+                    
+                    <div className={styles.newsCardActions}>
+                      <button
+                        className={`${styles.newsBtn} ${styles.newsBtnSecondary} ${styles.newsBtnSm}`}
+                        onClick={() => openDetail(article)}
+                      >
+                        {t('actions.details')}
+                      </button>
+                      {article.url && (
+                        <a
+                          className={`${styles.newsBtn} ${styles.newsBtnPrimary} ${styles.newsBtnSm}`}
+                          href={article.url}
+                          target="_blank"
+                          rel="noreferrer"
                         >
-                          {t('actions.details')}
-                        </button>
-                        {article.url && (
-                          <a
-                            className={`${styles.newsBtn} ${styles.newsBtnPrimary} ${styles.newsBtnSm}`}
-                            href={article.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {t('actions.original')}
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          {t('actions.original', 'Đọc bài báo')}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 

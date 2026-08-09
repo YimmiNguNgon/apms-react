@@ -1032,8 +1032,9 @@ export const SystemChat: React.FC = () => {
 
   useEffect(() => {
     if (projects.length === 0) return;
-    const interval = window.setInterval(() => void refreshConversationSummaries({ notify: true }), 5000);
-    return () => window.clearInterval(interval);
+    // Disabled 5s auto-refresh interval based on user request
+    // const interval = window.setInterval(() => void refreshConversationSummaries({ notify: true }), 5000);
+    // return () => window.clearInterval(interval);
   }, [projects, activeProject?.id, lastReadMap, currentUser?.id, currentUser?.email]);
 
   useEffect(() => {

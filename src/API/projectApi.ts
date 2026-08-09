@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { AddMemberRequest, CreateProjectRequest, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest } from "../types/domain";
+import type { AddMemberRequest, AiExtractionJobResponse, CreateProjectRequest, DuplicateCompanyCheckResponse, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest } from "../types/domain";
 
 const BASE_URL = `${API_BASE_URL}/projects`;
 const getAuthHeader = () => {
@@ -160,6 +160,69 @@ export const projectApi = {
       return payload as ApiResponse<void>;
     } catch (error) {
       console.error("Error deleting project:", error);
+      throw error;
+    }
+  },
+  checkDuplicateCompanyName: async (companyName: string, excludeProjectId?: number) => {
+    try {
+      const params = new URLSearchParams({ companyName });
+      if (excludeProjectId != null) params.set('excludeProjectId', String(excludeProjectId));
+      const response = await fetch(`${BASE_URL}/check-duplicate-company?${params.toString()}`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Failed to check duplicate company name');
+      }
+      return payload as ApiResponse<DuplicateCompanyCheckResponse>;
+    } catch (error) {
+      console.error('Error checking duplicate company name:', error);
+      throw error;
+    }
+  },
+  extractMultiDocuments: async (projectId: number, taskId: number, rawDocumentIds: string[]) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeader(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rawDocumentIds }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to extract multiple documents");
+      }
+
+      return payload as ApiResponse<AiExtractionJobResponse>;
+    } catch (error) {
+      console.error("Error extracting multiple documents:", error);
+      throw error;
+    }
+  },
+  getExtractionJobStatus: async (projectId: number, taskId: number, jobId: string) => {
+    if (!jobId) {
+      throw new Error("Cannot request extraction job status without a valid jobId");
+    }
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi/${jobId}`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to get extraction job status");
+      }
+
+      return payload as ApiResponse<AiExtractionJobResponse>;
+    } catch (error) {
+      console.error("Error getting extraction job status:", error);
       throw error;
     }
   }

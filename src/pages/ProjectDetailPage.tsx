@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Activity,
@@ -56,6 +57,9 @@ import type {
   CandidateResponse,
   CandidateStatus,
   CompanyProfileMember,
+} from '../types/domain';
+import { CandidateReviewWorkspace } from '../components/CandidateReview/CandidateReviewWorkspace';
+import type {
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
   CreateProjectTaskRequest,
@@ -214,7 +218,8 @@ const memberRoleLabel = (member: ProjectMemberResponse) =>
 
 const candidateStatusLabel: Record<CandidateStatus, string> = {
   DRAFT: 'Draft',
-  PENDING_REVIEW: 'Pending review',
+  PENDING_REVIEW: 'In Manager Review',
+  REVISION_REQUIRED: 'Changes Requested',
   REJECTED: 'Rejected',
   CORRECTED: 'Corrected',
   APPROVED: 'Approved',
@@ -223,6 +228,7 @@ const candidateStatusLabel: Record<CandidateStatus, string> = {
 const candidateStatusClass: Record<CandidateStatus, string> = {
   DRAFT: styles.candidateDRAFT,
   PENDING_REVIEW: styles.candidatePENDING_REVIEW,
+  REVISION_REQUIRED: styles.candidateREVISION_REQUIRED || styles.candidateREJECTED,
   REJECTED: styles.candidateREJECTED,
   CORRECTED: styles.candidateCORRECTED,
   APPROVED: styles.candidateAPPROVED,
@@ -2917,6 +2923,11 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
     description: 'Research leadership and key company members, record sources, save a draft, then submit it for manager review.',
     steps: ['Start work', 'Review target', 'Add members', 'Submit review'],
   },
+  COMPANY_NEWS_RESEARCH: {
+    title: 'Company news research',
+    description: 'Find relevant company news, record sources and summaries, save a draft, then submit it for manager review.',
+    steps: ['Start work', 'Review company', 'Add news items', 'Submit review'],
+  },
   GENERAL_TASK: {
     title: 'General task',
     description: 'Work on the assigned request, add a completion note, attach evidence if needed, then submit review.',
@@ -3086,6 +3097,7 @@ const CompanyMemberLayerBoard: React.FC<{
 };
 
 export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActivePage }) => {
+  const queryClient = useQueryClient();
   const { currentUser } = useUser();
   const isManager = currentUser?.role === ROLES.MANAGER || currentUser?.role === ROLES.OWNER || currentUser?.role === ROLES.ADMIN;
   const isStaffView = currentUser?.role === ROLES.STAFF;
@@ -3113,6 +3125,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [workbenchError, setWorkbenchError] = useState<string | null>(null);
   const [workbenchMessage, setWorkbenchMessage] = useState<string | null>(null);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+
+  // Async Multi-Document Extraction States
+  const [extractionJobId, setExtractionJobId] = useState<string | null>(null);
+  const [extractionJob, setExtractionJob] = useState<any>(null);
+
   const [extractingImportJobId, setExtractingImportJobId] = useState<number | null>(null);
   const [projectDocuments, setProjectDocuments] = useState<WorkbenchDocumentResponse[]>([]);
   const [projectDocumentsLoading, setProjectDocumentsLoading] = useState(false);
@@ -3212,7 +3230,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const currentProjectId = apiProject?.id ?? Number(localStorage.getItem('apms-active-project'));
   const isDraftProject = apiProject?.status === 'DRAFT';
   const staffTaskStatus = workbench?.taskStatus || selectedStaffTask?.status;
-  const canUseStaffWorkbench = staffTaskStatus === 'IN_PROGRESS';
+  const canUseStaffWorkbench = Boolean(selectedStaffTask && selectedStaffTask.status === 'IN_PROGRESS');
   const isStaffWorkbenchStepActive = (step: string) => {
     const hasSubmittedReview = workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED');
     const hasCandidateDraft = Boolean(staffCandidate) || (workbench?.candidateDrafts?.length ?? 0) > 0;
@@ -3516,6 +3534,39 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       cancelled = true;
     };
   }, [activeTab, currentProjectId]);
+
+  // Async Multi-Document Extraction Polling
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (extractionJobId && selectedStaffTask) {
+      interval = setInterval(async () => {
+        try {
+          const res = await projectApi.getExtractionJobStatus(Number(currentProjectId), selectedStaffTask.id, extractionJobId);
+          if (res.success && res.data) {
+            setExtractionJob(res.data);
+            if (res.data.status === 'COMPLETED') {
+              setExtractionJobId(null);
+              queryClient.invalidateQueries({ queryKey: ['candidates'] });
+              setExtractingSelectedDocuments(false);
+              setWorkbenchMessage('Candidate draft created successfully from extractions.');
+              await loadTaskWorkbench(selectedStaffTask);
+              // Clear progress after short delay
+              window.setTimeout(() => setExtractionJob(null), 2000);
+            } else if (res.data.status === 'FAILED') {
+              setExtractionJobId(null);
+              setExtractingSelectedDocuments(false);
+              setWorkbenchError('Extraction failed: ' + (res.data.errorMessage || 'Unknown error'));
+              window.setTimeout(() => setExtractionJob(null), 2000);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [extractionJobId, selectedStaffTask]);
+
 
   useEffect(() => {
     if (activeTab !== 'Company Members') return;
@@ -4360,70 +4411,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setWorkbenchMessage(null);
 
     try {
-      const totalSteps = selectedDocuments.length * 2 + 1;
-      const extractedReviews: StaffExtractionReview[] = [];
-
-      for (const [index, document] of selectedDocuments.entries()) {
-        const extractStep = index * 2;
-        setAiProgress({
-          percent: Math.max(5, Math.round((extractStep / totalSteps) * 100)),
-          label: `Extracting ${document.fileName || `Import job #${document.id}`}`,
-        });
-        setExtractingImportJobId(document.id);
-        await api.post<AiExtractionResult>(
-          `/import-jobs/${document.id}/ai-extractions`,
-          undefined,
-          { timeoutMs: null }
-        );
-        setAiProgress({
-          percent: Math.round(((extractStep + 1) / totalSteps) * 100),
-          label: `Reading extraction result for ${document.fileName || `Import job #${document.id}`}`,
-        });
-        const latestPayload = await api.get<{ id?: string; extractionId?: string }>(
-          `/import-jobs/${document.id}/ai-extractions/latest`,
-          { timeoutMs: null }
-        );
-        const extractionId = latestPayload.data?.id || latestPayload.data?.extractionId;
-        if (extractionId) {
-          const latestExtraction = latestPayload.data as Record<string, any>;
-          extractedReviews.push({
-            id: extractionId,
-            importJobId: document.id,
-            rawDocumentId: document.rawDocumentId || undefined,
-            fileName: document.fileName || `Import job #${document.id}`,
-            qualityStatus: latestExtraction?.qualityStatus,
-            evidenceCoverageRate: typeof latestExtraction?.evidenceCoverageRate === 'number' ? latestExtraction.evidenceCoverageRate : null,
-            evidence: extractionToEvidenceMap(latestExtraction, {
-              extractionId,
-              importJobId: document.id,
-              rawDocumentId: document.rawDocumentId || undefined,
-              fileName: document.fileName || `Import job #${document.id}`,
-            }),
-            edit: extractionToEditForm(latestExtraction),
-          });
-        }
+      // Async Multi-Document Extraction
+      const documentIds = selectedDocuments.map((doc) => String(doc.id));
+      const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, documentIds);
+      if (res.success && res.data && res.data.jobId) {
+        setExtractionJobId(res.data.jobId);
       }
-
-      if (extractedReviews.length === 0) {
-        throw new Error('AI extraction completed, but no extraction ID was returned.');
-      }
-
-      setPendingExtractionReviews(extractedReviews);
-      setLastExtractionReviews([]);
-      setSelectedProjectDocumentIds([]);
-      setAiProgress({
-        percent: 100,
-        label: 'Extraction ready for staff review',
-      });
-      setWorkbenchMessage(`AI extracted ${extractedReviews.length} document(s). Review and correct the fields before creating a candidate.`);
     } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot extract selected documents.');
-    } finally {
-      setExtractingImportJobId(null);
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot run AI extraction.');
       setExtractingSelectedDocuments(false);
-      window.setTimeout(() => setAiProgress(null), 900);
     }
   };
+
 
   const updateMergedPendingExtractionEdit = (key: StaffCandidateEditKey, value: string) => {
     if (!canUseStaffWorkbench) {
@@ -4686,8 +4685,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please start this task before submitting a candidate.');
       return;
     }
-    if (staffCandidate.status !== 'DRAFT') {
-      setWorkbenchError('Only the selected candidate draft with DRAFT status can be submitted to manager.');
+    if (staffCandidate.status !== 'DRAFT' && staffCandidate.status !== 'REVISION_REQUIRED') {
+      setWorkbenchError('Only the selected candidate draft with DRAFT or REVISION_REQUIRED status can be submitted to manager.');
       return;
     }
     setStaffSubmitLoading(true);
@@ -4696,8 +4695,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     try {
       const candidatePayload = await candidateApi.submitCandidate(staffCandidate.id);
-      setStaffCandidate(candidatePayload.data);
-      setStaffCandidateEdit(candidateToEditForm(candidatePayload.data));
+      setStaffCandidate(null);
+      setStaffCandidateEdit(emptyStaffCandidateEdit);
 
       await taskApi.submitTask(selectedStaffTask.projectId, selectedStaffTask.id, {
         submissionType: 'COMPANY_CANDIDATE',
@@ -4706,12 +4705,31 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         note: 'Candidate submitted for manager review.',
       });
 
-      const updatedTask = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'IN_REVIEW');
-      updateTaskInState(updatedTask.data);
-      setSelectedStaffTask(updatedTask.data);
-      setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
+      const taskRes = await taskApi.getProjectTasks(selectedStaffTask.projectId);
+      if (taskRes.success && taskRes.data) {
+        // Find the fresh task from the paginated result or list. `getProjectTasks` might return a PageResult, let's unwrap it
+        const rows = 'content' in taskRes.data ? taskRes.data.content : taskRes.data;
+        const freshTask = (rows as ProjectTaskResponse[]).find((t: ProjectTaskResponse) => t.id === selectedStaffTask.id);
+        if (freshTask) {
+          updateTaskInState(freshTask);
+          setSelectedStaffTask(freshTask);
+          setWorkbench((current) => current ? { ...current, taskStatus: freshTask.status } : current);
+          await loadTaskWorkbench(freshTask);
+        }
+      }
+      
       setWorkbenchMessage(`Selected candidate draft ${candidatePayload.data.id.slice(-8)} submitted to manager review.`);
-      await loadTaskWorkbench(updatedTask.data);
+
+      setTaskRefreshTick((current) => current + 1);
+
+      if (queryClient) {
+        queryClient.invalidateQueries({ queryKey: ['candidates'] });
+        queryClient.invalidateQueries({ queryKey: ['candidate', staffCandidate.id] });
+        queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        queryClient.invalidateQueries({ queryKey: ['project'] });
+        queryClient.invalidateQueries({ queryKey: ['submissions'] });
+        queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
+      }
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot submit candidate to manager.');
     } finally {
@@ -5783,17 +5801,27 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <span>{selectedProjectDocumentIds.length} selected</span>
                     </div>
 
-                    {aiProgress && (
+                    {extractionJob && (
                       <div className={styles.aiProgressPanel}>
                         <div className={styles.aiProgressHead}>
                           <div>
                             <strong>AI is running</strong>
-                            <span>{aiProgress.label}</span>
+                            <span>{extractionJob.stage === 'PREPARING' ? 'Preparing documents...' : 
+                                   extractionJob.stage === 'EXTRACTING' ? 'Extracting information...' : 
+                                   extractionJob.stage === 'MERGING' ? 'Merging extracted information...' : 
+                                   extractionJob.stage === 'CREATING_CANDIDATE' ? 'Creating candidate draft...' :
+                                   extractionJob.stage === 'COMPLETED' ? 'Completed' : 'Processing...'}</span>
                           </div>
-                          <b>{aiProgress.percent}%</b>
+                          <b>
+                            {extractionJob.status === 'COMPLETED' ? '100%' : 'Processing...'}
+                          </b>
                         </div>
                         <div className={styles.aiProgressTrack}>
-                          <span style={{ width: `${Math.max(5, aiProgress.percent)}%` }} />
+                          {extractionJob.status === 'COMPLETED' ? (
+                            <span style={{ width: '100%' }} />
+                          ) : (
+                            <span className={styles.indeterminateBar} />
+                          )}
                         </div>
                         <small>Please keep this modal open while AI is processing.</small>
                       </div>
@@ -5813,7 +5841,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               type="checkbox"
                               checked={selected}
                               onChange={() => toggleProjectDocumentSelection(document.id)}
-                              disabled={!canUseStaffWorkbench}
+                              disabled={!canUseStaffWorkbench || extractingSelectedDocuments}
                             />
                           </label>
                           <div className={styles.documentIcon}><FileText size={18} /></div>
@@ -5932,173 +5960,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </div>
                     </div>
 
-                      <>
-                        <div className={styles.candidateReviewWorkspace}>
-                          <div className={styles.candidateReviewHero}>
-                            <div className={styles.candidateReviewHeroMain}>
-                              <span>Candidate draft workspace</span>
-                              <h4>{candidateName(staffCandidate)}</h4>
-                              <p>{candidateIndustry(staffCandidate)}</p>
-                            </div>
-                            <div className={styles.candidateReviewMetrics}>
-                              <div>
-                                <span>Status</span>
-                                <strong>{candidateStatusLabel[staffCandidate.status]}</strong>
-                              </div>
-                              <div>
-                                <span>Confidence</span>
-                                <strong>{candidateConfidenceLabel(staffCandidate)}</strong>
-                              </div>
-                              <div>
-                                <span>Data quality</span>
-                                <strong>{candidateCompleteness(staffCandidate)}</strong>
-                              </div>
-                              <div>
-                                <span>SWOT items</span>
-                                <strong>
-                                  {[
-                                    staffCandidateEdit.strengths,
-                                    staffCandidateEdit.opportunities,
-                                    staffCandidateEdit.weaknesses,
-                                    staffCandidateEdit.threats,
-                                  ].reduce((sum, value) => sum + splitLines(value).length, 0)}
-                                </strong>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={styles.candidateReviewTabs} role="tablist" aria-label="Candidate draft review sections">
-                            {candidateReviewTabs.map((tab) => (
-                              <button
-                                key={tab.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={candidateReviewTab === tab.id}
-                                className={`${styles.candidateReviewTab} ${candidateReviewTab === tab.id ? styles.candidateReviewTabActive : ''}`}
-                                onClick={() => setCandidateReviewTab(tab.id)}
-                              >
-                                <strong>{tab.label}</strong>
-                                <span>{tab.helper}</span>
-                              </button>
-                            ))}
-                          </div>
-
-                          {candidateReviewTab === 'profile' && (
-                            <div className={`${styles.candidateReviewSection} ${styles.profileReviewSection}`}>
-                              <div className={styles.candidateReviewSectionHead}>
-                                <div>
-                                  <span>Company profile</span>
-                                  <h4>Identity and contact</h4>
-                                </div>
-                                <small>{candidateConfidenceLabel(staffCandidate)} confidence</small>
-                              </div>
-                              <div className={styles.readOnlyFieldGrid}>
-                                {[
-                                  ['Legal name', staffCandidateEdit.legalName],
-                                  ['Tax ID', staffCandidateEdit.taxId],
-                                  ['Address', staffCandidateEdit.address],
-                                  ['Industry', staffCandidateEdit.industry],
-                                  ['Employee tier', staffCandidateEdit.employeeTier],
-                                  ['Company size', staffCandidateEdit.companySize],
-                                ].map(([label, value]) => (
-                                  <div className={styles.readOnlyField} key={label}>
-                                    <span>{label}</span>
-                                    <strong>{value || 'No data'}</strong>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className={styles.candidateExtractedFieldStack}>
-                                <WebsiteListField
-                                  label="Website"
-                                  value={staffCandidateEdit.website}
-                                  editable={false}
-                                  onChange={() => undefined}
-                                />
-                                <ExtractedListField
-                                  label="Email"
-                                  fieldKey="email"
-                                  value={staffCandidateEdit.email}
-                                  editable={false}
-                                  onChange={() => undefined}
-                                />
-                                <ExtractedListField
-                                  label="Hotline"
-                                  fieldKey="phone"
-                                  value={staffCandidateEdit.phone}
-                                  editable={false}
-                                  onChange={() => undefined}
-                                />
-                              </div>
-                              <LongTextInsightCard title="Business model" value={staffCandidateEdit.businessModel} />
-                            </div>
-                          )}
-
-                          {candidateReviewTab === 'swot' && (
-                            <div className={styles.candidateReviewSection}>
-                              <div className={styles.candidateReviewSectionHead}>
-                                <div>
-                                  <span>AI insight review</span>
-                                  <h4>SWOT signals</h4>
-                                </div>
-                                <small>{[
-                                  staffCandidateEdit.strengths,
-                                  staffCandidateEdit.opportunities,
-                                  staffCandidateEdit.weaknesses,
-                                ].reduce((sum, value) => sum + splitLines(value).length, 0)} item(s)</small>
-                              </div>
-                              <div className={styles.candidateInsightGrid}>
-                                <CandidateInsightField title="Strengths" data={splitLines(staffCandidateEdit.strengths)} />
-                                <CandidateInsightField title="Opportunities" data={splitLines(staffCandidateEdit.opportunities)} />
-                                <CandidateInsightField title="Weaknesses" data={splitLines(staffCandidateEdit.weaknesses)} />
-                                <CandidateInsightField title="Threats" data={splitLines(staffCandidateEdit.threats)} />
-                              </div>
-                            </div>
-                          )}
-
-                          {candidateReviewTab === 'evidence' && (
-                            <div className={styles.candidateReviewSection}>
-                              <div className={styles.candidateReviewSectionHead}>
-                                <div>
-                                  <span>Business evidence</span>
-                                  <h4>Products, markets, and customers</h4>
-                                </div>
-                                <small>AI extracted fields</small>
-                              </div>
-                              <div className={styles.evidenceWorkspace}>
-                                <section className={styles.evidenceGroup}>
-                                  <div className={styles.evidenceGroupHead}>
-                                    <span>Business scope</span>
-                                    <strong>What the company sells and who it serves</strong>
-                                  </div>
-                                  <div className={styles.evidenceBusinessGrid}>
-                                    <CandidateProductPanel title="Products / services" data={(staffCandidate.business as { products?: unknown } | undefined)?.products} />
-                                    <CandidateInfoPanel
-                                      title="Markets and customers"
-                                      data={{
-                                        markets: normalizeExtractedListValue(staffCandidateEdit.markets, true),
-                                        targetCustomers: normalizeExtractedListValue(staffCandidateEdit.targetCustomers, true),
-                                      }}
-                                    />
-                                  </div>
-                                </section>
-                              </div>
-                            </div>
-                          )}
-
-                        </div>
-
-                        <div className={styles.modalActions}>
-                          <button
-                            className={`${styles.button} ${styles.primaryButton}`}
-                            type="button"
-                            onClick={() => void handleSubmitStaffCandidate()}
-                            disabled={!canUseStaffWorkbench || staffSubmitLoading || staffCandidate.status !== 'DRAFT'}
-                            title={staffCandidate.status !== 'DRAFT' ? 'Only a selected DRAFT candidate can be submitted.' : 'Submit the selected candidate draft to manager.'}
-                          >
-                            <CheckCircle2 size={16} />{staffSubmitLoading ? 'Submitting...' : 'Submit'}
-                          </button>
-                        </div>
-                      </>
+                        <CandidateReviewWorkspace
+                          projectId={String(currentProjectId)}
+                          candidateId={staffCandidate.id}
+                          taskId={selectedStaffTask.id}
+                          role="STAFF"
+                          readOnly={staffCandidate.status === 'PENDING_REVIEW'}
+                          onReviewed={() => {
+                            setStaffCandidate(null);
+                            setStaffCandidateEdit(emptyStaffCandidateEdit);
+                            taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
+                              .then((payload: any) => setWorkbench(payload.data))
+                              .catch(console.error);
+                          }}
+                          onCancel={() => {
+                            setStaffCandidate(null);
+                            setStaffCandidateEdit(emptyStaffCandidateEdit);
+                          }}
+                          onSubmit={() => void handleSubmitStaffCandidate()}
+                          submitLoading={staffSubmitLoading}
+                        />
                   </section>
                   )}
                   </>

@@ -10,7 +10,7 @@ export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'AR
 export type ProjectType =
   | 'RESEARCH_NEW_COMPANY'
   | 'UPDATE_EXISTING_COMPANY';
-export type CandidateStatus = 'DRAFT' | 'PENDING_REVIEW' | 'REJECTED' | 'CORRECTED' | 'APPROVED';
+export type CandidateStatus = 'DRAFT' | 'PENDING_REVIEW' | 'REVISION_REQUIRED' | 'REJECTED' | 'CORRECTED' | 'APPROVED';
 export type ImportJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type InputType = 'FILE_UPLOAD' | 'MANUAL_INPUT';
 export type RelationshipType =
@@ -187,6 +187,11 @@ export interface ProjectResponse {
   createdBy: number | null;
   createdAt: string | null;
   updatedAt: string | null;
+  plannedEndDate?: string | null;
+  totalTasks?: number;
+  completedTasks?: number;
+  progressPercentage?: number;
+  isOverdue?: boolean;
   members: ProjectMemberResponse[];
 }
 
@@ -197,6 +202,24 @@ export interface CreateProjectRequest {
   targetCompanyName: string;
   targetRelationshipType?: RelationshipType | null;
   description?: string | null;
+  plannedEndDate: string;
+}
+
+export interface DuplicateCompanyCheckResponse {
+  duplicate: boolean;
+  matchingProjects: MatchingProject[];
+}
+
+export interface MatchingProject {
+  id: number;
+  projectName: string;
+  targetCompanyName: string;
+  status: string;
+  projectType: string;
+}
+
+export interface MultiDocumentExtractionRequest {
+  rawDocumentIds: string[];
 }
 
 export interface UpdateProjectRequest {
@@ -217,6 +240,52 @@ export interface AddMemberRequest {
   memberRole: 'MANAGER' | 'STAFF';
 }
 
+export interface FinancialInfo {
+  revenue?: number;
+  revenueCurrency?: string;
+  revenueGrowth?: number;
+  debtRatio?: number;
+  profitMargin?: number;
+  fundingStage?: string;
+  profitability?: string;
+}
+
+export interface InnovationInfo {
+  patents?: number;
+  rdInvestmentPercent?: number;
+  techStack?: string[];
+  techMaturityLevel?: number;
+  productInnovationRate?: number;
+  technologyCapabilities?: string[];
+}
+
+export interface MarketInfo {
+  marketShare?: number;
+  brandRank?: number;
+  clientCount?: number;
+  mainMarkets?: string[];
+}
+
+export interface RiskInfo {
+  legalRisk?: string;
+  financialRisk?: string;
+  reputationRisk?: string;
+  securityRisk?: string;
+  conflictOfInterestRisk?: string;
+  supplyInterruptionRisk?: string;
+  dependencyRisk?: string;
+  overallRiskLevel?: string;
+}
+
+export interface ComplianceInfo {
+  status?: string;
+  qualityCertifications?: string[];
+  securityCertifications?: string[];
+  antiCorruptionPolicy?: string;
+  laborCompliance?: string;
+  environmentalPolicy?: string;
+}
+
 export interface CandidateResponse {
   id: string;
   projectId: string;
@@ -228,7 +297,37 @@ export interface CandidateResponse {
   suggestedRelationshipType?: RelationshipType;
   relationshipConfidenceScore?: number;
   relationshipTypeOverride?: RelationshipType;
+  
+  fieldResults?: Record<string, AiFieldResult>;
+  qualityStatus?: string;
+  qualityMetrics?: Record<string, unknown>;
+  identity?: { legalName?: string; [key: string]: any };
+  financial?: FinancialInfo;
+  market?: MarketInfo;
+  innovation?: InnovationInfo;
+  risk?: RiskInfo;
+  compliance?: ComplianceInfo;
+
   [key: string]: unknown;
+}
+
+export type FieldReviewStatus = 'PENDING' | 'EDITED' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'CONFIRMED' | 'ADDED' | 'REMOVED';
+
+export interface AiFieldResult {
+  fieldName?: string;
+  value?: unknown;
+  confidence?: number;
+  evidenceText?: string;
+  pageNumber?: number;
+  validationStatus?: string;
+  staffReviewStatus?: FieldReviewStatus;
+  managerReviewStatus?: FieldReviewStatus;
+  staffReviewComment?: string;
+  managerReviewComment?: string;
+  previousManagerReviewStatus?: string;
+  previousManagerReviewComment?: string;
+  reviewedValue?: unknown;
+  reviewStatus?: FieldReviewStatus | string; // Synthetic status used by frontend
 }
 
 export interface ApproveCandidateRequest {
@@ -244,7 +343,7 @@ export interface UpdateCandidateRequest {
 }
 
 export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED';
-export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'OTHER';
+export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'OTHER';
 
 export interface WorkbenchDocumentResponse extends ImportJobResponse {
   latestExtractionId?: string | null;
@@ -329,6 +428,20 @@ export interface AiExtractionResult {
   [key: string]: unknown;
 }
 
+export type AiExtractionJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type AiExtractionJobStage = 'PREPARING' | 'EXTRACTING' | 'MERGING' | 'CREATING_CANDIDATE' | 'DONE';
+
+export interface AiExtractionJobResponse {
+  jobId: string;
+  status: AiExtractionJobStatus;
+  stage: AiExtractionJobStage | null;
+  progress: number | null;
+  totalDocuments: number;
+  processedDocuments: number;
+  candidateId: number | null;
+  errorMessage: string | null;
+}
+
 export interface MergeCandidateResponse {
   candidateId: string;
   identity?: Record<string, unknown>;
@@ -365,7 +478,95 @@ export interface ImportJobResponse {
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
-export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'GENERAL_TASK';
+export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'GENERAL_TASK';
+
+export type NewsDraftStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'DELETED';
+
+export interface CompanyNewsResearchDraft {
+  id: string;
+  projectId: number;
+  taskId: number;
+  targetCompanyProfileId?: string | null;
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  imageStorageKey?: string | null;
+  externalImageUrl?: string | null;
+  sourceName?: string | null;
+  sourceUrl: string;
+  author?: string | null;
+  publishedAt?: string | null;
+  capturedAt?: string | null;
+  tags?: string[] | null;
+  staffNotes?: string | null;
+  reviewStatus: NewsDraftStatus;
+  createdByAccountId?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface CreateNewsResearchDraftRequest {
+  title: string;
+  sourceUrl: string;
+  publishedAt: string;
+  summary?: string | null;
+  content?: string | null;
+  imageStorageKey?: string | null;
+  externalImageUrl?: string | null;
+  sourceName?: string | null;
+  author?: string | null;
+  tags?: string[] | null;
+  staffNotes?: string | null;
+}
+
+export interface UpdateNewsResearchDraftRequest {
+  title?: string | null;
+  sourceUrl?: string | null;
+  publishedAt?: string | null;
+  summary?: string | null;
+  content?: string | null;
+  imageStorageKey?: string | null;
+  externalImageUrl?: string | null;
+  sourceName?: string | null;
+  author?: string | null;
+  tags?: string[] | null;
+  staffNotes?: string | null;
+}
+
+export interface SubmitCompanyNewsResearchRequest {
+  newsDraftIds: string[];
+}
+
+export interface StepUpChallengeResponse {
+  challengeId?: number | null;
+  maskedPhone?: string | null;
+  expiresInSeconds?: number | null;
+  status: string;
+}
+
+export interface StepUpVerifyResponse {
+  stepUpToken: string;
+  expiresInSeconds: number;
+}
+
+export interface CompanyIntelligenceArticleResponse {
+  id: string;
+  companyProfileId: string;
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  hasImage: boolean;
+  externalImageUrl?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  author?: string | null;
+  publishedAt?: string | null;
+  capturedAt?: string | null;
+  tags?: string[] | null;
+  approvedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 
 export interface CompanyMemberResearchItem {
   fullName: string;
@@ -421,6 +622,7 @@ export interface CreateProjectTaskRequest {
   priority: TaskPriority;
   dueDate?: string | null;
   taskType: TaskType;
+  targetCompanyProfileId?: string | null;
 }
 
 export interface ManualInputRequest {
@@ -746,6 +948,19 @@ export interface PermissionDto {
   staff: boolean;
 }
 
+export interface CandidateAnalysisDto {
+  id: string;
+  insights?: any;
+  financial?: FinancialInfo;
+  market?: MarketInfo;
+  innovation?: InnovationInfo;
+  risk?: RiskInfo;
+  compliance?: ComplianceInfo;
+  validation?: any;
+  normalization?: any;
+  deduplication?: any;
+}
+
 export interface AuditLogDto {
   id: number;
   timestamp: string;
@@ -758,3 +973,22 @@ export interface AuditLogDto {
 }
 
 export type PageResult<T> = PageResponse<T>;
+
+export interface CompanyDocumentResponse {
+  id: string;
+  companyProfileId: string;
+  sourceDocumentId: string;
+  displayName: string;
+  originalFileName: string;
+  documentType: string;
+  description: string;
+  mimeType: string;
+  fileSize: number;
+  status: string;
+  uploadedBy: { id: number; name: string } | null;
+  uploadedAt: string;
+  approvedBy: { id: number; name: string } | null;
+  approvedAt: string;
+  previewAvailable: boolean;
+  downloadAvailable: boolean;
+}

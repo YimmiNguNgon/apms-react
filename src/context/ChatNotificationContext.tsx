@@ -90,6 +90,8 @@ export const ChatNotificationProvider: React.FC<{
 
   const refreshChatNotifications = useCallback(async () => {
     if (!currentUser || pollingRef.current) return;
+    if ((currentUser.role as string) === 'BUSINESS_OWNER' || currentUser.role === 'ROLE_BUSINESS_OWNER') return;
+
     pollingRef.current = true;
 
     try {
@@ -158,8 +160,9 @@ export const ChatNotificationProvider: React.FC<{
     }
 
     void refreshChatNotifications();
-    const interval = window.setInterval(() => void refreshChatNotifications(), 5000);
-    return () => window.clearInterval(interval);
+    // Disabled 5s auto-refresh interval based on user request
+    // const interval = window.setInterval(() => void refreshChatNotifications(), 5000);
+    // return () => window.clearInterval(interval);
   }, [currentUser?.id, refreshChatNotifications]);
 
   const totalUnread = useMemo(

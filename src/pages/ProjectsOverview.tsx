@@ -7,6 +7,7 @@ import { projectApi } from '../API/projectApi';
 import type {
   CandidateResponse,
   CreateProjectRequest,
+  DuplicateCompanyCheckResponse,
   ProfileResponse,
   ProjectMemberResponse,
   ProjectResponse,
@@ -137,6 +138,7 @@ export const ProjectsOverview: React.FC = () => {
     targetCompanyProfileId: '',
     targetRelationshipType: '',
     description: '',
+    plannedEndDate: '',
   });
   const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipTypeOption[]>(RELATIONSHIP_OPTIONS);
@@ -171,6 +173,8 @@ export const ProjectsOverview: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+
 
   // Client search filter
   const filteredProjects = useMemo(() => {
@@ -232,6 +236,7 @@ export const ProjectsOverview: React.FC = () => {
       targetCompanyProfileId: '',
       targetRelationshipType: '',
       description: '',
+      plannedEndDate: '',
     });
     setShowCreateModal(true);
     try {
@@ -264,6 +269,26 @@ export const ProjectsOverview: React.FC = () => {
       setCreateError(t('errors.relationshipRequired'));
       return;
     }
+    if (!createForm.plannedEndDate) {
+      setCreateError(t('errors.dateRequired'));
+      return;
+    }
+
+    setCreateLoading(true);
+    setCreateError(null);
+
+    if (createForm.projectType === 'RESEARCH_NEW_COMPANY') {
+      try {
+        const res = await projectApi.checkDuplicateCompanyName(projectName);
+        if (res?.data?.duplicate) {
+          setCreateError(t('create.duplicateWarningTitle'));
+          setCreateLoading(false);
+          return;
+        }
+      } catch (err) {
+        // Ignore check error and proceed
+      }
+    }
 
     const selectedCompany = companyOptions.find(
       (profile) => profile.companyId === createForm.targetCompanyProfileId || profile.id === createForm.targetCompanyProfileId,
@@ -275,10 +300,9 @@ export const ProjectsOverview: React.FC = () => {
       targetCompanyName: createForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectName,
       targetRelationshipType: createForm.targetRelationshipType as RelationshipType,
       description: createForm.description.trim() || null,
+      plannedEndDate: createForm.plannedEndDate,
     };
 
-    setCreateLoading(true);
-    setCreateError(null);
     try {
       await projectApi.createProject(payload);
       setShowCreateModal(false);
@@ -521,6 +545,16 @@ export const ProjectsOverview: React.FC = () => {
               <label>
                 <span>{t('create.descriptionLabel')}</span>
                 <input className="search-input" placeholder={t('create.descriptionPlaceholder')} value={createForm.description} onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))} />
+              </label>
+              <label>
+                <span>{t('create.plannedEndDateLabel')}</span>
+                <input
+                  className="search-input"
+                  type="date"
+                  value={createForm.plannedEndDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
+                />
               </label>
             </div>
             <div className="workspace-head-actions">

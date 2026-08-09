@@ -583,7 +583,7 @@
 
 .empty {
   display: flex;
-  min-height: 150px;
+  min-height: 120px;
   align-items: center;
   justify-content: center;
   border: 1px dashed #cbd5e1;
@@ -591,6 +591,8 @@
   color: #94a3b8;
   font-size: var(--text-body);
   font-weight: 700;
+  padding: 16px;
+  text-align: center;
 }
 
 .memberPanel {
@@ -2194,9 +2196,27 @@
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .taskFormGrid {
@@ -2633,15 +2653,37 @@
   line-height: 1.5;
 }
 
+.documentList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .documentItem {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #ffffff;
-  padding: 12px;
+  padding: 14px 16px;
+  min-height: 82px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.documentItemSelected {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.documentItem:hover {
+  border-color: #cbd5e1;
+}
+
+.documentItemSelected:hover {
+  border-color: #2563eb;
 }
 
 .documentIcon {
@@ -2652,6 +2694,63 @@
   border-radius: 12px;
   background: #f1f5f9;
   color: #2563eb;
+  flex-shrink: 0;
+}
+
+.documentInfo {
+  min-width: 0;
+}
+
+.documentName {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.documentMeta {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.documentToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.documentToolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.documentToolbarLeft strong {
+  font-size: var(--text-h4);
+  color: #0f172a;
+}
+
+.documentToolbarSelected {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  background: #eff6ff;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.documentToolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .documentItem strong,
@@ -2663,9 +2762,9 @@
 
 .documentActions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .candidateEditGrid {
@@ -6327,6 +6426,16 @@
   .projectDocumentActions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .documentItem {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .documentItem .documentActions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    margin-top: 4px;
   }
 }
 

@@ -4,6 +4,7 @@ import { projectApi } from '../API/projectApi';
 import { ROLES, useUser } from '../context/UserContext';
 import type {
   CreateProjectRequest,
+  DuplicateCompanyCheckResponse,
   PageResult,
   CandidateResponse,
   ProfileResponse,
@@ -26,6 +27,7 @@ type ProjectFormState = {
   targetCompanyName: string;
   targetRelationshipType: string;
   description: string;
+  plannedEndDate: string;
 };
 
 type FeedbackState = {
@@ -115,6 +117,7 @@ const initialProjectForm = (): ProjectFormState => ({
   targetCompanyName: '',
   targetRelationshipType: 'PARTNER_WITH',
   description: '',
+  plannedEndDate: '',
 });
 
 type ProjectManagementProps = {
@@ -140,7 +143,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
   const [, setTasks] = useState<ProjectTaskResponse[]>([]);
   const [, setCandidates] = useState<CandidateResponse[]>([]);
-  const [, setApprovedProfiles] = useState<ProfileResponse[]>([]);
   const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
   const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipTypeOption[]>(RELATIONSHIP_OPTIONS);
@@ -284,17 +286,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const reloadProjectBoard = useCallback(async (projectId: number, signal?: AbortSignal) => {
     setBoardLoading(true);
     try {
-      const [candidateRes, profileRes] = await Promise.all([
-        api.get<PageResult<CandidateResponse>>(`/projects/${projectId}/candidates`, { params: { page: 0, size: 100 }, signal }),
-        api.get<ProfileResponse[]>(`/projects/${projectId}/company-profiles`, { signal }),
-      ]);
+      const candidateRes = await api.get<PageResult<CandidateResponse>>(`/projects/${projectId}/candidates`, { params: { page: 0, size: 100 }, signal });
       if (signal?.aborted) return;
       setCandidates(candidateRes.data?.content ?? []);
-      setApprovedProfiles(profileRes.data ?? []);
     } catch (err) {
       if (!signal?.aborted) {
         setCandidates([]);
-        setApprovedProfiles([]);
         setDetailError(err instanceof Error ? err.message : 'Cannot load the project board.');
       }
     } finally {
@@ -334,6 +331,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     setCurrentPage(0);
   }, [projectSearch]);
 
+
+
   useEffect(() => {
     if (!showCreateForm) return;
     const controller = new AbortController();
@@ -345,9 +344,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     const controller = new AbortController();
     if (!selectedProjectId) {
       setSelectedProject(null);
+      setDetailError(null);
       setTasks([]);
       setCandidates([]);
-      setApprovedProfiles([]);
       return () => controller.abort();
     }
 
@@ -474,8 +473,26 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
+    if (!projectForm.plannedEndDate) {
+      setFeedback({ kind: 'error', message: 'Planned end date is required.' });
+      return;
+    }
+
     setCreateLoading(true);
     setFeedback(null);
+
+    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY') {
+      try {
+        const res = await projectApi.checkDuplicateCompanyName(projectName);
+        if (res?.data?.duplicate) {
+          setFeedback({ kind: 'error', message: 'Tên dự án hoặc doanh nghiệp đã tồn tại. Vui lòng nhập tên khác.' });
+          setCreateLoading(false);
+          return;
+        }
+      } catch (err) {
+        // Ignore check error and proceed
+      }
+    }
 
     try {
       const payload: CreateProjectRequest = {
@@ -485,6 +502,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectName,
         targetRelationshipType,
         description: description || null,
+        plannedEndDate: projectForm.plannedEndDate,
       };
 
       const res = await projectApi.createProject(payload);
@@ -587,8 +605,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
             )}
           </div>
         </div>
-
-        {feedback && <div className={`workspace-inline-${feedback.kind === 'error' ? 'error' : 'note'}`}>{feedback.message}</div>}
         {projectsError && <div className="workspace-inline-error">{projectsError}</div>}
 
         {showCreateForm && (
@@ -678,6 +694,16 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               <label>
                 <span>Description</span>
                 <input className="search-input" value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} />
+              </label>
+              <label>
+                <span>Planned end date</span>
+                <input
+                  className="search-input"
+                  type="date"
+                  value={projectForm.plannedEndDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
+                />
               </label>
             </div>
             <div className="workspace-head-actions">
@@ -779,3 +805,4 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     </section>
   );
 };
+
