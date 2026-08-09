@@ -1,10 +1,296 @@
 /* ============================================================
    APMS – Business Ecosystem Intelligence Platform
-   Design System v2.0 — Dark/Light Mode RBAC Dashboard
+   Design System v3.0 — IBM Carbon Enterprise Standard
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+/* ============================================================
+   IBM CARBON DESIGN SYSTEM — Token Layer (Light G10 Theme)
+   All components MUST consume these tokens. Hard-coded px values
+   are legacy — migrate pages to use --cds-* tokens going forward.
+   ============================================================ */
+:root {
+  /* ─── Carbon Color — White/G10 Theme ─── */
+  --cds-background:          #FFFFFF;
+  --cds-background-hover:    #e8e8e8;
+  --cds-background-active:   #c6c6c6;
+  --cds-background-selected: #e0e0e0;
+
+  --cds-layer-01:            #f4f4f4;
+  --cds-layer-02:            #FFFFFF;
+  --cds-layer-03:            #f4f4f4;
+  --cds-layer-hover-01:      #e8e8e8;
+  --cds-layer-hover-02:      #e8e8e8;
+
+  --cds-field-01:            #f4f4f4;
+  --cds-field-02:            #FFFFFF;
+  --cds-field-hover-01:      #e8e8e8;
+
+  /* ─── Carbon Color — Text ─── */
+  --cds-text-primary:        #161616;
+  --cds-text-secondary:      #525252;
+  --cds-text-placeholder:    #a8a8a8;
+  --cds-text-helper:         #6f6f6f;
+  --cds-text-error:          #da1e28;
+  --cds-text-inverse:        #ffffff;
+  --cds-text-disabled:       rgba(22,22,22,0.25);
+  --cds-text-on-color:       #ffffff;
+
+  /* ─── Carbon Color — Border ─── */
+  --cds-border-subtle-00:    #e0e0e0;
+  --cds-border-subtle-01:    #c6c6c6;
+  --cds-border-subtle-02:    #e0e0e0;
+  --cds-border-strong-01:    #8d8d8d;
+  --cds-border-strong-02:    #8d8d8d;
+  --cds-border-inverse:      #161616;
+  --cds-border-interactive:  #0f62fe;
+  --cds-border-color:        #DDE1E6;
+
+  /* ─── Carbon Color — Interactive (Blue 60) ─── */
+  --cds-interactive:         #0f62fe;
+  --cds-interactive-hover:   #0353e9;
+  --cds-interactive-active:  #002d9c;
+  --cds-interactive-selected:#d0e2ff;
+  --cds-focus:               #0f62fe;
+  --cds-focus-inset:         #ffffff;
+  --cds-link-primary:        #0f62fe;
+  --cds-link-primary-hover:  #0043ce;
+
+  /* ─── Carbon Color — Semantic ─── */
+  --cds-support-error:       #da1e28;
+  --cds-support-success:     #24a148;
+  --cds-support-warning:     #f1c21b;
+  --cds-support-info:        #0043ce;
+  --cds-support-error-bg:    #fff1f1;
+  --cds-support-success-bg:  #defbe6;
+  --cds-support-warning-bg:  #fdf6dd;
+  --cds-support-info-bg:     #edf5ff;
+
+  /* ─── Carbon Color — Risk/Threat (custom domain layer) ─── */
+  --cds-risk-critical:       #da1e28;
+  --cds-risk-critical-bg:    #fff1f1;
+  --cds-risk-high:           #ff832b;
+  --cds-risk-high-bg:        #fff2e8;
+  --cds-risk-medium:         #f1c21b;
+  --cds-risk-medium-bg:      #fdf6dd;
+  --cds-risk-low:            #24a148;
+  --cds-risk-low-bg:         #defbe6;
+
+  /* ─── Carbon Spacing Scale (8px base) ─── */
+  --cds-spacing-01:  2px;
+  --cds-spacing-02:  4px;
+  --cds-spacing-03:  8px;
+  --cds-spacing-04:  12px;
+  --cds-spacing-05:  16px;
+  --cds-spacing-06:  24px;
+  --cds-spacing-07:  32px;
+  --cds-spacing-08:  40px;
+  --cds-spacing-09:  48px;
+  --cds-spacing-10:  64px;
+  --cds-spacing-11:  80px;
+  --cds-spacing-12:  96px;
+  --cds-spacing-13: 160px;
+
+  /* ─── Carbon Typography Scale ─── */
+  --cds-label-01-size:       12px;
+  --cds-label-01-weight:     400;
+  --cds-label-01-line:       16px;
+  --cds-label-01-letter:     0.32px;
+
+  --cds-helper-text-01-size: 12px;
+  --cds-helper-text-01-line: 16px;
+
+  --cds-body-compact-01-size: 14px;
+  --cds-body-compact-01-line: 18px;
+  --cds-body-compact-01-weight: 400;
+
+  --cds-body-01-size:        14px;
+  --cds-body-01-line:        20px;
+  --cds-body-01-weight:      400;
+
+  --cds-body-02-size:        16px;
+  --cds-body-02-line:        24px;
+
+  --cds-heading-compact-01-size:   14px;
+  --cds-heading-compact-01-weight: 600;
+  --cds-heading-compact-01-line:   18px;
+
+  --cds-heading-01-size:     14px;
+  --cds-heading-01-weight:   600;
+  --cds-heading-01-line:     20px;
+
+  --cds-heading-02-size:     16px;
+  --cds-heading-02-weight:   600;
+  --cds-heading-02-line:     22px;
+
+  --cds-heading-03-size:     20px;
+  --cds-heading-03-weight:   400;
+  --cds-heading-03-line:     28px;
+
+  --cds-heading-04-size:     28px;
+  --cds-heading-04-weight:   400;
+  --cds-heading-04-line:     36px;
+
+  --cds-heading-05-size:     32px;
+  --cds-heading-05-weight:   300;
+  --cds-heading-05-line:     40px;
+
+  --cds-heading-06-size:     42px;
+  --cds-heading-06-weight:   300;
+  --cds-heading-06-line:     50px;
+
+  --cds-heading-07-size:     54px;
+  --cds-heading-07-weight:   300;
+  --cds-heading-07-line:     64px;
+
+  /* ─── Carbon Shape / Radius ─── */
+  --cds-border-radius:       6px;
+  --cds-border-radius-sm:    4px;
+  --cds-border-radius-lg:    8px;
+
+  /* ─── Carbon Shadow (minimal — no colorful shadows) ─── */
+  --cds-shadow-sm:  0 1px 3px 0 rgba(0,0,0,0.10), 0 1px 2px -1px rgba(0,0,0,0.06);
+  --cds-shadow-md:  0 4px 6px -1px rgba(0,0,0,0.10), 0 2px 4px -2px rgba(0,0,0,0.05);
+  --cds-shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.10), 0 4px 6px -4px rgba(0,0,0,0.05);
+
+  /* ─── Carbon Component Heights ─── */
+  --cds-size-sm:    32px;  /* small controls */
+  --cds-size-md:    40px;  /* default controls */
+  --cds-size-lg:    48px;  /* large controls */
+  --cds-size-xl:    64px;  /* section headers */
+
+  /* ─── Carbon Transition ─── */
+  --cds-motion-fast:    0.1s;
+  --cds-motion-default: 0.2s;
+  --cds-motion-slow:    0.3s;
+  --cds-motion-easing:  cubic-bezier(0.2, 0, 0.38, 0.9);
+
+  /* ─── Carbon Z-index ─── */
+  --cds-z-dropdown:  6000;
+  --cds-z-overlay:   8000;
+  --cds-z-modal:     9000;
+  --cds-z-tooltip:   9100;
+}
+
+/* ─── Carbon Dark Mode Overrides ─── */
+[data-theme="dark"] {
+  --cds-background:          #161616;
+  --cds-background-hover:    #2d2d2d;
+  --cds-background-active:   #3d3d3d;
+  --cds-background-selected: #262626;
+
+  --cds-layer-01:            #262626;
+  --cds-layer-02:            #393939;
+  --cds-layer-03:            #525252;
+  --cds-layer-hover-01:      #333333;
+  --cds-layer-hover-02:      #474747;
+
+  --cds-field-01:            #262626;
+  --cds-field-02:            #393939;
+  --cds-field-hover-01:      #333333;
+
+  --cds-text-primary:        #f4f4f4;
+  --cds-text-secondary:      #c6c6c6;
+  --cds-text-placeholder:    #6f6f6f;
+  --cds-text-helper:         #8d8d8d;
+  --cds-text-disabled:       rgba(244,244,244,0.25);
+
+  --cds-border-subtle-00:    #393939;
+  --cds-border-subtle-01:    #525252;
+  --cds-border-subtle-02:    #393939;
+  --cds-border-strong-01:    #6f6f6f;
+  --cds-border-color:        #393939;
+
+  --cds-interactive:         #4589ff;
+  --cds-interactive-hover:   #5596ff;
+  --cds-interactive-active:  #0f62fe;
+  --cds-focus:               #ffffff;
+  --cds-link-primary:        #78a9ff;
+  --cds-link-primary-hover:  #a6c8ff;
+
+  --cds-support-error:       #ff8389;
+  --cds-support-success:     #42be65;
+  --cds-support-warning:     #f1c21b;
+  --cds-support-info:        #4589ff;
+
+  --cds-risk-critical:       #ff8389;
+  --cds-risk-critical-bg:    #2d1b1c;
+  --cds-risk-high:           #ff832b;
+  --cds-risk-high-bg:        #2c1a0e;
+  --cds-risk-medium:         #f1c21b;
+  --cds-risk-medium-bg:      #2b2208;
+  --cds-risk-low:            #42be65;
+  --cds-risk-low-bg:         #0d2618;
+
+  --cds-shadow-sm:  0 1px 3px 0 rgba(0,0,0,0.40);
+  --cds-shadow-md:  0 4px 6px -1px rgba(0,0,0,0.45);
+  --cds-shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.50);
+}
+
+/* ─── Carbon Global Utility Classes ─── */
+.cds-body-01 {
+  font-size: var(--cds-body-01-size);
+  font-weight: var(--cds-body-01-weight);
+  line-height: var(--cds-body-01-line);
+}
+.cds-body-compact-01 {
+  font-size: var(--cds-body-compact-01-size);
+  font-weight: var(--cds-body-compact-01-weight);
+  line-height: var(--cds-body-compact-01-line);
+}
+.cds-label-01 {
+  font-size: var(--cds-label-01-size);
+  font-weight: var(--cds-label-01-weight);
+  line-height: var(--cds-label-01-line);
+  letter-spacing: var(--cds-label-01-letter);
+}
+.cds-heading-01 {
+  font-size: var(--cds-heading-01-size);
+  font-weight: var(--cds-heading-01-weight);
+  line-height: var(--cds-heading-01-line);
+}
+.cds-heading-02 {
+  font-size: var(--cds-heading-02-size);
+  font-weight: var(--cds-heading-02-weight);
+  line-height: var(--cds-heading-02-line);
+}
+.cds-heading-03 {
+  font-size: var(--cds-heading-03-size);
+  font-weight: var(--cds-heading-03-weight);
+  line-height: var(--cds-heading-03-line);
+}
+.cds-heading-04 {
+  font-size: var(--cds-heading-04-size);
+  font-weight: var(--cds-heading-04-weight);
+  line-height: var(--cds-heading-04-line);
+}
+.cds-heading-05 {
+  font-size: var(--cds-heading-05-size);
+  font-weight: var(--cds-heading-05-weight);
+  line-height: var(--cds-heading-05-line);
+}
+
+/* ─── Carbon Page Shell utility ─── */
+.cds-page-shell {
+  background: var(--cds-layer-01);
+  min-height: 100vh;
+  padding: var(--cds-spacing-06) var(--cds-spacing-07);
+  color: var(--cds-text-primary);
+  font-family: 'IBM Plex Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.cds-card {
+  background: var(--cds-background);
+  border: 1px solid var(--cds-border-color);
+  border-radius: var(--cds-border-radius);
+  padding: var(--cds-spacing-05);
+}
+.cds-section-divider {
+  border: none;
+  border-top: 1px solid var(--cds-border-subtle-01);
+  margin: var(--cds-spacing-06) 0;
+}
 
 /* ──────────────────────────────────────────────────────────
    CSS VARIABLES — Light Mode (default)
@@ -10090,5 +10376,41 @@ body {
   .manager-dashboard-v2 .workspace-page-head {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 1180px) {
+  #page-relationship-map .relationship-map-layout {
+    grid-template-columns: 230px minmax(0, 1fr) !important;
+  }
+
+  #page-relationship-map .relationship-map-layout > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  #page-relationship-map .relationship-map-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  #page-relationship-map .relationship-network-canvas,
+  #page-relationship-map .relationship-network-canvas > div:first-child {
+    min-height: 400px !important;
+  }
+
+  #page-relationship-map .relationship-network-canvas svg {
+    height: 400px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #page-relationship-map .relationship-network-canvas,
+  #page-relationship-map .relationship-network-canvas > div:first-child {
+    min-height: 350px !important;
+  }
+
+  #page-relationship-map .relationship-network-canvas svg {
+    height: 350px !important;
   }
 }

@@ -12,8 +12,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { OwnerCompanyProfileCard } from '../../components/OwnerCompanyProfileCard';
 import { useUser } from '../../context/UserContext';
-import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskType } from '../../types/domain';
+import type { PageResult, ProfileResponse, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskType } from '../../types/domain';
 
 interface Props {
   setActivePage?: (page: string) => void;
@@ -74,6 +75,8 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
   const { currentUser } = useUser();
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [tasks, setTasks] = useState<StaffTaskRow[]>([]);
+  const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
+  const [ownerProfileError, setOwnerProfileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,15 +85,19 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
     setError(null);
 
     try {
-      const projectRes = await api.get<PageResult<ProjectResponse>>('/projects', {
-        params: { page: 0, size: 50 },
-        signal,
-      });
+      const [projectRes, profileRes] = await Promise.all([
+        api.get<PageResult<ProjectResponse>>('/projects', { params: { page: 0, size: 50 }, signal }),
+        api.get<ProfileResponse>('/owner/company-profile', { signal }).catch((err: unknown) => {
+          setOwnerProfileError(err instanceof Error ? err.message : 'Owner profile unavailable.');
+          return null;
+        }),
+      ]);
 
       const projectRows = projectRes.data?.content ?? [];
       if (signal?.aborted) return;
 
       setProjects(projectRows);
+      setOwnerProfile(profileRes?.data ?? null);
 
       const taskResults = await Promise.allSettled(
         projectRows.map(async (project) => {
@@ -117,6 +124,7 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
       if (!signal?.aborted) {
         setProjects([]);
         setTasks([]);
+        setOwnerProfile(null);
         setError(err instanceof Error ? err.message : 'Cannot load your staff workspace.');
       }
     } finally {
@@ -233,6 +241,8 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
             );
           })}
         </div>
+
+        <OwnerCompanyProfileCard profile={ownerProfile} error={ownerProfileError} loading={loading} />
 
         <div className="staff-dashboard-grid">
           <main className="workspace-panel staff-task-panel">

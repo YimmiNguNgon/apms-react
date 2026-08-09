@@ -1,4 +1,8 @@
 {
+  "description": "Theo dõi crawler tự động, quản lý nguồn tin tin cậy và kiểm tra dữ liệu AI.",
+  "breadcrumb": { "dashboard": "Bảng điều khiển", "operations": "Vận hành Crawler" },
+  "projectScope": { "ariaLabel": "Phạm vi dự án crawler", "select": "Chọn phạm vi dự án" },
+  "actions": { "runNlp": "Chạy NLP AI" },
   "title": "Crawler Intelligence Control",
   "subtitle": "Bảng điều khiển thu thập tin tức & phân tích AI",
   "categories": {

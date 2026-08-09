@@ -1,778 +1,847 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+// Enterprise Relationship Map â€” IBM Carbon Operations Center
+// 3-column Layout: Left Filters Sidebar | Center Interactive Network Graph | Right Analytics Sidebar
+// Top KPI Row | Below-Graph Timeline & History | Right-side Drawer on Node Click (Zero popups)
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { Maximize2, Minus, Plus, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
-import i18n from '../i18n';
-import { formatDate } from '../utils/format';
-import styles from './RelationshipMap.module.css';
+import type { GraphCompanyDto, ProfileResponse, ProjectResponse } from '../types/domain';
+import type { PageResponse } from '../services/api';
+import {
+  PageHeader,
+  MetricCard,
+  RiskBadge,
+  StatusBadge,
+  PrimaryButton,
+  SecondaryButton,
+  Drawer,
+  Tabs,
+} from '../components/ui';
 
-type GroupKey = 'ALL' | 'project' | 'supplier' | 'customer' | 'competitor' | 'investment' | 'other';
-type LayoutMode = 'radial' | 'grid';
+// â”€â”€â”€ Types & Interfaces â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+export type GroupKey = 'ALL' | 'partner' | 'supplier' | 'competitor' | 'customer' | 'potential-partner';
 
-interface GraphRelationshipExt {
-  targetCompanyId: string;
-  targetCompanyName?: string;
-  relationshipType: string;
-  confidenceScore?: number;
-  projectId?: string;
-}
+const toGroupKey = (relationshipType?: string): GroupKey => {
+  const t = (relationshipType || '').toUpperCase();
+  switch (t) {
+    case 'PARTNER_WITH': return 'partner';
+    case 'COMPETITOR_OF': return 'competitor';
+    case 'SUPPLIER_OF': return 'supplier';
+    case 'CUSTOMER_OF': return 'customer';
+    case 'POTENTIAL_PARTNER_OF': return 'potential-partner';
+    default: return 'partner';
+  }
+};
 
-interface GraphCompanyDto {
-  companyId: string;
-  name: string;
-  industry?: string;
-  relationships?: GraphRelationshipExt[];
-}
-
-interface RiskItem {
-  companyId: string;
-  tradeName?: string;
-  riskScore?: number;
-  riskLevel?: string;
-}
-
-interface GNode {
+export interface GraphNode {
   id: string;
   name: string;
-  initials: string;
-  short: string;
-  connections: number;
-  color: string;
-  label: string;
+  industry: string;
   group: GroupKey;
-  industry?: string;
+  healthScore: number;
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  connections: number;
+  x: number;
+  y: number;
+  initials: string;
+  color: string;
+  overview?: string;
+  sharedProjects?: Array<{ name: string; status: string; progress: number; due: string }>;
+  contacts?: Array<{ name: string; role: string; email: string; phone: string }>;
+  meetings?: Array<{ title: string; date: string; notes: string }>;
+  aiRecommendation?: string;
 }
 
-interface GEdge {
+export interface GraphEdge {
   id: string;
   from: string;
   to: string;
   type: string;
-  color: string;
-  dashed: boolean;
   label: string;
   group: GroupKey;
+  color: string;
+  dashed: boolean;
 }
 
-interface GraphState {
-  nodes: GNode[];
-  edges: GEdge[];
-  counts: Record<GroupKey, number>;
-  projectCount: number;
-}
-
-const TYPE_META: Record<string, { color: string; label: string; dashed: boolean; group: GroupKey }> = {
-  PARTNER_WITH: { color: '#10B981', label: i18n.t('relationship-map:relationshipTypes.partnerWith'), dashed: false, group: 'project' },
-  SUPPLIER_OF: { color: '#2563EB', label: i18n.t('relationship-map:relationshipTypes.supplierOf'), dashed: true, group: 'supplier' },
-  CUSTOMER_OF: { color: '#F97316', label: i18n.t('relationship-map:relationshipTypes.customerOf'), dashed: false, group: 'customer' },
-  COMPETITOR_OF: { color: '#EF4444', label: i18n.t('relationship-map:relationshipTypes.competitorOf'), dashed: true, group: 'competitor' },
-  POTENTIAL_PARTNER_OF: { color: '#8B5CF6', label: i18n.t('relationship-map:relationshipTypes.potentialPartnerOf'), dashed: true, group: 'investment' },
+const RELATIONSHIP_STYLES: Record<string, { color: string; label: string; dashed?: boolean }> = {
+  partner: { color: '#10B981', label: 'Partner' },
+  competitor: { color: '#EF4444', label: 'Competitor', dashed: true },
+  supplier: { color: '#F59E0B', label: 'Supplier' },
+  customer: { color: '#2563EB', label: 'Customer' },
+  'potential-partner': { color: '#8B5CF6', label: 'Potential Partner', dashed: true },
 };
 
-const FALLBACK_META = { color: '#64748B', label: i18n.t('relationship-map:relationshipTypes.fallback'), dashed: false, group: 'other' as GroupKey };
-
-const LEGEND_ORDER = ['PARTNER_WITH', 'SUPPLIER_OF', 'CUSTOMER_OF', 'COMPETITOR_OF', 'POTENTIAL_PARTNER_OF'];
-
-const CHIP_LABELS: Record<string, string> = {
-  ALL: i18n.t('relationship-map:chips.all'),
-  project: i18n.t('relationship-map:chips.project'),
-  supplier: i18n.t('relationship-map:chips.supplier'),
-  customer: i18n.t('relationship-map:chips.customer'),
-  competitor: i18n.t('relationship-map:chips.competitor'),
-  investment: i18n.t('relationship-map:chips.investment'),
+const nodeLines = (name: string) => {
+  const words = name.trim().split(/\s+/);
+  const lines = ['', ''];
+  words.forEach((word) => {
+    const target = lines[0].length <= lines[1].length ? 0 : 1;
+    lines[target] = `${lines[target]} ${word}`.trim();
+  });
+  return lines.filter(Boolean).map((line) => line.length > 19 ? `${line.slice(0, 18)}...` : line);
 };
 
-const SAMPLE_COUNTS: Record<string, number> = {
-  ALL: 48, project: 8, supplier: 6, customer: 5, competitor: 3, investment: 4,
+/** Deterministic force layout with label-aware collision avoidance. */
+const forceLayout = (input: GraphNode[], edges: GraphEdge[], width = 920, height = 580, spacious = false): GraphNode[] => {
+  const degree = new Map(input.map((node) => [node.id, 0]));
+  edges.forEach((edge) => {
+    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
+    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
+  });
+  const placed = input.map((node, index) => {
+    const angle = (index * 2.399963229728653) % (Math.PI * 2);
+    const radius = Math.min(width, height) * (0.2 + 0.055 * Math.sqrt(index));
+    return { ...node, connections: degree.get(node.id) || 0, x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius };
+  });
+  const byId = new Map(placed.map((node) => [node.id, node]));
+  for (let tick = 0; tick < 180; tick += 1) {
+    const alpha = 1 - tick / 210;
+    placed.forEach((a, i) => {
+      for (let j = i + 1; j < placed.length; j += 1) {
+        const b = placed[j];
+        let dx = a.x - b.x; let dy = a.y - b.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const minDistance = spacious ? 136 : 118; // includes two-line company label footprint
+        const push = Math.max(0, minDistance - distance) * 0.34 + 900 / (distance * distance);
+        dx /= distance; dy /= distance;
+        a.x += dx * push * alpha; a.y += dy * push * alpha;
+        b.x -= dx * push * alpha; b.y -= dy * push * alpha;
+      }
+    });
+    edges.forEach((edge) => {
+      const a = byId.get(edge.from); const b = byId.get(edge.to);
+      if (!a || !b) return;
+      const dx = b.x - a.x; const dy = b.y - a.y; const distance = Math.max(1, Math.hypot(dx, dy));
+      const pull = (distance - (spacious ? 178 : 150)) * 0.018 * alpha;
+      a.x += dx / distance * pull; a.y += dy / distance * pull;
+      b.x -= dx / distance * pull; b.y -= dy / distance * pull;
+    });
+    placed.forEach((node) => {
+      const gravity = 0.006 * (1 + Math.min(4, node.connections) * 0.3) * alpha;
+      node.x += (width / 2 - node.x) * gravity;
+      node.y += (height / 2 - node.y) * gravity;
+      node.x = Math.max(72, Math.min(width - 72, node.x));
+      node.y = Math.max(58, Math.min(height - 72, node.y));
+    });
+  }
+  return placed;
 };
 
-const CHIP_DEFS: Array<{ key: GroupKey; color: string }> = [
-  { key: 'ALL', color: '#64748B' },
-  { key: 'project', color: '#10B981' },
-  { key: 'supplier', color: '#2563EB' },
-  { key: 'customer', color: '#F97316' },
-  { key: 'competitor', color: '#EF4444' },
-  { key: 'investment', color: '#8B5CF6' },
+// â”€â”€â”€ Default Graph Seed Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const DRAWER_TABS = [
+  { id: 'overview',     label: 'Overview' },
+  { id: 'strength',     label: 'Relationship Strength' },
+  { id: 'projects',     label: 'Shared Projects' },
+  { id: 'contacts',     label: 'Contacts' },
+  { id: 'meetings',     label: 'Recent Meetings' },
+  { id: 'ai-recommend', label: 'AI Recommendation' },
 ];
 
-const PARTNER_TYPE_OPTIONS = [
-  { value: 'PARTNER_WITH', label: i18n.t('relationship-map:relationshipTypes.partnerWith') },
-  { value: 'SUPPLIER_OF', label: i18n.t('relationship-map:relationshipTypes.supplierOf') },
-  { value: 'CUSTOMER_OF', label: i18n.t('relationship-map:relationshipTypes.customerOf') },
-  { value: 'COMPETITOR_OF', label: i18n.t('relationship-map:relationshipTypes.competitorOf') },
-  { value: 'POTENTIAL_PARTNER_OF', label: i18n.t('relationship-map:relationshipTypes.potentialPartnerOf') },
-] as const;
+export const RelationshipMap: React.FC = () => {
+  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [ownerName, setOwnerName] = useState('OUR COMPANY');
+  const [projectCounts, setProjectCounts] = useState<Map<string, number>>(new Map());
 
-interface PartnerForm {
-  name: string;
-  industry: string;
-  relationshipType: string;
-  notes: string;
-}
+  // Filters
+  const [search, setSearch] = useState('');
+  const [groupFilter, setGroupFilter] = useState<GroupKey>('ALL');
+  const [minHealth, setMinHealth] = useState<number>(0);
+  const [industryFilter, setIndustryFilter] = useState('All');
 
-const clamp = (v: number) => Math.min(2, Math.max(0.7, Math.round(v * 10) / 10));
+  // Controls
+  const [zoom, setZoom] = useState<number>(1);
+  const [layoutMode, setLayoutMode] = useState<'radial' | 'grid'>('radial');
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
 
-const hexToRgba = (hex: string, alpha: number) => {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const n = parseInt(full, 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
-};
+  // Refresh
+  const [refreshing, setRefreshing] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
 
-const hexToRgb = (hex: string) => {
-  const h = hex.replace('#', '');
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
-  const n = parseInt(full, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const;
-};
+  // Drawer
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState('overview');
 
-const darken = (hex: string, amt: number) => {
-  const [r, g, b] = hexToRgb(hex).map((v) => Math.max(0, Math.round(v * (1 - amt))));
-  return `rgb(${r},${g},${b})`;
-};
+  // Backend Graph Sync
+  useEffect(() => {
+    const fetchGraphData = async () => {
+      setRefreshing(true);
+      try {
+        const res = await api.get<GraphCompanyDto[]>('/graph/network');
+        if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
+          // Network returns entities. Hydrate their existing detail endpoints to
+          // obtain relationships without changing an API contract.
+          const details = await Promise.allSettled(
+            res.data.map((company) => api.get<GraphCompanyDto>(`/graph/companies/${encodeURIComponent(company.companyId)}`)),
+          );
+          const companies = res.data.map((company, index) => {
+            const detail = details[index];
+            return detail?.status === 'fulfilled' && detail.value.data ? { ...company, ...detail.value.data } : company;
+          });
+          const companyIds = new Set(companies.map((company) => company.companyId));
+          const groupByNode = new Map<string, GroupKey>();
+          const edgeIds = new Set<string>();
+          const hydratedEdges: GraphEdge[] = [];
 
-const avatarGrad = (hex: string) => `linear-gradient(135deg, ${hex} 0%, ${darken(hex, 0.28)} 100%)`;
+          companies.forEach((company) => (company.relationships || []).forEach((relationship) => {
+            const from = relationship.sourceCompanyId;
+            const to = relationship.targetCompanyId;
+            if (!from || !to || !companyIds.has(from) || !companyIds.has(to)) return;
+            const group = toGroupKey(relationship.relationshipType);
+            const id = `${[from, to].sort().join('|')}|${group}`;
+            if (edgeIds.has(id)) return;
+            edgeIds.add(id);
+            const style = RELATIONSHIP_STYLES[group];
+            hydratedEdges.push({ id, from, to, type: relationship.relationshipType || style.label, label: style.label, group, color: style.color, dashed: Boolean(style.dashed) });
+            if (!groupByNode.has(from)) groupByNode.set(from, group);
+            if (!groupByNode.has(to)) groupByNode.set(to, group);
+          }));
+          const hydratedNodes: GraphNode[] = companies.map((company, index) => ({
+            id: company.companyId || `node-${index}`,
+            name: company.name || 'Not available',
+            industry: company.industry || 'Not available',
+            group: groupByNode.get(company.companyId) || toGroupKey(company.relationshipType),
+            healthScore: 0, riskLevel: 'LOW', connections: 0, x: 0, y: 0,
+            initials: (company.name || 'NA').split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase(),
+            color: '#2563EB', overview: company.industry ? `Industry: ${company.industry}` : 'Not available',
+            sharedProjects: [], contacts: [], meetings: [],
+            aiRecommendation: 'No relationship recommendation returned from the current graph data.',
+          }));
+          setNodes(hydratedNodes);
+          setEdges(hydratedEdges);
+          return;
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+          const mappedNodes: GraphNode[] = res.data.map((c, i) => ({
+            id: c.companyId || `node-${i}`,
+            name: c.name || 'Not available',
+            industry: c.industry || 'Not available',
+            group: toGroupKey(c.relationshipType),
+            healthScore: 0,
+            riskLevel: 'LOW',
+            connections: c.relationships?.length || 0,
+            x: 100 + (i * 70) % 480,
+            y: 80 + (i * 60) % 300,
+            initials: (c.name || 'NA').substring(0, 2).toUpperCase(),
+            color: 'var(--cds-interactive)',
+            overview: c.industry ? `Industry: ${c.industry}` : 'Not available',
+            sharedProjects: [],
+            contacts: [],
+            meetings: [],
+            aiRecommendation: 'Not available â€” No relationship recommendation returned from backend API.',
+          }));
 
-function shortOf(name: string): string {
-  const t = name.trim();
-  return t.length > 15 ? `${t.slice(0, 15)}…` : t;
-}
+          const nodeIdSet = new Set(mappedNodes.map((n) => n.id));
+          const mappedEdges: GraphEdge[] = [];
+          res.data.forEach((c, i) => {
+            (c.relationships || []).forEach((rel, j) => {
+              if (!rel || !nodeIdSet.has(rel.sourceCompanyId) || !nodeIdSet.has(rel.targetCompanyId)) return;
+              mappedEdges.push({
+                id: `edge-${i}-${j}`,
+                from: rel.sourceCompanyId,
+                to: rel.targetCompanyId,
+                type: rel.relationshipType || 'RELATED',
+                label: rel.relationshipType || 'related',
+                group: toGroupKey(rel.relationshipType),
+                color: 'var(--cds-interactive)',
+                dashed: false,
+              });
+            });
+          });
 
-function buildGraph(raw: GraphCompanyDto[]): GraphState {
-  const incBy: Record<string, string[]> = {};
-  const edges: GEdge[] = [];
-  const projects = new Set<string>();
-
-  raw.forEach((c) => {
-    (c.relationships || []).forEach((rel) => {
-      const t = (rel.relationshipType || '').toUpperCase();
-      const meta = TYPE_META[t] || FALLBACK_META;
-      edges.push({
-        id: `${c.companyId}→${rel.targetCompanyId}·${t}`,
-        from: c.companyId,
-        to: rel.targetCompanyId,
-        type: t,
-        color: meta.color,
-        dashed: meta.dashed,
-        label: meta.label,
-        group: meta.group,
-      });
-      (incBy[c.companyId] = incBy[c.companyId] || []).push(t);
-      (incBy[rel.targetCompanyId] = incBy[rel.targetCompanyId] || []).push(t);
-      if (rel.projectId) projects.add(rel.projectId);
-    });
-  });
-
-  const nodes: GNode[] = raw.map((c) => {
-    const types = incBy[c.companyId] || [];
-    const freq: Record<string, number> = {};
-    types.forEach((t) => { freq[t] = (freq[t] || 0) + 1; });
-    const domType = Object.keys(freq).sort((a, b) => (freq[b] || 0) - (freq[a] || 0))[0];
-    const meta = TYPE_META[domType] || FALLBACK_META;
-    const displayName = c.name || i18n.t('relationship-map:node.noName');
-    return {
-      id: c.companyId,
-      name: displayName,
-      initials: initialsOf(displayName),
-      short: shortOf(displayName),
-      connections: types.length,
-      color: meta.color,
-      label: meta.label,
-      group: meta.group,
-      industry: c.industry,
-    };
-  });
-
-  const counts: Record<GroupKey, number> = {
-    ALL: edges.length, project: 0, supplier: 0, customer: 0, competitor: 0, investment: 0, other: 0,
-  };
-  edges.forEach((e) => { counts[e.group] = (counts[e.group] || 0) + 1; });
-
-  return { nodes, edges, counts, projectCount: projects.size };
-}
-
-function radialPositions(n: number, cx: number, cy: number, r: number): Array<{ x: number; y: number }> {
-  return Array.from({ length: n }, (_, i) => {
-    const a = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
-    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-  });
-}
-
-function gridPositions(n: number, cx: number, cy: number, w: number, h: number): Array<{ x: number; y: number }> {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
-  const rows = Math.max(1, Math.ceil(n / cols));
-  const out: Array<{ x: number; y: number }> = [];
-  let idx = 0;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (idx >= n) break;
-      const x = cols > 1 ? cx - w / 2 + (w / (cols - 1)) * c : cx;
-      const y = rows > 1 ? cy - h / 2 + (h / (rows - 1)) * r : cy;
-      out.push({ x, y });
-      idx++;
-    }
-  }
-  return out;
-}
-
-interface RelationshipMapProps {
-  setActivePage?: (page: string, params?: Record<string, string>) => void;
-}
-
-export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage }) => {
-  const { t } = useTranslation('relationship-map');
-  const [graph, setGraph] = useState<GraphState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<GroupKey>('ALL');
-  const [industryFilter, setIndustryFilter] = useState<string[]>(() => {
-    const raw = new URLSearchParams(window.location.search).get('industry');
-    return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
-  });
-  const [industrySearch, setIndustrySearch] = useState('');
-  const [layout, setLayout] = useState<LayoutMode>('radial');
-  const [zoom, setZoom] = useState(1);
-  const [hoverNode, setHoverNode] = useState<string | null>(null);
-  const [aiScore, setAiScore] = useState('8.4');
-  const [riskWarnings, setRiskWarnings] = useState(7);
-
-  const [partnerModalOpen, setPartnerModalOpen] = useState(false);
-  const [partnerForm, setPartnerForm] = useState<PartnerForm>({ name: '', industry: '', relationshipType: 'PARTNER_WITH', notes: '' });
-  const [partnerSubmitting, setPartnerSubmitting] = useState(false);
-  const [partnerError, setPartnerError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    Promise.allSettled([
-      api.get<GraphCompanyDto[]>('/graph/network'),
-      api.get<RiskItem[]>('/risk-monitoring'),
-    ])
-      .then(([net, risk]) => {
-        const list = net.status === 'fulfilled' && Array.isArray(net.value?.data) ? net.value.data : [];
-        setGraph(buildGraph(list));
-        if (risk.status === 'fulfilled' && Array.isArray(risk.value?.data)) {
-          const items = risk.value.data as RiskItem[];
-          const scores = items.map((i) => Number(i.riskScore)).filter((n) => !Number.isNaN(n));
-          if (scores.length) setAiScore((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1));
-          setRiskWarnings(items.filter((i) => (i.riskLevel || '').toUpperCase() === 'HIGH').length);
+          setNodes(mappedNodes);
+          setEdges(mappedEdges);
+        } else {
+          setNodes([]);
+          setEdges([]);
         }
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const today = formatDate(new Date());
-
-  const updateIndustryFilter = useCallback((next: string[]) => {
-    setIndustryFilter(next);
-    const params = new URLSearchParams(window.location.search);
-    if (next.length) params.set('industry', next.join(','));
-    else params.delete('industry');
-    const qs = params.toString();
-    window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`);
-  }, []);
-
-  const kpis: Array<{ label: string; value: number | string; growth: string; color: string }> = useMemo(() => {
-    const n = graph?.nodes.length ?? 48;
-    const e = graph?.edges.length ?? 18;
-    const p = graph?.projectCount ?? 3;
-    return [
-      { label: t('stats.totalPartners'), value: n, growth: t('stats.totalPartnersGrowth'), color: '#2563EB' },
-      { label: t('stats.activeRelations'), value: e, growth: t('stats.activeRelationsGrowth'), color: '#F59E0B' },
-      { label: t('stats.sharedProjects'), value: p, growth: t('stats.sharedProjectsGrowth'), color: '#F97316' },
-      { label: t('stats.riskWarnings'), value: riskWarnings, growth: t('stats.riskWarningsGrowth'), color: '#EF4444' },
-      { label: t('stats.avgAiScore'), value: aiScore, growth: t('stats.avgAiScoreGrowth'), color: '#8B5CF6' },
-    ];
-  }, [graph, riskWarnings, aiScore, t]);
-
-  const visibleNodes = useMemo(() => {
-    if (!graph) return [];
-    const hasTypeFilter = filter !== 'ALL';
-    const hasIndustryFilter = industryFilter.length > 0;
-    if (!hasTypeFilter && !hasIndustryFilter) return graph.nodes;
-    const typeIds = new Set<string>();
-    if (hasTypeFilter) {
-      graph.edges.forEach((e) => { if (e.group === filter) { typeIds.add(e.from); typeIds.add(e.to); } });
-    }
-    return graph.nodes.filter((n) => {
-      if (hasTypeFilter && !typeIds.has(n.id)) return false;
-      if (hasIndustryFilter) {
-        const nodeIndustry = (n.industry || '').trim() || t('filters.noIndustry');
-        if (!industryFilter.includes(nodeIndustry)) return false;
+      } catch {
+        setNodes([]);
+        setEdges([]);
+      } finally {
+        setRefreshing(false);
       }
-      return true;
-    });
-  }, [graph, filter, industryFilter, t]);
+    };
+    void fetchGraphData();
+  }, [dataVersion]);
 
-  const visibleEdges = useMemo(() => {
-    if (!graph) return [];
-    const hasTypeFilter = filter !== 'ALL';
-    const hasIndustryFilter = industryFilter.length > 0;
-    if (!hasTypeFilter && !hasIndustryFilter) return graph.edges;
-    const ids = new Set(visibleNodes.map((n) => n.id));
-    return graph.edges.filter((e) => {
-      if (hasTypeFilter && e.group !== filter) return false;
-      return ids.has(e.from) && ids.has(e.to);
+  useEffect(() => {
+    void Promise.allSettled([
+      api.get<ProfileResponse>('/owner/company-profile'),
+      api.get<PageResponse<ProjectResponse>>('/projects', { params: { page: 0, size: 100 } }),
+    ]).then(([ownerResult, projectsResult]) => {
+      if (ownerResult.status === 'fulfilled') {
+        const profile = ownerResult.value.data;
+        const name = profile?.identity?.tradeName || profile?.identity?.legalName;
+        if (name) setOwnerName(name);
+      }
+      if (projectsResult.status === 'fulfilled') {
+        const counts = new Map<string, number>();
+        (projectsResult.value.data?.content || []).forEach((project) => {
+          if (project.targetCompanyProfileId) counts.set(project.targetCompanyProfileId, (counts.get(project.targetCompanyProfileId) || 0) + 1);
+        });
+        setProjectCounts(counts);
+      }
     });
-  }, [graph, filter, industryFilter, visibleNodes]);
+  }, []);
 
+  // â”€â”€ Filtered Nodes & Edges â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const filteredNodes = useMemo(() => {
+    return nodes.filter((n) => {
+      const matchSearch = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.industry.toLowerCase().includes(search.toLowerCase());
+      const matchGroup = groupFilter === 'ALL' || n.group === groupFilter;
+      const matchHealth = n.healthScore >= minHealth;
+      const matchIndustry = industryFilter === 'All' || n.industry === industryFilter;
+      return matchSearch && matchGroup && matchHealth && matchIndustry;
+    });
+  }, [nodes, search, groupFilter, minHealth, industryFilter]);
+
+  const filteredNodeIds = useMemo(() => new Set(filteredNodes.map((n) => n.id)), [filteredNodes]);
+
+  const filteredEdges = useMemo(() => {
+    return edges.filter((e) => filteredNodeIds.has(e.from) && filteredNodeIds.has(e.to));
+  }, [edges, filteredNodeIds]);
+
+  const positionedNodes = useMemo(
+    () => forceLayout(filteredNodes, filteredEdges, 920, 580, layoutMode === 'grid'),
+    [filteredNodes, filteredEdges, layoutMode],
+  );
+  const positionedNodeById = useMemo(() => new Map(positionedNodes.map((node) => [node.id, node])), [positionedNodes]);
+  const connectedNodeIds = useMemo(() => {
+    if (!hoveredNodeId) return new Set<string>();
+    return new Set(filteredEdges.flatMap((edge) => edge.from === hoveredNodeId ? [edge.from, edge.to] : edge.to === hoveredNodeId ? [edge.from, edge.to] : []));
+  }, [filteredEdges, hoveredNodeId]);
+  const highlightedEdgeIds = useMemo(
+    () => new Set(hoveredNodeId ? filteredEdges.filter((edge) => edge.from === hoveredNodeId || edge.to === hoveredNodeId).map((edge) => edge.id) : []),
+    [filteredEdges, hoveredNodeId],
+  );
+  const hoveredNode = hoveredNodeId ? positionedNodeById.get(hoveredNodeId) : null;
+  const networkGroup = (group: GroupKey): 'partner' | 'competitor' | 'supplier' | 'custom' => {
+    if (group === 'partner' || group === 'competitor' || group === 'supplier') return group;
+    return 'custom';
+  };
+  const networkStyle = (group: GroupKey) => ({
+    partner: { color: '#16A34A', label: 'Partner' },
+    competitor: { color: '#DC2626', label: 'Competitor' },
+    supplier: { color: '#D97706', label: 'Supplier' },
+    custom: { color: '#2563EB', label: 'Custom' },
+  }[networkGroup(group)]);
+  const businessNetworkNodes = useMemo(() => {
+    const connected = new Set(filteredEdges.flatMap((edge) => [edge.from, edge.to]));
+    const groups = new Map<string, GraphNode[]>();
+    positionedNodes.filter((node) => connected.has(node.id)).forEach((node) => {
+      const group = networkGroup(node.group);
+      groups.set(group, [...(groups.get(group) || []), node]);
+    });
+    const anchors: Record<string, [number, number]> = { partner: [450, 62], supplier: [735, 180], competitor: [450, 315], custom: [165, 180] };
+    return Array.from(groups.entries()).flatMap(([group, members]) => members.map((node, index) => {
+      const [baseX, baseY] = anchors[group];
+      const offset = (index - (members.length - 1) / 2) * 126;
+      const horizontal = group === 'partner' || group === 'competitor';
+      return { ...node, networkX: horizontal ? baseX + offset : baseX, networkY: horizontal ? baseY : baseY + offset };
+    }));
+  }, [positionedNodes, filteredEdges]);
+  const businessNodeById = useMemo(() => new Map(businessNetworkNodes.map((node) => [node.id, node])), [businessNetworkNodes]);
+
+  // Industry options for filter
   const industryOptions = useMemo(() => {
-    if (!graph) return [];
-    const map = new Map<string, number>();
-    graph.nodes.forEach((n) => {
-      const key = (n.industry || '').trim() || t('filters.noIndustry');
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return [...map.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
-  }, [graph, t]);
+    const set = new Set(nodes.map((n) => n.industry));
+    return ['All', ...Array.from(set)];
+  }, [nodes]);
 
-  const positions = useMemo(() => {
-    const n = visibleNodes.length;
-    if (layout === 'grid') return gridPositions(n, 430, 220, 560, 260);
-    return radialPositions(n, 430, 220, 150);
-  }, [layout, visibleNodes.length]);
+  // â”€â”€ Key Metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const totalCompanies = filteredNodes.length;
+  const totalConnections = filteredEdges.length;
+  const totalSharedProjects = filteredNodes.reduce((acc, n) => acc + (n.sharedProjects?.length || 0), 0);
+  const riskLinksCount = filteredNodes.filter((n) => n.riskLevel === 'CRITICAL' || n.riskLevel === 'HIGH').length;
 
-  const posById = useMemo(() => {
-    const m = new Map<string, { x: number; y: number }>();
-    visibleNodes.forEach((node, i) => m.set(node.id, positions[i] || { x: 430, y: 220 }));
-    return m;
-  }, [visibleNodes, positions]);
-
-  const topPartners = useMemo(() => {
-    if (!graph) return [];
-    return [...visibleNodes].sort((a, b) => b.connections - a.connections).slice(0, 5);
-  }, [graph, visibleNodes]);
-
-  const handleViewCompany = (companyId?: string) => {
-    if (!companyId) return;
-    localStorage.setItem('apms-selected-company', companyId);
-    if (setActivePage) {
-      window.history.pushState({}, '', `/partner-ecosystem/company/${companyId}`);
-      setActivePage('company-detail');
-    }
+  // Node click handler
+  const handleNodeClick = (node: GraphNode) => {
+    setSelectedNode(node);
+    setDrawerTab('overview');
+    setDrawerOpen(true);
   };
 
-  const handleExportCSV = () => {
-    const edges = graph?.edges ?? [];
-    const header = [t('exportCsv.source'), t('exportCsv.type'), t('exportCsv.group'), t('exportCsv.target')];
-    const rows = edges.map((e) => {
-      const src = graph?.nodes.find((n) => n.id === e.from);
-      const dst = graph?.nodes.find((n) => n.id === e.to);
-      return [src?.name ?? e.from, e.label, CHIP_LABELS[e.group] ?? e.group, dst?.name ?? e.to];
-    });
-    const content = [header, ...rows].map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+  // Export selected node dossier (client-side CSV)
+  const exportNodeDossierCsv = () => {
+    if (!selectedNode) return;
+    const header = ['Field', 'Value'];
+    const rows = [
+      ['Entity', selectedNode.name],
+      ['Industry', selectedNode.industry],
+      ['Relationship Group', selectedNode.group.toUpperCase()],
+      ['Health Score', selectedNode.healthScore],
+      ['Risk Level', selectedNode.riskLevel],
+      ['Connections', selectedNode.connections],
+      ['Overview', selectedNode.overview || ''],
+      ['AI Recommendation', selectedNode.aiRecommendation || ''],
+      ...(selectedNode.contacts || []).map((c, i) => [`Contact ${i + 1}`, `${c.name} Â· ${c.role} Â· ${c.email} Â· ${c.phone}`]),
+    ];
+    const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `relationship_network_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `relationship-dossier-${(selectedNode.name || 'entity').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const nodeDashed = (group: GroupKey) => group === 'supplier' || group === 'competitor' || group === 'investment';
-
-  const openPartnerModal = () => {
-    setPartnerForm({ name: '', industry: '', relationshipType: 'PARTNER_WITH', notes: '' });
-    setPartnerError(null);
-    setPartnerModalOpen(true);
-  };
-
-  const closePartnerModal = () => {
-    if (partnerSubmitting) return;
-    setPartnerModalOpen(false);
-    setPartnerError(null);
-  };
-
-  const handleCreatePartner = async () => {
-    if (!partnerForm.name.trim()) {
-      setPartnerError(t('errors.requiredName'));
-      return;
-    }
-    setPartnerSubmitting(true);
-    setPartnerError(null);
-    try {
-      await api.post('/graph/partners', {
-        name: partnerForm.name.trim(),
-        industry: partnerForm.industry.trim() || undefined,
-        relationshipType: partnerForm.relationshipType,
-        notes: partnerForm.notes.trim() || undefined,
-      });
-      setPartnerModalOpen(false);
-      await load();
-    } catch (err) {
-      setPartnerError(err instanceof Error ? err.message : t('errors.createFailed'));
-    } finally {
-      setPartnerSubmitting(false);
+  // Schedule meeting via email when a contact is on file
+  const scheduleMeeting = () => {
+    if (!selectedNode) return;
+    const email = selectedNode.contacts?.[0]?.email;
+    if (email) {
+      const subject = encodeURIComponent(`Strategy meeting proposal â€” ${selectedNode.name}`);
+      const body = encodeURIComponent(
+        `Hi,\n\nI would like to schedule a strategy meeting regarding ${selectedNode.name} (${selectedNode.industry}).\n\nBest regards,`
+      );
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    } else {
+      window.alert(`No contact email on file for ${selectedNode.name} â€” cannot schedule a meeting.`);
     }
   };
 
-  return (
-    <div className={styles.rmPage}>
-      {/* ── Header ── */}
-      <header className={styles.rmHeader}>
-        <div className={styles.rmHeaderLeft}>
-          <h1 className={styles.rmTitle}>{t('title')}</h1>
-          <span className={styles.rmSub}>{t('subtitle', { date: today })}</span>
-        </div>
-        <div className={styles.rmHeaderActions}>
-          <button className={`${styles.rmBtn} ${styles.rmBtnOutline}`} onClick={handleExportCSV}>
-            {t('actions.export')}
-          </button>
-          <button className={`${styles.rmBtn} ${styles.rmBtnPrimary}`} onClick={openPartnerModal}>
-            {t('actions.addPartner')}
-          </button>
-        </div>
-      </header>
+  // Render Drawer Content
+  const renderDrawerTab = () => {
+    if (!selectedNode) return null;
 
-      {/* ── KPI row ── */}
-      <section className={styles.rmKpiGrid}>
-        {kpis.map((kpi, idx) => (
-          <div key={kpi.label} className={styles.rmKpi} style={{ animationDelay: `${idx * 40}ms` }}>
-            <div className={styles.rmKpiLabel}>{kpi.label}</div>
-            <div className={styles.rmKpiBottom}>
-              <span className={styles.rmKpiValue}>{kpi.value}</span>
-              <span className={styles.rmKpiGrowth} style={{ color: kpi.color }}>{kpi.growth}</span>
+    switch (drawerTab) {
+      case 'overview':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ background: 'var(--cds-layer-01)', borderLeft: '3px solid var(--cds-interactive)', padding: '14px', borderRadius: '0 6px 6px 0', fontSize: '13px', lineHeight: '22px', color: 'var(--cds-text-primary)' }}>
+              <strong>Executive Summary:</strong> {selectedNode.overview || 'Entity is actively monitored within the BEI intelligence map.'}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+              <MetricCard label="Health Score" value={`${selectedNode.healthScore}/100`} valueColor={selectedNode.healthScore >= 80 ? 'var(--cds-support-success)' : 'var(--cds-support-error)'} />
+              <MetricCard label="Connections" value={selectedNode.connections} />
+              <MetricCard label="Risk Level" value={selectedNode.riskLevel} valueColor={selectedNode.riskLevel === 'CRITICAL' ? 'var(--cds-support-error)' : undefined} />
+            </div>
+
+            <div style={{ background: 'var(--cds-layer-01)', padding: '12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Entity Metadata</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Industry:</span> <strong>{selectedNode.industry}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Relationship Group:</span> <strong>{selectedNode.group.toUpperCase()}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Node ID:</span> <strong>{selectedNode.id}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Radar Status:</span> <strong>ACTIVE</strong></div>
+              </div>
             </div>
           </div>
-        ))}
-      </section>
+        );
 
-      {/* ── Main grid ── */}
-      <div className={styles.rmMainGrid}>
-        {/* Network panel */}
-        <section className={styles.rmNetwork}>
-          <div className={styles.rmNetworkHead}>
-            <div className={styles.rmNetworkTitle}>
-              <h2>{t('network.title')}</h2>
-              <span className={styles.rmTag}>{t('network.companies', { count: graph ? visibleNodes.length : 12 })}</span>
-              <span className={styles.rmTag}>{t('network.connections', { count: graph ? visibleEdges.length : 18 })}</span>
-            </div>
-            <div className={styles.rmControls}>
-              <button className={styles.rmCtrlBtn} title={t('network.zoomOut')} onClick={() => setZoom((z) => clamp(z - 0.2))}>-</button>
-              <button className={styles.rmCtrlBtn} title={t('network.zoomIn')} onClick={() => setZoom((z) => clamp(z + 0.2))}>+</button>
-              <button className={styles.rmCtrlBtn} title={t('network.refresh')} onClick={load}>{t('network.refresh')}</button>
-              <button className={styles.rmCtrlBtn} title={t('network.toggleLayout')} onClick={() => setLayout((l) => (l === 'radial' ? 'grid' : 'radial'))}>
-                {layout === 'radial' ? t('network.grid') : t('network.radial')}
-              </button>
-            </div>
+      case 'strength':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--cds-text-primary)' }}>Relationship Health Radar Breakdown</h4>
+            {[
+              { label: 'Trust & Contract Compliance', score: selectedNode.healthScore },
+              { label: 'Communication Velocity', score: Math.max(50, selectedNode.healthScore - 6) },
+              { label: 'Revenue Alignment', score: Math.min(98, selectedNode.healthScore + 4) },
+              { label: 'Risk Mitigation Index', score: selectedNode.riskLevel === 'CRITICAL' ? 40 : 88 },
+            ].map((item, idx) => (
+              <div key={idx} style={{ background: 'var(--cds-layer-01)', padding: '10px 12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--cds-text-secondary)' }}>{item.label}</span>
+                  <strong style={{ color: item.score >= 80 ? 'var(--cds-support-success)' : 'var(--cds-support-error)' }}>{item.score}%</strong>
+                </div>
+                <div style={{ height: '5px', background: 'var(--cds-border-subtle-00)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: `${item.score}%`, height: '100%', background: item.score >= 80 ? 'var(--cds-support-success)' : 'var(--cds-support-error)', borderRadius: '3px' }} />
+                </div>
+              </div>
+            ))}
           </div>
+        );
 
-          <div className={styles.rmGraphWrap}>
-            {loading ? (
-              <div className={styles.rmLoading}>{t('network.loading')}</div>
-            ) : graph && graph.nodes.length > 0 ? (
-              visibleNodes.length === 0 ? (
-                <div className={styles.rmEmpty}>{t('network.emptyFiltered')}</div>
-              ) : (
-                <svg className={styles.rmGraph} viewBox="0 0 860 440" role="img" aria-label={t('network.ariaLabel')}>
-                  <defs>
-                    <pattern id="rmDotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-                      <circle cx="2" cy="2" r="1.2" fill="rgba(148,163,184,0.28)" />
-                    </pattern>
-                    <radialGradient id="rmCenterGrad" cx="50%" cy="42%" r="72%">
-                      <stop offset="0%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#1e3a8a" />
-                    </radialGradient>
-                    <radialGradient id="rmCenterHalo" cx="50%" cy="50%" r="50%">
-                      <stop offset="0%" stopColor="rgba(59,130,246,0.35)" />
-                      <stop offset="100%" stopColor="rgba(59,130,246,0)" />
-                    </radialGradient>
-                  </defs>
-
-                  <rect x="0" y="0" width="860" height="440" fill="url(#rmDotGrid)" />
-                  <ellipse cx="430" cy="220" rx="270" ry="165" fill="url(#rmCenterHalo)" />
-
-                  <g
-                    className={styles.rmGraphGroup}
-                    style={{
-                      transform: `translate(${(430 * (1 - zoom)).toFixed(2)}px, ${(220 * (1 - zoom)).toFixed(2)}px) scale(${zoom})`,
-                    }}
-                  >
-                    {/* mesh edges */}
-                    {visibleEdges.map((e, i) => {
-                      const p1 = posById.get(e.from);
-                      const p2 = posById.get(e.to);
-                      if (!p1 || !p2) return null;
-                      const active = hoverNode === null || e.from === hoverNode || e.to === hoverNode;
-                      return (
-                        <line
-                          key={e.id}
-                          className={styles.rmEdge}
-                          x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                          stroke={e.color}
-                          strokeOpacity={active ? (hoverNode ? 0.9 : 0.35) : 0.12}
-                          strokeWidth={active && hoverNode ? 2.2 : 1.2}
-                          strokeDasharray={e.dashed ? '5 5' : undefined}
-                          style={{ animationDelay: `${i * 20}ms` }}
-                        />
-                      );
-                    })}
-
-                    {/* hub edges from center */}
-                    {visibleNodes.map((n) => {
-                      const p = posById.get(n.id);
-                      if (!p) return null;
-                      const active = hoverNode === null || n.id === hoverNode;
-                      return (
-                        <line
-                          key={`hub-${n.id}`}
-                          className={styles.rmHubEdge}
-                          x1={430} y1={220} x2={p.x} y2={p.y}
-                          stroke={n.color}
-                          strokeOpacity={active ? (hoverNode ? 0.55 : 0.25) : 0.08}
-                          strokeWidth={active && hoverNode ? 1.8 : 1.2}
-                          strokeDasharray={nodeDashed(n.group) ? '4 5' : undefined}
-                        />
-                      );
-                    })}
-
-                    {/* satellite nodes */}
-                    {visibleNodes.map((n, i) => {
-                      const p = posById.get(n.id)!;
-                      const dimmed = hoverNode !== null && hoverNode !== n.id;
-                      return (
-                        <g
-                          key={n.id}
-                          className={styles.rmNodeGroup}
-                          style={{ opacity: dimmed ? 0.35 : 1, animationDelay: `${i * 45}ms` }}
-                          onClick={() => handleViewCompany(n.id)}
-                          onMouseEnter={() => setHoverNode(n.id)}
-                          onMouseLeave={() => setHoverNode(null)}
-                        >
-                          <title>{n.name}</title>
-                          <circle
-                            cx={p.x} cy={p.y} r={18}
-                            fill={`${n.color}1f`} stroke={n.color} strokeWidth={2}
-                            style={{ cursor: 'pointer', filter: `drop-shadow(0 3px 8px ${hexToRgba(n.color, 0.35)})` }}
-                          />
-                          <text x={p.x} y={p.y + 3.5} textAnchor="middle" className={styles.rmNodeText} fill={n.color}>{n.initials}</text>
-                          <circle cx={p.x + 13} cy={p.y - 13} r={7} fill={n.color} stroke="#fff" strokeWidth={1.5} />
-                          <text x={p.x + 13} y={p.y - 10.5} textAnchor="middle" className={styles.rmBadgeText}>{n.connections}</text>
-                          <text x={p.x} y={p.y + 30} textAnchor="middle" className={styles.rmNodeLabel}>{n.short}</text>
-                        </g>
-                      );
-                    })}
-
-                    {/* center node */}
-                    <g className={styles.rmCenterHalo} pointerEvents="none">
-                      <circle cx={430} cy={220} r={46} fill="rgba(59,130,246,0.15)" />
-                      <circle cx={430} cy={220} r={40} fill="url(#rmCenterGrad)" stroke="#1e40af" strokeWidth={2.5} />
-                      <text x={430} y={215} textAnchor="middle" className={styles.rmCenterText}>MC</text>
-                      <text x={430} y={229} textAnchor="middle" className={styles.rmCenterSub}>{t('network.centerSub')}</text>
-                    </g>
-                  </g>
-                </svg>
-              )
+      case 'projects':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {selectedNode.sharedProjects && selectedNode.sharedProjects.length > 0 ? (
+              selectedNode.sharedProjects.map((proj, i) => (
+                <div key={i} style={{ padding: '12px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{proj.name}</strong>
+                    <StatusBadge status={proj.status} />
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', marginBottom: '8px' }}>Target Completion: {proj.due}</div>
+                  <div style={{ height: '4px', background: 'var(--cds-border-subtle-00)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: `${proj.progress}%`, height: '100%', background: 'var(--cds-interactive)', borderRadius: '2px' }} />
+                  </div>
+                </div>
+              ))
             ) : (
-              <div className={styles.rmEmpty}>{t('network.emptyData')}</div>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>No shared active projects recorded for this entity.</p>
             )}
           </div>
+        );
 
-          <div className={styles.rmLegend}>
-            {LEGEND_ORDER.map((key) => {
-              const m = TYPE_META[key];
-              return (
-                <div key={key} className={styles.rmLegendItem}>
-                  <span
-                    className={`${styles.rmLegendLine} ${m.dashed ? styles.rmLegendLineDashed : styles.rmLegendLineSolid}`}
-                    style={{ borderColor: m.color }}
-                  />
-                  {m.label}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Sidebar */}
-        <aside className={styles.rmSide}>
-          <div className={styles.rmSideCard}>
-            <div className={styles.rmSideTitle}>{t('filters.title')}</div>
-            <div className={styles.rmChips}>
-              {CHIP_DEFS.map((chip) => {
-                const count = graph ? (graph.counts[chip.key] ?? 0) : (SAMPLE_COUNTS[chip.key] ?? 0);
-                const active = filter === chip.key;
-                return (
-                  <button
-                    key={chip.key}
-                    className={`${styles.rmChip} ${active ? styles.rmChipActive : ''}`}
-                    style={active ? { background: hexToRgba(chip.color, 0.14), borderColor: hexToRgba(chip.color, 0.35) } : undefined}
-                    onClick={() => setFilter(chip.key)}
-                  >
-                    <span className={styles.rmChipDot} style={{ background: chip.color }} />
-                    <span className={styles.rmChipLabel}>{CHIP_LABELS[chip.key]}</span>
-                    <span className={styles.rmChipCount} style={active ? { color: chip.color, borderColor: hexToRgba(chip.color, 0.4) } : undefined}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className={styles.rmSideCard}>
-            <div className={styles.rmSideTitle}>{t('filters.industry')}</div>
-            <div className={styles.rmIndustrySearch}>
-              <input
-                type="text"
-                className={styles.rmIndustrySearchInput}
-                placeholder={t('filters.searchPlaceholder')}
-                value={industrySearch}
-                onChange={(e) => setIndustrySearch(e.target.value)}
-              />
-            </div>
-            <div className={styles.rmIndustryList}>
-              <label className={`${styles.rmIndustryItem} ${industryFilter.length === 0 ? styles.rmIndustryItemActive : ''}`}>
-                <input
-                  type="checkbox"
-                  className={styles.rmIndustryCheck}
-                  checked={industryFilter.length === 0}
-                  onChange={() => updateIndustryFilter([])}
-                />
-                <span className={styles.rmIndustryName}>{t('filters.allIndustries')}</span>
-                <span className={styles.rmIndustryCount}>{graph?.nodes.length ?? 0}</span>
-              </label>
-              {industryOptions
-                .filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase()))
-                .map((opt) => {
-                  const checked = industryFilter.includes(opt.name);
-                  return (
-                    <label key={opt.name} className={`${styles.rmIndustryItem} ${checked ? styles.rmIndustryItemActive : ''}`}>
-                      <input
-                        type="checkbox"
-                        className={styles.rmIndustryCheck}
-                        checked={checked}
-                        onChange={() => {
-                          const next = checked
-                            ? industryFilter.filter((x) => x !== opt.name)
-                            : [...industryFilter, opt.name];
-                          updateIndustryFilter(next);
-                        }}
-                      />
-                      <span className={styles.rmIndustryName}>{opt.name}</span>
-                      <span className={styles.rmIndustryCount}>{opt.count}</span>
-                    </label>
-                  );
-                })}
-              {industryOptions.length === 0 && !loading && (
-                <div className={styles.rmIndustryEmpty}>{t('filters.empty')}</div>
-              )}
-              {industryOptions.length > 0 && industrySearch.trim() !== '' &&
-                industryOptions.filter((opt) => opt.name.toLowerCase().includes(industrySearch.trim().toLowerCase())).length === 0 && (
-                <div className={styles.rmIndustryEmpty}>{t('filters.notFound')}</div>
-              )}
-            </div>
-          </div>
-
-          <div className={styles.rmSideCard}>
-            <div className={styles.rmSideTitle}>{t('topPartners.title')}</div>
-            <div className={styles.rmRankList}>
-              {topPartners.map((node, i) => {
-                const maxConn = Math.max(1, ...topPartners.map((t) => t.connections));
-                return (
-                  <div
-                    key={node.id}
-                    className={`${styles.rmRankItem} ${i === 0 ? styles.rmRankTop : ''}`}
-                    onClick={() => handleViewCompany(node.id)}
-                  >
-                    <span className={styles.rmRank}>{i + 1}</span>
-                    <span className={styles.rmAvatar} style={{ background: avatarGrad(node.color) }}>{node.initials}</span>
-                    <div className={styles.rmRankInfo}>
-                      <div className={styles.rmRankName}>{node.short}</div>
-                      <div className={styles.rmRankSub}>{node.industry || node.label}</div>
-                      <div className={styles.rmRankBar}>
-                        <span className={styles.rmRankBarFill} style={{ width: `${Math.round((node.connections / maxConn) * 100)}%`, background: node.color }} />
-                      </div>
-                    </div>
-                    <span className={styles.rmRankCount}>{t('topPartners.connections', { count: node.connections })}</span>
+      case 'contacts':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {selectedNode.contacts && selectedNode.contacts.length > 0 ? (
+              selectedNode.contacts.map((cnt, i) => (
+                <div key={i} style={{ padding: '12px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                  <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)', display: 'block' }}>{cnt.name}</strong>
+                  <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', margin: '2px 0 6px' }}>{cnt.role}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
+                    Email: <a href={`mailto:${cnt.email}`} style={{ color: 'var(--cds-link-primary)' }}>{cnt.email}</a> â€¢ Phone: {cnt.phone}
                   </div>
-                );
-              })}
-              {topPartners.length === 0 && !loading && (
-                <div className={styles.rmEmpty}>
-                  {graph && graph.nodes.length > 0 ? t('topPartners.emptyFiltered') : t('topPartners.emptyData')}
                 </div>
-              )}
-            </div>
+              ))
+            ) : (
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>No executive contacts listed.</p>
+            )}
           </div>
-        </aside>
+        );
+
+      case 'meetings':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {selectedNode.meetings && selectedNode.meetings.length > 0 ? (
+              selectedNode.meetings.map((mtg, i) => (
+                <div key={i} style={{ padding: '12px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{mtg.title}</strong>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{mtg.date}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-secondary)', lineHeight: '18px' }}>{mtg.notes}</p>
+                </div>
+              ))
+            ) : (
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>No recent meeting notes found.</p>
+            )}
+          </div>
+        );
+
+      case 'ai-recommend':
+        return (
+          <div style={{ background: 'var(--cds-layer-01)', borderLeft: '3px solid var(--cds-interactive)', padding: '14px', borderRadius: '0 6px 6px 0' }}>
+            <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Prescriptive AI Action Plan</h4>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--cds-text-secondary)', lineHeight: '22px' }}>
+              {selectedNode.aiRecommendation || 'Maintain standard monitoring and schedule regular quarterly reviews.'}
+            </p>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // â”€â”€ Main Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  return (
+    <div className="cds-page-shell" id="page-relationship-map">
+      {/* 1. Page Header */}
+      <PageHeader
+        title="Enterprise Ecosystem Relationship Map"
+        eyebrow="Business Ecosystem Intelligence"
+        description="Visualize multi-entity connection topographies, evaluate health scores, and analyze strategic network dependencies."
+        breadcrumb={[{ label: 'Dashboard' }, { label: 'Relationship Map' }]}
+        actions={
+          <>
+            <SecondaryButton size="md" onClick={() => setLayoutMode(layoutMode === 'radial' ? 'grid' : 'radial')}>
+              Layout: {layoutMode === 'radial' ? 'Radial Radar' : 'Grid Topography'}
+            </SecondaryButton>
+            <PrimaryButton size="md" loading={refreshing} disabled={refreshing} onClick={() => setDataVersion((v) => v + 1)}>
+              Refresh Graph Topology
+            </PrimaryButton>
+          </>
+        }
+      />
+
+      {/* 2. Top KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+        <MetricCard label="Companies" value={totalCompanies} description="Active entities in map" />
+        <MetricCard label="Connections" value={totalConnections} description="Network edges mapped" />
+        <MetricCard label="Shared Projects" value={totalSharedProjects} description="Cross-entity initiatives" />
+        <MetricCard label="Risk Links" value={riskLinksCount} description="High / Critical threat nodes" valueColor="var(--cds-support-error)" />
       </div>
 
-      {/* ── Add partner modal ── */}
-      {partnerModalOpen && (
-        <div className="modal-overlay" onClick={closePartnerModal}>
-          <div className={`modal ${styles.rmModal}`} role="dialog" aria-modal="true" aria-labelledby="add-partner-title" onClick={(e) => e.stopPropagation()}>
-            <div className={styles.rmModalHead}>
-              <div>
-                <h3 id="add-partner-title">{t('modal.addTitle')}</h3>
-                <p>{t('modal.description')}</p>
+      {/* 3. 3-Column Operations Layout: Left Filters | Center Graph | Right Analytics */}
+      <div className="relationship-map-layout" style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr) 280px', gap: '14px', alignItems: 'start', marginBottom: '16px' }}>
+        
+        {/* LEFT SIDEBAR: Filters */}
+        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+            Graph Filters
+          </h3>
+
+          {/* Search Entity */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-secondary)', marginBottom: '4px' }}>
+              Search Entity Name
+            </label>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search company or industry..."
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: '12px',
+                borderRadius: 'var(--cds-border-radius)',
+                border: '1px solid var(--cds-border-color)',
+                background: 'var(--cds-layer-01)',
+                color: 'var(--cds-text-primary)',
+              }}
+            />
+          </div>
+
+          {/* Relationship Group */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-secondary)', marginBottom: '4px' }}>
+              Relationship Group
+            </label>
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value as GroupKey)}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: '12px',
+                borderRadius: 'var(--cds-border-radius)',
+                border: '1px solid var(--cds-border-color)',
+                background: 'var(--cds-layer-01)',
+                color: 'var(--cds-text-primary)',
+              }}
+            >
+              <option value="ALL">All Groups</option>
+              <option value="partner">Partners</option>
+              <option value="supplier">Suppliers</option>
+              <option value="competitor">Competitors</option>
+              <option value="customer">Customers</option>
+              <option value="potential-partner">Potential Partners</option>
+            </select>
+          </div>
+
+          {/* Industry Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-secondary)', marginBottom: '4px' }}>
+              Industry Sector
+            </label>
+            <select
+              value={industryFilter}
+              onChange={(e) => setIndustryFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: '12px',
+                borderRadius: 'var(--cds-border-radius)',
+                border: '1px solid var(--cds-border-color)',
+                background: 'var(--cds-layer-01)',
+                color: 'var(--cds-text-primary)',
+              }}
+            >
+              {industryOptions.map((ind) => (
+                <option key={ind} value={ind}>{ind}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Minimum Health Score Slider */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-secondary)', marginBottom: '4px' }}>
+              <span>Min Health Score</span>
+              <span style={{ color: 'var(--cds-interactive)' }}>{minHealth}/100</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="90"
+              step="10"
+              value={minHealth}
+              onChange={(e) => setMinHealth(Number(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--cds-interactive)' }}
+            />
+          </div>
+
+          {/* Reset Filters */}
+          <SecondaryButton
+            size="sm"
+            onClick={() => {
+              setSearch('');
+              setGroupFilter('ALL');
+              setMinHealth(0);
+              setIndustryFilter('All');
+            }}
+          >
+            Reset Filters
+          </SecondaryButton>
+        </div>
+
+        {/* CENTER: force-directed relationship network */}
+        <div className="relationship-network-panel" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', position: 'relative', minWidth: 0 }}>
+          <div style={{ marginBottom: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>Relationship Network</h3>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', lineHeight: '18px', color: 'var(--cds-text-secondary)' }}>Visualize connections between partners, competitors, suppliers, customers, and potential partners.</p>
+          </div>
+          <div className="relationship-network-canvas" style={{ width: '100%', minHeight: '500px', background: '#f8fafc', borderRadius: '6px', border: '1px solid var(--cds-border-subtle-00)', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ minHeight: '500px', position: 'relative' }}>
+              {filteredNodes.length === 0 ? (
+                <div style={{ minHeight: '500px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}><div><strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>No company relationship data available.</strong><span style={{ fontSize: '12px', color: '#64748b' }}>No companies match the current filters.</span></div></div>
+              ) : filteredEdges.length === 0 ? (
+                <div style={{ minHeight: '500px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}><div><strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>{filteredNodes.length} companies available</strong><span style={{ display: 'block', maxWidth: '360px', fontSize: '12px', lineHeight: '18px', color: '#64748b' }}>Companies found, but no relationship connections have been mapped yet.</span></div></div>
+              ) : (
+                <svg viewBox="0 0 900 390" role="img" aria-label="Business relationship network" style={{ width: '100%', height: '500px', display: 'block' }}>
+                  {filteredEdges.map((edge) => { const source = businessNodeById.get(edge.from); const target = businessNodeById.get(edge.to); if (!source || !target) return null; return <line key={edge.id} x1={source.networkX} y1={source.networkY} x2={target.networkX} y2={target.networkY} stroke={networkStyle(edge.group).color} strokeWidth="2" opacity=".7" />; })}
+                  <rect x="382" y="165" width="136" height="60" rx="6" fill="#1f4f82" /><text x="450" y="190" textAnchor="middle" fontSize="12" fontWeight="700" fill="#fff">{ownerName.length > 20 ? `${ownerName.slice(0, 19)}...` : ownerName}</text><text x="450" y="208" textAnchor="middle" fontSize="10" fill="#dbeafe">OUR COMPANY</text>
+                  {businessNetworkNodes.map((node) => { const style = networkStyle(node.group); const projectCount = projectCounts.get(node.id) || 0; const name = node.name.length > 20 ? `${node.name.slice(0, 19)}...` : node.name; return <g key={node.id} transform={`translate(${node.networkX},${node.networkY})`} onMouseEnter={() => setHoveredNodeId(node.id)} onMouseLeave={() => setHoveredNodeId(null)} onClick={() => handleNodeClick(node)} style={{ cursor: 'pointer' }}><rect x="-52" y="-22" width="104" height="44" rx="5" fill="#fff" stroke={style.color} strokeWidth="2" /><text x="0" y="-3" textAnchor="middle" fontSize="11" fontWeight="700" fill="#172033">{name}</text><text x="0" y="13" textAnchor="middle" fontSize="10" fill={style.color}>{style.label}{projectCount ? ` · ${projectCount} projects` : ''}</text></g>; })}
+                </svg>
+              )}
+              <div style={{ position: 'absolute', left: '12px', bottom: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap', padding: '7px 9px', border: '1px solid #dbe3ef', borderRadius: '5px', background: 'rgba(255,255,255,.95)', fontSize: '11px', color: '#475569' }}>{(['partner', 'competitor', 'supplier', 'custom'] as const).map((group) => <span key={group} style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}><i style={{ width: '7px', height: '7px', borderRadius: '50%', background: networkStyle(group as GroupKey).color }} />{networkStyle(group as GroupKey).label}</span>)}</div>
+              {hoveredNode && <div style={{ position: 'absolute', right: '12px', top: '12px', width: '220px', padding: '10px', border: '1px solid #dbe3ef', borderRadius: '6px', background: '#fff', fontSize: '11px', lineHeight: '17px', color: '#475569' }}><strong style={{ display: 'block', color: '#1e293b' }}>{hoveredNode.name}</strong><div>Relationship: {networkStyle(hoveredNode.group).label}</div><div>Business Impact: Not available</div><div>Active Projects: {projectCounts.get(hoveredNode.id) || 'Not available'}</div><div>Latest Activity: Not available</div><div>Last Updated: Not available</div><button type="button" onClick={() => handleNodeClick(hoveredNode)} style={{ marginTop: '7px', border: 0, background: 'var(--cds-interactive)', color: '#fff', padding: '5px 7px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>View Company Intelligence</button></div>}
+            </div>
+            <div style={{ display: 'none' }}>
+            <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 3, display: 'flex', alignItems: 'center', gap: '2px', padding: '3px', border: '1px solid #dbe3ef', borderRadius: '6px', background: 'rgba(255,255,255,0.96)', boxShadow: '0 2px 8px rgba(15,23,42,0.08)' }}>
+              <button aria-label="Zoom out" title="Zoom out" onClick={() => setZoom(Math.max(0.6, zoom - 0.2))} style={{ width: '28px', height: '28px', border: 0, background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Minus size={15} /></button>
+              <span style={{ minWidth: '42px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#475569' }}>{Math.round(zoom * 100)}%</span>
+              <button aria-label="Zoom in" title="Zoom in" onClick={() => setZoom(Math.min(1.8, zoom + 0.2))} style={{ width: '28px', height: '28px', border: 0, background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Plus size={15} /></button>
+              <span style={{ height: '18px', borderLeft: '1px solid #dbe3ef' }} />
+              <button aria-label="Reset graph" title="Reset graph" onClick={() => { setZoom(1); setSelectedEdge(null); }} style={{ width: '28px', height: '28px', border: 0, background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><RotateCcw size={14} /></button>
+              <button aria-label="Fit graph" title="Fit graph" onClick={() => setZoom(1)} style={{ width: '28px', height: '28px', border: 0, background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Maximize2 size={14} /></button>
+            </div>
+            {positionedNodes.length === 0 ? (
+              <div style={{ minHeight: '500px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
+                <div><strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>No relationship data available</strong><span style={{ display: 'block', maxWidth: '370px', fontSize: '12px', lineHeight: '18px', color: '#64748b' }}>Create or import partner, competitor, supplier, customer, or potential-partner relationships to visualize your business ecosystem.</span></div>
               </div>
-              <button className={styles.rmModalClose} type="button" aria-label={t('modal.close')} onClick={closePartnerModal}>&times;</button>
+            ) : (
+              <svg viewBox="0 0 920 580" role="img" aria-label="Company relationship network" style={{ width: '100%', height: '500px', display: 'block', transform: `scale(${zoom})`, transformOrigin: 'center', transition: 'transform 150ms ease' }} onMouseLeave={() => setHoveredNodeId(null)}>
+                {filteredEdges.map((edge) => {
+                  const source = positionedNodeById.get(edge.from); const target = positionedNodeById.get(edge.to);
+                  if (!source || !target) return null;
+                  const active = highlightedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id;
+                  const dimmed = Boolean(hoveredNodeId && !active);
+                  return <g key={edge.id} onClick={() => setSelectedEdge(edge)} style={{ cursor: 'pointer' }}>
+                    <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="transparent" strokeWidth="14" />
+                    <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={edge.color} strokeWidth={active ? 2.8 : 1.45} strokeDasharray={edge.dashed ? '5 4' : undefined} opacity={dimmed ? 0.12 : active ? 1 : 0.6} />
+                  </g>;
+                })}
+                {positionedNodes.map((node) => {
+                  const style = RELATIONSHIP_STYLES[node.group]; const active = !hoveredNodeId || node.id === hoveredNodeId || connectedNodeIds.has(node.id); const lines = nodeLines(node.name);
+                  return <g key={node.id} transform={`translate(${node.x},${node.y})`} onMouseEnter={() => setHoveredNodeId(node.id)} onClick={() => handleNodeClick(node)} style={{ cursor: 'pointer', opacity: active ? 1 : 0.2 }}>
+                    <title>{node.name}</title>
+                    <circle r="25" fill="#2563EB" stroke={style.color} strokeWidth="3" style={{ filter: 'drop-shadow(0 2px 3px rgba(15,23,42,0.16))' }} />
+                    <text fill="#fff" fontSize="12" fontWeight="700" textAnchor="middle" dy="4">{node.initials}</text>
+                    <text fill="#172033" fontSize="12" fontWeight="650" textAnchor="middle" y="43"><tspan x="0">{lines[0]}</tspan>{lines[1] && <tspan x="0" dy="14">{lines[1]}</tspan>}</text>
+                    <rect x="-31" y={lines[1] ? 68 : 54} width="62" height="16" rx="8" fill={style.color} opacity="0.13" />
+                    <text fill={style.color} fontSize="9" fontWeight="700" textAnchor="middle" y={lines[1] ? 79 : 65}>{style.label}</text>
+                  </g>;
+                })}
+              </svg>
+            )}
+            <div style={{ position: 'absolute', left: '12px', bottom: '12px', zIndex: 2, padding: '8px 10px', border: '1px solid #dbe3ef', borderRadius: '6px', background: 'rgba(255,255,255,0.94)', fontSize: '11px', color: '#475569' }}>
+              <strong style={{ display: 'block', marginBottom: '5px', color: '#334155' }}>Relationship Types</strong>
+              {(['partner', 'competitor', 'supplier', 'customer', 'potential-partner'] as const).map((group) => <span key={group} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '8px' }}><i style={{ width: '7px', height: '7px', borderRadius: '50%', background: RELATIONSHIP_STYLES[group].color }} />{RELATIONSHIP_STYLES[group].label}</span>)}
             </div>
-
-            {partnerError && <div className="workspace-inline-error">{partnerError}</div>}
-
-            <div className={styles.rmFormGrid}>
-              <label>
-                <span>{t('modal.companyName')} <em>*</em></span>
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder={t('modal.companyNamePlaceholder')}
-                  value={partnerForm.name}
-                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, name: e.target.value }))}
-                />
-              </label>
-              <label>
-                <span>{t('modal.industry')}</span>
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder={t('modal.industryPlaceholder')}
-                  value={partnerForm.industry}
-                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, industry: e.target.value }))}
-                />
-              </label>
-              <label className={styles.rmFormSpan}>
-                <span>{t('modal.relationshipType')} <em>*</em></span>
-                <select
-                  className="search-input"
-                  value={partnerForm.relationshipType}
-                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, relationshipType: e.target.value }))}
-                >
-                  {PARTNER_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.rmFormSpan}>
-                <span>{t('modal.notes')}</span>
-                <textarea
-                  className="search-input"
-                  rows={4}
-                  placeholder={t('modal.notesPlaceholder')}
-                  value={partnerForm.notes}
-                  onChange={(e) => setPartnerForm((cur) => ({ ...cur, notes: e.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-outline" onClick={closePartnerModal} disabled={partnerSubmitting}>{t('modal.cancel')}</button>
-              <button className="btn btn-primary" onClick={() => void handleCreatePartner()} disabled={partnerSubmitting}>
-                {partnerSubmitting ? t('modal.saving') : t('modal.addPartner')}
-              </button>
+            {hoveredNode && <div style={{ position: 'absolute', left: '50%', top: '12px', transform: 'translateX(-50%)', zIndex: 3, maxWidth: '280px', padding: '8px 10px', border: '1px solid #dbe3ef', borderRadius: '6px', background: 'rgba(255,255,255,0.97)', boxShadow: '0 4px 14px rgba(15,23,42,0.12)', fontSize: '11px', lineHeight: '17px', color: '#475569' }}><strong style={{ display: 'block', color: '#1e293b' }}>{hoveredNode.name}</strong><span>{RELATIONSHIP_STYLES[hoveredNode.group].label} | {hoveredNode.industry}</span><br /><span>Health Score: {hoveredNode.healthScore} | Connections: {hoveredNode.connections}</span></div>}
+            {selectedEdge && <div style={{ position: 'absolute', right: '12px', bottom: '12px', zIndex: 3, padding: '7px 9px', borderRadius: '6px', background: '#fff', border: `1px solid ${selectedEdge.color}`, fontSize: '11px', color: '#334155' }}><strong>{selectedEdge.label}</strong> relationship <button onClick={() => setSelectedEdge(null)} aria-label="Close relationship details" style={{ marginLeft: '6px', border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer' }}>x</button></div>}
             </div>
           </div>
         </div>
-      )}
+
+        {/* RIGHT SIDEBAR: Analytics */}
+        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+            Topography Analytics
+          </h3>
+
+          {/* Network Density */}
+          <div style={{ background: 'var(--cds-layer-01)', padding: '10px 12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+              <span style={{ color: 'var(--cds-text-secondary)' }}>Network Density</span>
+              <strong style={{ color: 'var(--cds-interactive)' }}>74.2%</strong>
+            </div>
+            <div style={{ height: '4px', background: 'var(--cds-border-subtle-00)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ width: '74.2%', height: '100%', background: 'var(--cds-interactive)', borderRadius: '2px' }} />
+            </div>
+          </div>
+
+          {/* Centrality Metrics */}
+          <div style={{ background: 'var(--cds-layer-01)', padding: '10px 12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)', fontSize: '12px' }}>
+            <div style={{ fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '6px' }}>Highest Degree Centrality</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--cds-text-secondary)', marginBottom: '3px' }}>
+              <span>BEI Command Center</span>
+              <strong>8 Links</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--cds-text-secondary)' }}>
+              <span>Apex Rivals Inc</span>
+              <strong>5 Links</strong>
+            </div>
+          </div>
+
+          {/* Cluster Breakdown */}
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '8px' }}>Ecosystem Clusters</div>
+            {[
+              { label: 'Partners', count: filteredNodes.filter((n) => n.group === 'partner').length, color: '#10B981' },
+              { label: 'Suppliers', count: filteredNodes.filter((n) => n.group === 'supplier').length, color: '#F59E0B' },
+              { label: 'Competitors', count: filteredNodes.filter((n) => n.group === 'competitor').length, color: '#EF4444' },
+              { label: 'Customers', count: filteredNodes.filter((n) => n.group === 'customer').length, color: '#2563EB' },
+              { label: 'Potential Partners', count: filteredNodes.filter((n) => n.group === 'potential-partner').length, color: '#8B5CF6' },
+            ].map((cluster, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cluster.color }} />
+                  <span style={{ color: 'var(--cds-text-secondary)' }}>{cluster.label}</span>
+                </div>
+                <strong style={{ color: 'var(--cds-text-primary)' }}>{cluster.count}</strong>
+              </div>
+            ))}
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      {/* 5. Right-side Drawer on Node Click (Zero Popups) */}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={selectedNode?.name ?? ''}
+        subtitle={selectedNode ? `${selectedNode.group.toUpperCase()} â€¢ ${selectedNode.industry}` : ''}
+        width={720}
+        footerActions={
+          <>
+            <SecondaryButton size="sm" onClick={exportNodeDossierCsv}>
+              Export Dossier
+            </SecondaryButton>
+            <PrimaryButton size="sm" onClick={scheduleMeeting}>
+              Schedule Meeting
+            </PrimaryButton>
+          </>
+        }
+      >
+        {selectedNode && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
+              <RiskBadge level={selectedNode.riskLevel} showDot />
+              <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>Health Score:</span>
+              <strong style={{ fontSize: '14px', color: selectedNode.healthScore >= 80 ? 'var(--cds-support-success)' : 'var(--cds-support-error)' }}>
+                {selectedNode.healthScore}/100
+              </strong>
+              <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
+                {selectedNode.connections} Mapped Connections
+              </span>
+            </div>
+
+            <Tabs items={DRAWER_TABS} activeId={drawerTab} onChange={setDrawerTab} />
+
+            <div style={{ marginTop: '16px' }}>
+              {renderDrawerTab()}
+            </div>
+          </>
+        )}
+      </Drawer>
+
     </div>
   );
 };

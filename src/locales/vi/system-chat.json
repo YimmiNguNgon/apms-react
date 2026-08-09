@@ -1,4 +1,5 @@
 {
+  "ui": { "searchProjects": "Tìm kiếm dự án", "membersOnly": "Chỉ thành viên dự án", "attachFile": "Đính kèm tệp", "messageProject": "Nhắn tin #{{project}}", "selectProjectFirst": "Chọn dự án trước", "emoji": "Biểu tượng cảm xúc", "sendMessage": "Gửi tin nhắn", "messageActions": "Thao tác tin nhắn", "edit": "Chỉnh sửa", "copy": "Sao chép", "delete": "Xóa" },
   "title": "Trao đổi & Thảo luận Dự án",
   "subtitle": "Kênh giao tiếp thời gian thực cho từng dự án giữa các thành viên",
   "searchPlaceholder": "Tìm dự án hoặc từ khóa...",

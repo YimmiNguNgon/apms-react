@@ -34,7 +34,7 @@ export const Dashboard: React.FC = () => {
         <div className="workspace-page-head">
           <div>
             <h1>Workspace dashboard</h1>
-            <p>This page renders only the backend summary endpoint and no longer falls back to mock dashboard values.</p>
+            <p>Live data from the backend summary endpoint.</p>
           </div>
         </div>
 

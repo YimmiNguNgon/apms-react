@@ -47,7 +47,6 @@ const PAGE_LABEL_KEYS: Record<string, string> = {
   'admin-dashboard': 'page.adminDashboard',
   'director-dashboard': 'page.directorDashboard',
   'manager-dashboard': 'page.managerDashboard',
-  'keymember-dashboard': 'page.keymemberDashboard',
   'staff-dashboard': 'page.staffDashboard',
   users: 'page.users',
   roles: 'page.roles',

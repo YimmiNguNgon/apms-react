@@ -10,6 +10,7 @@ import type {
   ProjectTaskResponse,
 } from '../../types/domain';
 import { BarChart, DonutChart } from '../../components/charts/Charts';
+import { OwnerCompanyProfileCard } from '../../components/OwnerCompanyProfileCard';
 
 type ProjectWithSignals = {
   project: ProjectResponse;
@@ -48,6 +49,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
   const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
   const [projects, setProjects] = useState<ProjectWithSignals[]>([]);
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
+  const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
+  const [ownerProfileError, setOwnerProfileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,10 +62,14 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
       setError(null);
 
       try {
-        const [summaryRes, projectsRes, profilesRes] = await Promise.all([
+        const [summaryRes, projectsRes, profilesRes, ownerProfileRes] = await Promise.all([
           api.get<DashboardSummaryDto>('/dashboard/summary'),
           api.get<PageResult<ProjectResponse>>('/projects', { params: { page: 0, size: 8 } }),
           api.get<PageResult<ProfileResponse>>('/profiles', { params: { page: 0, size: 8 } }).catch(() => null),
+          api.get<ProfileResponse>('/owner/company-profile').catch((err: unknown) => {
+            setOwnerProfileError(err instanceof Error ? err.message : 'Owner profile unavailable.');
+            return null;
+          }),
         ]);
 
         if (cancelled) return;
@@ -91,12 +98,14 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
         setSummary(summaryRes.data);
         setProjects(projectSignals);
         setProfiles(profilesRes?.data?.content ?? []);
+        setOwnerProfile(ownerProfileRes?.data ?? null);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Cannot load manager dashboard.');
           setSummary(null);
           setProjects([]);
           setProfiles([]);
+          setOwnerProfile(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -198,6 +207,8 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
               </article>
             ))}
           </div>
+
+          <OwnerCompanyProfileCard profile={ownerProfile} error={ownerProfileError} loading={loading} />
 
           <div className="dashboard-grid cols-2 role-board-grid manager-dashboard-charts">
             <div className="workspace-panel">

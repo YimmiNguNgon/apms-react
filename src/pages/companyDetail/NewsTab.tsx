@@ -1,23 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Newspaper, RefreshCw, Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { ExternalLink, Newspaper, Search, Sparkles, Filter } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
-import type {
-  CompanyNews,
-  CompanyNewsSearchRejection,
-  CompanyNewsSearchResponse,
-} from '../../types/listingData';
+import { externalDataApi } from '../../API/externalDataApi';
+import type { CompanyNews } from '../../types/listingData';
 import { ListingTabShell } from './common';
 import { formatDateTime, useListingTabData } from './utils';
-import styles from '../CompanyDetail.module.css';
 
-const BATCH_SIZE = 5;
-const SEARCH_COOLDOWN_SECONDS = 120;
-
-const REJECTION_LABELS: Record<CompanyNewsSearchRejection, string> = {
-  UNTRUSTED_DOMAIN: 'Nguồn không nằm trong whitelist',
-  UNKNOWN_DOMAIN: 'Không xác định được nguồn (aggregator)',
-  NO_COMPANY_MENTION: 'Không nhắc tới công ty',
-};
+const BATCH_SIZE = 10;
+const CATEGORIES = ['Tất cả', 'CÔNG BỐ THÔNG TIN', 'HOẠT ĐỘNG KINH DOANH', 'CỔ TỨC & PHÁT HÀNH', 'BÁO CÁO PHÂN TÍCH', 'CẢNH BẢO RỦI RO', 'CƠ HỘI ĐẦU TƯ'];
 
 interface NewsTabProps {
   companyId: string;
@@ -30,245 +20,191 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
     listingDataApi.getNews,
   );
   const [visible, setVisible] = useState(BATCH_SIZE);
-  const [searching, setSearching] = useState(false);
-  const [searchResult, setSearchResult] = useState<CompanyNewsSearchResponse | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
-  const [showRejected, setShowRejected] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [crawling, setCrawling] = useState(false);
+  const [crawlMsg, setCrawlMsg] = useState<string | null>(null);
+  const showManualCrawler = companyId !== '6a31a0000000000000000001';
 
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = window.setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => window.clearTimeout(t);
-  }, [cooldown]);
+  const news = data?.data ?? [];
 
-  const runSearch = async () => {
-    if (searching || cooldown > 0) return;
-    setSearching(true);
-    setSearchError(null);
-    setSearchResult(null);
-    setShowRejected(false);
+  const filteredNews = news.filter((item) => {
+    const matchCat = selectedCategory === 'Tất cả' || item.category === selectedCategory;
+    const matchQuery = !searchQuery.trim() ||
+      (item.title && item.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (item.summary && item.summary.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchCat && matchQuery;
+  });
+
+  const shown = filteredNews.slice(0, visible);
+
+  const handleRunAiCrawler = async () => {
+    setCrawling(true);
+    setCrawlMsg(null);
     try {
-      const result = await listingDataApi.searchCompanyNews(companyId);
-      setSearchResult(result);
-      setCooldown(SEARCH_COOLDOWN_SECONDS);
+      const msg = await externalDataApi.runFetch({ forceRefresh: true });
+      setCrawlMsg(msg || 'Đã kích hoạt AI crawler lấy tin tức CafeF tự động!');
+      reload();
     } catch (err) {
-      setSearchError(
-        err instanceof Error ? err.message : 'Không thể tìm kiếm tin tức. Vui lòng thử lại.',
-      );
-      setCooldown(SEARCH_COOLDOWN_SECONDS);
+      setCrawlMsg(err instanceof Error ? err.message : 'Kích hoạt crawler thất bại.');
     } finally {
-      setSearching(false);
+      setCrawling(false);
     }
   };
 
-  const news = data?.data ?? [];
-  const shown = news.slice(0, visible);
-  const hasMore = visible < news.length;
-
-  const accepted = searchResult?.results.filter((r) => r.status !== 'REJECTED') ?? [];
-  const rejected = searchResult?.results.filter((r) => r.status === 'REJECTED') ?? [];
-  const foundAny = (searchResult?.savedNew ?? 0) + (searchResult?.alreadyExisting ?? 0) > 0;
-
   return (
-    <ListingTabShell
-      loading={loading}
-      error={error}
-      hasData={true}
-      crawledAt={data?.crawledAt}
-      onRetry={reload}
-    >
-      <div className={styles.card} style={{ marginBottom: '14px' }}>
-        <div className={styles.cardHeader}>
-          <div className={styles.cardHeaderLeft}>
-            <Search size={20} style={{ color: '#2563EB' }} />
-            <h2>Tìm tin tức mới</h2>
-          </div>
-          <button
-            type="button"
-            className={styles.newsSearchBtn}
-            onClick={runSearch}
-            disabled={searching || cooldown > 0}
-          >
-            {searching ? (
-              <Loader2 size={15} className={styles.spinIcon} />
-            ) : (
-              <RefreshCw size={15} />
-            )}
-            {searching
-              ? 'Đang tìm kiếm...'
-              : cooldown > 0
-                ? `Đợi ${cooldown}s để tìm lại`
-                : 'Tìm bài báo mới'}
-          </button>
-        </div>
-
-        {searching && (
-          <div className={styles.spinnerRow}>
-            <Loader2 size={16} className={styles.spinIcon} />
-            Đang lấy và lọc tin tức mới nhất về công ty...
-          </div>
-        )}
-
-        {searchError && <p className={styles.newsSearchError}>{searchError}</p>}
-
-        {searchResult && !searching && (
-          <div>
-            <div className={styles.newsSearchSummary}>
-              <span className={`${styles.newsSearchChip} ${styles.newsChipNew}`}>
-                Mới lưu: {searchResult.savedNew}
-              </span>
-              <span className={`${styles.newsSearchChip} ${styles.newsChipExisting}`}>
-                Đã có sẵn: {searchResult.alreadyExisting}
-              </span>
-              <span className={`${styles.newsSearchChip} ${styles.newsChipRejected}`}>
-                Bị loại: {searchResult.rejected}
-              </span>
-              <span className={styles.newsSearchTime}>
-                Tìm lúc {formatDateTime(searchResult.searchedAt)}
-              </span>
+    <ListingTabShell loading={loading} error={error} hasData={news.length > 0} crawledAt={data?.crawledAt} onRetry={reload} emptyHint="Chưa có tin tức đã được crawler thu thập cho doanh nghiệp này. Hãy bấm 'AI Crawler Thu Thập'.">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Header Bar */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Newspaper size={20} style={{ color: '#2563EB' }} />
+              <h2 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                Tin Tức & Truyền Thông AI ({filteredNews.length} bài)
+              </h2>
             </div>
 
-            {!foundAny ? (
-              <div className={styles.stateBox}>
-                <div className={styles.stateIcon}>
-                  <Newspaper size={24} />
-                </div>
-                <p className={styles.stateTitle}>Không tìm thấy bài báo mới</p>
-                <p className={styles.stateText}>
-                  Không tìm thấy bài viết mới nào về {searchResult.companyName} từ các nguồn tin
-                  cậy.
-                </p>
-              </div>
-            ) : (
-              <div className={styles.newsList}>
-                {accepted.map((r) => (
-                  <div key={r.item.url ?? r.item.id} className={styles.newsItem}>
-                    <div className={styles.newsThumbPlaceholder}>
-                      <Newspaper size={20} />
-                    </div>
-                    <div className={styles.newsBody}>
-                      {r.item.url ? (
-                        <a
-                          className={styles.newsTitle}
-                          href={r.item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {r.item.title || 'Bài viết'}{' '}
-                          <ExternalLink size={12} style={{ verticalAlign: 'middle' }} />
-                        </a>
-                      ) : (
-                        <p className={styles.newsTitle}>{r.item.title || 'Bài viết'}</p>
-                      )}
-                      {r.item.summary && <p className={styles.newsSummary}>{r.item.summary}</p>}
-                      <div className={styles.newsMeta}>
-                        {r.item.sourceDomain && <span>{r.item.sourceDomain} · </span>}
-                        {formatDateTime(r.item.publishedAt) || 'Không rõ thời gian'}
-                      </div>
-                    </div>
-                    <span
-                      className={`${styles.newsSearchBadge} ${
-                        r.status === 'SAVED_NEW' ? styles.newsBadgeNew : styles.newsBadgeExisting
-                      }`}
-                    >
-                      {r.status === 'SAVED_NEW' ? 'Đã lưu mới' : 'Đã có sẵn'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {showManualCrawler && <button
+              type="button"
+              onClick={handleRunAiCrawler}
+              disabled={crawling}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#2563EB',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '5px 12px',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                cursor: crawling ? 'not-allowed' : 'pointer',
+                opacity: crawling ? 0.7 : 1,
+              }}
+            >
+              <Sparkles size={12} />
+              <span>{crawling ? 'AI Crawling...' : 'AI Crawler Thu Thập'}</span>
+            </button>}
+          </div>
 
-            {rejected.length > 0 && (
-              <div style={{ marginTop: '12px' }}>
+          {showManualCrawler && crawlMsg && (
+            <div style={{ fontSize: '0.65rem', color: '#059669', background: '#ECFDF5', padding: '4px 8px', borderRadius: '4px', marginBottom: '10px', fontWeight: 600 }}>
+              {crawlMsg}
+            </div>
+          )}
+
+          {/* Search & Category Filter Pills */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+              <input
+                type="text"
+                placeholder="Tìm kiếm tin tức theo tiêu đề hoặc nội dung..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 10px 6px 32px',
+                  borderRadius: '6px',
+                  border: '1px solid #CBD5E1',
+                  fontSize: '0.73rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <Filter size={13} style={{ color: '#64748B' }} />
+              {CATEGORIES.map((cat) => (
                 <button
+                  key={cat}
                   type="button"
-                  className={styles.showMoreBtn}
-                  onClick={() => setShowRejected((s) => !s)}
+                  onClick={() => { setSelectedCategory(cat); setVisible(BATCH_SIZE); }}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '999px',
+                    fontSize: '0.64rem',
+                    fontWeight: 700,
+                    border: '1px solid',
+                    borderColor: selectedCategory === cat ? '#2563EB' : '#E2E8F0',
+                    background: selectedCategory === cat ? '#EFF6FF' : '#F8FAFC',
+                    color: selectedCategory === cat ? '#1D4ED8' : '#475569',
+                    cursor: 'pointer',
+                  }}
                 >
-                  {showRejected ? 'Ẩn' : 'Xem'} {rejected.length} bài bị loại
+                  {cat}
                 </button>
-                {showRejected && (
-                  <div className={styles.newsList} style={{ marginTop: '8px' }}>
-                    {rejected.map((r) => (
-                      <div key={r.item.url ?? r.item.id} className={styles.newsItem}>
-                        <div className={styles.newsBody}>
-                          <p className={styles.newsTitle}>{r.item.title || 'Bài viết'}</p>
-                          {r.item.summary && <p className={styles.newsSummary}>{r.item.summary}</p>}
-                          <div className={styles.newsMeta}>{r.item.sourceDomain}</div>
-                        </div>
-                        <span className={`${styles.newsSearchBadge} ${styles.newsBadgeRejected}`}>
-                          {r.rejection ? REJECTION_LABELS[r.rejection] : 'Bị loại'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              ))}
+            </div>
           </div>
-        )}
-      </div>
-
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div className={styles.cardHeaderLeft}>
-            <Newspaper size={20} style={{ color: '#2563EB' }} />
-            <h2>Tin tức liên quan</h2>
-          </div>
-          <span style={{ fontSize: '13px', color: '#64748B' }}>{news.length} bài</span>
         </div>
 
-        <div className={styles.newsList}>
+        {/* News Stream List */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {shown.map((item) => (
-            <div key={item.id ?? item.sourceUrl} className={styles.newsItem}>
-              {item.imageUrl ? (
+            <div key={item.id ?? item.sourceUrl} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 14px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {item.imageUrl && (
                 <img
-                  className={styles.newsThumb}
                   src={item.imageUrl}
                   alt=""
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
+                  style={{ width: '110px', height: '75px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }}
                 />
-              ) : (
-                <div className={styles.newsThumbPlaceholder}>
-                  <Newspaper size={20} />
-                </div>
               )}
-              <div className={styles.newsBody}>
-                {item.sourceUrl ? (
-                  <a
-                    className={styles.newsTitle}
-                    href={item.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {item.title || 'Bài viết'} <ExternalLink size={12} style={{ verticalAlign: 'middle' }} />
-                  </a>
-                ) : (
-                  <p className={styles.newsTitle}>{item.title || 'Bài viết'}</p>
-                )}
-                {item.summary && <p className={styles.newsSummary}>{item.summary}</p>}
-                <div className={styles.newsMeta}>
-                  {formatDateTime(item.publishedAt) || 'Không rõ thời gian'}
+
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                  {item.category && (
+                    <span style={{ background: '#DBEAFE', color: '#1E40AF', fontSize: '0.6rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px' }}>
+                      {item.category}
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600 }}>
+                    {item.sourceName || 'Nguồn Tin'} • {formatDateTime(item.publishedAt) || 'Mới cập nhật'}
+                  </span>
                 </div>
+
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', margin: '0 0 4px', lineHeight: 1.35 }}>
+                  {item.sourceUrl ? (
+                    <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0F172A', textDecoration: 'none' }}>
+                      {item.title} <ExternalLink size={11} style={{ display: 'inline', color: '#2563EB' }} />
+                    </a>
+                  ) : (
+                    item.title
+                  )}
+                </h3>
+
+                {item.summary && (
+                  <p style={{ fontSize: '0.72rem', color: '#475569', margin: 0, lineHeight: 1.4 }}>
+                    {item.summary}
+                  </p>
+                )}
               </div>
             </div>
           ))}
         </div>
 
-        {hasMore && (
-          <div style={{ textAlign: 'center' }}>
-            <button
-              type="button"
-              className={styles.showMoreBtn}
-              onClick={() => setVisible((v) => v + BATCH_SIZE)}
-            >
-              Xem thêm
-            </button>
-          </div>
+        {visible < filteredNews.length && (
+          <button
+            type="button"
+            onClick={() => setVisible((count) => count + BATCH_SIZE)}
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid #CBD5E1',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '0.73rem',
+              fontWeight: 700,
+              color: '#334155',
+              cursor: 'pointer',
+              alignSelf: 'center',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+            }}
+          >
+            Xem thêm tin tức ({filteredNews.length - visible} bài còn lại)
+          </button>
         )}
       </div>
     </ListingTabShell>

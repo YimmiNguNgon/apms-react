@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { externalDataApi, type ExternalDataItem } from '../API/externalDataApi';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
@@ -37,6 +38,8 @@ const formatCompanyName = (name?: string | null): string => {
   }
   return 'Chưa có tên công ty';
 };
+
+const OWNER_COMPANY_ID = '6a31a0000000000000000001';
 
 /* ── Compact layout & design-token helpers (Overview tab) ────────── */
 const C = {
@@ -99,6 +102,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const { currentUser } = useUser();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [sources, setSources] = useState<ProfileSourcesResponse | null>(null);
+  const [companyNews, setCompanyNews] = useState<ExternalDataItem[]>([]);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [recentScore, setRecentScore] = useState<ScoreSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,15 +134,22 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       setError(null);
 
       try {
-        const [profileRes, sourcesRes, scoreRes] = await Promise.all([
-          api.get<ProfileResponse>(`/profiles/${resolvedId}`, { signal: controller.signal }),
+        const isOwnerProfile = resolvedId === OWNER_COMPANY_ID;
+        const [profileRes, sourcesRes, scoreRes, newsRes, snapshotRes] = await Promise.all([
+          isOwnerProfile
+            ? api.get<ProfileResponse>('/owner/company-profile', { signal: controller.signal })
+            : api.get<ProfileResponse>(`/profiles/${resolvedId}`, { signal: controller.signal }),
           api.get<ProfileSourcesResponse>(`/profiles/${resolvedId}/sources`, { signal: controller.signal }).catch(() => null),
           api.get<ScoreSnapshot[]>('/dashboard/recent-scores', { signal: controller.signal }).catch(() => null),
+          externalDataApi.getItems('NEWS', { page: 0, size: 50 }).catch(() => null),
+          isOwnerProfile ? api.get<{ summary?: string }>('/owner/company-profile/snapshot', { signal: controller.signal }).catch(() => null) : Promise.resolve(null),
         ]);
 
         if (controller.signal.aborted) return;
         setProfile(profileRes.data ?? null);
         setSources(sourcesRes?.data ?? null);
+        setCompanyNews((newsRes?.content ?? []).filter((article) => article.companyProfileId === resolvedId || article.relatedCompanyId === resolvedId));
+        setAiSummary(snapshotRes?.data?.summary ?? null);
 
         if (scoreRes?.data && Array.isArray(scoreRes.data)) {
           const match = scoreRes.data.find((s) => s.companyId === resolvedId);
@@ -147,6 +159,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         if (!controller.signal.aborted) {
           setProfile(null);
           setSources(null);
+          setCompanyNews([]);
+          setAiSummary(null);
           setError(err instanceof Error ? err.message : 'Không thể tải thông tin hồ sơ doanh nghiệp.');
         }
       } finally {
@@ -182,7 +196,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setListingMsg(null);
     try {
       const res = await api.patch<ProfileResponse>(
-        `/company-profiles/${resolvedId}/listing-info`,
+        `/company-profiles/${resolvedId}`,
         {
           stockTicker: tickerDraft.trim().toUpperCase(),
           stockExchange: exchangeDraft,
@@ -432,6 +446,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     <h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2>
                   </div>
 
+                  {aiSummary && (
+                    <div style={{ marginBottom: '10px', padding: '9px 10px', background: '#EFF6FF', borderLeft: '3px solid #2563EB', color: '#1E3A5F', fontSize: '0.72rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {aiSummary}
+                    </div>
+                  )}
+
                   <div style={C.fieldGrid}>
                     <div style={C.fieldCell}>
                       <span style={C.fieldLabel}>Tên Thương Mại (Trade Name)</span>
@@ -601,93 +621,56 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   </div>
                 </section>
 
-                {/* Panel 3: AI Strategic & Risk Assessment */}
                 <section style={C.card}>
                   <div style={C.cardHeader}>
-                    <h2 style={C.h2}>Đánh giá Chiến lược & Rủi ro (AI Assessment)</h2>
+                    <h2 style={C.h2}>Ban lãnh đạo</h2>
                   </div>
-
-                  {recentScore ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {/* Fit Score Progress Bar */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Điểm Phù Hợp Đối Tác (Partner Fit Score)</span>
-                          <strong style={{ color: '#16A34A', fontWeight: 700 }}>{recentScore.partnerFitScore} / 100</strong>
+                  {profile.companyMembers?.length ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {profile.companyMembers.map((member, index) => (
+                        <div key={`${member.fullName || member.name || 'member'}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '7px 0', borderBottom: index < profile.companyMembers!.length - 1 ? '1px solid #F1F5F9' : 'none' }}>
+                          <div>
+                            <strong style={C.value}>{member.fullName || member.name || 'Chưa cập nhật'}</strong>
+                            <div style={{ ...C.fieldLabel, marginTop: '2px' }}>{member.position || member.role || 'Chưa cập nhật chức danh'}</div>
+                          </div>
+                          {member.sourceUrl && <a href={member.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.65rem', color: '#2563EB', alignSelf: 'center' }}>Nguồn</a>}
                         </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.partnerFitScore}%`,
-                              height: '100%',
-                              background: recentScore.partnerFitScore >= 70 ? '#16A34A' : '#D97706',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Risk Level Progress Bar */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Rủi Ro (Risk Level)</span>
-                          <strong style={{ color: recentScore.riskLevel <= 30 ? '#16A34A' : '#D97706', fontWeight: 700 }}>
-                            {recentScore.riskLevel} / 100 (Thấp)
-                          </strong>
-                        </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.riskLevel}%`,
-                              height: '100%',
-                              background: recentScore.riskLevel <= 30 ? '#16A34A' : recentScore.riskLevel <= 60 ? '#D97706' : '#DC2626',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Competition Level */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Cạnh Tranh (Competition Level)</span>
-                          <strong style={{ color: '#2563EB', fontWeight: 700 }}>{recentScore.competitionLevel} / 100</strong>
-                        </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.competitionLevel}%`,
-                              height: '100%',
-                              background: '#2563EB',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ) : (
-                    /* Light theme empty state */
-                    <div
-                      style={{
-                        padding: '12px 14px',
-                        textAlign: 'center',
-                        background: '#F8FAFC',
-                        borderRadius: '8px',
-                        border: '1px dashed #CBD5E1',
-                      }}
-                    >
-                      <h3 style={{ margin: '0 0 2px', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                        Chưa có kết quả chấm điểm AI
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748B' }}>
-                        Doanh nghiệp này chưa thực hiện quy trình đánh giá điểm số rủi ro & phù hợp tự động.
-                      </p>
-                    </div>
-                  )}
+                  ) : <span style={C.muted}>Chưa có dữ liệu ban lãnh đạo đã xác minh.</span>}
                 </section>
+
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Tài chính</h2>
+                  </div>
+                  {profile.financial ? (
+                    <div style={C.fieldGrid}>
+                      <div style={C.fieldCell}><span style={C.fieldLabel}>Doanh thu</span><strong style={C.value}>{profile.financial.revenue ? `${new Intl.NumberFormat('vi-VN').format(Number(profile.financial.revenue))} ${profile.financial.revenueCurrency || ''}` : 'Chưa cập nhật'}</strong></div>
+                      <div style={C.fieldCell}><span style={C.fieldLabel}>Tăng trưởng doanh thu</span><strong style={C.value}>{profile.financial.revenueGrowth ?? 'Chưa cập nhật'}{profile.financial.revenueGrowth !== undefined ? '%' : ''}</strong></div>
+                      <div style={C.fieldCell}><span style={C.fieldLabel}>Biên lợi nhuận</span><strong style={C.value}>{profile.financial.profitMargin ?? 'Chưa cập nhật'}{profile.financial.profitMargin !== undefined ? '%' : ''}</strong></div>
+                      <div style={C.fieldCell}><span style={C.fieldLabel}>Tỷ lệ nợ</span><strong style={C.value}>{profile.financial.debtRatio ?? 'Chưa cập nhật'}{profile.financial.debtRatio !== undefined ? '%' : ''}</strong></div>
+                    </div>
+                  ) : <span style={C.muted}>Chưa có dữ liệu tài chính đã xác minh.</span>}
+                </section>
+
+                <section style={C.card}>
+                  <div style={C.cardHeader}>
+                    <h2 style={C.h2}>Tin tức và truyền thông</h2>
+                  </div>
+                  {companyNews.length ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                      {companyNews.slice(0, 5).map((article) => (
+                        <a key={article.id} href={article.url || undefined} target="_blank" rel="noreferrer" style={{ display: 'block', color: '#1E293B', textDecoration: 'none', borderBottom: '1px solid #F1F5F9', paddingBottom: '7px' }}>
+                          <strong style={{ fontSize: '0.72rem' }}>{article.title || 'Bài viết chưa có tiêu đề'}</strong>
+                          <div style={{ fontSize: '0.64rem', color: '#64748B', marginTop: '2px' }}>{article.source || article.sourceDomain || 'Nguồn tin'} · {article.publishedAt ? new Date(article.publishedAt).toLocaleDateString('vi-VN') : 'Chưa có ngày đăng'}</div>
+                        </a>
+                      ))}
+                    </div>
+                  ) : <span style={C.muted}>Chưa có bài viết đã được crawler và gắn với hồ sơ này.</span>}
+                </section>
+
+
               </div>
 
               {/* Right Column */}

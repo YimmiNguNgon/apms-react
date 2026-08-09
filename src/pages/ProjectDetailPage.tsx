@@ -35,14 +35,6 @@ import {
   X,
 } from 'lucide-react';
 import styles from './ProjectDetailPage.module.css';
-import {
-  columns,
-  members,
-  projectDetail,
-  type ProjectTask,
-  type TaskPriority,
-  type TaskStatus,
-} from '../data/projectDetailMock';
 import { projectApi } from '../API/projectApi';
 import { accountApi } from '../API/accountApi';
 import { taskApi } from '../API/taskApi';
@@ -81,6 +73,44 @@ import type {
 const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Company Members', 'Members'];
 const SELECTED_PROJECT_STORAGE_KEY = 'apms-selected-project';
 const PROJECT_DETAIL_TAB_STORAGE_KEY = 'apms-project-detail-active-tab';
+
+type TaskStatus = 'todo' | 'progress' | 'review' | 'done';
+type TaskPriority = 'Highest' | 'High' | 'Medium' | 'Low';
+type ProjectMember = {
+  id: number | string;
+  name: string;
+  role: string;
+  avatar: string;
+  color: string;
+  workload: number;
+};
+type ProjectActivity = { id: number | string; actor: string; action: string; time: string };
+type ProjectTask = {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: ProjectMember | null;
+  reporter: ProjectMember | null;
+  dueDate: string | null;
+  labels: string[];
+  attachments: Array<never>;
+  comments: Array<never>;
+  activity: ProjectActivity[];
+  aiGenerated?: boolean;
+  aiSummary: string | null;
+  aiSuggestions: string[];
+  aiRiskAnalysis: string | null;
+  aiNextSteps: string[];
+};
+
+const taskColumns: Array<{ id: TaskStatus; title: string; hint: string }> = [
+  { id: 'todo', title: 'To Do', hint: 'Ready for work' },
+  { id: 'progress', title: 'In Progress', hint: 'Currently being worked on' },
+  { id: 'review', title: 'In Review', hint: 'Waiting for validation' },
+  { id: 'done', title: 'Done', hint: 'Completed and accepted' },
+];
 
 const priorityClass: Record<TaskPriority, string> = {
   Highest: styles.priorityHighest,
@@ -145,7 +175,7 @@ const projectTypeLabel: Record<ApiProjectType, string> = {
 };
 
 const toProjectKey = (project: ProjectResponse | null) =>
-  project ? `APMS-${String(project.id).padStart(2, '0')}` : projectDetail.key;
+  project ? `APMS-${String(project.id).padStart(2, '0')}` : 'No project selected';
 
 const isProjectResponse = (value: unknown): value is ProjectResponse => {
   const project = value as ProjectResponse | null;
@@ -1336,8 +1366,7 @@ const Avatar: React.FC<{ name: string; initials: string; color: string; small?: 
 );
 
 const makeTaskMember = (member?: ProjectMemberResponse | null) => {
-  const fallback = members[2];
-  if (!member) return fallback;
+  if (!member) return null;
   return {
     id: member.accountId,
     name: memberDisplayName(member),
@@ -1352,33 +1381,34 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
   const assignedMember = projectMembers.find((member) => member.accountId === task.assignedToUserId);
   const fallbackMember = assignedMember
     ? makeTaskMember(assignedMember)
-    : {
-        ...members[2],
-        id: task.assignedToUserId ?? task.id,
-        name: task.assignedToName || 'Unassigned',
-        avatar: (task.assignedToName || 'UN').slice(0, 2).toUpperCase(),
-      };
+    : task.assignedToName
+      ? {
+          id: task.assignedToUserId ?? task.id,
+          name: task.assignedToName,
+          role: 'Project member',
+          avatar: task.assignedToName.slice(0, 2).toUpperCase(),
+          color: '#64748B',
+          workload: 0,
+        }
+      : null;
 
   return {
     id: `APMS-${task.id}`,
     title: task.title,
-    description: task.description || 'No description provided.',
+    description: task.description || '',
     status: statusToColumn[task.status] ?? 'todo',
     priority: priorityToCard[task.priority ?? 'MEDIUM'],
     assignee: fallbackMember,
-    reporter: members[0],
-    dueDate: task.dueDate || task.createdAt || new Date().toISOString(),
-    labels: [task.taskType?.replace(/_/g, ' ') || 'GENERAL TASK'],
+    reporter: null,
+    dueDate: task.dueDate || task.createdAt || null,
+    labels: task.taskType ? [task.taskType.replace(/_/g, ' ')] : [],
     attachments: [],
     comments: [],
-    activity: [
-      { id: task.id, actor: task.assignedToName || 'APMS', action: `created task with status ${task.status}`, time: formatOptionalDate(task.createdAt) },
-    ],
-    aiGenerated: false,
-    aiSummary: 'This task was loaded from the project task API.',
-    aiSuggestions: ['Use the task detail modal for future workflow details.'],
-    aiRiskAnalysis: task.status === 'BLOCKED' ? 'Task is currently blocked.' : 'No risk analysis available yet.',
-    aiNextSteps: ['Update task status as work progresses.'],
+    activity: [],
+    aiSummary: null,
+    aiSuggestions: [],
+    aiRiskAnalysis: null,
+    aiNextSteps: [],
   };
 };
 
@@ -1433,9 +1463,9 @@ const TaskCard: React.FC<{
       ))}
     </div>
     <div className={styles.taskFooter}>
-      <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />
+      {task.assignee && <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />}
       <div className={styles.taskStats}>
-        <span title="Due date"><CalendarDays size={14} />{formatDate(task.dueDate)}</span>
+        <span title="Due date"><CalendarDays size={14} />{formatOptionalDate(task.dueDate)}</span>
         <span title="Attachments"><Paperclip size={14} />{task.attachments.length}</span>
         <span title="Comments"><MessageSquare size={14} />{task.comments.length}</span>
       </div>
@@ -1469,12 +1499,12 @@ const TaskDetailModal: React.FC<{ task: ProjectTask | null; onClose: () => void 
             <h3><FileText size={16} /> Basic Information</h3>
             <p className={styles.description}>{task.description}</p>
             <div className={styles.infoGrid}>
-              <div><span>Status</span><strong>{columns.find((column) => column.id === task.status)?.title}</strong></div>
+              <div><span>Status</span><strong>{taskColumns.find((column) => column.id === task.status)?.title}</strong></div>
               <div><span>Priority</span><strong>{task.priority}</strong></div>
-              <div><span>Assignee</span><strong>{task.assignee.name}</strong></div>
-              <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
-              <div><span>Due date</span><strong>{formatDate(task.dueDate)}</strong></div>
-              <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
+              <div><span>Assignee</span><strong>{task.assignee?.name || 'Unassigned'}</strong></div>
+              <div><span>Reporter</span><strong>{task.reporter?.name || 'No reporter recorded'}</strong></div>
+              <div><span>Due date</span><strong>{formatOptionalDate(task.dueDate)}</strong></div>
+              <div><span>Labels</span><strong>{task.labels.join(', ') || 'No labels'}</strong></div>
             </div>
           </section>
 
@@ -3432,14 +3462,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [inviteEmail, showInviteModal]);
 
   const displayedProject = useMemo(() => ({
-    name: apiProject?.projectName || projectDetail.name,
+    name: apiProject?.projectName || 'No project selected',
     key: toProjectKey(apiProject),
-    status: apiProject ? projectStatusLabel[apiProject.status] : projectDetail.status,
-    type: apiProject ? projectTypeLabel[apiProject.projectType] : projectDetail.type,
-    priority: projectDetail.priority,
-    owner: projectDetail.owner,
-    startDate: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
-    dueDate: formatOptionalDate(apiProject?.updatedAt || projectDetail.dueDate),
+    status: apiProject ? projectStatusLabel[apiProject.status] : 'No status',
+    type: apiProject ? projectTypeLabel[apiProject.projectType] : 'No type',
+    priority: null,
+    owner: apiProject?.members.find((member) => member.memberRole === 'MANAGER')?.fullName || null,
+    startDate: formatOptionalDate(apiProject?.createdAt),
+    dueDate: formatOptionalDate(apiProject?.updatedAt),
     targetCompanyName: apiProject?.targetCompanyName,
     description: apiProject?.description,
   }), [apiProject]);
@@ -4991,7 +5021,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             </div>
             <div className={styles.metaGrid}>
               <div className={styles.metaItem}><span>Priority</span><strong>{displayedProject.priority}</strong></div>
-              <div className={styles.metaItem}><span>Owner</span><strong>{displayedProject.owner.name}</strong></div>
+              <div className={styles.metaItem}><span>Owner</span><strong>{displayedProject.owner || 'No owner recorded'}</strong></div>
               <div className={styles.metaItem}><span>Start date</span><strong>{displayedProject.startDate}</strong></div>
               <div className={styles.metaItem}><span>Due date</span><strong>{displayedProject.dueDate}</strong></div>
             </div>
@@ -5014,7 +5044,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             <>
               {taskError && !/403|denied|forbidden/i.test(taskError) && <div className={styles.inlineError}>{taskError}</div>}
               <div className={styles.board}>
-                {columns.map((column) => {
+                {taskColumns.map((column) => {
                   const columnTasks = tasks.filter((task) => task.status === column.id);
                   return (
                     <motion.section

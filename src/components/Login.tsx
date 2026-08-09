@@ -7,9 +7,7 @@ const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
       admin: 'admin@apms.com',
       sysadmin: 'admin@apms.com',
       owner: 'owner@apms.com',
-      director: 'director@apms.com',
       manager: 'manager@apms.com',
-      keymember: 'keymember@apms.com',
       staff: 'staff@apms.com',
     }
   : {};
@@ -50,7 +48,14 @@ export const Login: React.FC = () => {
         setError(t('errorSignInFailed'));
       }
     } catch (err: unknown) {
-      setError(t('errorConnection', { message: err instanceof Error ? err.message : t('errorCannotReach') }));
+      const isNetworkError =
+        err instanceof TypeError &&
+        (err.message === 'Failed to fetch' || err.message.includes('NetworkError') || err.message.includes('fetch'));
+      if (isNetworkError) {
+        setError(t('errorCannotReach'));
+      } else {
+        setError(t('errorConnection', { message: err instanceof Error ? err.message : t('errorCannotReach') }));
+      }
     } finally {
       setLoading(false);
     }
@@ -139,7 +144,7 @@ export const Login: React.FC = () => {
             </span>
           </div>
 
-          {error && <div className="form-error">{t('warning')}: {error}</div>}
+          {error && <div className="form-error">{error}</div>}
 
           <button
             className="btn btn-primary btn-block"

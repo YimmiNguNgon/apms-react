@@ -1,4 +1,13 @@
 {
+  "table": {
+    "normal": "Bình thường",
+    "compact": "Thu gọn",
+    "exportCsv": "Xuất CSV",
+    "perPage": "{{count}} / trang",
+    "loadingData": "Đang tải dữ liệu..."
+  },
+  "risk": { "critical": "Nghiêm trọng", "high": "Cao", "medium": "Trung bình", "low": "Thấp" },
+  "status": { "verified": "Đã xác minh", "approved": "Đã phê duyệt", "active": "Đang hoạt động", "completed": "Hoàn thành", "pending_review": "Chờ rà soát", "pending": "Đang chờ", "in_progress": "Đang thực hiện", "draft": "Bản nháp", "rejected": "Đã từ chối", "inactive": "Không hoạt động", "cancelled": "Đã hủy" },
   "app": {
     "apms": "APMS",
     "businessIntelligence": "Business Intelligence",
@@ -175,6 +184,8 @@
     "en": "English"
   },
   "generic": {
+    "searchPlaceholder": "Tìm kiếm...",
+    "clearSearch": "Xóa tìm kiếm",
     "cancel": "Huỷ bỏ",
     "confirm": "Xác nhận",
     "close": "Đóng",

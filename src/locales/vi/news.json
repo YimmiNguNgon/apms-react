@@ -1,4 +1,6 @@
 {
+  "header": { "title": "Trung tâm thông tin tin tức và truyền thông", "eyebrow": "Thông tin hệ sinh thái doanh nghiệp", "description": "Theo dõi truyền thông thời gian thực, cảm xúc NLP và tín hiệu báo chí đối thủ.", "dashboard": "Bảng điều khiển", "breadcrumb": "Thông tin tin tức", "exportDigest": "Xuất bản tóm tắt PDF", "refreshFeed": "Làm mới nguồn tin" },
+  "metrics": { "today": "hôm nay", "articles": { "label": "Bài viết", "description": "Mục tin đã thu thập" }, "companies": { "label": "Công ty", "description": "Đơn vị được đề cập" }, "sources": { "label": "Nguồn tin", "description": "Nhà xuất bản đang hoạt động" }, "positive": { "label": "Tin tích cực", "description": "Tín hiệu thuận lợi" }, "negative": { "label": "Tin tiêu cực", "description": "Tín hiệu bất lợi" } },
   "title": "Company Related Articles",
   "subtitle": "Tin tức doanh nghiệp thu thập tự động",
   "syncBadge": "Tự động cập nhật (30s)",

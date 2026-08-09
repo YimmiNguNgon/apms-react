@@ -10,6 +10,7 @@ interface UserRow extends AccountAdminResponse {
   fullName?: string;
   isActive?: boolean;
   status?: string;
+  enabled?: boolean;
 }
 
 interface EditUserForm {
@@ -84,6 +85,12 @@ const roleAccent = (role: string) => {
   return 'blue';
 };
 
+const normalizeRole = (role: string | RoleDto): RoleDto => {
+  if (typeof role !== 'string') return role;
+  const label = role.replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  return { id: role, key: role, name: role, displayName: label };
+};
+
 const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: number }) => void }> = ({ onStats }) => {
   const { t } = useTranslation('user-management');
   const { currentUser } = useUser();
@@ -125,7 +132,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
   const fetchUsers = () => {
     setLoading(true);
-    api.get<PageOrData<UserRow>>('/accounts?page=0&size=200')
+    api.get<PageOrData<UserRow>>('/users')
       .then((res) => {
         const rows = res?.success && res.data && typeof res.data === 'object' && 'content' in res.data
           ? (res.data as PageResponse<UserRow>).content
@@ -135,7 +142,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
         setUsers(rows);
         onStats({
           totalUsers: rows.length,
-          activeUsers: rows.filter((u) => u.active || u.status === 'active' || u.isActive).length,
+          activeUsers: rows.filter((u) => u.enabled ?? u.active ?? u.isActive ?? u.status === 'active').length,
         });
       })
       .catch((err) => setError(err?.message || 'Could not load accounts directory.'))
@@ -144,7 +151,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
   useEffect(() => {
     fetchUsers();
-    api.get<PageOrData<RoleDto>>('/admin/roles')
+    api.get<PageOrData<RoleDto>>('/roles')
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) setRoles(res.data);
       })
@@ -161,7 +168,12 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
     setActionLoading(true);
     try {
-      await api.post('/accounts', newUser);
+      await api.post('/users', {
+        email: newUser.email,
+        fullName: newUser.name,
+        password: newUser.password,
+        roles: [newUser.role.replace('ROLE_', '')],
+      });
       setShowCreateModal(false);
       setNewUser({ name: '', email: '', username: '', password: '', role: 'ROLE_RESEARCH_STAFF' });
       setNotice('Account created successfully.');
@@ -179,12 +191,9 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
     setNotice('');
     setActionLoading(true);
     try {
-      await api.put(`/accounts/${editUser.id}`, {
+      await api.patch(`/users/${editUser.id}`, {
+        fullName: editUser.name,
         email: editUser.email,
-        username: editUser.username,
-        name: editUser.name,
-        password: editUser.password || undefined,
-        role: editUser.role,
       });
       setEditUser(null);
       setNotice(`Account #${editUser.id} updated successfully.`);
@@ -226,7 +235,8 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
 
     setActionLoading(true);
     try {
-      await api.patch(`/accounts/${user.id}/status`);
+      const isActive = user.enabled ?? user.active ?? user.isActive ?? user.status === 'active';
+      await api.patch(`/users/${user.id}/status`, { enabled: !isActive });
       setNotice(`Updated status for ${user.email || user.username}.`);
       fetchUsers();
     } catch (err: unknown) {
@@ -241,7 +251,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
       const name = String(u.name || u.fullName || u.email || '').toLowerCase();
       const username = String(u.username || u.email || '').toLowerCase();
       const email = String(u.email || '').toLowerCase();
-      const isActive = u.active ?? u.isActive ?? (u.status === 'active');
+      const isActive = u.enabled ?? u.active ?? u.isActive ?? (u.status === 'active');
       const statusStr = isActive ? 'active' : 'inactive';
       
       const matchesSearch = name.includes(search.toLowerCase()) || 
@@ -313,7 +323,7 @@ const UsersTab: React.FC<{ onStats: (stats: { totalUsers: number; activeUsers: n
                 </thead>
                 <tbody>
                   {paginated.map((user) => {
-                    const isActive = user.active ?? user.isActive ?? (user.status === 'active');
+                    const isActive = user.enabled ?? user.active ?? user.isActive ?? (user.status === 'active');
                     const role = user.role || user.roleName || (user.roles && user.roles[0]) || 'ROLE_RESEARCH_STAFF';
                     const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
 
@@ -521,15 +531,15 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<PageOrData<RoleDto>>('/admin/roles')
+    api.get<PageOrData<string | RoleDto>>('/roles')
       .then((res) => {
-        const rows = res?.success && Array.isArray(res.data)
+        const raw = res?.success && Array.isArray(res.data)
           ? res.data
           : res?.success && res.data && typeof res.data === 'object' && 'content' in res.data
-            ? (res.data as PageResponse<RoleDto>).content
+            ? (res.data as PageResponse<string | RoleDto>).content
             : [];
-        setRoles(rows);
-        onCount(rows.length);
+        setRoles(raw.map((r) => normalizeRole(r)));
+        onCount(raw.length);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -630,7 +640,6 @@ const PermissionsTab: React.FC = () => {
                       ['A', permission.admin],
                       ['D', permission.director],
                       ['M', permission.manager],
-                      ['K', permission.keymember],
                       ['S', permission.staff],
                     ].map(([label, yes]) => (
                       <span key={String(label)} className={yes ? 'on' : ''} title={`${label}: ${yes ? 'Allow' : 'Deny'}`}>{label}</span>

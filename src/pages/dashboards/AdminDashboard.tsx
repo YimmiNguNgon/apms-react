@@ -1,766 +1,293 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { api } from '../../services/api';
-import { useUser } from '../../context/UserContext';
-import type { DashboardSummaryDto, AuditLogDto, RoleDto } from '../../types/domain';
-import { AreaChart, BarChart, DonutChart } from '../../components/charts/Charts';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { API_BASE_URL, api } from '../../services/api';
+import type { AuditLogDto, PageResult } from '../../types/domain';
 import {
   Activity,
-  CheckCircle2,
-  Cpu,
-  Database,
   Download,
   FileText,
   KeyRound,
-  Layers,
-  Lock,
   Plus,
   RefreshCw,
   Search,
   Server,
-  ShieldAlert,
+  Settings,
   ShieldCheck,
-  UserPlus,
+  ShieldAlert,
+  UserCog,
   Users,
-  X,
 } from 'lucide-react';
 import styles from './AdminDashboard.module.css';
 
-const EmptyPanel: React.FC<{ message: string }> = ({ message }) => (
-  <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
-    {message}
-  </div>
-);
+type AuditFilter = 'ALL' | 'SECURITY' | 'AUTHENTICATION' | 'USERS_ROLES' | 'SYSTEM_CONFIGURATION';
 
-export const AdminDashboard: React.FC = () => {
-  const { currentUser } = useUser();
-  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
+interface UserRow {
+  id?: number;
+  role?: string;
+  roleName?: string;
+  roles?: string[];
+  enabled?: boolean;
+  active?: boolean;
+  isActive?: boolean;
+  status?: string;
+}
+
+const ROLE_OVERVIEW = [
+  { label: 'System Admin', keys: ['ROLE_SYSTEM_ADMIN', 'ROLE_ADMIN', 'SYSTEM_ADMIN', 'ADMIN'] },
+  { label: 'Business Owner', keys: ['ROLE_BUSINESS_OWNER', 'ROLE_OWNER', 'BUSINESS_OWNER', 'OWNER'] },
+  { label: 'BD Manager', keys: ['ROLE_BUSINESS_DEVELOPMENT_MANAGER', 'ROLE_MANAGER', 'BUSINESS_DEVELOPMENT_MANAGER', 'MANAGER'] },
+  { label: 'Research Staff', keys: ['ROLE_RESEARCH_STAFF', 'ROLE_STAFF', 'RESEARCH_STAFF', 'STAFF'] },
+];
+
+const SERVICE_NAMES = ['API Server', 'SQL Server', 'MongoDB', 'Neo4j', 'Authentication', 'Background Jobs'];
+
+const containsAny = (value: string, words: string[]) => words.some((word) => value.includes(word));
+
+const isSecurityLog = (log: AuditLogDto) =>
+  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['SECURITY', 'DENIED', 'LOCK', 'OTP', 'JWT']);
+
+const isAuthenticationLog = (log: AuditLogDto) =>
+  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['LOGIN', 'LOGOUT', 'AUTH', 'PASSWORD', 'OTP']);
+
+const isUserRoleLog = (log: AuditLogDto) =>
+  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['USER', 'ACCOUNT', 'ROLE', 'PERMISSION']);
+
+const isSystemConfigLog = (log: AuditLogDto) =>
+  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['SYSTEM', 'CONFIG', 'SETTING']);
+
+const isAdminActivity = (log: AuditLogDto) =>
+  isSecurityLog(log) || isAuthenticationLog(log) || isUserRoleLog(log) || isSystemConfigLog(log);
+
+const formatTimestamp = (timestamp?: string) => {
+  if (!timestamp) return 'Not available';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleString('vi-VN');
+};
+
+const statusLabel = (action: string) => {
+  const value = action.toUpperCase();
+  return containsAny(value, ['FAILED', 'DENIED', 'REJECTED', 'LOCKED', 'ERROR']) ? 'Attention' : 'Recorded';
+};
+
+export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }> = ({ setActivePage }) => {
+  const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
+  const [users, setUsers] = useState<UserRow[] | null>(null);
+  const [auditAvailable, setAuditAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activityData, setActivityData] = useState<AuditLogDto[]>([]);
-  const [userRegData, setUserRegData] = useState<{ label: string; value: number }[]>([]);
-  const [loginActivity, setLoginActivity] = useState<{ label: string; value: number }[]>([]);
-  const [systemHealth, setSystemHealth] = useState<{ label: string; value: number; color: string }[]>([]);
-  const [roleDistribution, setRoleDistribution] = useState<RoleDto[]>([]);
-
-  // Interactive filters & states
-  const [activityFilter, setActivityFilter] = useState<'ALL' | 'SECURITY' | 'USER' | 'SYSTEM'>('ALL');
+  const [filter, setFilter] = useState<AuditFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // New user form state
-  const [newUserForm, setNewUserForm] = useState({
-    name: '',
-    username: '',
-    email: '',
-    role: 'ROLE_RESEARCH_STAFF',
-    password: '',
-  });
-  const [submittingUser, setSubmittingUser] = useState(false);
+  const loadDashboard = useCallback(async () => {
+    const [auditResult, usersResult] = await Promise.allSettled([
+      api.get<PageResult<AuditLogDto>>('/audit-logs', { params: { page: 0, size: 50 } }),
+      api.get<PageResult<UserRow>>('/users'),
+    ]);
 
-  const fetchDashboardData = async () => {
-    try {
-      const [summaryRes, activityRes, userRegRes, loginRes, healthRes, roleRes] = await Promise.allSettled([
-        api.get<DashboardSummaryDto>('/dashboard/summary'),
-        api.get<AuditLogDto[]>('/dashboard/activity'),
-        api.get<{ label: string; value: number }[]>('/dashboard/user-registration'),
-        api.get<{ label: string; value: number }[]>('/dashboard/login-activity'),
-        api.get<{ label: string; value: number; color: string }[]>('/dashboard/system-health'),
-        api.get<RoleDto[]>('/dashboard/role-distribution'),
-      ]);
-
-      if (summaryRes.status === 'fulfilled' && summaryRes.value?.success) {
-        setSummary(summaryRes.value.data);
-      }
-      if (activityRes.status === 'fulfilled' && Array.isArray(activityRes.value?.data)) {
-        setActivityData(activityRes.value.data);
-      }
-      if (userRegRes.status === 'fulfilled' && Array.isArray(userRegRes.value?.data)) {
-        setUserRegData(userRegRes.value.data);
-      }
-      if (loginRes.status === 'fulfilled' && Array.isArray(loginRes.value?.data)) {
-        setLoginActivity(loginRes.value.data);
-      }
-      if (healthRes.status === 'fulfilled' && Array.isArray(healthRes.value?.data)) {
-        setSystemHealth(healthRes.value.data);
-      }
-      if (roleRes.status === 'fulfilled' && Array.isArray(roleRes.value?.data)) {
-        setRoleDistribution(roleRes.value.data);
-      }
-    } catch {
-      // Fallbacks handle display
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    if (auditResult.status === 'fulfilled' && auditResult.value.success) {
+      const payload = auditResult.value.data;
+      setAuditLogs(Array.isArray(payload) ? payload : payload?.content || []);
+      setAuditAvailable(true);
+    } else {
+      setAuditLogs([]);
+      setAuditAvailable(false);
     }
-  };
+
+    if (usersResult.status === 'fulfilled' && usersResult.value.success) {
+      const payload = usersResult.value.data;
+      setUsers(Array.isArray(payload) ? payload : payload?.content || []);
+    } else {
+      setUsers(null);
+    }
+
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    loadDashboard();
+  }, [loadDashboard]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchDashboardData();
-    showNotification('System telemetry refreshed');
+    loadDashboard();
   };
 
-  const showNotification = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+  const filteredAuditLogs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return auditLogs.filter((log) => {
+      const matchesFilter = filter === 'ALL'
+        || (filter === 'SECURITY' && isSecurityLog(log))
+        || (filter === 'AUTHENTICATION' && isAuthenticationLog(log))
+        || (filter === 'USERS_ROLES' && isUserRoleLog(log))
+        || (filter === 'SYSTEM_CONFIGURATION' && isSystemConfigLog(log));
+      const searchable = `${log.actorEmail || ''} ${log.action || ''} ${log.entityType || ''} ${log.detail || ''}`.toLowerCase();
+      return matchesFilter && (!query || searchable.includes(query));
+    });
+  }, [auditLogs, filter, searchQuery]);
+
+  const totalUsers = users?.length;
+  const activeUsers = users?.filter((user) => user.enabled ?? user.active ?? user.isActive ?? user.status === 'active').length;
+  const failedLogins = auditAvailable
+    ? auditLogs.filter((log) => containsAny(`${log.action} ${log.detail || ''}`.toUpperCase(), ['LOGIN_FAILED', 'FAILED_LOGIN', 'LOGIN FAILURE'])).length
+    : null;
+  const permissionChanges = auditAvailable
+    ? auditLogs.filter((log) => containsAny(`${log.action} ${log.detail || ''}`.toUpperCase(), ['PERMISSION', 'ROLE'])).length
+    : null;
+
+  const roleCounts = useMemo(() => ROLE_OVERVIEW.map((role) => {
+    if (!users) return { ...role, count: null };
+    const count = users.filter((user) => {
+      const assignedRoles = [user.role, user.roleName, ...(user.roles || [])].filter(Boolean).map((item) => String(item).toUpperCase());
+      return assignedRoles.some((assigned) => role.keys.includes(assigned));
+    }).length;
+    return { ...role, count };
+  }), [users]);
+
+  const recentAdminActivities = useMemo(() => auditLogs.filter(isAdminActivity).slice(0, 10), [auditLogs]);
+
+  const exportAudit = async () => {
+    const token = localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
+    try {
+      const response = await fetch(`${API_BASE_URL}/audit-logs/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // The dashboard does not present a successful export when the backend export is unavailable.
+    }
   };
 
-  const totalUsers = useMemo(
-    () => roleDistribution.reduce((sum, item) => sum + Number(item.userCount || 0), 0),
-    [roleDistribution],
-  );
-
-  const healthGaugeData = useMemo(() => {
-    if (systemHealth.length > 0) return systemHealth;
-    const value = Number(summary?.systemHealth ?? 99.8);
-    return [
-      { label: 'Uptime SLA', value, color: '#2563EB' },
-      { label: 'Reserve', value: Math.max(0, 100 - value), color: '#E2E8F0' },
-    ];
-  }, [summary, systemHealth]);
-
-  // Mock / Live database status telemetry
-  const dbClusters = [
-    {
-      name: 'SQL Server 2019',
-      role: 'Relational Core DB (Users, Projects & Profiles)',
-      latency: '42ms',
-      status: 'HEALTHY',
-      connections: '1,240',
-      usage: 64,
-      color: '#2563eb',
-    },
-    {
-      name: 'MongoDB 7.0',
-      role: 'Document & Extraction Store (Crawler News & Intelligence)',
-      latency: '18ms',
-      status: 'OPERATIONAL',
-      connections: '48,500 docs',
-      usage: 38,
-      color: '#10b981',
-    },
-    {
-      name: 'Neo4j 5.20',
-      role: 'Graph Database (Relationship & Ecosystem Graph Engine)',
-      latency: '24ms',
-      status: 'OPERATIONAL',
-      connections: '12,800 nodes',
-      usage: 22,
-      color: '#8b5cf6',
-    },
+  const kpis = [
+    { label: 'Total users', value: totalUsers, detail: totalUsers === undefined ? 'Not available' : 'Accounts returned by the users service', icon: Users, tone: 'blue' },
+    { label: 'Active users', value: activeUsers, detail: activeUsers === undefined ? 'Not available' : 'Enabled accounts returned by the users service', icon: Activity, tone: 'green' },
+    { label: 'Pending accounts', value: null, detail: 'Not available', icon: UserCog, tone: 'amber' },
+    { label: 'Security alerts', value: null, detail: 'Not available', icon: ShieldAlert, tone: 'red' },
   ];
 
-  // Filtered activity stream
-  const filteredActivities = useMemo(() => {
-    let list: (AuditLogDto | { action: string; detail: string; timestamp: string })[] = activityData.length > 0 ? activityData : [
-      { action: 'ROLE_UPDATE', detail: 'User role changed to ROLE_BUSINESS_DIRECTOR for user ID #142', timestamp: '2 minutes ago' },
-      { action: 'SECURITY_ALERT', detail: 'Failed password attempt threshold triggered from IP 192.168.1.45', timestamp: '14 minutes ago' },
-      { action: 'USER_CREATED', detail: 'New account registered: le.hoang@company.vn (Research Staff)', timestamp: '45 minutes ago' },
-      { action: 'SYSTEM_CONFIG', detail: 'Crawler schedule updated for daily article extraction pipeline', timestamp: '2 hours ago' },
-      { action: 'JWT_ROTATION', detail: 'System security keys rotated successfully for active sessions', timestamp: '4 hours ago' },
-      { action: 'AUDIT_EXPORT', detail: 'System audit log exported by Administrator', timestamp: '6 hours ago' },
-    ];
-
-    if (activityFilter === 'SECURITY') {
-      list = list.filter((item) => (item.action || '').toUpperCase().includes('SECURITY') || (item.action || '').toUpperCase().includes('JWT') || (item.action || '').toUpperCase().includes('AUTH'));
-    } else if (activityFilter === 'USER') {
-      list = list.filter((item) => (item.action || '').toUpperCase().includes('USER') || (item.action || '').toUpperCase().includes('ROLE'));
-    } else if (activityFilter === 'SYSTEM') {
-      list = list.filter((item) => (item.action || '').toUpperCase().includes('SYSTEM') || (item.action || '').toUpperCase().includes('AUDIT') || (item.action || '').toUpperCase().includes('CONFIG'));
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        (item) =>
-          (item.action || '').toLowerCase().includes(q) ||
-          (item.detail || '').toLowerCase().includes(q)
-      );
-    }
-
-    return list;
-  }, [activityData, activityFilter, searchQuery]);
-
-  // Handle Export Audit Log
-  const handleExportAudit = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(filteredActivities, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `apms_audit_log_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showNotification('Audit log exported successfully');
-  };
-
-  // Handle Create User Submit
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserForm.username || !newUserForm.name || !newUserForm.email) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    setSubmittingUser(true);
-    try {
-      await api.post('/users', newUserForm);
-      showNotification(`Account ${newUserForm.username} created successfully`);
-      setShowCreateUserModal(false);
-      setNewUserForm({ name: '', username: '', email: '', role: 'ROLE_RESEARCH_STAFF', password: '' });
-      fetchDashboardData();
-    } catch {
-      // Show simulated success if backend offline for demo
-      showNotification(`Account ${newUserForm.username} provisioned successfully`);
-      setShowCreateUserModal(false);
-      setNewUserForm({ name: '', username: '', email: '', role: 'ROLE_RESEARCH_STAFF', password: '' });
-    } finally {
-      setSubmittingUser(false);
-    }
-  };
-
   return (
-    <div className={styles.adminDashboard} id="page-admin-dashboard">
-      {/* Notification Toast */}
-      {toastMessage && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            background: '#0f172a',
-            color: '#ffffff',
-            padding: '12px 20px',
-            borderRadius: '10px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            zIndex: 1000,
-            fontSize: '0.875rem',
-            border: '1px solid rgba(255,255,255,0.1)',
-          }}
-        >
-          <CheckCircle2 size={18} color="#10b981" />
-          <span>{toastMessage}</span>
+    <main className={styles.adminDashboard} id="admin-dashboard">
+      <header className={styles.header}>
+        <div>
+          <p className={styles.eyebrow}>Administration</p>
+          <h1>System Administrator Workspace</h1>
+          <p className={styles.subtitle}>Monitor platform health, security, users and system activity.</p>
         </div>
-      )}
+        <div className={styles.headerActions}>
+          <button className={styles.secondaryButton} onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw size={16} className={refreshing ? styles.spin : undefined} /> Refresh
+          </button>
+          <button className={styles.secondaryButton} onClick={exportAudit}>
+            <Download size={16} /> Export Audit
+          </button>
+          <button className={styles.primaryButton} onClick={() => setActivePage('users')}>
+            <Plus size={16} /> Create Account
+          </button>
+        </div>
+      </header>
 
-      {/* Hero Command Header */}
-      <section className={styles.heroCard}>
-        <div className={styles.heroContent}>
-          <div className={styles.heroInfo}>
-            <div className={styles.heroBadge}>
-              <span className={styles.pulseDot} />
-              Platform Command Center · Live Governance
-            </div>
-            <h1 className={styles.heroTitle}>System Administrator Workspace</h1>
-            <p className={styles.heroDesc}>
-              {loading
-                ? 'Initializing telemetry feeds, security alerts, and infrastructure health metrics...'
-                : `Welcome, ${currentUser?.name || 'Administrator'}. All 3 database engines (SQL Server, MongoDB, Neo4j) and security protocols are active with zero unhandled critical breaches.`}
-            </p>
-          </div>
-          <div className={styles.heroActions}>
-            <button
-              className={styles.actionBtnSecondary}
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-              <span>Refresh</span>
-            </button>
-            <button className={styles.actionBtnSecondary} onClick={handleExportAudit}>
-              <Download size={16} />
-              <span>Export Audit</span>
-            </button>
-            <button
-              className={styles.actionBtnPrimary}
-              onClick={() => setShowCreateUserModal(true)}
-            >
-              <Plus size={16} />
-              <span>Create Account</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Ticker Bar */}
-        <div className={styles.pulseTicker}>
-          <div className={styles.tickerItem}>
-            <span className={styles.tickerDotGreen} />
-            <span>SQL Server 2019: <strong>OK (42ms)</strong></span>
-          </div>
-          <span className={styles.tickerDivider}>|</span>
-          <div className={styles.tickerItem}>
-            <span className={styles.tickerDotGreen} />
-            <span>MongoDB 7.0: <strong>OK (18ms)</strong></span>
-          </div>
-          <span className={styles.tickerDivider}>|</span>
-          <div className={styles.tickerItem}>
-            <span className={styles.tickerDotGreen} />
-            <span>Neo4j 5.20: <strong>OK (24ms)</strong></span>
-          </div>
-          <span className={styles.tickerDivider}>|</span>
-          <div className={styles.tickerItem}>
-            <span className={styles.tickerDotBlue} />
-            <span>Security Engine: <strong>ENFORCED</strong></span>
-          </div>
-          <span className={styles.tickerDivider}>|</span>
-          <div className={styles.tickerItem}>
-            <span>Uptime SLA: <strong>99.98%</strong></span>
-          </div>
-        </div>
+      <section className={styles.kpiGrid} aria-label="User and security metrics">
+        {kpis.map(({ label, value, detail, icon: Icon, tone }) => (
+          <article key={label} className={styles.kpiCard}>
+            <div className={`${styles.kpiIcon} ${styles[`tone${tone}`]}`}><Icon size={20} /></div>
+            <p>{label}</p>
+            <strong>{loading ? 'Loading…' : value ?? 'Not available'}</strong>
+            <span>{detail}</span>
+          </article>
+        ))}
       </section>
 
-      {/* Metric Cards Grid */}
-      <section className={styles.statGrid}>
-        <article className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
-              <Users size={22} />
-            </div>
-            <span className={`${styles.statBadge} ${styles.statBadgeBlue}`}>+12% this month</span>
-          </div>
-          <div className={styles.statValue}>{totalUsers || 48}</div>
-          <div className={styles.statLabel}>Total Managed Accounts</div>
-          <div className={styles.statFooter}>
-            <CheckCircle2 size={14} color="#10b981" />
-            <span>Active across 6 system access roles</span>
-          </div>
-        </article>
-
-        <article className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <div className={`${styles.statIcon} ${styles.statIconAmber}`}>
-              <ShieldAlert size={22} />
-            </div>
-            <span className={`${styles.statBadge} ${styles.statBadgeAmber}`}>0 Critical</span>
-          </div>
-          <div className={styles.statValue}>{summary?.securityAlerts ?? 0}</div>
-          <div className={styles.statLabel}>Security Signals Today</div>
-          <div className={styles.statFooter}>
-            <Lock size={14} color="#f59e0b" />
-            <span>Audit triage & authentication log clear</span>
-          </div>
-        </article>
-
-        <article className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
-              <Database size={22} />
-            </div>
-            <span className={`${styles.statBadge} ${styles.statBadgeGreen}`}>3/3 Cluster Online</span>
-          </div>
-          <div className={styles.statValue}>100%</div>
-          <div className={styles.statLabel}>Database Cluster Health</div>
-          <div className={styles.statFooter}>
-            <Server size={14} color="#10b981" />
-            <span>SQL Server, MongoDB & Neo4j connected</span>
-          </div>
-        </article>
-
-        <article className={styles.statCard}>
-          <div className={styles.statHeader}>
-            <div className={`${styles.statIcon} ${styles.statIconPurple}`}>
-              <Activity size={22} />
-            </div>
-            <span className={`${styles.statBadge} ${styles.statBadgeBlue}`}>4.2 ev/min</span>
-          </div>
-          <div className={styles.statValue}>
-            {(summary?.activitiesToday ?? activityData.length) || 142}
-          </div>
-          <div className={styles.statLabel}>Daily Audit Events Logged</div>
-          <div className={styles.statFooter}>
-            <FileText size={14} color="#8b5cf6" />
-            <span>Real-time event streaming pipeline</span>
-          </div>
-        </article>
-      </section>
-
-      {/* Infrastructure Cluster Bento Grid */}
-      <section className={styles.bentoSection}>
-        <div className={styles.sectionHeader}>
-          <div className={styles.sectionTitle}>
-            <Server size={20} color="#2563eb" />
-            <div>
-              <h3>Database Infrastructure Cluster Telemetry</h3>
-              <p className={styles.sectionSubtitle}>
-                Live health, query latency, and resource utilization across the 3 core database stores required by APMS.
-              </p>
-            </div>
-          </div>
+      <section className={styles.section} aria-labelledby="system-health-heading">
+        <div className={styles.sectionHeading}>
+          <div><h2 id="system-health-heading">System Health</h2><p>Live service telemetry is not currently provided by the backend.</p></div>
+          <span className={styles.availabilityNote}>Not available</span>
         </div>
-
-        <div className={styles.dbClusterGrid}>
-          {dbClusters.map((db) => (
-            <div key={db.name} className={styles.dbCard}>
-              <div className={styles.dbHeader}>
-                <span className={styles.dbName}>
-                  <Database size={16} color={db.color} />
-                  {db.name}
-                </span>
-                <span className={styles.dbStatusPill}>
-                  <span className={styles.pulseDot} style={{ width: 6, height: 6 }} />
-                  {db.status}
-                </span>
-              </div>
-              <div className={styles.dbLatency}>{db.role}</div>
-              <div className={styles.progressBarTrack}>
-                <div
-                  className={styles.progressBarFill}
-                  style={{ width: `${db.usage}%`, background: db.color }}
-                />
-              </div>
-              <div className={styles.dbFooter}>
-                <span>Storage: <strong>{db.usage}%</strong></span>
-                <span>Latency: <strong>{db.latency}</strong></span>
-                <span>Connections: <strong>{db.connections}</strong></span>
-              </div>
-            </div>
+        <div className={styles.healthGrid}>
+          {SERVICE_NAMES.map((service) => (
+            <article key={service} className={styles.healthCard}>
+              <Server size={18} />
+              <div><strong>{service}</strong><span>Status: Not available</span></div>
+              <div className={styles.healthMeta}><span>Latency: Not available</span><span>Last checked: Not available</span></div>
+            </article>
           ))}
         </div>
       </section>
 
-      {/* Main Content Grid: Charts & Activity Stream vs Sidebar */}
-      <div className={styles.contentGrid}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Charts Row */}
-          <div className={styles.chartGrid}>
-            <div className={styles.panelCard}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Account Growth Velocity</h3>
-                  <p className={styles.sectionSubtitle}>User registration trend over recent cycles</p>
-                </div>
+      <section className={styles.auditSection} aria-labelledby="security-audit-heading">
+        <div className={styles.sectionHeading}>
+          <div><h2 id="security-audit-heading">Security &amp; Audit</h2><p>Review security, authentication, access and configuration events.</p></div>
+          <button className={styles.textButton} onClick={() => setActivePage('audit-logs')}>View audit log</button>
+        </div>
+        <div className={styles.auditLayout}>
+          <aside className={styles.securitySummary}>
+            <div><ShieldAlert size={18} /><span>Security alerts</span><strong>Not available</strong></div>
+            <div><KeyRound size={18} /><span>Failed login attempts</span><strong>{failedLogins ?? 'Not available'}</strong></div>
+            <div><UserCog size={18} /><span>Permission changes</span><strong>{permissionChanges ?? 'Not available'}</strong></div>
+          </aside>
+          <div className={styles.auditLog}>
+            <div className={styles.auditToolbar}>
+              <div className={styles.filterTabs} role="tablist" aria-label="Audit filters">
+                {([
+                  ['ALL', 'All'], ['SECURITY', 'Security'], ['AUTHENTICATION', 'Authentication'], ['USERS_ROLES', 'Users & Roles'], ['SYSTEM_CONFIGURATION', 'System Configuration'],
+                ] as [AuditFilter, string][]).map(([key, label]) => (
+                  <button key={key} className={filter === key ? styles.activeFilter : ''} onClick={() => setFilter(key)}>{label}</button>
+                ))}
               </div>
-              {userRegData.length > 0 ? (
-                <AreaChart data={userRegData} color="#2563EB" height={180} />
-              ) : (
-                <AreaChart
-                  data={[
-                    { label: 'Mon', value: 12 },
-                    { label: 'Tue', value: 19 },
-                    { label: 'Wed', value: 25 },
-                    { label: 'Thu', value: 34 },
-                    { label: 'Fri', value: 42 },
-                    { label: 'Sat', value: 45 },
-                    { label: 'Sun', value: 48 },
-                  ]}
-                  color="#2563EB"
-                  height={180}
-                />
-              )}
+              <label className={styles.searchBox}><Search size={16} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search audit log" /></label>
             </div>
-
-            <div className={styles.panelCard}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Authentication Traffic</h3>
-                  <p className={styles.sectionSubtitle}>Successful & filtered authentication requests</p>
-                </div>
+            {loading ? <div className={styles.emptyState}>Loading audit records…</div> : filteredAuditLogs.length === 0 ? <div className={styles.emptyState}>No audit records available.</div> : (
+              <div className={styles.auditList}>
+                {filteredAuditLogs.slice(0, 8).map((log) => <AuditRow key={log.id} log={log} />)}
               </div>
-              {loginActivity.length > 0 ? (
-                <BarChart data={loginActivity} height={180} />
-              ) : (
-                <BarChart
-                  data={[
-                    { label: '08:00', value: 45 },
-                    { label: '10:00', value: 89 },
-                    { label: '12:00', value: 62 },
-                    { label: '14:00', value: 110 },
-                    { label: '16:00', value: 95 },
-                    { label: '18:00', value: 40 },
-                  ]}
-                  height={180}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Activity Stream Panel */}
-          <div className={styles.panelCard}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Activity size={18} color="#2563eb" />
-                  Live Activity & Governance Audit Log
-                </h3>
-                <p className={styles.sectionSubtitle}>
-                  Operational events collected across user administration, access control, and security services.
-                </p>
-              </div>
-            </div>
-
-            {/* Filter Bar */}
-            <div className={styles.filterTabs}>
-              <button
-                className={`${styles.tabBtn} ${activityFilter === 'ALL' ? styles.tabBtnActive : ''}`}
-                onClick={() => setActivityFilter('ALL')}
-              >
-                All Events ({activityData.length || 6})
-              </button>
-              <button
-                className={`${styles.tabBtn} ${activityFilter === 'SECURITY' ? styles.tabBtnActive : ''}`}
-                onClick={() => setActivityFilter('SECURITY')}
-              >
-                Security & Auth
-              </button>
-              <button
-                className={`${styles.tabBtn} ${activityFilter === 'USER' ? styles.tabBtnActive : ''}`}
-                onClick={() => setActivityFilter('USER')}
-              >
-                User & Roles
-              </button>
-              <button
-                className={`${styles.tabBtn} ${activityFilter === 'SYSTEM' ? styles.tabBtnActive : ''}`}
-                onClick={() => setActivityFilter('SYSTEM')}
-              >
-                System & Config
-              </button>
-            </div>
-
-            {/* Search Input */}
-            <div className={styles.searchBox}>
-              <Search size={16} className={styles.searchIcon} />
-              <input
-                type="text"
-                placeholder="Search audit log entries by action, details, or ID..."
-                className={styles.searchInput}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            {/* Event List */}
-            <div className={styles.activityList}>
-              {filteredActivities.length > 0 ? (
-                filteredActivities.map((item, index) => (
-                  <article key={index} className={styles.activityItem}>
-                    <div className={styles.activityDot}>
-                      <ShieldCheck size={16} />
-                    </div>
-                    <div className={styles.activityBody}>
-                      <div className={styles.activityTitle}>
-                        <span>{item.action || 'System Event'}</span>
-                        <span className={styles.activityTime}>{item.timestamp || 'Just now'}</span>
-                      </div>
-                      <p className={styles.activityDetail}>
-                        {item.detail || 'Event registered in audit stream.'}
-                      </p>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <EmptyPanel message="No audit log records match the selected filter." />
-              )}
-            </div>
+            )}
           </div>
         </div>
+      </section>
 
-        {/* Right Governance Sidebar */}
-        <aside className={styles.sideStack}>
-          {/* Health Gauge Widget */}
-          <div className={styles.panelCard}>
-            <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: 700 }}>System SLA & Health Pulse</h3>
-            <p className={styles.sectionSubtitle} style={{ marginBottom: '1rem' }}>
-              Real-time platform availability
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem 0' }}>
-              <DonutChart
-                data={healthGaugeData}
-                size={140}
-                centerValue={`${summary?.systemHealth ?? 99.8}%`}
-                centerLabel="UPTIME SLA"
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.8rem', color: '#64748b' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Backend API Port:</span>
-                <strong style={{ color: '#0f172a' }}>18085 (Online)</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>JWT Token Auth:</span>
-                <strong style={{ color: '#10b981' }}>Enforced</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Active Sessions:</span>
-                <strong style={{ color: '#0f172a' }}>14 users</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Role Hierarchy Breakdown */}
-          <div className={styles.panelCard}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Layers size={16} color="#8b5cf6" />
-                Role Access Distribution
-              </h3>
-            </div>
-
-            <ul className={styles.roleList}>
-              <li className={styles.roleItem}>
-                <div className={styles.roleInfo}>
-                  <KeyRound size={14} color="#64748b" />
-                  <span>System Admin</span>
-                </div>
-                <span className={styles.roleBadge}>2</span>
-              </li>
-              <li className={styles.roleItem}>
-                <div className={styles.roleInfo}>
-                  <ShieldCheck size={14} color="#2563eb" />
-                  <span>Business Owner</span>
-                </div>
-                <span className={styles.roleBadge}>5</span>
-              </li>
-              <li className={styles.roleItem}>
-                <div className={styles.roleInfo}>
-                  <Users size={14} color="#f59e0b" />
-                  <span>BD Manager</span>
-                </div>
-                <span className={styles.roleBadge}>8</span>
-              </li>
-              <li className={styles.roleItem}>
-                <div className={styles.roleInfo}>
-                  <Users size={14} color="#0284c7" />
-                  <span>Research Staff</span>
-                </div>
-                <span className={styles.roleBadge}>33</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Quick Actions Widget */}
-          <div className={styles.panelCard} style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)', borderColor: '#bfdbfe' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#1e40af' }}>
-              Quick Governance Actions
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: '#3b82f6', margin: '0 0 1rem 0' }}>
-              Manage accounts and platform configurations directly.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button
-                className={styles.actionBtnPrimary}
-                style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => setShowCreateUserModal(true)}
-              >
-                <UserPlus size={16} />
-                <span>Provision User Account</span>
-              </button>
-              <button
-                className={styles.actionBtnSecondary}
-                style={{ width: '100%', justifyContent: 'center', background: '#ffffff', color: '#1e293b', borderColor: '#cbd5e1' }}
-                onClick={handleExportAudit}
-              >
-                <FileText size={16} />
-                <span>Export System Log</span>
-              </button>
-            </div>
-          </div>
-        </aside>
-      </div>
-
-      {/* Create User Account Modal */}
-      {showCreateUserModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowCreateUserModal(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <UserPlus size={18} color="#2563eb" />
-                Provision New User Account
-              </h3>
-              <button className={styles.closeBtn} onClick={() => setShowCreateUserModal(false)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateUser}>
-              <div className={styles.modalBody}>
-                <div className={styles.formGroup}>
-                  <label>Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Nguyen Van A"
-                    value={newUserForm.name}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label>Username *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. anguyen"
-                    value={newUserForm.username}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })}
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label>Email Address *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. anguyen@company.vn"
-                    value={newUserForm.email}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label>Assign Access Role *</label>
-                  <select
-                    value={newUserForm.role}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
-                  >
-                    <option value="ROLE_SYSTEM_ADMIN">System Administrator (Admin)</option>
-                    <option value="ROLE_BUSINESS_OWNER">Business Owner (Owner)</option>
-                    <option value="ROLE_BUSINESS_DEVELOPMENT_MANAGER">BD Manager</option>
-                    <option value="ROLE_RESEARCH_STAFF">Research Staff</option>
-                  </select>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label>Initial Password (Optional)</label>
-                  <input
-                    type="password"
-                    placeholder="Default: P@ssword123"
-                    value={newUserForm.password}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.modalFooter}>
-                <button
-                  type="button"
-                  className={styles.actionBtnSecondary}
-                  style={{ background: '#ffffff', color: '#475569', borderColor: '#cbd5e1' }}
-                  onClick={() => setShowCreateUserModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={styles.actionBtnPrimary}
-                  disabled={submittingUser}
-                >
-                  {submittingUser ? 'Provisioning...' : 'Provision Account'}
-                </button>
-              </div>
-            </form>
-          </div>
+      <section className={styles.section} aria-labelledby="role-overview-heading">
+        <div className={styles.sectionHeading}><div><h2 id="role-overview-heading">User &amp; Role Overview</h2><p>Account distribution by role.</p></div></div>
+        <div className={styles.roleGrid}>
+          {roleCounts.map((role) => (
+            <button key={role.label} className={styles.roleCard} onClick={() => setActivePage('roles')}>
+              <span>{role.label}</span><strong>{role.count ?? 'Not available'}</strong><span className={styles.manageLink}>Manage roles</span>
+            </button>
+          ))}
         </div>
-      )}
-    </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="recent-activity-heading">
+        <div className={styles.sectionHeading}><div><h2 id="recent-activity-heading">Recent Admin Activity</h2><p>Latest recorded administrative and security events.</p></div></div>
+        {loading ? <div className={styles.emptyState}>Loading recent activity…</div> : recentAdminActivities.length === 0 ? <div className={styles.emptyState}>No audit records available.</div> : (
+          <div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
+            {recentAdminActivities.map((log) => <tr key={log.id}><td>{formatTimestamp(log.timestamp)}</td><td>{log.actorEmail || 'System'}</td><td>{log.action || 'Not available'}</td><td>{log.entityType || log.entityId || 'Not available'}</td><td><span className={styles.status}>{statusLabel(log.action || '')}</span></td></tr>)}
+          </tbody></table></div>
+        )}
+      </section>
+
+      <section className={styles.section} aria-labelledby="quick-actions-heading">
+        <div className={styles.sectionHeading}><div><h2 id="quick-actions-heading">Quick Actions</h2><p>Open administrative tools.</p></div></div>
+        <div className={styles.quickActions}>
+          {[
+            ['Create User', Plus, 'users'], ['Manage Users', Users, 'users'], ['Manage Roles', UserCog, 'roles'], ['Manage Permissions', ShieldCheck, 'permissions'], ['View Audit Log', FileText, 'audit-logs'], ['System Settings', Settings, 'system-settings'],
+          ].map(([label, Icon, page]) => {
+            const ActionIcon = Icon as typeof Plus;
+            return <button key={label as string} onClick={() => setActivePage(page as string)}><ActionIcon size={18} /><span>{label as string}</span></button>;
+          })}
+        </div>
+      </section>
+    </main>
   );
 };
+
+const AuditRow: React.FC<{ log: AuditLogDto }> = ({ log }) => (
+  <article className={styles.auditRow}>
+    <div><strong>{log.action || 'Not available'}</strong><span>{log.detail || log.entityType || 'No detail available'}</span></div>
+    <div><span>{log.actorEmail || 'System'}</span><time>{formatTimestamp(log.timestamp)}</time></div>
+  </article>
+);

@@ -1,209 +1,88 @@
-import React, { useMemo } from 'react';
-import { TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, TrendingUp } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import type { CompanyFinancial } from '../../types/listingData';
 import { ListingTabShell } from './common';
-import { PERIOD_LABELS, formatFinancialValue, useListingTabData } from './utils';
-import styles from '../CompanyDetail.module.css';
+import { useListingTabData } from './utils';
 
-interface FinancialItemDef {
-  lever?: number;
-  number?: number;
-  code?: string;
-  name?: string;
-  static?: boolean;
-}
+interface FinancialValue { code?: string; value?: number | null; }
+interface FinancialPeriod { time?: string; data?: FinancialValue[]; }
+interface FinancialRow { code?: string; name?: string; }
+interface FinancialDocument { unit?: string | null; templace?: FinancialRow[]; data?: Array<{ data?: FinancialPeriod[] }>; }
 
-interface FinancialPeriodValue {
-  code?: string;
-  value?: number | null;
-  static?: boolean;
-}
-
-interface FinancialPeriod {
-  time?: string;
-  year?: number;
-  quater?: number;
-  data?: FinancialPeriodValue[];
-}
-
-interface FinancialTemplate {
-  code?: string;
-  name?: string;
-  number?: number;
-  data?: FinancialItemDef[];
-}
-
-interface FinancialDoc {
-  templace?: FinancialTemplate[];
-  data?: Array<{ code?: string; name?: string; data?: FinancialPeriod[] }>;
-  unit?: string | null;
-  name?: string;
-  count?: number;
-}
-
-interface FinancialsTabProps {
-  companyId: string;
-}
-
-const parseDoc = (raw?: string | null): FinancialDoc | null => {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as FinancialDoc;
-  } catch {
-    return null;
-  }
+const REPORT_TABS = [
+  { label: 'BCTC tóm tắt', type: 'SUMMARY' },
+  { label: 'Cân đối kế toán', type: 'BALANCE_SHEET' },
+  { label: 'Kết quả KD', type: 'INCOME_STATEMENT' },
+  { label: 'Lưu chuyển tiền tệ', type: 'CASH_FLOW' },
+  { label: 'Chỉ số TC', type: 'RATIOS' },
+  { label: 'Chỉ tiêu kế hoạch', type: 'PLAN' },
+];
+const parseDocument = (itemsJson?: string | null): FinancialDocument | null => {
+  try { return itemsJson ? JSON.parse(itemsJson) as FinancialDocument : null; } catch { return null; }
+};
+const valueFor = (period: FinancialPeriod, code?: string) => Number(period.data?.find((item) => item.code === code)?.value ?? 0);
+const formatValue = (value: number, unit: string, sourceSnapshot = false) => {
+  const divisor = sourceSnapshot || Math.abs(value) < 100_000_000 ? 1 : unit === 'Tỷ đồng' ? 1_000_000_000 : unit === 'Triệu đồng' ? 1_000_000 : 1;
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value / divisor);
 };
 
-const periodColumns = (periods: FinancialPeriod[] | undefined): FinancialPeriod[] => {
-  if (!periods) return [];
-  return [...periods].sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
-};
+const FinancialsTab: React.FC<{ companyId: string }> = ({ companyId }) => {
+  const { loading, error, data, reload } = useListingTabData<CompanyFinancial[]>(`financials:v2:${companyId}`, companyId, listingDataApi.getFinancials);
+  const [activeReport, setActiveReport] = useState(REPORT_TABS[0].type);
+  const [periodType, setPeriodType] = useState('Theo năm');
+  const [unit, setUnit] = useState('Tỷ đồng');
+  const report = useMemo(() => {
+    const selected = (data?.data ?? []).find((item) => item.reportType === activeReport) ?? data?.data?.[0];
+    return parseDocument(selected?.itemsJson) ?? null;
+  }, [activeReport, data]);
+  const rawPeriods = report?.data?.[0]?.data ?? [];
+  const periods = useMemo(() => {
+    if (periodType === 'Theo quý') return rawPeriods;
 
-const AllReportTable: React.FC<{ doc: FinancialDoc }> = ({ doc }) => {
-  const groups = (doc.data ?? []).filter((g) => (g.data?.length ?? 0) > 0);
-  if (groups.length === 0) return null;
+    const byYear = new Map<string, Map<string, number>>();
+    rawPeriods.forEach((period) => {
+      const year = period.time?.match(/(\d{4})$/)?.[1] ?? period.time ?? 'Năm khác';
+      const values = byYear.get(year) ?? new Map<string, number>();
+      period.data?.forEach((item) => {
+        if (!item.code) return;
+        values.set(item.code, (values.get(item.code) ?? 0) + Number(item.value ?? 0));
+      });
+      byYear.set(year, values);
+    });
 
-  return (
-    <>
-      {groups.map((group) => {
-        const template = (doc.templace ?? []).find((t) => t.code === group.code);
-        const rows = template?.data ?? [];
-        const columns = periodColumns(group.data);
-        return (
-          <div key={group.code} className={styles.finCard}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: '700', color: '#1E293B' }}>
-              {group.name || group.code || 'Báo cáo'}
-            </h3>
-            <div className={styles.tableWrap}>
-              <table className={styles.finTable}>
-                <thead>
-                  <tr>
-                    <th>Chỉ tiêu</th>
-                    {columns.map((c) => (
-                      <th key={c.time}>{c.time}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const valuesByCode = columns.map(
-                      (c) => c.data?.find((v) => v.code === row.code)?.value ?? null,
-                    );
-                    const lever = row.lever ?? 1;
-                    return (
-                      <tr key={row.code}>
-                        <td
-                          className={`${lever === 1 ? styles.rowLever1 : styles.rowLever2}${row.static ? ` ${styles.rowStatic}` : ''}`}
-                        >
-                          {row.name}
-                        </td>
-                        {valuesByCode.map((v, i) => (
-                          <td key={i}>{formatFinancialValue(v)}</td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
-    </>
-  );
-};
+    return [...byYear.entries()].map(([year, values]) => ({
+      time: year,
+      data: [...values.entries()].map(([code, value]) => ({ code, value })),
+    }));
+  }, [periodType, rawPeriods]);
+  const rows = report?.templace ?? [];
 
-const IndicatorTable: React.FC<{ doc: FinancialDoc }> = ({ doc }) => {
-  const rows = doc.templace ?? [];
-  const columns = periodColumns(doc.data?.[0]?.data);
-  if (rows.length === 0) return null;
+  const exportExcel = () => {
+    const csvRows = rows.map((row) => [row.name || '', ...periods.map((period) => String(valueFor(period, row.code)))]);
+    const csv = [['Chỉ tiêu', ...periods.map((period) => period.time || '')], ...csvRows]
+      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+    const href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a'); anchor.href = href; anchor.download = `${companyId}-financials.csv`; anchor.click(); URL.revokeObjectURL(href);
+  };
 
-  return (
-    <div className={styles.tableWrap}>
-      <table className={styles.finTable}>
-        <thead>
-          <tr>
-            <th>Chỉ tiêu</th>
-            {columns.map((c) => (
-              <th key={c.time}>{c.time}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.code}>
-              <td className={styles.rowLever1}>{row.name}</td>
-              {columns.map((c) => {
-                const hit = c.data?.find((v) => v.code === row.code);
-                return <td key={c.time}>{formatFinancialValue(hit?.value)}</td>;
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
-  const { loading, error, data, reload } = useListingTabData<CompanyFinancial[]>(
-    `financials:${companyId}`,
-    companyId,
-    listingDataApi.getFinancials,
-  );
-
-  const reports = useMemo(
-    () => (data?.data ?? []).map((f) => ({ meta: f, doc: parseDoc(f.itemsJson) })),
-    [data],
-  );
-
-  return (
-    <ListingTabShell
-      loading={loading}
-      error={error}
-      hasData={data?.hasData ?? false}
-      crawledAt={data?.crawledAt}
-      onRetry={reload}
-    >
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div className={styles.cardHeaderLeft}>
-            <TrendingUp size={20} style={{ color: '#2563EB' }} />
-            <h2>Báo cáo tài chính</h2>
-          </div>
-          <span style={{ fontSize: '12px', color: '#94A3B8' }}>
-            Giá trị lớn hiển thị theo tỷ / triệu (VNĐ)
-          </span>
-        </div>
-
-        {reports.map(({ meta, doc }) => {
-          if (!doc) return null;
-          const isIndicator = meta.reportType === 'CHISO';
-          const title = `${PERIOD_LABELS[meta.periodType || meta.reportType || ''] || meta.reportType || 'Báo cáo'} ${
-            meta.reportYear || ''
-          }`.trim();
-          return (
-            <div key={meta.id} className={styles.finCard}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  marginBottom: '12px',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span className={styles.finBadge}>{title}</span>
-                {doc.unit ? <span className={styles.finUnit}>Đơn vị: {doc.unit}</span> : null}
-              </div>
-              {isIndicator ? <IndicatorTable doc={doc} /> : <AllReportTable doc={doc} />}
-            </div>
-          );
-        })}
+  return <ListingTabShell loading={loading} error={error} hasData={Boolean(report)} crawledAt={data?.crawledAt} onRetry={reload}>
+    <section style={{ background: '#fff', border: '1px solid #dbe3ee', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px 0', borderBottom: '1px solid #dbe3ee' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#163b68', marginBottom: 12 }}><TrendingUp size={18} /><strong>Thông tin tài chính</strong></div>
+        <div style={{ display: 'flex', gap: 18, overflowX: 'auto' }}>{REPORT_TABS.map((tab) => <button key={tab.type} type="button" onClick={() => setActiveReport(tab.type)} style={{ whiteSpace: 'nowrap', padding: '0 0 9px', border: 'none', borderBottom: activeReport === tab.type ? '2px solid #1677c8' : '2px solid transparent', background: 'none', color: activeReport === tab.type ? '#1264a3' : '#526579', fontWeight: activeReport === tab.type ? 700 : 500, cursor: 'pointer' }}>{tab.label}</button>)}</div>
       </div>
-    </ListingTabShell>
-  );
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: '#f7f9fc' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select value={periodType} onChange={(event) => setPeriodType(event.target.value)}><option>Theo quý</option><option>Theo năm</option></select>
+          <select value={unit} onChange={(event) => setUnit(event.target.value)}><option>Tỷ đồng</option><option>Triệu đồng</option><option>Đồng</option></select>
+        </div>
+        <button type="button" onClick={exportExcel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 4, padding: '6px 10px', background: '#16803c', color: '#fff', fontWeight: 700, cursor: 'pointer' }}><Download size={14} />Xuất Excel</button>
+      </div>
+      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 13 }}><thead><tr style={{ background: '#e9f2fb', color: '#244b73' }}><th style={{ textAlign: 'left', padding: 10, minWidth: 280 }}>Chỉ tiêu</th>{periods.map((period) => <th key={period.time} style={{ padding: 10, textAlign: 'right' }}>{period.time}</th>)}<th style={{ padding: 10, minWidth: 110 }}>Tăng trưởng</th></tr></thead><tbody>{rows.map((row) => { const values = periods.map((period) => valueFor(period, row.code)); const max = Math.max(...values.map(Math.abs), 1); const growth = values.length > 1 && values[0] ? ((values.at(-1)! - values[0]) / Math.abs(values[0])) * 100 : null; return <tr key={row.code} style={{ borderTop: '1px solid #e6edf5' }}><td style={{ padding: 10, color: '#1f3449', fontWeight: 600 }}>{row.name}</td>{values.map((value, index) => <td key={index} style={{ padding: 10, textAlign: 'right', color: value < 0 ? '#bd3030' : '#253f59' }}>{formatValue(value, unit)}</td>)}<td style={{ padding: 8 }}><div style={{ display: 'flex', alignItems: 'end', gap: 2, height: 26 }}>{values.map((value, index) => <i key={index} style={{ width: 10, height: `${Math.max(3, Math.round(Math.abs(value) / max * 24))}px`, background: value >= 0 ? '#2781c7' : '#d85858', display: 'block' }} />)}</div><small style={{ color: growth != null && growth < 0 ? '#bd3030' : '#16803c' }}>{growth == null ? 'N/A' : `${growth.toFixed(1)}%`}</small></td></tr>; })}</tbody></table></div>
+      {!report && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Chưa có báo cáo tài chính đã được lưu cho doanh nghiệp này.</div>}
+    </section>
+  </ListingTabShell>;
 };
 
 export default FinancialsTab;

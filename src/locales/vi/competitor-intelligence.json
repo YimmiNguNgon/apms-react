@@ -1,0 +1,130 @@
+{
+  "header": {
+    "title": "Thông tin đối thủ",
+    "eyebrow": "Thông tin hệ sinh thái doanh nghiệp",
+    "description": "Theo dõi biến động đối thủ đã xác minh và tác động kinh doanh.",
+    "dashboard": "Bảng điều khiển",
+    "breadcrumb": "Thông tin đối thủ"
+  },
+  "actions": {
+    "exportMatrix": "Xuất ma trận",
+    "scanning": "Đang quét...",
+    "runScan": "Chạy quét AI",
+    "exportCsv": "Xuất CSV",
+    "analyzing": "Đang phân tích...",
+    "deepAnalysis": "Phân tích AI chuyên sâu"
+  },
+  "metrics": {
+    "thisMonth": "tháng này",
+    "competitors": { "label": "Đối thủ", "description": "Tổng số đang theo dõi" },
+    "watchlist": { "label": "Danh sách theo dõi", "description": "Ưu tiên cao" },
+    "alerts": { "label": "Cảnh báo mới", "description": "Sự kiện được theo dõi" }
+  },
+  "overview": {
+    "label": "Tổng quan điều hành",
+    "readOnly": "Chế độ xem danh mục chỉ đọc",
+    "total": { "label": "Tổng số đối thủ", "description": "Doanh nghiệp được liên kết là đối thủ" },
+    "highImpact": { "label": "Tác động cao", "description": "Tác động cao hoặc nghiêm trọng đã xác minh" },
+    "mediumImpact": { "label": "Tác động trung bình", "description": "Tác động trung bình đã xác minh" },
+    "increasing": { "label": "Hoạt động tăng", "description": "Xu hướng tăng đã xác minh" },
+    "signals": { "label": "Tín hiệu mới", "description": "Các tín hiệu đã xác minh gần nhất" },
+    "attention": "Doanh nghiệp cần quan tâm",
+    "noAttention": "Không có đối thủ cần quan tâm",
+    "noSignals": "Chưa có tín hiệu cạnh tranh đã xác minh.",
+    "recentSignals": "Tín hiệu cạnh tranh gần đây",
+    "list": "Danh sách đối thủ",
+    "viewIntelligence": "Xem thông tin",
+    "noData": "Chưa có dữ liệu",
+    "verifiedSignal": "Tín hiệu đã xác minh",
+    "relationship": "Quan hệ",
+    "businessImpact": "Tác động kinh doanh",
+    "impactTrend": "Xu hướng tác động",
+    "recentSignalsColumn": "Tín hiệu gần đây",
+    "marketActivity": "Hoạt động thị trường",
+    "hiringActivity": "Hoạt động tuyển dụng",
+    "lastUpdated": "Cập nhật gần nhất"
+  },
+  "watchlist": {
+    "title": "Danh sách theo dõi đối thủ",
+    "description": "Danh sách giám sát vận hành cho nhân viên và quản lý.",
+    "search": "Tìm tên đối thủ hoặc ngành nghề...",
+    "company": "Tên công ty",
+    "industry": "Ngành nghề",
+    "relationship": "Quan hệ",
+    "companyId": "Mã công ty",
+    "loading": "Đang tải danh sách...",
+    "empty": "Không tìm thấy doanh nghiệp đối thủ.",
+    "competitor": "Đối thủ"
+  },
+  "charts": {
+    "threatDistribution": "Phân bố mức độ đe dọa",
+    "industryConcentration": "Tập trung theo ngành",
+    "recentActivities": "Hoạt động đối thủ gần đây"
+  },
+  "table": {
+    "company": "Công ty",
+    "industry": "Ngành",
+    "threatScore": "Điểm đe dọa",
+    "trend": "Xu hướng",
+    "risk": "Rủi ro",
+    "marketShare": "Thị phần",
+    "latestActivity": "Hoạt động mới nhất",
+    "aiConfidence": "Độ tin cậy AI",
+    "watchlist": "Theo dõi",
+    "addWatchlist": "Thêm vào danh sách theo dõi",
+    "removeWatchlist": "Xóa khỏi danh sách theo dõi"
+  },
+  "filters": {
+    "search": "Tìm công ty, ngành hoặc hoạt động...",
+    "industry": "Ngành",
+    "riskLevel": "Mức rủi ro",
+    "threatScore": "Điểm đe dọa",
+    "country": "Quốc gia / khu vực",
+    "watchlist": "Trạng thái theo dõi",
+    "all": "Tất cả",
+    "allEntities": "Tất cả công ty",
+    "watchlistOnly": "Chỉ danh sách theo dõi",
+    "nonWatchlist": "Không theo dõi",
+    "reset": "Đặt lại bộ lọc"
+  },
+  "emptyState": {
+    "title": "Không có đối thủ phù hợp với bộ lọc",
+    "body": "Hãy đặt lại bộ lọc hoặc điều chỉnh ngưỡng điểm đe dọa."
+  },
+  "drawer": {
+    "executiveBrief": "Tóm tắt điều hành",
+    "marketShare": "Thị phần",
+    "coreMetadata": "Thông tin cốt lõi",
+    "headquarters": "Trụ sở",
+    "threatTrend": "Xu hướng đe dọa",
+    "intelligenceSync": "Lần đồng bộ",
+    "source": "Nguồn",
+    "importance": "Mức độ",
+    "businessImpact": "Tác động kinh doanh",
+    "location": "Địa điểm",
+    "focus": "Trọng tâm",
+    "positions": "Vị trí",
+    "dateReported": "Ngày ghi nhận",
+    "patents": "Bằng sáng chế",
+    "strengths": "Điểm mạnh",
+    "weaknesses": "Điểm yếu",
+    "aiDigest": "Tổng hợp AI",
+    "assigned": "Phân công",
+    "unassigned": "Chưa phân công",
+    "notAvailable": "Chưa có dữ liệu",
+    "synced": "Đã đồng bộ",
+    "radarActive": "Radar AI đang hoạt động"
+  },
+  "tabs": {
+    "overview": "Tổng quan",
+    "timeline": "Dòng thời gian đe dọa",
+    "news": "Tin tức gần đây",
+    "expansion": "Mở rộng thị trường",
+    "hiring": "Hoạt động tuyển dụng",
+    "financial": "Tín hiệu tài chính",
+    "tech": "Công nghệ",
+    "swot": "Phân tích SWOT",
+    "ai-recommend": "Tổng hợp AI",
+    "strategic-actions": "Hành động chiến lược"
+  }
+}

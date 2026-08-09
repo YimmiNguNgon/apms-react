@@ -189,6 +189,17 @@
     "actions": "Actions",
     "status": "Status",
     "total": "Total",
-    "viewAll": "View all"
-  }
+    "viewAll": "View all",
+    "searchPlaceholder": "Search...",
+    "clearSearch": "Clear search"
+  },
+  "table": {
+    "normal": "Normal",
+    "compact": "Compact",
+    "exportCsv": "Export CSV",
+    "perPage": "{{count}} / page",
+    "loadingData": "Loading data..."
+  },
+  "risk": { "critical": "Critical", "high": "High", "medium": "Medium", "low": "Low" }
+  ,"status": { "verified": "Verified", "approved": "Approved", "active": "Active", "completed": "Completed", "pending_review": "Pending Review", "pending": "Pending", "in_progress": "In Progress", "draft": "Draft", "rejected": "Rejected", "inactive": "Inactive", "cancelled": "Cancelled" }
 }

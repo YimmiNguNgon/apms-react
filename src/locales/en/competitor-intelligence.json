@@ -1,0 +1,130 @@
+{
+  "header": {
+    "title": "Competitor Intelligence",
+    "eyebrow": "Business Ecosystem Intelligence",
+    "description": "Monitor verified competitor movements and business impact.",
+    "dashboard": "Dashboard",
+    "breadcrumb": "Competitor Intelligence"
+  },
+  "actions": {
+    "exportMatrix": "Export Matrix",
+    "scanning": "Scanning...",
+    "runScan": "Run AI Scan",
+    "exportCsv": "Export CSV",
+    "analyzing": "Analyzing...",
+    "deepAnalysis": "Deep AI Analysis"
+  },
+  "metrics": {
+    "thisMonth": "this month",
+    "competitors": { "label": "Competitors", "description": "Total monitored" },
+    "watchlist": { "label": "Watchlist", "description": "High priority focus" },
+    "alerts": { "label": "New Alerts", "description": "Events tracked" }
+  },
+  "overview": {
+    "label": "Executive overview",
+    "readOnly": "Read-only portfolio view",
+    "total": { "label": "Total competitors", "description": "Companies linked as competitors" },
+    "highImpact": { "label": "High impact", "description": "High or critical verified impact" },
+    "mediumImpact": { "label": "Medium impact", "description": "Medium verified impact" },
+    "increasing": { "label": "Increasing activity", "description": "Verified increasing trend" },
+    "signals": { "label": "New signals", "description": "Most recent verified signals" },
+    "attention": "Companies requiring attention",
+    "noAttention": "No competitors require attention",
+    "noSignals": "No verified competitive signals are available yet.",
+    "recentSignals": "Recent competitive signals",
+    "list": "Competitor list",
+    "viewIntelligence": "View intelligence",
+    "noData": "No data",
+    "verifiedSignal": "Verified signal",
+    "relationship": "Relationship",
+    "businessImpact": "Business impact",
+    "impactTrend": "Impact trend",
+    "recentSignalsColumn": "Recent signals",
+    "marketActivity": "Market activity",
+    "hiringActivity": "Hiring activity",
+    "lastUpdated": "Last updated"
+  },
+  "watchlist": {
+    "title": "Competitor Watchlist",
+    "description": "Operational monitoring list for staff and managers.",
+    "search": "Search competitor name or industry...",
+    "company": "Company Name",
+    "industry": "Industry",
+    "relationship": "Relationship",
+    "companyId": "Company ID",
+    "loading": "Loading watchlist...",
+    "empty": "No competitor entities found.",
+    "competitor": "Competitor"
+  },
+  "charts": {
+    "threatDistribution": "Threat Level Distribution",
+    "industryConcentration": "Industry Concentration",
+    "recentActivities": "Recent Competitor Activities"
+  },
+  "table": {
+    "company": "Company",
+    "industry": "Industry",
+    "threatScore": "Threat Score",
+    "trend": "Trend",
+    "risk": "Risk",
+    "marketShare": "Market Share",
+    "latestActivity": "Latest Activity",
+    "aiConfidence": "AI Confidence",
+    "watchlist": "Watchlist",
+    "addWatchlist": "Add to Watchlist",
+    "removeWatchlist": "Remove from Watchlist"
+  },
+  "filters": {
+    "search": "Search competitor name, industry, key activity...",
+    "industry": "Industry",
+    "riskLevel": "Risk Level",
+    "threatScore": "Threat Score",
+    "country": "Country / Region",
+    "watchlist": "Watchlist Status",
+    "all": "All",
+    "allEntities": "All Entities",
+    "watchlistOnly": "Watchlist Only",
+    "nonWatchlist": "Non-Watchlist",
+    "reset": "Reset Filters"
+  },
+  "emptyState": {
+    "title": "No competitors match your filter criteria",
+    "body": "Try resetting your filters or adjusting your threat score threshold."
+  },
+  "drawer": {
+    "executiveBrief": "Executive Brief",
+    "marketShare": "Market Share",
+    "coreMetadata": "Core Metadata",
+    "headquarters": "Headquarters",
+    "threatTrend": "Threat Trend",
+    "intelligenceSync": "Intelligence Sync",
+    "source": "Source",
+    "importance": "Importance",
+    "businessImpact": "Business Impact",
+    "location": "Location",
+    "focus": "Focus",
+    "positions": "Positions",
+    "dateReported": "Date Reported",
+    "patents": "Patents",
+    "strengths": "Strengths",
+    "weaknesses": "Weaknesses",
+    "aiDigest": "AI Digest",
+    "assigned": "Assigned",
+    "unassigned": "Unassigned",
+    "notAvailable": "Not available",
+    "synced": "Synced",
+    "radarActive": "AI Radar Active"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "timeline": "Threat Timeline",
+    "news": "Recent News",
+    "expansion": "Market Expansion",
+    "hiring": "Hiring Activity",
+    "financial": "Financial Signals",
+    "tech": "Technology",
+    "swot": "SWOT Analysis",
+    "ai-recommend": "AI Digest",
+    "strategic-actions": "Strategic Actions"
+  }
+}

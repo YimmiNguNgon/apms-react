@@ -1,171 +1,84 @@
+// Operational Competitor Watchlist for Manager & Staff roles
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
-
-interface CompetitorWatchlistItem {
-  tradeName?: string;
-  legalName?: string;
-  name?: string;
-  industry?: string;
-  segment?: string;
-  threatLevel?: string;
-  riskLevel?: string;
-  recentActivity?: string;
-  latestNews?: string;
-  updatedAt?: string;
-}
-
-interface CompetitorDisplayRow {
-  id: number | string;
-  company: string;
-  segment: string;
-  threat: string;
-  lastActivity: string;
-  date: string;
-}
+import type { GraphCompanyDto } from '../types/domain';
 
 export const CompetitorWatchlist: React.FC = () => {
-  const [competitors, setCompetitors] = useState<CompetitorDisplayRow[]>([]);
+  const { t } = useTranslation('competitor-intelligence');
+  const [competitors, setCompetitors] = useState<GraphCompanyDto[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const threatColors = { High: '#EF4444', Medium: '#F59E0B', Low: '#10B981' };
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    api.get<CompetitorWatchlistItem[]>('/dashboard/competitors')
+    api.get<GraphCompanyDto[]>('/graph/competitors')
       .then((res) => {
-        if (res?.success && Array.isArray(res?.data)) {
-          const mapped = res.data.map((item: CompetitorWatchlistItem, index: number) => ({
-            id: index + 1,
-            company: item.tradeName || item.legalName || item.name || 'Competitor',
-            segment: item.industry || item.segment || 'Unclassified',
-            threat: item.threatLevel || item.riskLevel || 'Medium',
-            lastActivity: item.recentActivity || item.latestNews || 'No recent update',
-            date: item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB'),
-          }));
-          setCompetitors(mapped);
+        if (res?.data && Array.isArray(res.data)) {
+          setCompetitors(res.data);
+        } else {
+          setCompetitors([]);
         }
       })
-      .catch(console.error)
+      .catch(() => setCompetitors([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const handleAdd = () => {
-    const name = window.prompt('Nhap ten doi thu moi:');
-    if (!name) return;
-    const segment = window.prompt('Linh vuc hoat dong:') || 'Unclassified';
-    setCompetitors((current) => [
-      {
-        id: Date.now(),
-        company: name,
-        segment,
-        threat: 'Medium',
-        lastActivity: 'Newly added to watchlist',
-        date: new Date().toLocaleDateString('en-GB'),
-      },
-      ...current,
-    ]);
-  };
-
-  const summary = [
-    { label: 'Tracked competitors', value: competitors.length, note: 'Entities under active monitoring' },
-    { label: 'High threat', value: competitors.filter((item) => item.threat === 'High').length, note: 'Needs urgent staff follow-up' },
-    { label: 'Fresh activity', value: competitors.filter((item) => item.lastActivity !== 'No recent update').length, note: 'Records with recent market movement' },
-  ];
-
-  const highThreat = competitors.filter((item) => item.threat === 'High').slice(0, 3);
+  const filtered = competitors.filter(
+    (c) =>
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.industry?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <section className="workspace-page" id="page-competitor-management">
-      <div className="workspace-shell">
-        <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Company Profiles <span>/</span> Competitor Watchlist</div>
-          <div className="workspace-page-head">
-            <div>
-              <h1>Competitor watchlist</h1>
-              <p>Monitor competitor moves, segment relevance, and threat level before escalating findings to review.</p>
-            </div>
-            <div className="workspace-head-actions">
-              <button className="btn btn-primary" onClick={handleAdd}>Add competitor</button>
-            </div>
-          </div>
-
-          <div className="workspace-stats workspace-stats-compact">
-            {summary.map((item) => (
-              <article key={item.label} className="workspace-stat-card">
-                <span className="workspace-stat-label">{item.label}</span>
-                <strong>{item.value}</strong>
-                <p>{item.note}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="workspace-card-grid">
-            {competitors.map((competitor) => (
-              <article
-                key={competitor.id}
-                className="workspace-directory-card"
-                style={{ borderTopColor: threatColors[competitor.threat as 'High' | 'Medium' | 'Low'] || '#64748B' }}
-              >
-                <div className="workspace-directory-head">
-                  <div>
-                    <h3>{competitor.company}</h3>
-                    <p>{competitor.segment}</p>
-                  </div>
-                  <span className={`workspace-badge ${competitor.threat === 'High' ? 'danger' : competitor.threat === 'Medium' ? 'info' : 'success'}`}>
-                    {competitor.threat} threat
-                  </span>
-                </div>
-                <div className="workspace-directory-meta">
-                  <div><strong>Latest signal</strong><span>{competitor.lastActivity}</span></div>
-                  <div><strong>Updated</strong><span>{competitor.date}</span></div>
-                  <div><strong>Status</strong><span>{competitor.threat === 'High' ? 'Escalate for review' : 'Track in watchlist'}</span></div>
-                </div>
-                <div className="workspace-directory-actions">
-                  <button className="btn btn-outline">View profile</button>
-                  <button className="btn btn-outline">Compare</button>
-                </div>
-              </article>
-            ))}
-            {competitors.length === 0 && !loading && (
-              <div className="workspace-panel">
-                <div className="workspace-empty">No competitors tracked yet.</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <aside className="workspace-sidebar">
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Staff guidance</span>
-            <ul className="workspace-bullet-list">
-              <li>Capture concrete market movement before raising threat level.</li>
-              <li>Use compare only after the record has enough public evidence.</li>
-              <li>Escalate high-threat entries with a short note for reviewers.</li>
-            </ul>
-          </div>
-
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Priority watchlist</span>
-            <div className="workspace-activity-list">
-              {highThreat.map((competitor) => (
-                <article key={`priority-${competitor.id}`}>
-                  <strong>{competitor.company}</strong>
-                  <p>{competitor.lastActivity}</p>
-                </article>
-              ))}
-              {highThreat.length === 0 && <div className="workspace-empty">No high-threat competitors right now.</div>}
-            </div>
-          </div>
-
-          <div className="workspace-side-card">
-            <span className="workspace-side-eyebrow">Status</span>
-            <div className="workspace-ai-note">
-              <strong>{loading ? 'Loading watchlist' : 'Watchlist ready'}</strong>
-              <p>{loading ? 'Syncing competitor records from the dashboard source.' : `${competitors.length} competitor records are available for staff review.`}</p>
-            </div>
-          </div>
-        </aside>
+    <div style={{ padding: '24px', background: '#F8FAFC', minHeight: '100vh' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0F172A' }}>{t('watchlist.title')}</h1>
+        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748B' }}>{t('watchlist.description')}</p>
       </div>
-    </section>
+
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('watchlist.search')}
+          style={{ width: '100%', maxWidth: '360px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '13px' }}
+        />
+      </div>
+
+      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+          <thead>
+            <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 600 }}>
+              <th style={{ padding: '12px 16px' }}>{t('watchlist.company')}</th>
+              <th style={{ padding: '12px 16px' }}>{t('watchlist.industry')}</th>
+              <th style={{ padding: '12px 16px' }}>{t('watchlist.relationship')}</th>
+              <th style={{ padding: '12px 16px' }}>{t('watchlist.companyId')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: '#64748B' }}>{t('watchlist.loading')}</td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: '#64748B' }}>{t('watchlist.empty')}</td>
+              </tr>
+            ) : (
+              filtered.map((c, i) => (
+                <tr key={c.companyId || i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0F172A' }}>{c.name}</td>
+                  <td style={{ padding: '12px 16px', color: '#475569' }}>{c.industry || 'Technology'}</td>
+                  <td style={{ padding: '12px 16px', color: '#EF4444', fontWeight: 600 }}>{t('watchlist.competitor')}</td>
+                  <td style={{ padding: '12px 16px', color: '#94A3B8', fontFamily: 'monospace' }}>{c.companyId}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };

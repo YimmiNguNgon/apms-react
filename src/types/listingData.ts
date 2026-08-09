@@ -16,9 +16,12 @@ export interface ListingPageResponse<T> {
 
 export interface CompanyListingInfo {
   id?: number;
+  companyId?: string;
   stockTicker?: string | null;
   stockExchange?: string | null;
   companyName?: string | null;
+  englishName?: string | null;
+  legalRepresentative?: string | null;
   businessLine?: string | null;
   address?: string | null;
   phone?: string | null;
@@ -37,6 +40,7 @@ export interface CompanyListingInfo {
 
 export interface CompanyBoardMember {
   id?: number;
+  companyId?: string;
   name?: string | null;
   position?: string | null;
   positionGroup?: number | null;
@@ -47,8 +51,22 @@ export interface CompanyBoardMember {
   crawledAt?: string | null;
 }
 
+export interface CompanyOwnership {
+  id?: number;
+  companyId?: string;
+  shareholderName?: string | null;
+  holderName?: string | null;
+  representedBy?: string | null;
+  ownershipPercentage?: number | null;
+  ownershipPercent?: number | null;
+  ownershipType?: string | null;
+  sourceUrl?: string | null;
+  crawledAt?: string | null;
+}
+
 export interface CompanyFinancial {
   id?: number;
+  companyId?: string;
   reportType?: string | null;
   periodType?: string | null;
   reportYear?: number | null;
@@ -60,7 +78,10 @@ export interface CompanyFinancial {
 
 export interface CompanyNews {
   id?: number;
+  companyId?: string;
   newsType?: number | null;
+  category?: string | null;
+  sourceName?: string | null;
   title?: string | null;
   summary?: string | null;
   sourceUrl?: string | null;
@@ -104,7 +125,8 @@ export interface CompanyNewsSearchResponse {
 
 export interface CompanyDocument {
   id?: number;
-  docType?: number | null;
+  companyId?: string;
+  docType?: number | null | string;
   docTitle?: string | null;
   fileName?: string | null;
   fileUrl?: string | null;

@@ -1,0 +1,55 @@
+{
+  "title": "Bảng điều hành doanh nghiệp",
+  "eyebrow": "Chủ doanh nghiệp - Thông tin hệ sinh thái",
+  "description": "Trung tâm điều hành cấp cao kết nối trực tiếp với dữ liệu backend đã xác minh.",
+  "breadcrumb": "Bảng điều khiển",
+  "loadingDescription": "Đang tải thông tin điều hành từ backend...",
+  "notAvailable": "Chưa có dữ liệu",
+  "fallback": {
+    "deals": "cơ hội",
+    "items": "mục",
+    "actor": "Người thực hiện",
+    "system": "Hệ thống",
+    "scanCompleted": "Quét thị trường hoàn tất và dữ liệu đã được đồng bộ.",
+    "backendPartial": "Backend chưa sẵn sàng đầy đủ: tải thất bại {{rejected}}/{{total}} nguồn dữ liệu.",
+    "backendUnavailable": "Không thể kết nối API backend.",
+    "dashboardUnavailable": "Không thể kết nối API backend, chưa tải được dữ liệu dashboard.",
+    "syncFailed": "Đồng bộ dữ liệu thị trường thất bại."
+  },
+  "priority": { "high": "Cao", "critical": "Nghiêm trọng", "medium": "Trung bình", "low": "Thấp" },
+  "scan": { "run": "Chạy quét AI", "running": "Đang quét...", "connecting": "Đang đồng bộ dữ liệu thị trường..." },
+  "metrics": {
+    "ecosystemScore": { "label": "Điểm hệ sinh thái", "description": "Snapshot điểm số trung bình đã xác minh" },
+    "activePartners": { "label": "Đối tác đang hoạt động", "description": "Đơn vị đối tác đã xác minh" },
+    "competitors": { "label": "Đối thủ", "description": "Đơn vị đối thủ được theo dõi" },
+    "riskAlerts": { "label": "Cảnh báo rủi ro", "description": "Mục rủi ro đã xác minh" },
+    "activeProjects": { "label": "Dự án đang hoạt động", "description": "Tổng danh mục đang hoạt động" },
+    "aiOpportunities": { "label": "Cơ hội AI", "description": "Tín hiệu trong quy trình" }
+  },
+  "sections": {
+    "insights": { "title": "Thông tin chiến lược", "subtitle": "Khuyến nghị từ backend" },
+    "competitors": { "title": "Danh mục đối thủ", "subtitle": "Đơn vị đối thủ từ đồ thị dữ liệu" },
+    "activity": { "title": "Hoạt động nhật ký kiểm toán", "subtitle": "Sự kiện hệ thống gần đây" },
+    "risks": { "title": "Cảnh báo rủi ro", "subtitle": "Mục rủi ro từ dữ liệu bên ngoài" },
+    "partners": { "title": "Danh mục đối tác", "subtitle": "Đơn vị đối tác từ đồ thị dữ liệu" },
+    "network": { "title": "Mạng lưới quan hệ", "subtitle": "Tổng quan đồ thị quan hệ" },
+    "news": { "title": "Tin tức thị trường", "subtitle": "Nguồn tin bên ngoài" }
+  },
+  "content": {
+    "noTitle": "Khuyến nghị chưa có tiêu đề",
+    "notUpdated": "Chưa cập nhật",
+    "actionRequired": "Việc cần làm",
+    "source": "Nguồn",
+    "noAlerts": "Chưa có cảnh báo rủi ro đã xác minh.",
+    "noPartners": "Chưa có dữ liệu đối tác đã xác minh.",
+    "noCompetitors": "Chưa có dữ liệu đối thủ đã xác minh.",
+    "noActivity": "Chưa có hoạt động kiểm toán gần đây.",
+    "noNews": "Chưa có tin tức thị trường.",
+    "networkEmpty": "Chưa có nút quan hệ trong đồ thị.",
+    "partner": "Đối tác",
+    "competitor": "Đối thủ",
+    "ownerProfile": "Chưa có hồ sơ doanh nghiệp chủ quản",
+    "backend": "Thông báo backend"
+  },
+  "profile": { "ariaLabel": "Hồ sơ công ty của chủ doanh nghiệp", "eyebrow": "Doanh nghiệp chủ quản", "description": "Dữ liệu được lấy trực tiếp từ hồ sơ công ty đã được phê duyệt.", "loading": "Đang tải hồ sơ công ty...", "unavailable": "Không có hồ sơ công ty", "loadFailed": "Không thể tải hồ sơ đã được phê duyệt.", "taxCode": "Mã số thuế", "stockTicker": "Mã chứng khoán", "industry": "Ngành nghề", "size": "Quy mô", "markets": "Thị trường", "website": "Website" }
+}
