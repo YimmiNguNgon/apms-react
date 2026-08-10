@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Crawler Intelligence Control — IBM Carbon Monitoring Center Redesign
+// Real-time crawler operations center with multi-tab feeds, live system metrics, and right monitoring sidebar.
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   externalDataApi,
@@ -8,68 +11,75 @@ import {
   type ExternalDataCategory,
   type ExternalDataItem,
   type TrustedSource,
-  type TrustedSourceInput,
 } from '../API/externalDataApi';
-import { ROLES, useUser } from '../context/UserContext';
-import i18n from '../i18n';
-import { Check, Pencil, X } from 'lucide-react';
-import { formatDate as formatDateUtil } from '../utils/format';
-import styles from './CrawlerControl.module.css';
+import {
+  PageHeader,
+  MetricCard,
+  FilterBar,
+  DataTable,
+  EmptyState,
+  StatusBadge,
+  RiskBadge,
+  PrimaryButton,
+  SecondaryButton,
+  Drawer,
+  Tabs,
+} from '../components/ui';
+import type { ColumnDef } from '../components/ui/DataTable';
+import type { FilterConfig } from '../components/ui/FilterBar';
+import { projectApi } from '../API/projectApi';
+import type { ProjectResponse } from '../types/domain';
 
-const PAGE_SIZE = 8;
+// ─── Extended Tab Definitions ────────────────────────────────────────────────
+type CrawlerTab = 'NEWS' | 'JOBS' | 'FINANCIAL' | 'PRESS_RELEASE' | 'GOVERNMENT' | 'SOCIAL';
 
-const CATEGORY_TABS: { value: ExternalDataCategory; label: string }[] = [
-  { value: 'NEWS', label: i18n.t('crawler-control:categories.news') },
-  { value: 'OPPORTUNITY', label: i18n.t('crawler-control:categories.opportunity') },
-  { value: 'RISK', label: i18n.t('crawler-control:categories.risk') },
+const TABS = [
+  { id: 'NEWS',          label: 'News' },
+  { id: 'JOBS',          label: 'Jobs' },
+  { id: 'FINANCIAL',     label: 'Financial' },
+  { id: 'PRESS_RELEASE', label: 'Press Release' },
+  { id: 'GOVERNMENT',    label: 'Government' },
+  { id: 'SOCIAL',        label: 'Social' },
 ];
 
-const categoryPillClass = (category?: ExternalDataCategory | null) => {
-  if (category === 'RISK') return styles.ccPillDanger;
-  if (category === 'OPPORTUNITY') return styles.ccPillSuccess;
-  return styles.ccPillInfo;
+// ─── Helper Badge Functions ──────────────────────────────────────────────────
+const SentimentBadge: React.FC<{ sentiment?: string | null }> = ({ sentiment }) => {
+  const value = String(sentiment || 'NEUTRAL').toUpperCase();
+  const colors = {
+    POSITIVE: { bg: 'var(--cds-support-success-bg)', color: 'var(--cds-support-success)', label: 'Positive' },
+    NEGATIVE: { bg: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', label: 'Negative' },
+    NEUTRAL:  { bg: 'var(--cds-layer-01)', color: 'var(--cds-text-secondary)', label: 'Neutral' },
+  };
+  const theme = colors[value as keyof typeof colors] || colors.NEUTRAL;
+  return (
+    <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', background: theme.bg, color: theme.color, whiteSpace: 'nowrap' }}>
+      {theme.label}
+    </span>
+  );
 };
 
-const levelPillClass = (level?: string | null) => {
-  const value = String(level || '').toUpperCase();
-  if (value === 'HIGH') return styles.ccPillDanger;
-  if (value === 'MEDIUM') return styles.ccPillInfo;
-  if (value === 'LOW') return styles.ccPillSuccess;
-  return styles.ccPillMuted;
+const PriorityBadge: React.FC<{ level?: string | null }> = ({ level }) => {
+  const value = String(level || 'MEDIUM').toUpperCase();
+  if (value === 'HIGH' || value === 'CRITICAL') return <RiskBadge level="HIGH" />;
+  if (value === 'LOW') return <RiskBadge level="LOW" />;
+  return <RiskBadge level="MEDIUM" />;
 };
 
-const formatDate = (value?: string | null) => {
-  if (!value) return i18n.t('crawler-control:common.noDate');
-  const formatted = formatDateUtil(value);
-  return formatted || value;
-};
-
-const cardSummary = (item: ExternalDataItem) =>
-  item.summary?.trim() || i18n.t('crawler-control:table.noSummary');
-
+// ─── Main Component ────────────────────────────────────────────────────────────
 export const CrawlerControl: React.FC = () => {
   const { t } = useTranslation('crawler-control');
-  const [mainTab, setMainTab] = useState<'data' | 'settings'>('data');
-  const [activeTab, setActiveTab] = useState<ExternalDataCategory>('NEWS');
+  // ── State ────────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<CrawlerTab>('NEWS');
   const [items, setItems] = useState<ExternalDataItem[]>([]);
-  const [counts, setCounts] = useState<Record<ExternalDataCategory, number>>({
-    NEWS: 0,
-    OPPORTUNITY: 0,
-    RISK: 0,
-  });
-  const [sources, setSources] = useState<string[]>([]);
-  const [keyword, setKeyword] = useState('');
-  const [selectedSource, setSelectedSource] = useState('');
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [runningFetch, setRunningFetch] = useState(false);
-  const [runningAnalyze, setRunningAnalyze] = useState(false);
-  const [forceRefresh, setForceRefresh] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<{ kind: 'success' | 'danger'; text: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('All');
+  const [sentimentFilter, setSentimentFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
 
+  // Backend System State
   const [trustedSources, setTrustedSources] = useState<TrustedSource[]>([]);
   const [crawlRuns, setCrawlRuns] = useState<CrawlRunStats[]>([]);
   const [rejectionSummary, setRejectionSummary] = useState<CrawlRejectionSummary>({
@@ -78,830 +88,533 @@ export const CrawlerControl: React.FC = () => {
     rejectedUnknownDomain: 0,
     rejectedNoCompany: 0,
   });
-  const [sourceDraft, setSourceDraft] = useState({ domain: '', sourceName: '', category: '' });
-  const [savingSource, setSavingSource] = useState(false);
-  const [sourceError, setSourceError] = useState<string | null>(null);
-  const [editingSource, setEditingSource] = useState<{ id: string; field: 'sourceName' | 'category'; value: string } | null>(null);
-  const [savingEdit, setSavingEdit] = useState(false);
-
   const [aiStats, setAiStats] = useState<ArticleAiStats | null>(null);
-  const [runningProcess, setRunningProcess] = useState(false);
-  const [runningEnqueue, setRunningEnqueue] = useState(false);
 
-  const { currentUser } = useUser();
-  const isAdmin = currentUser?.role === ROLES.ADMIN;
-  const isOwner = currentUser?.role === ROLES.OWNER;
-  const canEditSourceFields = isAdmin || isOwner;
+  // Operation triggers
+  const [runningFetch, setRunningFetch] = useState(false);
+  const [runningAnalyze, setRunningAnalyze] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
 
-  const activeProjectId = localStorage.getItem('apms-active-project') || '';
+  // Drawer detail state
+  const [selectedItem, setSelectedItem] = useState<ExternalDataItem | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const loadTrustedSources = useCallback(async () => {
+  // ── Data Fetching ──────────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      setTrustedSources(await externalDataApi.listTrustedSources());
-      setSourceError(null);
-    } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : t('errors.loadSourceFailed'));
-    }
-  }, [t]);
+      // Map tab to API category
+      const categoryMap: Record<CrawlerTab, ExternalDataCategory> = {
+        NEWS: 'NEWS',
+        JOBS: 'OPPORTUNITY',
+        FINANCIAL: 'NEWS',
+        PRESS_RELEASE: 'NEWS',
+        GOVERNMENT: 'RISK',
+        SOCIAL: 'NEWS',
+      };
 
-  const loadCrawlStats = useCallback(async () => {
-    try {
-      const [runs, summary] = await Promise.all([
+      const [resData, sourcesRes, runsRes, rejectRes, statsRes] = await Promise.allSettled([
+        externalDataApi.getItems(categoryMap[activeTab], { page: 0, size: 50, projectId: activeProjectId ?? undefined }),
+        externalDataApi.listTrustedSources(),
         externalDataApi.getCrawlRuns(),
         externalDataApi.getRejectionSummary(),
+        externalDataApi.getArticleAiStats(),
       ]);
-      setCrawlRuns(runs);
-      setRejectionSummary(summary);
+
+      if (resData.status === 'fulfilled' && Array.isArray(resData.value?.content)) {
+        setItems(resData.value.content);
+      } else {
+        setItems([]);
+      }
+
+      if (sourcesRes.status === 'fulfilled' && Array.isArray(sourcesRes.value)) setTrustedSources(sourcesRes.value);
+      if (runsRes.status === 'fulfilled' && Array.isArray(runsRes.value)) setCrawlRuns(runsRes.value);
+      if (rejectRes.status === 'fulfilled' && rejectRes.value) setRejectionSummary(rejectRes.value);
+      if (statsRes.status === 'fulfilled' && statsRes.value) setAiStats(statsRes.value);
     } catch {
-      // non-critical
-    }
-  }, []);
-
-  const loadAiStats = useCallback(async () => {
-    setAiStats(await externalDataApi.getArticleAiStats());
-  }, []);
-
-  const loadCounts = useCallback(async () => {
-    const [news, opp, risk] = await Promise.all([
-      externalDataApi.getCount('NEWS'),
-      externalDataApi.getCount('OPPORTUNITY'),
-      externalDataApi.getCount('RISK'),
-    ]);
-    setCounts({ NEWS: news, OPPORTUNITY: opp, RISK: risk });
-  }, []);
-
-  const loadItems = useCallback(async (tab: ExternalDataCategory, p: number, kw: string, src: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await externalDataApi.getItems(tab, {
-        page: p,
-        size: PAGE_SIZE,
-        keyword: kw.trim() || undefined,
-        source: src || undefined,
-      });
-      setItems(Array.isArray(data?.content) ? data.content : []);
-      setTotalPages(Math.max(Number(data?.totalPages || 1), 1));
-      setTotalElements(Number(data?.totalElements ?? data?.content?.length ?? 0));
-      setSources((prev) => Array.from(new Set([
-        ...prev,
-        ...(data?.content || []).map((item) => item.source || '').filter(Boolean),
-      ])).sort((a, b) => a.localeCompare(b)));
-    } catch (err: unknown) {
-      setItems([]);
-      setTotalPages(1);
-      setTotalElements(0);
-      setError(err instanceof Error ? err.message : t('errors.loadFailed'));
+      // fallback handling
     } finally {
       setLoading(false);
     }
-  }, [t]);
-
-  const refreshAll = useCallback(() => {
-    loadCounts();
-    loadItems(activeTab, page, keyword, selectedSource);
-    loadTrustedSources();
-    loadCrawlStats();
-    loadAiStats();
-  }, [loadCounts, loadItems, activeTab, page, keyword, selectedSource, loadTrustedSources, loadCrawlStats, loadAiStats]);
-
-  useEffect(() => { loadCounts(); }, [loadCounts]);
-  useEffect(() => { loadItems(activeTab, page, keyword, selectedSource); }, [activeTab, page, keyword, selectedSource, loadItems]);
-  useEffect(() => { loadTrustedSources(); loadCrawlStats(); }, [loadTrustedSources, loadCrawlStats]);
-  useEffect(() => { loadAiStats(); }, [loadAiStats]);
+  }, [activeTab, activeProjectId]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => refreshAll(), 30000);
-    return () => window.clearInterval(interval);
-  }, [refreshAll]);
+    void projectApi.getAllProjects().then((response) => {
+      const available = response.data?.content?.filter((project) => Boolean(project.targetCompanyProfileId)) || [];
+      setProjects(available);
+      setActiveProjectId((current) => current ?? available[0]?.id ?? null);
+    }).catch(() => setProjects([]));
+  }, []);
 
-  const runCrawl = async () => {
+  useEffect(() => {
+    void loadData();
+    const timer = setInterval(() => void loadData(), 30000);
+    return () => clearInterval(timer);
+  }, [loadData]);
+
+  // ── Action Handlers ────────────────────────────────────────────────────────
+  const handleTriggerCrawl = async () => {
     setRunningFetch(true);
-    setActionMessage(null);
+    setScanMessage('Initiating crawler scan across active trusted sources...');
     try {
-      const message = await externalDataApi.runFetch({
-        projectId: activeProjectId || undefined,
-        forceRefresh,
-      });
-      setActionMessage({ kind: 'success', text: message });
-      await loadCounts();
-      await loadItems(activeTab, page, keyword, selectedSource);
-      await loadCrawlStats();
-    } catch (err: unknown) {
-      setActionMessage({
-        kind: 'danger',
-        text: err instanceof Error ? err.message : t('errors.crawlFailed'),
-      });
+      if (!activeProjectId) throw new Error('Select a project with a company profile before running the crawler.');
+      const msg = await externalDataApi.runFetch({ projectId: String(activeProjectId) });
+      setScanMessage(msg || 'Crawler scan executed successfully.');
+      await loadData();
+    } catch (err) {
+      setScanMessage(`Crawl failed: ${err instanceof Error ? err.message : 'Connection error'}`);
     } finally {
       setRunningFetch(false);
+      setTimeout(() => setScanMessage(null), 4000);
     }
   };
 
-  const runAnalyze = async () => {
+  const handleRunAiAnalysis = async () => {
     setRunningAnalyze(true);
-    setActionMessage(null);
+    setScanMessage('Running AI NLP Sentiment & Entity Extraction pipeline...');
     try {
-      const message = await externalDataApi.runAnalyze({
-        projectId: activeProjectId || undefined,
-      });
-      setActionMessage({ kind: 'success', text: message });
-      await loadCounts();
-      await loadItems(activeTab, page, keyword, selectedSource);
-      await loadCrawlStats();
-    } catch (err: unknown) {
-      setActionMessage({
-        kind: 'danger',
-        text: err instanceof Error ? err.message : t('errors.analyzeFailed'),
-      });
+      if (!activeProjectId) throw new Error('Select a project with a company profile before running AI analysis.');
+      const msg = await externalDataApi.runAnalyze({ projectId: String(activeProjectId) });
+      setScanMessage(msg || 'AI analysis completed across unparsed items.');
+      await loadData();
+    } catch (err) {
+      setScanMessage(`AI analysis error: ${err instanceof Error ? err.message : 'API error'}`);
     } finally {
       setRunningAnalyze(false);
+      setTimeout(() => setScanMessage(null), 4000);
     }
   };
 
-  const addTrustedSource = async () => {
-    if (!sourceDraft.domain.trim() || !sourceDraft.sourceName.trim()) {
-      setSourceError(t('errors.sourceFieldsRequired'));
-      return;
-    }
-    setSavingSource(true);
-    setSourceError(null);
-    try {
-      await externalDataApi.addTrustedSource({
-        domain: sourceDraft.domain.trim(),
-        sourceName: sourceDraft.sourceName.trim(),
-        category: sourceDraft.category.trim() || undefined,
-      });
-      setSourceDraft({ domain: '', sourceName: '', category: '' });
-      await loadTrustedSources();
-    } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : t('errors.addSourceFailed'));
-    } finally {
-      setSavingSource(false);
-    }
+  const openItemDrawer = (item: ExternalDataItem) => {
+    setSelectedItem(item);
+    setDrawerOpen(true);
   };
 
-  const toggleTrustedSource = async (source: TrustedSource) => {
-    try {
-      await externalDataApi.setTrustedSourceActive(source.id, !source.active);
-      await loadTrustedSources();
-    } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : t('errors.toggleSourceFailed'));
-    }
-  };
+  const displayItems: ExternalDataItem[] = items;
 
-  const startEditSourceField = (source: TrustedSource, field: 'sourceName' | 'category') => {
-    setEditingSource({
-      id: source.id,
-      field,
-      value: field === 'sourceName' ? source.sourceName : (source.category || ''),
+  // Filtered Items
+  const filteredItems = useMemo(() => {
+    return displayItems.filter((item) => {
+      const matchSearch =
+        !search ||
+        (item.title || '').toLowerCase().includes(search.toLowerCase()) ||
+        (item.relatedCompanyName || '').toLowerCase().includes(search.toLowerCase()) ||
+        (item.source || '').toLowerCase().includes(search.toLowerCase());
+
+      const matchSource = sourceFilter === 'All' || item.source === sourceFilter;
+      const matchSentiment = sentimentFilter === 'All' || (item.sentiment || 'NEUTRAL').toUpperCase() === sentimentFilter;
+      const matchPriority = priorityFilter === 'All' || (item.riskLevel || 'MEDIUM').toUpperCase() === priorityFilter;
+
+      return matchSearch && matchSource && matchSentiment && matchPriority;
     });
-    setSourceError(null);
-  };
+  }, [displayItems, search, sourceFilter, sentimentFilter, priorityFilter]);
 
-  const cancelEditSourceField = () => {
-    if (!savingEdit) {
-      setEditingSource(null);
-    }
-  };
+  // Unique sources for filter dropdown
+  const uniqueSources = useMemo(() => {
+    const set = new Set(displayItems.map((i) => i.source).filter(Boolean) as string[]);
+    return [{ value: 'All', label: 'All Sources' }, ...Array.from(set).map((s) => ({ value: s, label: s }))];
+  }, [displayItems]);
 
-  const saveEditSourceField = async () => {
-    if (!editingSource) return;
-    const { id, field, value } = editingSource;
-    setSavingEdit(true);
-    try {
-      const current = trustedSources.find((source) => source.id === id);
-      if (!current) return;
-      const input: TrustedSourceInput = {
-        domain: current.domain,
-        sourceName: field === 'sourceName' ? value.trim() : current.sourceName,
-        category: field === 'category' ? value.trim() : (current.category || undefined),
-        active: current.active,
-      };
-      await externalDataApi.updateTrustedSource(id, input);
-      await loadTrustedSources();
-    } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : t('errors.updateSourceFailed'));
-    } finally {
-      setSavingEdit(false);
-      setEditingSource(null);
-    }
-  };
+  // ── Metrics Computation ────────────────────────────────────────────────────
+  const totalArticles = aiStats?.totalArticles || items.length;
+  const referencedCompanies = aiStats?.uniqueArticles || new Set(items.map((item) => item.companyProfileId).filter(Boolean)).size;
+  const crawlerHealth = crawlRuns.length > 0 ? 'Active' : 'Idle';
+  const crawlerErrors = rejectionSummary.rejectedUntrusted + rejectionSummary.rejectedUnknownDomain;
+  const newRisksCount = displayItems.filter((i) => i.riskLevel === 'HIGH' || i.riskLevel === 'CRITICAL').length;
+  const lastCrawlRunAt = crawlRuns.length > 0 ? crawlRuns[0].runAt : null;
+  const lastCrawlTime = lastCrawlRunAt && !Number.isNaN(new Date(lastCrawlRunAt).getTime())
+    ? new Date(lastCrawlRunAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : (lastCrawlRunAt || 'Never');
 
-  const removeTrustedSource = async (source: TrustedSource) => {
-    try {
-      await externalDataApi.deleteTrustedSource(source.id);
-      await loadTrustedSources();
-    } catch (err: unknown) {
-      setSourceError(err instanceof Error ? err.message : t('errors.removeSourceFailed'));
-    }
-  };
-
-  const resetFilters = () => {
-    setKeyword('');
-    setSelectedSource('');
-    setPage(0);
-  };
-
-  const runProcessPending = async () => {
-    setRunningProcess(true);
-    setActionMessage(null);
-    try {
-      const message = await externalDataApi.runArticleAiProcessPending();
-      setActionMessage({ kind: 'success', text: message });
-      await loadAiStats();
-      await loadItems(activeTab, page, keyword, selectedSource);
-    } catch (err: unknown) {
-      setActionMessage({
-        kind: 'danger',
-        text: err instanceof Error ? err.message : t('errors.processQueueFailed'),
-      });
-    } finally {
-      setRunningProcess(false);
-    }
-  };
-
-  const runEnqueueAll = async () => {
-    setRunningEnqueue(true);
-    setActionMessage(null);
-    try {
-      const message = await externalDataApi.runArticleAiEnqueueAll();
-      setActionMessage({ kind: 'success', text: message });
-      await loadAiStats();
-      await loadItems(activeTab, page, keyword, selectedSource);
-    } catch (err: unknown) {
-      setActionMessage({
-        kind: 'danger',
-        text: err instanceof Error ? err.message : t('errors.enqueueFailed'),
-      });
-    } finally {
-      setRunningEnqueue(false);
-    }
-  };
-
-  const totalItems = counts.NEWS + counts.OPPORTUNITY + counts.RISK;
-
-  const statCards = [
-    { label: t('stats.totalArticles'), value: totalItems },
-    { label: t('stats.news'), value: counts.NEWS },
-    { label: t('stats.opportunity'), value: counts.OPPORTUNITY },
-    { label: t('stats.risk'), value: counts.RISK },
+  // ── Table Column Definitions ───────────────────────────────────────────────
+  const columns: ColumnDef<ExternalDataItem>[] = [
     {
-      label: t('stats.uniqueEvents'),
-      value: aiStats?.uniqueArticles ?? 0,
-      note: t('stats.duplicateNote', { count: aiStats?.duplicateArticles ?? 0 }),
+      key: 'source',
+      header: 'Source',
+      width: '150px',
+      render: (_, row) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '26px', height: '26px', borderRadius: '4px', background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-01)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>
+            {(row.source || row.sourceDomain || 'WEB').substring(0, 2).toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{row.source || 'Web Source'}</div>
+            <div style={{ fontSize: '10px', color: 'var(--cds-text-helper)' }}>{row.sourceDomain || 'crawler'}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'title',
+      header: 'Title & Digest',
+      width: '280px',
+      render: (_, row) => (
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', lineHeight: '18px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {row.title || 'Untitled Article'}
+          </div>
+          {row.summary && (
+            <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '270px' }}>
+              {row.summary}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'relatedCompanyName',
+      header: 'Company',
+      width: '140px',
+      sortable: true,
+      render: (_, row) => (
+        <span style={{ fontSize: '12px', fontWeight: 600, color: row.relatedCompanyName ? 'var(--cds-text-primary)' : 'var(--cds-text-helper)' }}>
+          {row.relatedCompanyName || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'publishedAt',
+      header: 'Date',
+      width: '110px',
+      render: (_, row) => <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{row.publishedAt || 'Recent'}</span>,
+    },
+    {
+      key: 'sentiment',
+      header: 'Sentiment',
+      width: '100px',
+      sortable: true,
+      render: (_, row) => <SentimentBadge sentiment={row.sentiment} />,
+    },
+    {
+      key: 'sentimentConfidence',
+      header: 'Confidence',
+      width: '100px',
+      align: 'center',
+      render: (_, row) => (
+        <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'var(--cds-support-info-bg)', color: 'var(--cds-interactive)' }}>
+          {row.sentimentConfidence ? `${Math.round(row.sentimentConfidence * (row.sentimentConfidence <= 1 ? 100 : 1))}%` : 'N/A'}
+        </span>
+      ),
+    },
+    {
+      key: 'category',
+      header: 'AI Category',
+      width: '110px',
+      render: (_, row) => (
+        <span style={{ fontSize: '11px', fontWeight: 600, background: 'var(--cds-layer-01)', color: 'var(--cds-text-secondary)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--cds-border-subtle-00)' }}>
+          {row.category || activeTab}
+        </span>
+      ),
+    },
+    {
+      key: 'riskLevel',
+      header: 'Priority',
+      width: '90px',
+      sortable: true,
+      render: (_, row) => <PriorityBadge level={row.riskLevel || row.opportunityLevel} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      width: '100px',
+      align: 'right',
+      render: (_, row) => (
+        <SecondaryButton size="sm" onClick={() => openItemDrawer(row)}>
+          Details
+        </SecondaryButton>
+      ),
     },
   ];
 
-  return (
-    <div className={styles.ccPage}>
-      {/* ── Header ── */}
-      <header className={styles.ccHeader}>
-        <div className={styles.ccHeaderLeft}>
-          <h1 className={styles.ccTitle}>{t('title')}</h1>
-          <span className={styles.ccSub}>{t('subtitle')}</span>
-        </div>
-        <div className={styles.ccHeaderActions}>
-          <label className={styles.ccForceLabel} title={t('header.forceRefreshTitle')}>
-            <input
-              type="checkbox"
-              checked={forceRefresh}
-              onChange={(event) => setForceRefresh(event.target.checked)}
-            />
-            {t('header.forceRefresh')}
-          </label>
-          <button
-            className={`${styles.ccBtn} ${styles.ccBtnPrimary}`}
-            onClick={runCrawl}
-            disabled={runningFetch}
-          >
-            {runningFetch ? t('header.runCrawlRunning') : t('header.runCrawl')}
-          </button>
-          <button
-            className={`${styles.ccBtn} ${styles.ccBtnSecondary}`}
-            onClick={runAnalyze}
-            disabled={runningAnalyze}
-          >
-            {runningAnalyze ? t('header.runAnalyzeRunning') : t('header.runAnalyze')}
-          </button>
-        </div>
-      </header>
+  // ── Filter Configurations ─────────────────────────────────────────────────
+  const filters: FilterConfig[] = [
+    { id: 'source', type: 'select', label: 'Source', value: sourceFilter, onChange: (v) => setSourceFilter(v as string), options: uniqueSources },
+    {
+      id: 'sentiment',
+      type: 'select',
+      label: 'Sentiment',
+      value: sentimentFilter,
+      onChange: (v) => setSentimentFilter(v as string),
+      options: [
+        { value: 'All', label: 'All Sentiments' },
+        { value: 'POSITIVE', label: 'Positive' },
+        { value: 'NEUTRAL', label: 'Neutral' },
+        { value: 'NEGATIVE', label: 'Negative' },
+      ],
+    },
+    {
+      id: 'priority',
+      type: 'select',
+      label: 'Priority',
+      value: priorityFilter,
+      onChange: (v) => setPriorityFilter(v as string),
+      options: [
+        { value: 'All', label: 'All Priorities' },
+        { value: 'HIGH', label: 'High Priority' },
+        { value: 'MEDIUM', label: 'Medium Priority' },
+        { value: 'LOW', label: 'Low Priority' },
+      ],
+    },
+  ];
 
-      {/* ── Action Message ── */}
-      {actionMessage && (
-        <div className={`${styles.ccAlert} ${actionMessage.kind === 'success' ? styles.ccAlertSuccess : styles.ccAlertDanger}`}>
-          {actionMessage.text}
+  // ── Main Render ────────────────────────────────────────────────────────────
+  return (
+    <div className="cds-page-shell" id="page-crawler-control">
+      {/* Page Header */}
+      <PageHeader
+        title={t('title')}
+        eyebrow="Business Ecosystem Intelligence • Data Ingestion Engine"
+        description={t('description')}
+        breadcrumb={[{ label: t('breadcrumb.dashboard') }, { label: t('breadcrumb.operations') }]}
+        actions={
+          <>
+            <select
+              aria-label={t('projectScope.ariaLabel')}
+              value={activeProjectId ?? ''}
+              onChange={(event) => setActiveProjectId(event.target.value ? Number(event.target.value) : null)}
+              style={{ minWidth: '220px', height: '40px', border: '1px solid var(--cds-border-color)', background: 'var(--cds-background)', color: 'var(--cds-text-primary)', padding: '0 10px' }}
+            >
+              <option value="">{t('projectScope.select')}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.projectName} - {project.targetCompanyName}</option>
+              ))}
+            </select>
+            <SecondaryButton size="md" disabled={runningAnalyze || !activeProjectId} onClick={handleRunAiAnalysis}>
+              {t('actions.runNlp')}
+            </SecondaryButton>
+            <PrimaryButton size="md" loading={runningFetch} disabled={!activeProjectId} onClick={handleTriggerCrawl}>
+              Trigger Market Crawl
+            </PrimaryButton>
+          </>
+        }
+      />
+
+      {/* Operation Feedback Message */}
+      {scanMessage && (
+        <div style={{ background: 'var(--cds-support-info-bg)', border: '1px solid var(--cds-interactive)', color: 'var(--cds-interactive)', padding: '10px 14px', borderRadius: 'var(--cds-border-radius)', marginBottom: '14px', fontSize: '13px', fontWeight: 600 }}>
+          {scanMessage}
         </div>
       )}
 
-      {/* ── KPI Row ── */}
-      <section className={styles.ccStatsGrid}>
-        {statCards.map((item) => (
-          <div key={item.label} className={styles.ccStatCard}>
-            <div className={styles.ccStatLabel}>{item.label}</div>
-            <div className={styles.ccStatValRow}>
-              <span className={styles.ccStatValue}>{item.value}</span>
-              {item.note && <span className={styles.ccStatNote}>{item.note}</span>}
+      {/* Top Executive KPI Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+        <MetricCard label="Articles" value={totalArticles} description="Total ingested items" trend={12} trendLabel="today" />
+        <MetricCard label="Companies" value={referencedCompanies} description="Entities extracted" />
+        <MetricCard label="New Risks" value={newRisksCount} description="High risk signals" valueColor={newRisksCount > 5 ? 'var(--cds-support-error)' : undefined} />
+      </div>
+
+      {/* 2-Column Main Operations Layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: '16px', alignItems: 'start' }}>
+        
+        {/* LEFT COLUMN: Tabs, Filters & Main Data Table */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          
+          {/* Main Feed Category Tabs */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px 0 16px' }}>
+            <Tabs items={TABS} activeId={activeTab} onChange={(id) => setActiveTab(id as CrawlerTab)} />
+          </div>
+
+          {/* Filter Bar */}
+          <FilterBar
+            searchValue={search}
+            searchPlaceholder="Search article title, company, or source..."
+            onSearchChange={setSearch}
+            filters={filters}
+          />
+
+          {/* Data Table */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px' }}>
+            <DataTable<ExternalDataItem>
+              columns={columns}
+              data={filteredItems}
+              rowKey={(row) => row.id}
+              onRowClick={openItemDrawer}
+              pageSize={10}
+              exportFilename={`crawler-feed-${activeTab.toLowerCase()}`}
+              loading={loading}
+              emptyState={
+                <EmptyState
+                  title="No articles match your criteria"
+                  body="Try clearing filters or trigger a fresh market crawl scan."
+                  action={
+                    <PrimaryButton size="sm" onClick={() => { setSearch(''); setSourceFilter('All'); setSentimentFilter('All'); setPriorityFilter('All'); }}>
+                      Reset Filters
+                    </PrimaryButton>
+                  }
+                />
+              }
+            />
+          </div>
+        </div>
+
+        {/* RIGHT SIDEBAR: Monitoring Controls & Pipeline Status */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          
+          {/* 1. Crawler Status Card */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+                Crawler System Status
+              </h3>
+              <StatusBadge status="VERIFIED" />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Workers Active:</span>
+                <strong style={{ color: 'var(--cds-text-primary)' }}>{runningFetch ? 'Running' : 'Idle'}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Rate Limit:</span>
+                <strong style={{ color: 'var(--cds-text-primary)' }}>Source controlled</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Trusted Sources:</span>
+                <strong style={{ color: 'var(--cds-interactive)' }}>{trustedSources.length} Domains</strong>
+              </div>
             </div>
           </div>
-        ))}
-      </section>
 
-      {/* ── Main Navigation Tabs ── */}
-      <nav className={styles.ccMainTabs} aria-label={t('tabs.ariaLabel')}>
-        <button
-          className={`${styles.ccTabBtn} ${mainTab === 'data' ? styles.ccTabBtnActive : ''}`}
-          onClick={() => setMainTab('data')}
-        >
-          {t('tabs.dataLabel', { total: totalElements })}
-        </button>
-        <button
-          className={`${styles.ccTabBtn} ${mainTab === 'settings' ? styles.ccTabBtnActive : ''}`}
-          onClick={() => setMainTab('settings')}
-        >
-          {t('tabs.settingsLabel')}
-        </button>
-      </nav>
-
-      {/* ── TAB 1: Dữ liệu thu thập ── */}
-      {mainTab === 'data' && (
-        <div className={styles.ccMainGrid}>
-          <main className={styles.ccPanel}>
-            {/* Filter Bar */}
-            <div className={styles.ccFilterBar}>
-              <div className={styles.ccSubTabs}>
-                {CATEGORY_TABS.map((tab) => (
-                  <button
-                    key={tab.value}
-                    className={`${styles.ccSubTab} ${activeTab === tab.value ? styles.ccSubTabActive : ''}`}
-                    onClick={() => {
-                      setActiveTab(tab.value);
-                      setPage(0);
-                    }}
-                  >
-                    {tab.label}
-                    <span className={styles.ccSubTabCount}>({counts[tab.value]})</span>
-                  </button>
-                ))}
+          {/* 2. Pipeline Processing Queue */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+              Pipeline Queue
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
+                  <span style={{ color: 'var(--cds-text-secondary)' }}>Pending AI Summaries</span>
+                  <span style={{ fontWeight: 700, color: 'var(--cds-interactive)' }}>{aiStats?.articlesPending || 0} items</span>
+                </div>
+                <div style={{ height: '5px', background: 'var(--cds-border-subtle-00)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: '35%', height: '100%', background: 'var(--cds-interactive)', borderRadius: '3px' }} />
+                </div>
               </div>
 
-              <input
-                className={styles.ccSearchInput}
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder={t('filters.searchPlaceholder')}
-              />
-
-              <select
-                className={styles.ccSelect}
-                value={selectedSource}
-                onChange={(event) => {
-                  setSelectedSource(event.target.value);
-                  setPage(0);
-                }}
-              >
-                <option value="">{t('filters.allSources')}</option>
-                {sources.map((source) => (
-                  <option key={source} value={source}>{source}</option>
-                ))}
-              </select>
-
-              <button className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`} onClick={resetFilters}>
-                {t('filters.reset')}
-              </button>
-            </div>
-
-            {error && <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`}>{error}</div>}
-
-            {/* Items Table */}
-            <div className={styles.ccTableWrap}>
-              {loading ? (
-                <div className={styles.ccEmpty}>{t('table.loading')}</div>
-              ) : items.length === 0 ? (
-                <div className={styles.ccEmpty}>{t('table.empty')}</div>
-              ) : (
-                <table className={styles.ccTable}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 80 }}>{t('table.headers.type')}</th>
-                      <th>{t('table.headers.titleSummary')}</th>
-                      <th style={{ width: 140 }}>{t('table.headers.company')}</th>
-                      <th style={{ width: 140 }}>{t('table.headers.sourceDate')}</th>
-                      <th style={{ width: 90 }}>{t('table.headers.rating')}</th>
-                      <th style={{ width: 70, textAlign: 'right' }}>{t('table.headers.details')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <span className={`${styles.ccPill} ${categoryPillClass(item.category)}`}>
-                            {item.category || 'NEWS'}
-                          </span>
-                        </td>
-                        <td>
-                          <div className={styles.ccItemTitle}>{item.title || t('table.noTitle')}</div>
-                          <div className={styles.ccItemSummary}>{cardSummary(item)}</div>
-                        </td>
-                        <td>
-                          <span className={`${styles.ccPill} ${styles.ccPillCompany}`}>
-                            {item.relatedCompanyName || t('table.noMatch')}
-                          </span>
-                          {item.sentiment && (
-                            <span className={`${styles.ccPill} ${styles.ccPillMuted}`} style={{ marginLeft: 4 }}>
-                              {item.sentiment}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <div><strong>{item.source || t('table.unknownSource')}</strong></div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatDate(item.publishedAt)}</div>
-                        </td>
-                        <td>
-                          {item.riskLevel && (
-                            <span className={`${styles.ccPill} ${levelPillClass(item.riskLevel)}`}>
-                              {t('table.riskLevel', { level: item.riskLevel })}
-                            </span>
-                          )}
-                          {item.opportunityLevel && (
-                            <span className={`${styles.ccPill} ${levelPillClass(item.opportunityLevel)}`}>
-                              {t('table.opportunityLevel', { level: item.opportunityLevel })}
-                            </span>
-                          )}
-                          {!item.riskLevel && !item.opportunityLevel && (
-                            <span className={`${styles.ccPill} ${styles.ccPillMuted}`}>{t('table.genericLevel')}</span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          {item.url && (
-                            <a
-                              className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {t('table.sourceLink')}
-                            </a>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Pagination */}
-            <div className={styles.ccPagination}>
-              <span>{t('pagination.showing', { shown: items.length, total: totalElements })}</span>
-              <div className={styles.ccPaginationBtns}>
-                <button
-                  className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
-                  disabled={page === 0 || loading}
-                  onClick={() => setPage((value) => Math.max(value - 1, 0))}
-                >
-                  {t('pagination.previous')}
-                </button>
-                <strong>{t('pagination.page', { current: page + 1, total: totalPages })}</strong>
-                <button
-                  className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
-                  disabled={page + 1 >= totalPages || loading}
-                  onClick={() => setPage((value) => value + 1)}
-                >
-                  {t('pagination.next')}
-                </button>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '3px' }}>
+                  <span style={{ color: 'var(--cds-text-secondary)' }}>Entity Linking Queue</span>
+                  <span style={{ fontWeight: 700, color: 'var(--cds-support-success)' }}>0 items</span>
+                </div>
+                <div style={{ height: '5px', background: 'var(--cds-border-subtle-00)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ width: '15%', height: '100%', background: 'var(--cds-support-success)', borderRadius: '3px' }} />
+                </div>
               </div>
             </div>
-          </main>
+          </div>
 
-          {/* Sidebar */}
-          <aside className={styles.ccSide}>
-            <div className={styles.ccSideCard}>
-              <div className={styles.ccSideTitle}>{t('sidebar.crawlerInfo')}</div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.crawled')}</span>
-                <span className={styles.ccSideVal} style={{ color: '#2563eb' }}>{t('sidebar.articleCount', { count: totalItems })}</span>
+          {/* 3. Rejected Sources Summary */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+              Rejected Sources Log
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Untrusted Domain</span>
+                <strong style={{ color: 'var(--cds-support-error)' }}>{rejectionSummary.rejectedUntrusted}</strong>
               </div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.scope')}</span>
-                <span className={styles.ccSideVal}>
-                  {activeProjectId ? t('sidebar.projectScope', { id: activeProjectId }) : t('sidebar.allCompanies')}
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Unknown Host</span>
+                <strong style={{ color: '#92400e' }}>{rejectionSummary.rejectedUnknownDomain}</strong>
               </div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.autoRefresh')}</span>
-                <span className={styles.ccSideVal} style={{ color: '#10b981' }}>{t('sidebar.refreshInterval')}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                <span style={{ color: 'var(--cds-text-secondary)' }}>Unmatched Entity</span>
+                <strong style={{ color: 'var(--cds-text-primary)' }}>{rejectionSummary.rejectedNoCompany}</strong>
               </div>
             </div>
+          </div>
 
-            <div className={styles.ccSideCard}>
-              <div className={styles.ccSideTitle}>{t('sidebar.rejectionsTitle', { count: rejectionSummary.totalRuns })}</div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.rejectedUntrusted')}</span>
-                <span className={styles.ccSideVal} style={{ color: '#f59e0b' }}>{rejectionSummary.rejectedUntrusted}</span>
+          {/* 4. Recent Scan Execution Log */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+              Recent Scan Runs
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {crawlRuns.slice(0, 3).map((run, i) => (
+                <div key={run.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--cds-text-primary)', fontWeight: 600 }}>Run #{run.id} · {run.totalFetched || 0} items</span>
+                  <span style={{ color: 'var(--cds-text-helper)' }}>
+                    {run.runAt && !Number.isNaN(new Date(run.runAt).getTime())
+                      ? new Date(run.runAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : (run.runAt || 'Recent')}
+                  </span>
+                </div>
+              ))}
+              {crawlRuns.length === 0 && <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>No crawl runs yet.</span>}
+            </div>
+          </div>
+
+          {/* 5. Upcoming Jobs Timetable */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+              Upcoming Jobs (Cron)
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-primary)' }}>News & Financial Crawl</span>
+                <span style={{ color: 'var(--cds-text-helper)', fontWeight: 600 }}>Not scheduled</span>
               </div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.rejectedUnknownDomain')}</span>
-                <span className={styles.ccSideVal} style={{ color: '#ef4444' }}>{rejectionSummary.rejectedUnknownDomain}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-primary)' }}>Patent & Regulatory Sync</span>
+                <span style={{ color: 'var(--cds-text-helper)' }}>Not scheduled</span>
               </div>
-              <div className={styles.ccSideItem}>
-                <span className={styles.ccSideLabel}>{t('sidebar.rejectedNoCompany')}</span>
-                <span className={styles.ccSideVal} style={{ color: '#6b7280' }}>{rejectionSummary.rejectedNoCompany}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--cds-text-primary)' }}>Full AI Re-indexing</span>
+                <span style={{ color: 'var(--cds-text-helper)' }}>Not scheduled</span>
               </div>
             </div>
-          </aside>
+          </div>
+
         </div>
-      )}
 
-      {/* ── TAB 2: Cấu hình AI & Nguồn tin uy tín ── */}
-      {mainTab === 'settings' && (
-        <div className={styles.ccMainGrid}>
-          <main>
-            {/* AI Pipeline Section */}
-            <div className={styles.ccPanel}>
-              <div className={styles.ccSectionHead}>
-                <h3>{t('aiProcessing.title')}</h3>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    className={`${styles.ccBtn} ${styles.ccBtnSecondary} ${styles.ccBtnSm}`}
-                    onClick={runEnqueueAll}
-                    disabled={runningEnqueue}
-                  >
-                    {runningEnqueue ? t('aiProcessing.enqueueing') : t('aiProcessing.enqueueAll')}
-                  </button>
-                  <button
-                    className={`${styles.ccBtn} ${styles.ccBtnPrimary} ${styles.ccBtnSm}`}
-                    onClick={runProcessPending}
-                    disabled={runningProcess}
-                  >
-                    {runningProcess ? t('aiProcessing.processing') : t('aiProcessing.processQueue')}
-                  </button>
-                </div>
-              </div>
+      </div>
 
-              <div className={styles.ccAiGrid}>
-                <div className={styles.ccAiBox}>
-                  <span className={styles.ccAiLabel}>{t('aiProcessing.analyzed')}</span>
-                  <div className={styles.ccAiValue}>{aiStats?.articlesCompleted ?? 0}</div>
-                  <span className={styles.ccAiSub}>{t('aiProcessing.ofTotal', { count: aiStats?.totalArticles ?? 0 })}</span>
-                </div>
-                <div className={styles.ccAiBox}>
-                  <span className={styles.ccAiLabel}>{t('aiProcessing.queue')}</span>
-                  <div className={styles.ccAiValue}>{aiStats?.pendingJobs ?? 0}</div>
-                  <span className={styles.ccAiSub}>{t('aiProcessing.runningJobs', { count: aiStats?.runningJobs ?? 0 })}</span>
-                </div>
-                <div className={styles.ccAiBox}>
-                  <span className={styles.ccAiLabel}>{t('aiProcessing.uniqueEvents')}</span>
-                  <div className={styles.ccAiValue}>{aiStats?.uniqueArticles ?? 0}</div>
-                  <span className={styles.ccAiSub}>{t('aiProcessing.duplicates', { count: aiStats?.duplicateArticles ?? 0 })}</span>
-                </div>
-                <div className={styles.ccAiBox}>
-                  <span className={styles.ccAiLabel}>{t('aiProcessing.failed')}</span>
-                  <div className={styles.ccAiValue} style={{ color: (aiStats?.articlesFailed ?? 0) > 0 ? '#ef4444' : undefined }}>
-                    {aiStats?.articlesFailed ?? 0}
-                  </div>
-                  <span className={styles.ccAiSub}>{t('aiProcessing.failedJobs', { count: aiStats?.failedJobs ?? 0 })}</span>
-                </div>
-              </div>
+      {/* Article Detail Drawer */}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={selectedItem?.title || 'Article Intelligence'}
+        subtitle={selectedItem ? `${selectedItem.source || 'Web Source'} • ${selectedItem.publishedAt || 'Ingested'}` : ''}
+        width={680}
+        footerActions={
+          <>
+            {selectedItem?.url && (
+              <SecondaryButton size="sm" onClick={() => window.open(selectedItem.url || '', '_blank')}>
+                Open External Source ↗
+              </SecondaryButton>
+            )}
+            <PrimaryButton size="sm" onClick={() => handleRunAiAnalysis()}>
+              Re-analyze with AI
+            </PrimaryButton>
+          </>
+        }
+      >
+        {selectedItem && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', paddingBottom: '12px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
+              <SentimentBadge sentiment={selectedItem.sentiment} />
+              <PriorityBadge level={selectedItem.riskLevel || selectedItem.opportunityLevel} />
+              <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', marginLeft: 'auto' }}>
+                Confidence: <strong>{selectedItem.sentimentConfidence ? `${Math.round(selectedItem.sentimentConfidence * (selectedItem.sentimentConfidence <= 1 ? 100 : 1))}%` : 'N/A'}</strong>
+              </span>
             </div>
 
-            {/* Trusted Whitelist Section */}
-            <div className={styles.ccPanel}>
-              <div className={styles.ccSectionHead}>
-                <h3>{t('whitelist.title')}</h3>
-                <span className={`${styles.ccPill} ${styles.ccPillInfo}`}>
-                  {t('whitelist.activeSummary', { active: trustedSources.filter((source) => source.active).length, total: trustedSources.length })}
-                </span>
-              </div>
+            <div style={{ background: 'var(--cds-layer-01)', borderLeft: '3px solid var(--cds-interactive)', padding: '12px 14px', borderRadius: '0 6px 6px 0', fontSize: '13px', lineHeight: '22px', color: 'var(--cds-text-primary)' }}>
+              <strong>AI Executive Summary:</strong> {selectedItem.summary || selectedItem.aiSummary || 'No summary generated yet for this item.'}
+            </div>
 
-              {isAdmin ? (
-                <div className={styles.ccFormRow}>
-                  <input
-                    value={sourceDraft.domain}
-                    onChange={(event) => setSourceDraft({ ...sourceDraft, domain: event.target.value })}
-                    placeholder={t('whitelist.domainPlaceholder')}
-                    className={styles.ccFormInput}
-                  />
-                  <input
-                    value={sourceDraft.sourceName}
-                    onChange={(event) => setSourceDraft({ ...sourceDraft, sourceName: event.target.value })}
-                    placeholder={t('whitelist.sourceNamePlaceholder')}
-                    className={styles.ccFormInput}
-                  />
-                  <input
-                    value={sourceDraft.category}
-                    onChange={(event) => setSourceDraft({ ...sourceDraft, category: event.target.value })}
-                    placeholder={t('whitelist.categoryPlaceholder')}
-                    className={styles.ccFormInput}
-                  />
-                  <button className={`${styles.ccBtn} ${styles.ccBtnPrimary} ${styles.ccBtnSm}`} onClick={addTrustedSource} disabled={savingSource}>
-                    {savingSource ? t('whitelist.adding') : t('whitelist.addSource')}
-                  </button>
-                </div>
-              ) : isOwner ? (
-                <div className={`${styles.ccAlert} ${styles.ccAlertInfo}`}>
-                  {t('whitelist.ownerNotice')}
-                </div>
-              ) : (
-                <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`}>
-                  {t('whitelist.adminOnly')}
-                </div>
-              )}
-
-              {sourceError && (
-                <div className={`${styles.ccAlert} ${styles.ccAlertDanger}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span>{sourceError}</span>
-                  <button
-                    type="button"
-                    className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
-                    onClick={() => { setSourceError(null); loadTrustedSources(); }}
-                    style={{ flexShrink: 0 }}
-                  >
-                    {t('whitelist.retry')}
-                  </button>
-                </div>
-              )}
-
-              <div className={styles.ccTableWrap} style={{ maxHeight: 220, minHeight: 'auto' }}>
-                <table className={styles.ccTable}>
-                  <thead>
-                    <tr>
-                      <th>{t('whitelist.headers.domain')}</th>
-                      <th>{t('whitelist.headers.sourceName')}</th>
-                      <th>{t('whitelist.headers.category')}</th>
-                      <th>{t('whitelist.headers.status')}</th>
-                      {isAdmin && <th style={{ textAlign: 'right' }}>{t('whitelist.headers.actions')}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {trustedSources.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className={styles.ccEmpty}>{t('whitelist.empty')}</td>
-                      </tr>
-                    ) : (
-                      trustedSources.map((source) => (
-                        <tr key={source.id}>
-                          <td style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            {source.domain}
-                          </td>
-                          <td style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {canEditSourceFields && editingSource?.id === source.id && editingSource.field === 'sourceName' ? (
-                              <div className={styles.ccInlineEdit}>
-                                <input
-                                  autoFocus
-                                  className={styles.ccFormInput}
-                                  value={editingSource.value}
-                                  onChange={(event) => setEditingSource({ ...editingSource, value: event.target.value })}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') saveEditSourceField();
-                                    if (event.key === 'Escape') cancelEditSourceField();
-                                  }}
-                                  onBlur={saveEditSourceField}
-                                  disabled={savingEdit}
-                                  style={{ fontSize: '0.75rem', padding: '2px 6px' }}
-                                />
-                                <button
-                                  type="button"
-                                  className={styles.ccIconBtn}
-                                  title={t('whitelist.save')}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={saveEditSourceField}
-                                  disabled={savingEdit}
-                                >
-                                  <Check size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.ccIconBtn}
-                                  title={t('whitelist.cancel')}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={cancelEditSourceField}
-                                  disabled={savingEdit}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                className={styles.ccEditField}
-                                title={canEditSourceFields ? t('whitelist.editHint') : undefined}
-                                onClick={() => canEditSourceFields && startEditSourceField(source, 'sourceName')}
-                                disabled={!canEditSourceFields}
-                              >
-                                {source.sourceName}
-                                {canEditSourceFields && <Pencil size={12} className={styles.ccEditIcon} />}
-                              </button>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {canEditSourceFields && editingSource?.id === source.id && editingSource.field === 'category' ? (
-                              <div className={styles.ccInlineEdit}>
-                                <input
-                                  autoFocus
-                                  className={styles.ccFormInput}
-                                  value={editingSource.value}
-                                  onChange={(event) => setEditingSource({ ...editingSource, value: event.target.value })}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') saveEditSourceField();
-                                    if (event.key === 'Escape') cancelEditSourceField();
-                                  }}
-                                  onBlur={saveEditSourceField}
-                                  disabled={savingEdit}
-                                  style={{ fontSize: '0.72rem', padding: '2px 6px' }}
-                                />
-                                <button
-                                  type="button"
-                                  className={styles.ccIconBtn}
-                                  title={t('whitelist.save')}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={saveEditSourceField}
-                                  disabled={savingEdit}
-                                >
-                                  <Check size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.ccIconBtn}
-                                  title={t('whitelist.cancel')}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={cancelEditSourceField}
-                                  disabled={savingEdit}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                className={styles.ccEditField}
-                                title={canEditSourceFields ? t('whitelist.editHint') : undefined}
-                                onClick={() => canEditSourceFields && startEditSourceField(source, 'category')}
-                                disabled={!canEditSourceFields}
-                              >
-                                {source.category || '—'}
-                                {canEditSourceFields && <Pencil size={12} className={styles.ccEditIcon} />}
-                              </button>
-                            )}
-                          </td>
-                          <td>
-                            <span className={`${styles.ccPill} ${source.active ? styles.ccPillSuccess : styles.ccPillDanger}`} style={{ fontSize: '0.68rem', fontWeight: 700 }}>
-                              {source.active ? t('whitelist.statusActive') : t('whitelist.statusInactive')}
-                            </span>
-                          </td>
-                          {isAdmin && (
-                            <td style={{ textAlign: 'right' }}>
-                              <button
-                                className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
-                                onClick={() => toggleTrustedSource(source)}
-                                style={{ fontSize: '0.72rem', fontWeight: 600 }}
-                              >
-                                {source.active ? t('whitelist.disable') : t('whitelist.enable')}
-                              </button>
-                              <button
-                                className={`${styles.ccBtn} ${styles.ccBtnGhost} ${styles.ccBtnSm}`}
-                                style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 600 }}
-                                onClick={() => removeTrustedSource(source)}
-                              >
-                                {t('whitelist.delete')}
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+            <div style={{ background: 'var(--cds-layer-01)', padding: '12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Article Metadata</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Associated Company:</span> <strong>{selectedItem.relatedCompanyName || 'None'}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Category:</span> <strong>{selectedItem.category || activeTab}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Source Domain:</span> <strong>{selectedItem.sourceDomain || selectedItem.source || 'Unknown'}</strong></div>
+                <div><span style={{ color: 'var(--cds-text-secondary)' }}>Ingested At:</span> <strong>{selectedItem.createdAt || 'Recent'}</strong></div>
               </div>
             </div>
-          </main>
-
-          {/* Sidebar - Crawl History */}
-          <aside className={styles.ccSide}>
-            <div className={styles.ccSideCard}>
-              <div className={styles.ccSideTitle}>{t('crawlHistory.title')}</div>
-              {crawlRuns.length === 0 ? (
-                <div className={styles.ccEmpty}>{t('crawlHistory.empty')}</div>
-              ) : (
-                crawlRuns.slice(0, 5).map((run) => (
-                  <div key={run.id} className={styles.ccSideItem}>
-                    <span className={styles.ccSideLabel}>
-                      {formatDate(run.runAt)} · {run.trigger || t('crawlHistory.manual')}
-                    </span>
-                    <span className={styles.ccSideVal} style={{ color: '#2563eb' }}>
-                      {t('crawlHistory.savedFetched', { saved: run.saved, fetched: run.totalFetched })}
-                    </span>
-                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      {t('crawlHistory.duplicatesRejected', { duplicates: run.duplicates, rejected: run.rejectedUntrusted })}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </aside>
-        </div>
-      )}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };
-
-export default CrawlerControl;

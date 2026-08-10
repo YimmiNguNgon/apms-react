@@ -79,6 +79,22 @@ export interface GraphCompanyDto {
   relationships?: GraphRelationship[];
 }
 
+export interface ProfileFinancialInfo {
+  revenue?: number;
+  revenueCurrency?: string;
+  revenueGrowth?: number;
+  debtRatio?: number;
+  profitMargin?: number;
+  fundingStage?: string;
+  profitability?: string;
+  charterCapital?: number;
+}
+
+export interface ProfileFinancialsInfo {
+  charterCapital?: number;
+  [key: string]: unknown;
+}
+
 export interface ProfileResponse {
   id: string;
   companyId: string;
@@ -87,7 +103,25 @@ export interface ProfileResponse {
   companySize?: CompanyProfileSize;
   contact?: CompanyProfileContact;
   insights?: CompanyProfileInsights;
-  companyMembers?: Array<{ name?: string; fullName?: string; position?: string; role?: string; phone?: string; email?: string }>;
+  financial?: ProfileFinancialInfo;
+  financials?: ProfileFinancialsInfo;
+  market?: Record<string, unknown>;
+  innovation?: Record<string, unknown>;
+  risk?: Record<string, unknown>;
+  compliance?: Record<string, unknown>;
+  companyMembers?: Array<{
+    name?: string;
+    fullName?: string;
+    position?: string;
+    role?: string;
+    phone?: string;
+    email?: string;
+    imageUrl?: string | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
+    researchedAt?: string | null;
+    researchedBy?: number | null;
+  }>;
   reviewStatus?: string;
   tags?: string[];
   stockTicker?: string;
@@ -350,6 +384,7 @@ export interface CandidateFieldEvidence {
   snippet?: string;
   extractedText?: string;
   confidence?: number;
+  confidenceScore?: number;
   relevance?: string;
   [key: string]: unknown;
 }
@@ -1004,7 +1039,6 @@ export interface PermissionDto {
   admin: boolean;
   director: boolean;
   manager: boolean;
-  keymember: boolean;
   staff: boolean;
 }
 

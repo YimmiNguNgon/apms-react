@@ -92,7 +92,7 @@ export const storeAuthSession = (session: {
   }
 };
 
-const refreshSession = async () => {
+const performRefresh = async () => {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
 
@@ -124,6 +124,20 @@ const refreshSession = async () => {
   } catch {
     return false;
   }
+};
+
+// Chat polling can produce many simultaneous 401 responses when an access
+// token expires. Refresh tokens rotate on use, so all callers in this tab must
+// share one refresh request instead of invalidating each other's token.
+let refreshPromise: Promise<boolean> | null = null;
+
+const refreshSession = () => {
+  if (!refreshPromise) {
+    refreshPromise = performRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 };
 
 const buildUrl = (endpoint: string, params?: FetchOptions['params']) => {

@@ -44,7 +44,7 @@ import {
   type ProjectTask,
   type TaskPriority,
   type TaskStatus,
-} from '../data/projectDetailMock';
+} from '../data/projectDetailMock.ts';
 import { projectApi } from '../API/projectApi';
 import { accountApi } from '../API/accountApi';
 import { taskApi } from '../API/taskApi';
@@ -1566,6 +1566,15 @@ interface StaffExtractionEvidenceSource {
   reviewStatus?: string | null;
 }
 
+const evidenceSourceKey = (source: StaffExtractionEvidenceSource, index: number) => [
+  source.rawDocumentId || source.extractionId || source.importJobId || source.fileName || 'source',
+  source.pageNumber ?? 'na',
+  index,
+].join('-');
+
+const evidenceSourceLabel = (source: StaffExtractionEvidenceSource, index: number) =>
+  source.fileName || source.rawDocumentId || `Source ${index + 1}`;
+
 interface StaffExtractionReview {
   id: string;
   importJobId?: number;
@@ -2811,6 +2820,23 @@ const FieldEvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence; fieldKe
     ? evidence.validationMessages.join(', ')
     : evidence.validationMessages;
   const hasEvidence = Boolean(evidence.evidenceText?.trim());
+  const sources = evidence.sources?.length
+    ? evidence.sources
+    : evidence.sourceFileName
+      ? [{
+          fileName: evidence.sourceFileName,
+          importJobId: evidence.sourceImportJobId,
+          rawDocumentId: evidence.sourceRawDocumentId,
+          extractionId: evidence.sourceExtractionId,
+          confidenceScore: evidence.confidenceScore,
+          evidenceText: evidence.evidenceText,
+          pageNumber: evidence.pageNumber,
+          validationStatus: evidence.validationStatus,
+          validationMessages: evidence.validationMessages,
+          reviewStatus: evidence.reviewStatus,
+        }]
+      : [];
+  const hasSourceEvidence = sources.some((source) => Boolean(source.evidenceText?.trim()));
   const statusItems = [
     evidenceMetaText(evidence),
     evidence.validationStatus ? `Validation: ${evidence.validationStatus}` : null,
@@ -2834,13 +2860,39 @@ const FieldEvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence; fieldKe
           <i style={{ width: `${score}%` }} />
         </div>
       )}
-      <div className={`${styles.extractionEvidenceCompact} ${hasEvidence ? '' : styles.extractionEvidenceMissing}`}>
-        <div>
-          <span>Source evidence</span>
-          <strong>{hasEvidence ? 'Evidence available for this field' : 'No source quote returned'}</strong>
+      {sources.length > 0 ? (
+        <div className={`${styles.extractionEvidenceSourceList} ${hasSourceEvidence ? '' : styles.extractionEvidenceMissing}`}>
+          <div>
+            <span>Source evidence</span>
+            <strong>{sources.length} source document{sources.length !== 1 ? 's' : ''}</strong>
+          </div>
+          {sources.map((source, index) => {
+            const sourceMeta = [
+              source.pageNumber ? `Page ${source.pageNumber}` : 'Page unavailable',
+              typeof source.confidenceScore === 'number' ? `${source.confidenceScore}% confidence` : null,
+              source.importJobId ? `Import job #${source.importJobId}` : null,
+              source.rawDocumentId ? `Raw document ${source.rawDocumentId}` : null,
+            ].filter((item): item is string => Boolean(item));
+            return (
+              <article key={evidenceSourceKey(source, index)}>
+                <strong>{evidenceSourceLabel(source, index)}</strong>
+                <p>{source.evidenceText || 'No source quote returned for this file.'}</p>
+                <footer>
+                  {sourceMeta.map((item) => <small key={item}>{item}</small>)}
+                </footer>
+              </article>
+            );
+          })}
         </div>
-        <p>{evidence.evidenceText || 'AI returned a value, but no supporting quote was attached. Staff should verify it in the original document.'}</p>
-      </div>
+      ) : (
+        <div className={`${styles.extractionEvidenceCompact} ${hasEvidence ? '' : styles.extractionEvidenceMissing}`}>
+          <div>
+            <span>Source evidence</span>
+            <strong>{hasEvidence ? 'Evidence available for this field' : 'No source quote returned'}</strong>
+          </div>
+          <p>{evidence.evidenceText || 'AI returned a value, but no supporting quote was attached. Staff should verify it in the original document.'}</p>
+        </div>
+      )}
       <div className={styles.extractionEvidenceMeta}>
         {statusItems.map((item) => <small key={item}>{item}</small>)}
       </div>

@@ -31,6 +31,8 @@ export interface ExternalDataItem {
   opportunityLevel?: string | null;
   relatedCompanyName?: string | null;
   relatedCompanyId?: string | null;
+  projectId?: number | null;
+  companyProfileId?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   aiStatus?: ArticleAiStatus | null;
@@ -108,6 +110,7 @@ export interface ExternalDataQuery {
   companyName?: string;
   page?: number;
   size?: number;
+  projectId?: number;
 }
 
 const CATEGORY_PATH: Record<ExternalDataCategory, string> = {
@@ -165,6 +168,13 @@ export const externalDataApi = {
     const data = response.data as unknown;
     if (typeof data === 'string') return data;
     return (data as { message?: string } | null)?.message || 'Crawl run finished.';
+  },
+
+  runApprovedProfilesFetch: async (): Promise<string> => {
+    const response = await api.post<{ message?: string } | string>('/external-data/fetch-approved-profiles');
+    const data = response.data as unknown;
+    if (typeof data === 'string') return data;
+    return (data as { message?: string } | null)?.message || 'Approved company profiles refreshed.';
   },
 
   runAnalyze: async (params?: { projectId?: string }): Promise<string> => {

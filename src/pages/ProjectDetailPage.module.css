@@ -5421,6 +5421,66 @@
   white-space: pre-wrap;
 }
 
+.extractionEvidenceSourceList {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.88);
+  padding: 0.85rem;
+}
+
+.extractionEvidenceSourceList > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.extractionEvidenceSourceList span {
+  color: #64748b;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.extractionEvidenceSourceList > div strong,
+.extractionEvidenceSourceList article > strong {
+  color: #0f172a;
+  font-size: var(--text-body-sm);
+  font-weight: 800;
+}
+
+.extractionEvidenceSourceList article {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  padding-top: 0.75rem;
+}
+
+.extractionEvidenceSourceList p {
+  margin: 0;
+  color: #475569;
+  font-size: var(--text-body);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.extractionEvidenceSourceList footer {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.extractionEvidenceSourceList small {
+  color: #64748b;
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+
 .extractionEvidenceMeta {
   display: flex;
   align-self: end;

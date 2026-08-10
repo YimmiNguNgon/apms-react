@@ -1,4 +1,6 @@
 {
+  "header": { "title": "News & Media Intelligence Center", "eyebrow": "Business Ecosystem Intelligence", "description": "Real-time media monitoring, NLP sentiment tracking, and competitor press signals.", "dashboard": "Dashboard", "breadcrumb": "News Intelligence", "exportDigest": "Export Digest PDF", "refreshFeed": "Refresh News Feed" },
+  "metrics": { "today": "today", "articles": { "label": "Articles", "description": "Ingested media items" }, "companies": { "label": "Companies", "description": "Referenced entities" }, "sources": { "label": "Sources", "description": "Active publishers" }, "positive": { "label": "Positive News", "description": "Favorable signals" }, "negative": { "label": "Negative News", "description": "Adverse signals" } },
   "title": "Company Related Articles",
   "subtitle": "Automatically collected company news",
   "syncBadge": "Auto-refresh (30s)",

@@ -73,25 +73,41 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
 
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
+  const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
+
   const fetchProfiles = async (page = 0) => {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await api.get<PageResult<ProfileResponse>>('/profiles', {
-        params: {
-          keyword: searchQuery.trim() || undefined,
-          reviewStatus: statusFilter || undefined,
-          relationshipType: relationshipFilter || undefined,
-          page,
-          size: PAGE_SIZE,
-        },
-      });
+      const [res, ownerRes] = await Promise.allSettled([
+        api.get<PageResult<ProfileResponse>>('/profiles', {
+          params: {
+            keyword: searchQuery.trim() || undefined,
+            reviewStatus: statusFilter || undefined,
+            relationshipType: relationshipFilter || undefined,
+            excludeOwner: true,
+            page,
+            size: PAGE_SIZE,
+          },
+        }),
+        api.get<ProfileResponse>('/owner/company-profile'),
+      ]);
 
-      const content = newestProfilesFirst(res.data?.content ?? []);
-      setProfiles(content);
-      setTotalElements(res.data?.totalElements ?? content.length);
-      setCurrentPage(page);
+      if (res.status === 'fulfilled') {
+        const content = newestProfilesFirst(res.value.data?.content ?? []);
+        setProfiles(content);
+        setTotalElements(res.value.data?.totalElements ?? content.length);
+        setCurrentPage(page);
+      } else {
+        setProfiles([]);
+        setTotalElements(0);
+        setError(res.reason instanceof Error ? res.reason.message : t('errors.loadFailed'));
+      }
+
+      if (ownerRes.status === 'fulfilled' && ownerRes.value?.data) {
+        setOwnerProfile(ownerRes.value.data);
+      }
     } catch (err) {
       setProfiles([]);
       setTotalElements(0);
@@ -136,6 +152,51 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
       </header>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {/* ── Owner Enterprise Banner (Doanh nghiệp Chủ quản) ── */}
+      {ownerProfile && (
+        <section style={{
+          background: 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(14,165,233,0.06))',
+          border: '1px solid rgba(37,99,235,0.2)',
+          borderRadius: '12px',
+          padding: '10px 16px',
+          marginBottom: '8px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+        }}>
+          <div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--brand-primary, #2563eb)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              🏢 Doanh nghiệp Chủ quản (Owner Reference Enterprise)
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+              {ownerProfile.identity?.tradeName || ownerProfile.identity?.legalName}
+              {ownerProfile.identity?.tradeName && ownerProfile.identity?.legalName && ownerProfile.identity.tradeName !== ownerProfile.identity.legalName
+                ? ` — ${ownerProfile.identity.legalName}`
+                : ''}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <span><strong>Mã số thuế:</strong> {ownerProfile.identity?.taxCode || 'Chưa có dữ liệu'}</span>
+              <span><strong>Mã CK:</strong> {ownerProfile.identity?.stockTicker || 'Chưa có dữ liệu'}{ownerProfile.identity?.stockExchange ? ` (${ownerProfile.identity.stockExchange})` : ''}</span>
+              <span><strong>Ngành:</strong> {ownerProfile.business?.industries?.slice(0, 3).join(', ') || 'Chưa có dữ liệu'}</span>
+              <span><strong>Quy mô:</strong> {ownerProfile.companySize?.employeeTier || 'Chưa có dữ liệu'}</span>
+            </div>
+          </div>
+          <button
+            className={styles.primaryButton}
+            type="button"
+            onClick={() => {
+              if (ownerProfile.companyId || ownerProfile.id) {
+                localStorage.setItem('apms-selected-company', ownerProfile.companyId || ownerProfile.id);
+              }
+              setActivePage('company-detail');
+            }}
+          >
+            Xem chi tiết hồ sơ chủ quản →
+          </button>
+        </section>
+      )}
 
       {/* ── KPI Row ── */}
       <section className={styles.metricGrid}>

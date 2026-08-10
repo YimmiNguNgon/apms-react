@@ -222,15 +222,14 @@ export const AIAgent: React.FC = () => {
             }}
           />
           <button type="submit" disabled={isSending || !input.trim()}>
-            <Send size={17} />
+            Send
           </button>
         </form>
         </div>
       )}
 
       <button className={styles.launcher} type="button" onClick={() => setIsOpen((value) => !value)}>
-        <Bot size={24} />
-        {!isOpen && <span>AI</span>}
+        <span>AI</span>
       </button>
     </section>
   );

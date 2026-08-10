@@ -71,7 +71,8 @@ export function useListingTabData<T>(
   }, [cacheKey, companyId, fetcher]);
 
   useEffect(() => {
-    load();
+    // A tab revisits the persisted backend snapshot; it must not trigger a new crawl or AI run.
+    if (!tabDataCache.has(cacheKey)) load();
   }, [load]);
 
   return { ...state, reload: load };

@@ -15,7 +15,6 @@ import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
 import { OwnerDashboard }     from './pages/dashboards/OwnerDashboard';
 import { DirectorDashboard }  from './pages/dashboards/DirectorDashboard';
 import { ManagerDashboard }   from './pages/dashboards/ManagerDashboard';
-import { KeyMemberDashboard } from './pages/dashboards/KeyMemberDashboard';
 import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
 
 const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
@@ -56,6 +55,7 @@ import { SystemSettingsPage }from './pages/SystemSettings';
 // ── Owner pages ──
 import { EcosystemOverview } from './pages/EcosystemOverview';
 import { ProjectsOverview }  from './pages/ProjectsOverview';
+import { PartnerEcosystemView } from './pages/PartnerEcosystemView';
 
 // ── Director pages ──
 import {
@@ -83,17 +83,6 @@ import {
 import { ProjectManagement } from './pages/ProjectManagement';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 
-// ── Key Member pages ──
-import {
-  ReviewExtractedData,
-  CompanyValidation,
-  PartnerClassification,
-  CompetitorClassification,
-  AISuggestionReview,
-  RelationshipUpdates,
-  OnboardingSupport,
-} from './pages/KeyMemberPages';
-
 // ── Staff pages ──
 import {
   UploadDocuments,
@@ -104,6 +93,7 @@ import {
   LearningCenter,
 } from './pages/StaffPages';
 import { CompetitorWatchlist } from './pages/CompetitorWatchlist';
+import { CompetitorIntelligenceView } from './pages/CompetitorIntelligenceView';
 import { MyTasksWorkspace } from './pages/MyTasksWorkspace';
 
 // ── Shared pages ──
@@ -224,9 +214,10 @@ const MainApp: React.FC = () => {
     if (path === '/reset-password') return <ResetPassword onBackToLogin={() => window.location.href = '/'} />;
     return <Login />;
   }
+
   const renderDashboard = () => {
     switch (currentUser.role) {
-      case ROLES.ADMIN:   return <AdminDashboard />;
+      case ROLES.ADMIN:   return <AdminDashboard setActivePage={navigateToPage} />;
       case ROLES.OWNER:   return <OwnerDashboard />;
       case ROLES.MANAGER: return <ManagerDashboard setActivePage={navigateToPage} />;
       case ROLES.STAFF:   return <StaffDashboard setActivePage={navigateToPage} />;
@@ -239,7 +230,7 @@ const MainApp: React.FC = () => {
   // ── Page renderer ──
   const renderPage = () => {
     // Dashboard pages
-    const dashPages = ['admin-dashboard','owner-dashboard','director-dashboard','manager-dashboard','keymember-dashboard','staff-dashboard'];
+    const dashPages = ['admin-dashboard', 'owner-dashboard', 'manager-dashboard', 'staff-dashboard'];
     if (dashPages.includes(activePage)) return renderDashboard();
 
     if (!canView(activePage)) {
@@ -266,7 +257,7 @@ const MainApp: React.FC = () => {
       case 'admin-panel':      return <AdminPanel />;
       case 'ai-agent':
       case 'personal-ai-agent':return renderDashboard();
-      case 'news':             return <News />;
+      case 'news':             return <News setActivePage={navigateToPage} />;
       case 'system-chat':      return <SystemChat />;
       case 'crawler-control':  return <CrawlerControl />;
 
@@ -284,9 +275,9 @@ const MainApp: React.FC = () => {
       case 'access-control':   return <SystemSettingsPage defaultTab="access-control" />;
 
       // ── Director & Owner pages ──
-      case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <EcosystemOverview setActivePage={navigateToPage} /> : <PartnerEcosystem />;
-      case 'competitor-intelligence':  return <CompetitorIntelligence />;
-      case 'relationship-map':         return <RelationshipMap setActivePage={navigateToPage} />;
+      case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;
+      case 'competitor-intelligence':  return currentUser.role === ROLES.OWNER ? <CompetitorIntelligenceView /> : <CompetitorIntelligence />;
+      case 'relationship-map':         return currentUser.role === ROLES.OWNER ? <RelationshipMap /> : <EcosystemOverview setActivePage={navigateToPage} />;
       case 'market-opportunities':     return <MarketOpportunities />;
       case 'ai-recommendations':       return <AIRecommendations />;
       case 'strategic-reports':        return <StrategicReports />;
@@ -303,22 +294,14 @@ const MainApp: React.FC = () => {
       case 'project-management':         return currentUser.role === ROLES.OWNER ? <ProjectsOverview /> : <ProjectManagement setActivePage={navigateToPage} />;
       case 'project-detail':             return <ProjectDetailPage setActivePage={navigateToPage} />;
 
-      // ── Key Member pages ──
-      case 'review-extracted-data':    return <ReviewExtractedData />;
-      case 'company-validation':       return <CompanyValidation />;
-      case 'partner-classification':   return <PartnerClassification />;
-      case 'competitor-classification':return <CompetitorClassification />;
-      case 'ai-suggestion-review':     return <AISuggestionReview />;
-      case 'relationship-updates':     return <RelationshipUpdates />;
-      case 'onboarding-support':       return <OnboardingSupport />;
-
       // ── Staff pages ──
       case 'my-tasks':            return <MyTasksWorkspace setActivePage={navigateToPage} />;
       case 'upload-documents':    return <UploadDocuments setActivePage={navigateToPage} />;
       case 'partner-management':  return <PartnerManagement />;
-      case 'competitor-management':return <CompetitorWatchlist />;
+      case 'competitor-management':  return currentUser.role === ROLES.OWNER ? <CompetitorIntelligenceView /> : <CompetitorWatchlist />;
+      case 'competitor-watchlist':   return currentUser.role === ROLES.OWNER ? <CompetitorIntelligenceView /> : <CompetitorWatchlist />;
       case 'ai-extracted-data':   return <AIExtractedData />;
-      case 'candidate-review':    return <CompanyValidation staffMode />;
+      case 'candidate-review':    return <ValidationQueue />;
       case 'search-companies':    return <SearchCompanies setActivePage={navigateToPage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;

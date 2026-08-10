@@ -1,4 +1,5 @@
 {
+  "ui": { "searchProjects": "Search projects", "membersOnly": "Project members only", "attachFile": "Attach file", "messageProject": "Message #{{project}}", "selectProjectFirst": "Select a project first", "emoji": "Emoji", "sendMessage": "Send message", "messageActions": "Message actions", "edit": "Edit", "copy": "Copy", "delete": "Delete" },
   "title": "Project Chat & Discussions",
   "subtitle": "Real-time communication channels per project for team collaboration",
   "searchPlaceholder": "Search projects or keywords...",

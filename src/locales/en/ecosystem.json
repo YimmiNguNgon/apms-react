@@ -1,42 +1,38 @@
 {
-  "breadcrumb": {
-    "intelligence": "Intelligence",
-    "title": "Enterprise Ecosystem Overview"
-  },
-  "banner": {
-    "kicker": "Executive Intelligence",
-    "title": "Enterprise Ecosystem Overview"
-  },
-  "tabs": {
-    "partners": "Partners",
-    "competitors": "Competitors",
-    "suppliers": "Suppliers",
-    "potentialPartners": "Potential Partners"
-  },
-  "scores": {
-    "title": "Recent AI Evaluation Scores",
-    "subtitle": "Latest assessment of partner fit and risk.",
-    "collapse": "Collapse",
-    "viewAll": "View all ({{count}})",
-    "emptyTitle": "No AI evaluation results yet",
-    "emptyBody": "No score snapshots recorded for the ecosystem."
-  },
-  "filters": {
-    "searchPlaceholder": "Search by company name, ID, or industry..."
-  },
-  "table": {
-    "noCompanyName": "No company name available",
-    "emptyGroup": "No companies found in the \"{{group}}\" group",
-    "emptyHint": "Try changing the filter or search keyword.",
+  "breadcrumb": { "intelligence": "Intelligence", "title": "Enterprise Ecosystem Overview" },
+  "header": { "title": "Partner Ecosystem", "eyebrow": "Business Ecosystem Intelligence", "description": "Monitor partner health, track relationships, and identify strategic opportunities.", "dashboard": "Dashboard", "companyDetail": "Company Detail" },
+  "charts": { "distribution": "Partner Distribution", "industryBreakdown": "Industry Breakdown" },
+  "banner": { "kicker": "Executive Intelligence", "title": "Enterprise Ecosystem Overview" },
+  "tabs": { "partners": "Partners", "competitors": "Competitors", "suppliers": "Suppliers", "potentialPartners": "Potential Partners" },
+  "scores": { "title": "Recent AI Evaluation Scores", "subtitle": "Latest assessment of partner fit and risk.", "collapse": "Collapse", "viewAll": "View all ({{count}})", "emptyTitle": "No AI evaluation results yet", "emptyBody": "No score snapshots recorded for the ecosystem." },
+  "filters": { "searchPlaceholder": "Search by company name, ID, or industry..." },
+  "sections": {
+    "attention": "Companies requiring Owner attention",
+    "attentionEmpty": "No companies require attention based on verified data.",
+    "signals": "Recent business signals",
+    "signalsEmpty": "No recent verified signals.",
+    "connections": "Project & Company Connections",
+    "connectionsEmpty": "No projects connected to companies.",
+    "directory": "Company directory",
+    "directoryCount": "{{count}} companies",
+    "noCompanies": "No companies match your criteria.",
+    "tryFilters": "Try changing the keyword or filters.",
+    "resetFilters": "Reset filters",
+    "strategicRelevance": "Strategic relevance",
+    "businessImpact": "Business impact",
+    "impactTrend": "Impact trend",
+    "whyItMatters": "Why it matters",
+    "updated": "Updated",
+    "activeProject": "active project",
+    "viewCompany": "View company",
+    "viewSource": "View source",
+    "project": "Project",
     "company": "Company",
-    "industry": "Industry",
     "relationship": "Relationship",
-    "fitScore": "Fit Score",
-    "risk": "Risk",
-    "actions": "Actions",
-    "generalIndustry": "General",
-    "relationshipsCount_one": "{{count}} relationship",
-    "relationshipsCount_other": "{{count}} relationships",
-    "viewProfile": "View Profile"
-  }
+    "role": "Role",
+    "status": "Status",
+    "notAvailable": "Not available",
+    "exportCsv": "Export CSV"
+  },
+  "table": { "noCompanyName": "No company name available", "emptyGroup": "No companies found in group {{group}}", "emptyHint": "Try changing the filter or search keyword.", "company": "Company", "industry": "Industry", "relationship": "Relationship", "fitScore": "Fit Score", "risk": "Risk", "actions": "Actions", "generalIndustry": "General", "relationshipsCount_one": "{{count}} relationship", "relationshipsCount_other": "{{count}} relationships", "viewProfile": "View Profile" }
 }

@@ -292,12 +292,15 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   );
 };
 
-const ProjectSearch: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => (
-  <label className={styles.searchBox}>
-    <Search size={16} />
-    <input value={value} placeholder="Search projects" onChange={(event) => onChange(event.target.value)} />
-  </label>
-);
+const ProjectSearch: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => {
+  const { t } = useTranslation('system-chat');
+  return (
+    <label className={styles.searchBox}>
+      <Search size={16} />
+      <input value={value} placeholder={t('ui.searchProjects')} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+};
 
 // const ProjectFilter: React.FC<{ value: ChatFilter; onChange: (value: ChatFilter) => void }> = ({ value, onChange }) => (
 //   <div className={styles.filterRow} role="tablist" aria-label="Project chat filter">
@@ -558,12 +561,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   );
 };
 
-const MessageActions: React.FC<{ open: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onCopy: () => void }> = ({ open, onToggle, onEdit, onDelete, onCopy }) => (
+const MessageActions: React.FC<{ open: boolean; onToggle: () => void; onEdit: () => void; onDelete: () => void; onCopy: () => void }> = ({ open, onToggle, onEdit, onDelete, onCopy }) => {
+  const { t } = useTranslation('system-chat');
+  return (
   <div className={styles.messageActions}>
     <button
-      aria-label="Message actions"
+      aria-label={t('ui.messageActions')}
       className={styles.messageMenuButton}
-      title="Message actions"
+      title={t('ui.messageActions')}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onToggle}
@@ -572,13 +577,14 @@ const MessageActions: React.FC<{ open: boolean; onToggle: () => void; onEdit: ()
     </button>
     {open && (
       <div className={styles.messageActionMenu}>
-        <button type="button" onClick={onEdit}><Edit3 size={14} />Edit</button>
-        <button type="button" onClick={onCopy}><Copy size={14} />Copy</button>
-        <button type="button" onClick={onDelete}><Trash2 size={14} />Delete</button>
+        <button type="button" onClick={onEdit}><Edit3 size={14} />{t('ui.edit')}</button>
+        <button type="button" onClick={onCopy}><Copy size={14} />{t('ui.copy')}</button>
+        <button type="button" onClick={onDelete}><Trash2 size={14} />{t('ui.delete')}</button>
       </div>
     )}
   </div>
-);
+  );
+};
 
 const EmptyConversationState: React.FC<{ title: string; description: string; loading?: boolean }> = ({ title, description, loading }) => (
   <div className={styles.emptyConversation}>
@@ -597,18 +603,19 @@ interface MessageComposerProps {
 }
 
 const MessageComposer: React.FC<MessageComposerProps> = ({ project, value, sending, onChange, onSend }) => {
+  const { t } = useTranslation('system-chat');
   const counterVisible = value.length >= 1700;
 
   return (
     <footer className={styles.composer}>
-      <div className={styles.composerHint}>Project members only</div>
+      <div className={styles.composerHint}>{t('ui.membersOnly')}</div>
       <div className={styles.composerBox}>
-        <button aria-label="Attach file" className={styles.composerIcon} type="button" disabled={!project}>
+        <button aria-label={t('ui.attachFile')} className={styles.composerIcon} type="button" disabled={!project}>
           <Paperclip size={18} />
         </button>
         <textarea
           value={value}
-          placeholder={project ? `Message #${project.projectName}` : 'Select a project first'}
+          placeholder={project ? t('ui.messageProject', { project: project.projectName }) : t('ui.selectProjectFirst')}
           disabled={!project || sending}
           maxLength={2000}
           rows={1}
@@ -620,12 +627,12 @@ const MessageComposer: React.FC<MessageComposerProps> = ({ project, value, sendi
             }
           }}
         />
-        <button aria-label="Emoji" className={styles.composerIcon} type="button" disabled={!project}>
+        <button aria-label={t('ui.emoji')} className={styles.composerIcon} type="button" disabled={!project}>
           <Smile size={18} />
         </button>
         {counterVisible && <span className={styles.charCounter}>{value.length}/2000</span>}
         <button
-          aria-label="Send message"
+          aria-label={t('ui.sendMessage')}
           className={styles.sendButton}
           type="button"
           disabled={!project || sending || !value.trim()}
@@ -775,7 +782,6 @@ const ChatToastStack: React.FC<{ toasts: ChatToast[]; onView: (projectId: number
 };
 
 export const SystemChat: React.FC = () => {
-  const { t } = useTranslation('system-chat');
   const { currentUser } = useUser();
   const {
     markProjectRead: markGlobalProjectRead,
@@ -954,8 +960,18 @@ export const SystemChat: React.FC = () => {
     setError(null);
 
     try {
-      const payload = await api.get<PageResponse<ProjectResponse>>('/projects', { params: { page: 0, size: 80 } });
-      const rows = payload.data?.content ?? [];
+      const payload = await api.get<PageResponse<ProjectResponse>>('/projects', {
+        params: { page: 0, size: 100 },
+      });
+      const rawRows = payload.data?.content ?? [];
+      const seenNames = new Set<string>();
+      const rows = rawRows.filter((project) => {
+        if (!project.projectName) return true;
+        const nameKey = project.projectName.trim().toLowerCase();
+        if (seenNames.has(nameKey)) return false;
+        seenNames.add(nameKey);
+        return true;
+      });
       setProjects(rows);
       setSelectedProjectId((current) => {
         const next = current && rows.some((project) => project.id === current) ? current : rows[0]?.id ?? null;

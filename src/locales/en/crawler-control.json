@@ -1,6 +1,10 @@
 {
   "title": "Crawler Intelligence Control",
   "subtitle": "News crawling & AI analysis control panel",
+  "description": "Monitor automated web crawlers, manage trusted intelligence sources, and inspect AI ingestion feeds.",
+  "breadcrumb": { "dashboard": "Dashboard", "operations": "Crawler Operations" },
+  "projectScope": { "ariaLabel": "Crawler project scope", "select": "Select project scope" },
+  "actions": { "runNlp": "Run AI NLP" },
   "categories": {
     "news": "News",
     "opportunity": "Opportunity",

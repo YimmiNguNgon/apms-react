@@ -1,0 +1,55 @@
+{
+  "title": "Business Executive Dashboard",
+  "eyebrow": "Owner - Business Ecosystem Intelligence",
+  "description": "Your executive command center connected directly to verified backend data.",
+  "breadcrumb": "Dashboard",
+  "loadingDescription": "Loading executive intelligence from the backend...",
+  "notAvailable": "Not available",
+  "fallback": {
+    "deals": "opportunities",
+    "items": "items",
+    "actor": "Actor",
+    "system": "System",
+    "scanCompleted": "Market scan completed and data synchronized.",
+    "backendPartial": "Backend is partially ready: {{rejected}}/{{total}} data sources failed to load.",
+    "backendUnavailable": "Unable to connect to the backend API.",
+    "dashboardUnavailable": "Unable to connect to the backend API; dashboard data could not be loaded.",
+    "syncFailed": "Market data synchronization failed."
+  },
+  "priority": { "high": "High", "critical": "Critical", "medium": "Medium", "low": "Low" },
+  "scan": { "run": "Run AI Scan", "running": "Scanning...", "connecting": "Synchronizing market data..." },
+  "metrics": {
+    "ecosystemScore": { "label": "Ecosystem Score", "description": "Average verified score snapshot" },
+    "activePartners": { "label": "Active Partners", "description": "Verified partner entities" },
+    "competitors": { "label": "Competitors", "description": "Tracked competitor entities" },
+    "riskAlerts": { "label": "Risk Alerts", "description": "Verified risk items" },
+    "activeProjects": { "label": "Active Projects", "description": "Active portfolio total" },
+    "aiOpportunities": { "label": "AI Opportunities", "description": "Pipeline signals" }
+  },
+  "sections": {
+    "insights": { "title": "Strategic Insights", "subtitle": "Recommendations from the backend" },
+    "competitors": { "title": "Competitor Directory", "subtitle": "Competitor entities from the graph" },
+    "activity": { "title": "Audit Log Activity", "subtitle": "Recent system events" },
+    "risks": { "title": "Risk Alerts", "subtitle": "External data risk items" },
+    "partners": { "title": "Partner Directory", "subtitle": "Partner entities from the graph" },
+    "network": { "title": "Relationship Network", "subtitle": "Relationship graph overview" },
+    "news": { "title": "External Market News", "subtitle": "External news feed" }
+  },
+  "content": {
+    "noTitle": "Untitled recommendation",
+    "notUpdated": "Not updated",
+    "actionRequired": "Action required",
+    "source": "Source",
+    "noAlerts": "No verified risk alerts.",
+    "noPartners": "No verified partner data.",
+    "noCompetitors": "No verified competitor data.",
+    "noActivity": "No recent audit activity.",
+    "noNews": "No market news available.",
+    "networkEmpty": "No relationship nodes in the graph.",
+    "partner": "Partner",
+    "competitor": "Competitor",
+    "ownerProfile": "Owner company profile unavailable",
+    "backend": "Backend notice"
+  },
+  "profile": { "ariaLabel": "Owner company profile", "eyebrow": "Owner organization", "description": "Data loaded directly from the approved company profile.", "loading": "Loading owner profile...", "unavailable": "Owner profile unavailable", "loadFailed": "The approved profile could not be loaded.", "taxCode": "Tax code", "stockTicker": "Ticker", "industry": "Industry", "size": "Company size", "markets": "Markets", "website": "Website" }
+}

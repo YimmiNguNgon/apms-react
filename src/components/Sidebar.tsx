@@ -166,49 +166,9 @@ const MANAGER_MENU: MenuSection[] = [
       // { id: 'verify',    label: 'Verify Queue' },
     ],
   },
-  {
-    items: [{ id: 'profile', label: 'menu.profile' }],
-  },
 ];
 
-const KEY_MEMBER_MENU: MenuSection[] = [
-  {
-    title: 'menu.workstation',
-    items: [
-      { id: 'keymember-dashboard', label: 'menu.workstationDashboard' },
-      { id: 'project-management',  label: 'menu.myProjects' },
-    ],
-  },
-  {
-    title: 'menu.validationReview',
-    items: [
-      { id: 'company-validation',     label: 'menu.validationQueue' },
-      { id: 'review-extracted-data',  label: 'menu.reviewExtractedData' },
-      { id: 'partner-classification', label: 'menu.scoreClassify' },
-    ],
-  },
-  {
-    title: 'menu.directory',
-    items: [
-      { id: 'ai-suggestion-review', label: 'menu.aiSuggestionReview' },
-      { id: 'relationship-updates', label: 'menu.relationshipUpdates' },
-      { id: 'system-chat',          label: 'menu.chat' },
-      { id: 'onboarding-support',   label: 'menu.onboardingSupport' },
-    ],
-  },
-  {
-    title: 'menu.data',
-    items: [
-      { id: 'companies',        label: 'menu.companies' },
-      { id: 'validate',         label: 'menu.validationQueue' },
-      { id: 'company-detail',   label: 'menu.companyDetail' },
-      { id: 'companies', label: 'menu.companiesDirectory' },
-    ],
-  },
-  {
-    items: [{ id: 'profile', label: 'menu.profile' }],
-  },
-];
+
 
 const STAFF_MENU: MenuSection[] = [
   {
@@ -259,7 +219,7 @@ const STAFF_MENU: MenuSection[] = [
 const OWNER_MENU: MenuSection[] = [
   {
     items: [
-      { id: 'owner-dashboard', label: 'menu.executiveCommand' },
+      { id: 'relationship-map', label: 'menu.dashboard' },
     ],
   },
   {
@@ -267,9 +227,6 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
       { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
-      { id: 'relationship-map',        label: 'menu.relationshipMap' },
-      { id: 'crawler-control',         label: 'menu.crawlerControl' },
-      { id: 'project-management',      label: 'menu.projectsOverview' },
       { id: 'news',                    label: 'menu.newsIntelligence' },
       { id: 'system-chat',             label: 'menu.chat' },
     ],
