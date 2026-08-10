@@ -1033,13 +1033,16 @@ export interface RoleDto {
 }
 
 export interface PermissionDto {
-  id: string;
+  id: string | number;
+  name: string;
   module: string;
-  action: string;
-  admin: boolean;
-  director: boolean;
-  manager: boolean;
-  staff: boolean;
+  description?: string;
+  // Legacy fields kept for backward compatibility
+  action?: string;
+  admin?: boolean;
+  director?: boolean;
+  manager?: boolean;
+  staff?: boolean;
 }
 
 export interface CandidateAnalysisDto {

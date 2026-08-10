@@ -20,6 +20,14 @@ import styles from './AdminDashboard.module.css';
 
 type AuditFilter = 'ALL' | 'SECURITY' | 'AUTHENTICATION' | 'USERS_ROLES' | 'SYSTEM_CONFIGURATION';
 
+interface ServiceHealth {
+  name: string;
+  status: 'UP' | 'DOWN' | 'DEGRADED' | 'NOT_CONFIGURED' | string;
+  latencyMs: number | null;
+  lastChecked: string | null;
+  errorReason?: string;
+}
+
 interface UserRow {
   id?: number;
   role?: string;
@@ -38,7 +46,7 @@ const ROLE_OVERVIEW = [
   { label: 'Research Staff', keys: ['ROLE_RESEARCH_STAFF', 'ROLE_STAFF', 'RESEARCH_STAFF', 'STAFF'] },
 ];
 
-const SERVICE_NAMES = ['API Server', 'SQL Server', 'MongoDB', 'Neo4j', 'Authentication', 'Background Jobs'];
+
 
 const containsAny = (value: string, words: string[]) => words.some((word) => value.includes(word));
 
@@ -76,6 +84,8 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<AuditFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [healthServices, setHealthServices] = useState<ServiceHealth[]>([]);
+  const [healthLoading, setHealthLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
     const [auditResult, usersResult] = await Promise.allSettled([
@@ -103,13 +113,29 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
     setRefreshing(false);
   }, []);
 
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
+    try {
+      const res = await api.get<{ services: ServiceHealth[] }>('/admin/system-health');
+      if (res?.success && res.data?.services) {
+        setHealthServices(res.data.services);
+      }
+    } catch {
+      setHealthServices([]);
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDashboard();
-  }, [loadDashboard]);
+    loadHealth();
+  }, [loadDashboard, loadHealth]);
 
   const handleRefresh = () => {
     setRefreshing(true);
     loadDashboard();
+    loadHealth();
   };
 
   const filteredAuditLogs = useMemo(() => {
@@ -164,11 +190,16 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
     }
   };
 
+  const pendingAccounts = users?.filter((u) => !(u.enabled ?? u.active ?? u.isActive ?? u.status === 'active')).length;
+  const securityAlerts = auditAvailable
+    ? auditLogs.filter((log) => containsAny(`${log.action} ${log.detail || ''}`.toUpperCase(), ['FAILED', 'DENIED', 'LOCKED', 'BLOCKED', 'REJECTED'])).length
+    : null;
+
   const kpis = [
-    { label: 'Total users', value: totalUsers, detail: totalUsers === undefined ? 'Not available' : 'Accounts returned by the users service', icon: Users, tone: 'blue' },
-    { label: 'Active users', value: activeUsers, detail: activeUsers === undefined ? 'Not available' : 'Enabled accounts returned by the users service', icon: Activity, tone: 'green' },
-    { label: 'Pending accounts', value: null, detail: 'Not available', icon: UserCog, tone: 'amber' },
-    { label: 'Security alerts', value: null, detail: 'Not available', icon: ShieldAlert, tone: 'red' },
+    { label: 'Total users', value: totalUsers, detail: totalUsers === undefined ? 'Not available' : 'Non-deleted accounts', icon: Users, tone: 'blue' },
+    { label: 'Active users', value: activeUsers, detail: activeUsers === undefined ? 'Not available' : 'Enabled accounts', icon: Activity, tone: 'green' },
+    { label: 'Pending / Inactive', value: pendingAccounts, detail: pendingAccounts === undefined ? 'Not available' : 'Disabled or pending accounts', icon: UserCog, tone: 'amber' },
+    { label: 'Security alerts', value: securityAlerts, detail: securityAlerts === null ? 'Not available' : 'Failed/denied events in recent logs', icon: ShieldAlert, tone: 'red' },
   ];
 
   return (
@@ -205,17 +236,42 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
 
       <section className={styles.section} aria-labelledby="system-health-heading">
         <div className={styles.sectionHeading}>
-          <div><h2 id="system-health-heading">System Health</h2><p>Live service telemetry is not currently provided by the backend.</p></div>
-          <span className={styles.availabilityNote}>Not available</span>
+          <div><h2 id="system-health-heading">System Health</h2><p>Real-time database and service connectivity checks.</p></div>
+          <span className={styles.availabilityNote}>{healthLoading ? 'Checking…' : healthServices.length > 0 ? `${healthServices.filter(s => s.status === 'UP').length}/${healthServices.length} UP` : 'Not available'}</span>
         </div>
         <div className={styles.healthGrid}>
-          {SERVICE_NAMES.map((service) => (
-            <article key={service} className={styles.healthCard}>
+          {healthLoading && [1,2,3,4].map((i) => (
+            <article key={i} className={styles.healthCard}>
               <Server size={18} />
-              <div><strong>{service}</strong><span>Status: Not available</span></div>
-              <div className={styles.healthMeta}><span>Latency: Not available</span><span>Last checked: Not available</span></div>
+              <div><strong>Checking…</strong><span>Status: Loading</span></div>
             </article>
           ))}
+          {!healthLoading && healthServices.length === 0 && (
+            <article className={styles.healthCard}>
+              <Server size={18} />
+              <div><strong>Health check unavailable</strong><span>Backend health endpoint did not respond</span></div>
+            </article>
+          )}
+          {!healthLoading && healthServices.map((svc) => {
+            const isUp = svc.status === 'UP';
+            const isDown = svc.status === 'DOWN';
+            const statusColor = isUp ? '#10B981' : isDown ? '#EF4444' : '#F59E0B';
+            const statusLabel = isUp ? '● UP' : isDown ? '● DOWN' : `● ${svc.status}`;
+            return (
+              <article key={svc.name} className={styles.healthCard} style={{ borderLeft: `3px solid ${statusColor}` }}>
+                <Server size={18} style={{ color: statusColor }} />
+                <div>
+                  <strong>{svc.name}</strong>
+                  <span style={{ color: statusColor, fontWeight: 600 }}>Status: {statusLabel}</span>
+                  {svc.errorReason && <span style={{ fontSize: '11px', color: '#EF4444' }}>{svc.errorReason}</span>}
+                </div>
+                <div className={styles.healthMeta}>
+                  <span>Latency: {svc.latencyMs !== null && svc.latencyMs !== undefined ? `${svc.latencyMs}ms` : 'N/A'}</span>
+                  <span>Checked: {svc.lastChecked ? new Date(svc.lastChecked).toLocaleTimeString('vi-VN') : 'N/A'}</span>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -226,7 +282,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
         </div>
         <div className={styles.auditLayout}>
           <aside className={styles.securitySummary}>
-            <div><ShieldAlert size={18} /><span>Security alerts</span><strong>Not available</strong></div>
+            <div><ShieldAlert size={18} /><span>Security alerts</span><strong>{securityAlerts ?? 'Not available'}</strong></div>
             <div><KeyRound size={18} /><span>Failed login attempts</span><strong>{failedLogins ?? 'Not available'}</strong></div>
             <div><UserCog size={18} /><span>Permission changes</span><strong>{permissionChanges ?? 'Not available'}</strong></div>
           </aside>
