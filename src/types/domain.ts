@@ -299,6 +299,8 @@ export interface CandidateResponse {
   relationshipTypeOverride?: RelationshipType;
   
   fieldResults?: Record<string, AiFieldResult>;
+  fieldEvidence?: Record<string, CandidateFieldEvidence[]>;
+  fieldApprovals?: FieldApprovalRecord[] | Record<string, FieldApprovalRecord>;
   qualityStatus?: string;
   qualityMetrics?: Record<string, unknown>;
   identity?: { legalName?: string; [key: string]: any };
@@ -311,22 +313,68 @@ export interface CandidateResponse {
   [key: string]: unknown;
 }
 
-export type FieldReviewStatus = 'PENDING' | 'EDITED' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'CONFIRMED' | 'ADDED' | 'REMOVED';
+export type FieldReviewStatus = 'PENDING' | 'PENDING_REVIEW' | 'EDITED' | 'ACCEPTED' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'NEEDS_REVIEW' | 'REVISION_REQUIRED' | 'CONFIRMED' | 'ADDED' | 'REMOVED' | 'STALE';
+
+export type FieldApprovalStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REVISION_REQUIRED' | 'REJECTED' | 'STALE';
+
+export interface FieldApprovalRecord {
+  fieldPath?: string;
+  status?: FieldApprovalStatus;
+  reviewedRevision?: number;
+  reviewedByAccountId?: number;
+  reviewedAt?: string;
+  comment?: string;
+  previousStatus?: FieldApprovalStatus;
+  previousComment?: string;
+  changedInRevision?: number;
+  staleReason?: string;
+  pendingValue?: unknown;
+  pendingEvidenceIds?: string[];
+}
+
+export interface CandidateFieldEvidence {
+  rawDocumentId?: string;
+  documentId?: string;
+  sourceDocumentId?: string;
+  fileName?: string;
+  documentName?: string;
+  documentType?: string;
+  page?: number;
+  pageNumber?: number;
+  section?: string;
+  sourceUrl?: string;
+  url?: string;
+  uploadedBy?: string;
+  evidenceText?: string;
+  text?: string;
+  snippet?: string;
+  extractedText?: string;
+  confidence?: number;
+  relevance?: string;
+  [key: string]: unknown;
+}
 
 export interface AiFieldResult {
   fieldName?: string;
   value?: unknown;
   confidence?: number;
   evidenceText?: string;
+  sourceDocumentIds?: string[];
   pageNumber?: number;
+  evidence?: CandidateFieldEvidence[];
   validationStatus?: string;
   staffReviewStatus?: FieldReviewStatus;
   managerReviewStatus?: FieldReviewStatus;
   staffReviewComment?: string;
   managerReviewComment?: string;
+  staffReviewedAt?: string;
+  staffReviewedByUserId?: number;
+  managerReviewedAt?: string;
+  managerReviewedByUserId?: number;
   previousManagerReviewStatus?: string;
   previousManagerReviewComment?: string;
   reviewedValue?: unknown;
+  staffReviewedValue?: unknown;
   reviewStatus?: FieldReviewStatus | string; // Synthetic status used by frontend
 }
 
@@ -342,7 +390,7 @@ export interface UpdateCandidateRequest {
   [key: string]: unknown;
 }
 
-export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED';
+export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'REVISION_REQUESTED' | 'CHANGES_REQUESTED';
 export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'OTHER';
 
 export interface WorkbenchDocumentResponse extends ImportJobResponse {
@@ -389,6 +437,17 @@ export interface ProjectTaskSubmissionResponse {
   updatedAt?: string | null;
 }
 
+export interface CandidateWorkflowResponse {
+  candidateId: string;
+  candidateStatus: CandidateStatus;
+  taskId: number;
+  taskStatus: TaskStatus;
+  submissionId?: number | null;
+  submissionStatus?: SubmissionStatus | null;
+  reviewRound?: number | null;
+  candidateDetail?: CandidateResponse | null;
+}
+
 export interface ProjectTaskWorkbenchResponse {
   projectId: number;
   taskId: number;
@@ -429,7 +488,7 @@ export interface AiExtractionResult {
 }
 
 export type AiExtractionJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-export type AiExtractionJobStage = 'PREPARING' | 'EXTRACTING' | 'MERGING' | 'CREATING_CANDIDATE' | 'DONE';
+export type AiExtractionJobStage = 'PREPARING' | 'EXTRACTING' | 'MERGING' | 'CREATING_CANDIDATE' | 'DONE' | 'COMPLETED' | 'FAILED';
 
 export interface AiExtractionJobResponse {
   jobId: string;
@@ -603,6 +662,7 @@ export interface ProjectTaskResponse {
   updatedAt?: string | null;
   completedAt?: string | null;
   taskType: TaskType;
+  targetCompanyProfileId?: string | null;
   availableActions?: string[];
 }
 
@@ -978,17 +1038,22 @@ export interface CompanyDocumentResponse {
   id: string;
   companyProfileId: string;
   sourceDocumentId: string;
-  displayName: string;
-  originalFileName: string;
-  documentType: string;
-  description: string;
-  mimeType: string;
-  fileSize: number;
-  status: string;
-  uploadedBy: { id: number; name: string } | null;
-  uploadedAt: string;
-  approvedBy: { id: number; name: string } | null;
-  approvedAt: string;
+  sourceProjectId?: string | null;
+  sourceProjectName?: string | null;
+  sourceTaskId?: string | null;
+  sourceSubmissionId?: string | null;
+  sourceCandidateId?: string | null;
+  displayName?: string | null;
+  originalFileName?: string | null;
+  documentType?: string | null;
+  description?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  status?: string | null;
+  uploadedBy?: { id: string; name: string } | null;
+  uploadedAt?: string | null;
+  approvedBy?: { id: string; name: string } | null;
+  approvedAt?: string | null;
   previewAvailable: boolean;
   downloadAvailable: boolean;
 }

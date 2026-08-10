@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   AlertTriangle,
@@ -59,6 +60,10 @@ import type {
   CompanyProfileMember,
 } from '../types/domain';
 import { CandidateReviewWorkspace } from '../components/CandidateReview/CandidateReviewWorkspace';
+import { ManagerCandidateReviewWorkspace } from '../components/CandidateReview/ManagerCandidateReviewWorkspace';
+import { CompanyNewsResearchWorkspace } from '../components/CompanyNewsResearchWorkspace';
+import { ManagerNewsReviewWorkspace } from '../components/CompanyNewsResearch/ManagerNewsReviewWorkspace';
+import { ProjectProgressOverview } from '../components/ProjectProgressOverview/ProjectProgressOverview';
 import type {
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
@@ -2905,8 +2910,8 @@ const buildCandidateUpdatePayload = (form: StaffCandidateEditForm): UpdateCandid
 const taskTypeText: Record<TaskType, { title: string; description: string; steps: string[] }> = {
   DOCUMENT_COLLECTION: {
     title: 'Document collection',
-    description: 'Collect and upload evidence documents, then submit them directly to the project.',
-    steps: ['Start work', 'Upload evidence', 'Check documents', 'Complete task'],
+    description: 'Select project documents, run AI extraction, create a candidate draft, correct data, then submit to manager.',
+    steps: ['AI extraction', 'Candidate draft', 'Submit review'],
   },
   COMPANY_DATA_PREPARATION: {
     title: 'Company data preparation',
@@ -2926,7 +2931,7 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
   COMPANY_NEWS_RESEARCH: {
     title: 'Company news research',
     description: 'Find relevant company news, record sources and summaries, save a draft, then submit it for manager review.',
-    steps: ['Start work', 'Review company', 'Add news items', 'Submit review'],
+    steps: ['Start Work', 'Research News', 'Review Drafts', 'Submit Review'],
   },
   GENERAL_TASK: {
     title: 'General task',
@@ -2934,6 +2939,15 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
     steps: ['Start work', 'Add result', 'Submit review'],
   },
 };
+
+const createTaskTypeOptions: Array<{ value: TaskType; label: string }> = [
+  { value: 'GENERAL_TASK', label: 'General task' },
+  { value: 'COMPANY_DATA_PREPARATION', label: 'Company data preparation' },
+  { value: 'COMPANY_MEMBER_RESEARCH', label: 'Company member research' },
+  { value: 'COMPANY_NEWS_RESEARCH', label: 'Company news research' },
+  { value: 'ROLE_EVALUATION', label: 'Role evaluation' },
+  { value: 'DOCUMENT_COLLECTION', label: 'Document collection' },
+];
 
 const emptyCompanyMemberForm: CompanyMemberResearchItem = {
   fullName: '',
@@ -3114,6 +3128,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [selectedManagerReviewTask, setSelectedManagerReviewTask] = useState<ProjectTaskResponse | null>(null);
   const [cancelTaskConfirmOpen, setCancelTaskConfirmOpen] = useState(false);
   const [cancelTaskLoading, setCancelTaskLoading] = useState(false);
+  const [cancelTaskError, setCancelTaskError] = useState<string | null>(null);
+  const cancelTaskDialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelTaskLoadingRef = useRef(false);
   const [candidateReviewTaskContext, setCandidateReviewTaskContext] = useState<{
     projectId: number;
     taskId: number;
@@ -3147,6 +3164,61 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [aiProgress, setAiProgress] = useState<{ percent: number; label: string } | null>(null);
   const [pendingExtractionReviews, setPendingExtractionReviews] = useState<StaffExtractionReview[]>([]);
   const [lastExtractionReviews, setLastExtractionReviews] = useState<StaffExtractionReview[]>([]);
+
+  useEffect(() => {
+    cancelTaskLoadingRef.current = cancelTaskLoading;
+  }, [cancelTaskLoading]);
+
+  useEffect(() => {
+    if (!cancelTaskConfirmOpen) return;
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    window.requestAnimationFrame(() => cancelTaskDialogRef.current?.focus());
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!cancelTaskLoadingRef.current) {
+          setCancelTaskError(null);
+          setCancelTaskConfirmOpen(false);
+        }
+        return;
+      }
+
+      if (event.key !== 'Tab' || !cancelTaskDialogRef.current) return;
+
+      const focusable = Array.from(
+        cancelTaskDialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.offsetParent !== null);
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        cancelTaskDialogRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      previousFocus?.focus();
+    };
+  }, [cancelTaskConfirmOpen]);
   const mergedPendingExtractionReview = useMemo(
     () => mergeStaffExtractionReviews(pendingExtractionReviews),
     [pendingExtractionReviews]
@@ -3155,6 +3227,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [fieldAiLoading, setFieldAiLoading] = useState(false);
   const [fieldAiError, setFieldAiError] = useState<string | null>(null);
   const [staffCandidate, setStaffCandidate] = useState<CandidateResponse | null>(null);
+  const [newsResearchDraftCount, setNewsResearchDraftCount] = useState(0);
   const [staffCandidateEdit, setStaffCandidateEdit] = useState<StaffCandidateEditForm>(emptyStaffCandidateEdit);
   const [candidateReviewTab, setCandidateReviewTab] = useState<CandidateReviewTab>('profile');
   const [staffCandidateLoading, setStaffCandidateLoading] = useState(false);
@@ -3216,6 +3289,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     priority: 'MEDIUM' as ApiTaskPriority,
     dueDate: '',
     taskType: 'GENERAL_TASK' as TaskType,
+    targetCompanyProfileId: '',
   });
   const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
@@ -3239,7 +3313,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       || hasCandidateDraft
       || Boolean(workbench?.documents?.some((document) => document.latestExtractionId));
 
-    if (selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION') {
+    if (selectedStaffTask && ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType)) {
       if (step === 'AI extraction') return extractingSelectedDocuments || selectedProjectDocumentIds.length > 0 || hasAiExtraction;
       if (step === 'Candidate draft') return hasCandidateDraft;
       if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
@@ -3251,6 +3325,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       if (step === 'Review target') return Boolean(workbench?.targetCompanyName || displayedProject.targetCompanyName || workbench?.targetCompanyProfileId);
       if (step === 'Add members') return companyMemberItems.length > 0;
       if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
+      return false;
+    }
+
+    if (selectedStaffTask?.taskType === 'COMPANY_NEWS_RESEARCH') {
+      if (step === 'Start Work') return staffTaskStatus !== 'TODO';
+      if (step === 'Research News') return staffTaskStatus !== 'TODO';
+      if (step === 'Review Drafts') return newsResearchDraftCount > 0;
+      if (step === 'Submit Review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
       return false;
     }
 
@@ -3457,7 +3539,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     priority: projectDetail.priority,
     owner: projectDetail.owner,
     startDate: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
-    dueDate: formatOptionalDate(apiProject?.updatedAt || projectDetail.dueDate),
+    dueDate: formatOptionalDate(apiProject?.plannedEndDate || projectDetail.dueDate),
     targetCompanyName: apiProject?.targetCompanyName,
     description: apiProject?.description,
   }), [apiProject]);
@@ -3475,7 +3557,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [apiTasks, projectMembers]);
 
   useEffect(() => {
-    if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
+    if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
       setProjectDocuments([]);
       setSelectedProjectDocumentIds([]);
       return;
@@ -3808,6 +3890,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setCreateTaskError('Please assign this task to an employee.');
       return;
     }
+    const targetCompanyProfileId = createTaskForm.targetCompanyProfileId || apiProject?.targetCompanyProfileId || '';
+    if (createTaskForm.taskType === 'COMPANY_NEWS_RESEARCH' && !targetCompanyProfileId) {
+      setCreateTaskError('Company news research requires this project to have a target company profile.');
+      return;
+    }
 
     const payload: CreateProjectTaskRequest = {
       title,
@@ -3816,6 +3903,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       priority: createTaskForm.priority,
       dueDate: createTaskForm.dueDate ? new Date(createTaskForm.dueDate).toISOString() : null,
       taskType: createTaskForm.taskType,
+      targetCompanyProfileId: createTaskForm.taskType === 'COMPANY_NEWS_RESEARCH'
+        ? targetCompanyProfileId
+        : undefined,
     };
 
     setCreateTaskLoading(true);
@@ -3833,6 +3923,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         priority: 'MEDIUM',
         dueDate: '',
         taskType: 'GENERAL_TASK',
+        targetCompanyProfileId: '',
       });
       setShowCreateTaskModal(false);
       setToast({ kind: 'success', message: 'Task created successfully.' });
@@ -3913,11 +4004,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setCandidateActionMessage(null);
 
     try {
-      const payload = await candidateApi.approveCandidate(selectedCandidate.id, {
-        relationshipTypeOverride: selectedCandidate.relationshipTypeOverride || selectedCandidate.suggestedRelationshipType || undefined,
-      });
-      if (payload?.data) updateCandidateInList(payload.data);
-
       if (candidateReviewTaskContext?.submissionId) {
         await taskApi.reviewSubmission(
           candidateReviewTaskContext.projectId,
@@ -3928,14 +4014,29 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             comment: 'Candidate approved and Company Profile created.',
           }
         );
+        const payload = await candidateApi.getCandidateById(selectedCandidate.id);
+        if (payload?.data) updateCandidateInList(payload.data);
         updateTaskStatusInState(candidateReviewTaskContext.taskId, 'DONE');
         setCandidateReviewTaskContext(null);
         setSelectedCandidate(null);
         setActiveTab('Kanban Board');
         setToast({ kind: 'success', message: 'Candidate approved, Company Profile created, and task moved to Done.' });
       } else {
+        const payload = await candidateApi.approveCandidateWorkflow(
+          selectedCandidate.id,
+          'Candidate approved and Company Profile created.'
+        );
+        if (payload?.data?.candidateDetail) updateCandidateInList(payload.data.candidateDetail);
         setCandidateActionMessage('Candidate approved successfully.');
       }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate', selectedCandidate.id] });
+      queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+      queryClient.invalidateQueries({ queryKey: ['submissions'] });
+      queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['companyProfiles'] });
     } catch (error) {
       setCandidateError(error instanceof Error ? error.message : 'Cannot approve candidate.');
     } finally {
@@ -4250,12 +4351,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleCancelStaffTask = async () => {
     if (!selectedStaffTask) return;
+    setCancelTaskError(null);
     setCancelTaskConfirmOpen(true);
   };
 
   const confirmCancelStaffTask = async () => {
     if (!selectedStaffTask) return;
     setCancelTaskLoading(true);
+    setCancelTaskError(null);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
 
@@ -4266,7 +4369,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setCancelTaskConfirmOpen(false);
       setWorkbenchMessage('Task has been cancelled.');
     } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot cancel this task.');
+      setCancelTaskError(error instanceof Error ? error.message : 'Unable to cancel task. Please try again.');
     } finally {
       setCancelTaskLoading(false);
     }
@@ -4412,14 +4515,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     try {
       // Async Multi-Document Extraction
-      const documentIds = selectedDocuments.map((doc) => String(doc.id));
-      const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, documentIds);
+      const rawDocumentIds = selectedDocuments.map((doc) => doc.rawDocumentId).filter((id): id is string => Boolean(id));
+      if (rawDocumentIds.length === 0) {
+        setWorkbenchError('The selected documents are unavailable for AI extraction (Missing Raw Document ID).');
+        setExtractingSelectedDocuments(false);
+        return;
+      }
+
+      if (selectedDocuments.length === 1) {
+        setExtractingImportJobId(selectedDocuments[0].id);
+      }
+
+      const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, rawDocumentIds);
       if (res.success && res.data && res.data.jobId) {
         setExtractionJobId(res.data.jobId);
       }
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot run AI extraction.');
       setExtractingSelectedDocuments(false);
+      setExtractingImportJobId(null);
     }
   };
 
@@ -4694,20 +4808,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setWorkbenchMessage(null);
 
     try {
-      const candidatePayload = await candidateApi.submitCandidate(staffCandidate.id);
+      const workflowPayload = await candidateApi.submitCandidateWorkflow(staffCandidate.id, selectedStaffTask.id);
+      const { candidateStatus, taskStatus, candidateDetail } = workflowPayload.data;
+      
       setStaffCandidate(null);
       setStaffCandidateEdit(emptyStaffCandidateEdit);
 
-      await taskApi.submitTask(selectedStaffTask.projectId, selectedStaffTask.id, {
-        submissionType: 'COMPANY_CANDIDATE',
-        targetEntityType: 'CompanyCandidate',
-        targetEntityId: candidatePayload.data.id,
-        note: 'Candidate submitted for manager review.',
-      });
-
       const taskRes = await taskApi.getProjectTasks(selectedStaffTask.projectId);
       if (taskRes.success && taskRes.data) {
-        // Find the fresh task from the paginated result or list. `getProjectTasks` might return a PageResult, let's unwrap it
+        // Find the fresh task from the paginated result or list.
         const rows = 'content' in taskRes.data ? taskRes.data.content : taskRes.data;
         const freshTask = (rows as ProjectTaskResponse[]).find((t: ProjectTaskResponse) => t.id === selectedStaffTask.id);
         if (freshTask) {
@@ -4718,14 +4827,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         }
       }
       
-      setWorkbenchMessage(`Selected candidate draft ${candidatePayload.data.id.slice(-8)} submitted to manager review.`);
-
+      setWorkbenchMessage(`Selected candidate draft ${candidateDetail?.id?.slice(-8) || staffCandidate.id.slice(-8)} submitted to manager review.`);
       setTaskRefreshTick((current) => current + 1);
 
       if (queryClient) {
         queryClient.invalidateQueries({ queryKey: ['candidates'] });
         queryClient.invalidateQueries({ queryKey: ['candidate', staffCandidate.id] });
         queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
         queryClient.invalidateQueries({ queryKey: ['project'] });
         queryClient.invalidateQueries({ queryKey: ['submissions'] });
         queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
@@ -4918,7 +5027,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const managerCandidateDrafts = useMemo(() => {
     const drafts = workbench?.candidateDrafts ?? [];
-    if (!selectedManagerReviewTask || selectedManagerReviewTask.taskType !== 'COMPANY_DATA_PREPARATION') return [];
+    if (!selectedManagerReviewTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType)) return [];
 
     if (selectedManagerReviewTask.status === 'DONE') {
       return drafts.filter((draft) =>
@@ -5014,6 +5123,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={styles.metaItem}><span>Due date</span><strong>{displayedProject.dueDate}</strong></div>
             </div>
           </motion.header>
+
+          <ProjectProgressOverview
+            totalTasks={apiProject?.totalTasks}
+            completedTasks={apiProject?.completedTasks}
+            progressPercentage={apiProject?.progressPercentage}
+            isOverdue={apiProject?.isOverdue}
+            plannedEndDate={apiProject?.plannedEndDate}
+            projectStatus={apiProject?.status}
+          />
 
           <nav className={styles.tabs} aria-label="Project navigation tabs">
             {visibleTabs.map((tab) => (
@@ -5555,15 +5673,42 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <span>Task type</span>
                   <select
                     value={createTaskForm.taskType}
-                    onChange={(event) => setCreateTaskForm((current) => ({ ...current, taskType: event.target.value as TaskType }))}
+                    onChange={(event) => {
+                      const taskType = event.target.value as TaskType;
+                      setCreateTaskForm((current) => ({
+                        ...current,
+                        taskType,
+                        targetCompanyProfileId: taskType === 'COMPANY_NEWS_RESEARCH'
+                          ? current.targetCompanyProfileId || apiProject?.targetCompanyProfileId || ''
+                          : '',
+                      }));
+                    }}
                   >
-                    <option value="GENERAL_TASK">General task</option>
-                    <option value="DOCUMENT_COLLECTION">Document collection</option>
-                    <option value="COMPANY_DATA_PREPARATION">Company data preparation</option>
-                    <option value="ROLE_EVALUATION">Role evaluation</option>
-                    <option value="COMPANY_MEMBER_RESEARCH">Company member research</option>
+                    {createTaskTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
+                  {createTaskForm.taskType === 'COMPANY_NEWS_RESEARCH' && (
+                    <small className={styles.fieldHint}>
+                      Uses this project's target company profile for news research.
+                    </small>
+                  )}
                 </label>
+
+                {createTaskForm.taskType === 'COMPANY_NEWS_RESEARCH' && (
+                  <label className={styles.inviteField}>
+                    <span>Target Company *</span>
+                    <input
+                      value={displayedProject.targetCompanyName || apiProject?.targetCompanyName || createTaskForm.targetCompanyProfileId || ''}
+                      readOnly
+                    />
+                    <small className={styles.fieldHint}>
+                      Profile ID: {createTaskForm.targetCompanyProfileId || apiProject?.targetCompanyProfileId || 'No target company profile linked to this project.'}
+                    </small>
+                  </label>
+                )}
 
                 <label className={`${styles.inviteField} ${styles.fullField}`}>
                   <span>Description</span>
@@ -5718,7 +5863,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
                 <div>
                   <span>Task type</span>
-                  <strong>{selectedStaffTask.taskType.replace(/_/g, ' ')}</strong>
+                  <strong>{taskTypeText[selectedStaffTask.taskType].title}</strong>
                 </div>
                 <div>
                   <span>Due date</span>
@@ -5775,9 +5920,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 ))}
               </div>
 
-              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''}`}>
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain}>
-                  {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' ? (
+                  {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                   <>
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
@@ -5796,6 +5941,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </button>
                     </div>
 
+                    <label className={styles.workbenchUploadBox} style={{ marginTop: '16px', marginBottom: '16px' }}>
+                      <input
+                        type="file"
+                        onChange={(event) => {
+                          void handleUploadEvidence(event.target.files?.[0] ?? null);
+                          event.currentTarget.value = '';
+                        }}
+                        disabled={!canUseStaffWorkbench || uploadingEvidence}
+                      />
+                      <FileText size={24} />
+                      <strong>{uploadingEvidence ? 'Uploading document...' : 'Upload document'}</strong>
+                      <span>Upload a new file to the project document library.</span>
+                    </label>
+
                     <div className={styles.documentSelectionSummary}>
                       <span>{projectDocuments.length} project document(s)</span>
                       <span>{selectedProjectDocumentIds.length} selected</span>
@@ -5805,25 +5964,53 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div className={styles.aiProgressPanel}>
                         <div className={styles.aiProgressHead}>
                           <div>
-                            <strong>AI is running</strong>
-                            <span>{extractionJob.stage === 'PREPARING' ? 'Preparing documents...' : 
-                                   extractionJob.stage === 'EXTRACTING' ? 'Extracting information...' : 
-                                   extractionJob.stage === 'MERGING' ? 'Merging extracted information...' : 
-                                   extractionJob.stage === 'CREATING_CANDIDATE' ? 'Creating candidate draft...' :
-                                   extractionJob.stage === 'COMPLETED' ? 'Completed' : 'Processing...'}</span>
+                            <strong>AI Extraction</strong>
+                            <span>Processing {extractionJob.totalDocuments > 0 ? extractionJob.totalDocuments : (selectedProjectDocumentIds.length || 1)} document(s)</span>
                           </div>
                           <b>
-                            {extractionJob.status === 'COMPLETED' ? '100%' : 'Processing...'}
+                            {extractionJob.status === 'COMPLETED' ? '100%' :
+                             extractionJob.status === 'FAILED' ? 'Failed' :
+                             extractionJob.progress != null ? `${extractionJob.progress}%` :
+                             'Processing...'}
                           </b>
                         </div>
+                        
                         <div className={styles.aiProgressTrack}>
                           {extractionJob.status === 'COMPLETED' ? (
                             <span style={{ width: '100%' }} />
+                          ) : extractionJob.status === 'FAILED' ? (
+                            <span style={{ width: '100%', backgroundColor: 'var(--error)' }} />
+                          ) : extractionJob.progress != null ? (
+                            <span style={{ width: `${extractionJob.progress}%` }} />
                           ) : (
                             <span className={styles.indeterminateBar} />
                           )}
                         </div>
-                        <small>Please keep this modal open while AI is processing.</small>
+
+                        <div className={styles.aiProgressChecklist}>
+                          <div className={styles.checklistRow}>
+                            <span>{extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
+                          </div>
+                          <div className={styles.checklistRow}>
+                            <span>{extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> AI analysis in progress
+                          </div>
+                          <div className={styles.checklistRow}>
+                            <span>{extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Merging results
+                          </div>
+                          <div className={styles.checklistRow}>
+                            <span>{extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Creating candidate draft
+                          </div>
+                        </div>
+
+                        {extractionJob.status === 'FAILED' && (
+                          <div className={styles.aiProgressError}>
+                            {extractionJob.errorMessage || 'Extraction failed.'}
+                          </div>
+                        )}
+                        
+                        {extractionJob.status !== 'COMPLETED' && extractionJob.status !== 'FAILED' && (
+                          <small>Please keep this modal open while AI is processing.</small>
+                        )}
                       </div>
                     )}
 
@@ -5936,7 +6123,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   )}
 
                   {staffCandidate && (
-                  <section className={styles.workbenchPanel}>
+                  <section className={`${styles.workbenchPanel} ${styles.candidateWorkbenchPanel}`}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
                         <h3>Candidate detail</h3>
@@ -5983,6 +6170,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </section>
                   )}
                   </>
+                  ) : selectedStaffTask.taskType === 'COMPANY_NEWS_RESEARCH' ? (
+                  <CompanyNewsResearchWorkspace
+                    projectId={currentProjectId}
+                    taskId={selectedStaffTask.id}
+                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                    canEdit={canUseStaffWorkbench}
+                    onDraftCountChange={setNewsResearchDraftCount}
+                    onSubmitSuccess={() => {
+                      void loadStaffWorkbench(selectedStaffTask);
+                      setTaskRefreshTick((current) => current + 1);
+                    }}
+                    onClose={() => setSelectedStaffTask(null)}
+                  />
                   ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
@@ -6374,8 +6574,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   )}
                 </main>
 
+                {!staffCandidate && (
                 <aside className={styles.workbenchSidebar}>
-                  {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' ? (
+                  {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                     <>
                     <section className={styles.workbenchPanel}>
                       <h3>Candidate drafts</h3>
@@ -6389,7 +6590,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                           return (
                             <article
-                              className={`${styles.draftItem} ${styles.draftItemWithActions} ${staffCandidate?.id === draft.candidateId ? styles.draftItemActive : ''}`}
+                              className={`${styles.draftItem} ${styles.draftItemWithActions}`}
                               key={draft.candidateId}
                             >
                               <button
@@ -6431,7 +6632,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                           return (
                             <article
-                              className={`${styles.draftItem} ${styles.draftItemWithActions} ${staffCandidate?.id === draft.candidateId ? styles.draftItemActive : ''}`}
+                              className={`${styles.draftItem} ${styles.draftItemWithActions}`}
                               key={draft.candidateId}
                             >
                               <button
@@ -6465,7 +6666,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </div>
                     </section>
                     </>
-                  ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? null : (
+                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH'].includes(selectedStaffTask.taskType) ? null : (
                     <section className={styles.workbenchPanel}>
                       <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
                       <div className={styles.workbenchHintList}>
@@ -6508,82 +6709,107 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </div>
                   </section>
                 </aside>
+                )}
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-      <AnimatePresence>
-        {cancelTaskConfirmOpen && selectedStaffTask && (
-          <motion.div
-            className={styles.modalOverlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => {
-              if (!cancelTaskLoading) setCancelTaskConfirmOpen(false);
-            }}
-          >
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {cancelTaskConfirmOpen && selectedStaffTask && (
             <motion.div
-              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="cancel-task-title"
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
-              onClick={(event) => event.stopPropagation()}
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!cancelTaskLoading) {
+                  setCancelTaskError(null);
+                  setCancelTaskConfirmOpen(false);
+                }
+              }}
             >
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>Cancel task</span>
-                  <h2 id="cancel-task-title">Confirm task cancellation</h2>
-                  <p>
-                    Are you sure you want to cancel <strong>APMS-{selectedStaffTask.id}</strong>? This task will move to Cancelled status.
-                  </p>
+              <motion.div
+                ref={cancelTaskDialogRef}
+                className={styles.nestedConfirmDialog}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cancel-task-title"
+                aria-describedby="cancel-task-description"
+                tabIndex={-1}
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className={styles.nestedConfirmHead}>
+                  <div className={styles.nestedConfirmIcon}>
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <span className={styles.taskKey}>Cancel task</span>
+                    <h2 id="cancel-task-title">Cancel task?</h2>
+                    <p id="cancel-task-description">
+                      Are you sure you want to cancel <strong>APMS-{selectedStaffTask.id}</strong>? This action will stop the current task progress.
+                    </p>
+                  </div>
+                  <button
+                    className={styles.iconButton}
+                    type="button"
+                    aria-label="Close cancel task confirmation"
+                    onClick={() => {
+                      setCancelTaskError(null);
+                      setCancelTaskConfirmOpen(false);
+                    }}
+                    disabled={cancelTaskLoading}
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <button
-                  className={styles.iconButton}
-                  type="button"
-                  aria-label="Close cancel task confirmation"
-                  onClick={() => setCancelTaskConfirmOpen(false)}
-                  disabled={cancelTaskLoading}
-                >
-                  <X size={18} />
-                </button>
-              </div>
 
-              <div className={styles.deleteTaskPreview}>
-                <X size={20} />
-                <div>
-                  <strong>{selectedStaffTask.title}</strong>
-                  <span>{selectedStaffTask.taskType.replace(/_/g, ' ')}</span>
+                <div className={styles.deleteTaskPreview}>
+                  <X size={20} />
+                  <div>
+                    <strong>{selectedStaffTask.title}</strong>
+                    <span>{taskTypeText[selectedStaffTask.taskType].title}</span>
+                  </div>
                 </div>
-              </div>
 
-              <div className={styles.modalActions}>
-                <button
-                  className={styles.button}
-                  type="button"
-                  onClick={() => setCancelTaskConfirmOpen(false)}
-                  disabled={cancelTaskLoading}
-                >
-                  Keep working
-                </button>
-                <button
-                  className={`${styles.button} ${styles.dangerButton}`}
-                  type="button"
-                  onClick={() => void confirmCancelStaffTask()}
-                  disabled={cancelTaskLoading}
-                >
-                  {cancelTaskLoading ? 'Cancelling...' : 'Cancel task'}
-                </button>
-              </div>
+                {cancelTaskError && (
+                  <div className={styles.inlineError}>
+                    {cancelTaskError}
+                  </div>
+                )}
+
+                <div className={styles.modalActions}>
+                  <button
+                    className={styles.button}
+                    type="button"
+                    onClick={() => {
+                      setCancelTaskError(null);
+                      setCancelTaskConfirmOpen(false);
+                    }}
+                    disabled={cancelTaskLoading}
+                  >
+                    Keep Task
+                  </button>
+                  <button
+                    className={`${styles.button} ${styles.dangerButton}`}
+                    type="button"
+                    onClick={() => void confirmCancelStaffTask()}
+                    disabled={cancelTaskLoading}
+                  >
+                    {cancelTaskLoading ? 'Cancelling...' : 'Cancel Task'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
       <AnimatePresence>
         {candidateDraftPendingDelete && (
           <motion.div
@@ -6677,6 +6903,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               transition={{ type: 'spring', stiffness: 360, damping: 30 }}
               onClick={(event) => event.stopPropagation()}
             >
+              {selectedManagerReviewTask.taskType === 'COMPANY_NEWS_RESEARCH' ? (
+                <ManagerNewsReviewWorkspace
+                  projectId={currentProjectId}
+                  taskId={selectedManagerReviewTask.id}
+                  taskTitle={selectedManagerReviewTask.title}
+                  taskDescription={selectedManagerReviewTask.description || taskTypeText[selectedManagerReviewTask.taskType].description}
+                  taskStatus={workbench?.taskStatus || selectedManagerReviewTask.status}
+                  dueDate={selectedManagerReviewTask.dueDate}
+                  targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                  assignedToName={selectedManagerReviewTask.assignedToName}
+                  workbenchSubmissions={workbench?.submissions}
+                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onReviewed={() => {
+                    void loadManagerWorkbench(selectedManagerReviewTask);
+                    setTaskRefreshTick((current) => current + 1);
+                  }}
+                />
+              ) : (
+                <>
               <div className={styles.inviteHead}>
                 <div>
                   <span className={styles.taskKey}>
@@ -6699,15 +6944,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
               <div className={styles.workbenchStatusRow}>
                 <div><span>Status</span><strong>{workbench?.taskStatus || selectedManagerReviewTask.status}</strong></div>
-                <div><span>Task type</span><strong>{selectedManagerReviewTask.taskType.replace(/_/g, ' ')}</strong></div>
+                <div><span>Task type</span><strong>{taskTypeText[selectedManagerReviewTask.taskType].title}</strong></div>
                 <div><span>Assignee</span><strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong></div>
                 <div><span>Due date</span><strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong></div>
               </div>
 
               <div className={styles.staffWorkbenchGrid}>
                 <main className={styles.workbenchMain}>
-                  {selectedManagerReviewTask.taskType !== 'COMPANY_DATA_PREPARATION'
-                    && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                  {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
@@ -6777,7 +7021,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-                  {selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && (
+                  {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
                     <section className={styles.workbenchPanel}>
                       <div className={styles.workbenchPanelHead}>
                         <div>
@@ -6835,7 +7079,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-                  {selectedManagerReviewTask.taskType !== 'ROLE_EVALUATION' && (
+                  {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
@@ -6847,12 +7091,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'This company member research has been approved. The members were applied to the Company Profile.'
                                 : 'This task has already been approved. The submitted evidence remains available for audit.'
-                              : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION'
+                              : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType)
                                 ? 'Review the submitted candidate before approving. Approval creates the Company Profile and completes this task.'
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'Review the submitted members and source URLs, then approve to apply them to the Company Profile or reject to return it to staff.'
-                                : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
-                                  ? 'Review the uploaded documents, then approve to move the task to Done or reject to return it to staff.'
                                 : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
                           </p>
                       </div>
@@ -6860,7 +7102,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                     {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
                       <div className={styles.inlineSuccess}>Documents were approved and are available in the project Documents tab.</div>
-                    ) : selectedManagerReviewTask.taskType === 'COMPANY_DATA_PREPARATION' && selectedManagerReviewTask.status !== 'DONE' ? (
+                    ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>
                         <button
                           className={`${styles.button} ${styles.primaryButton}`}
@@ -6930,6 +7172,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                 </aside>
               </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
@@ -6950,7 +7194,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             ? managerCandidateTabs
             : managerCandidateTabs.filter((tab) => tab.id !== 'decision');
 
-          return (
+          return isManager && (selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'REVISION_REQUIRED') ? (
+            <ManagerCandidateReviewWorkspace
+              projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
+              candidateId={selectedCandidate.id}
+              taskId={candidateReviewTaskContext?.taskId}
+              submissionId={candidateReviewTaskContext?.submissionId || undefined}
+              onReviewed={() => {
+                setSelectedCandidate(null);
+                setCandidateReviewTaskContext(null);
+                setTaskRefreshTick((current) => current + 1);
+              }}
+              onCancel={() => {
+                setSelectedCandidate(null);
+                setCandidateReviewTaskContext(null);
+              }}
+            />
+          ) : (
             <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedCandidate(null)}>
               <motion.div
                 className={`${styles.inviteModal} ${styles.candidateModal}`}

@@ -3,28 +3,12 @@ import { api } from '../services/api';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse } from '../types/domain';
+import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
 import {
   ListingTabBar,
   ListingTabContent,
   type ListingTabId,
 } from './companyDetail/ListingTabs';
-
-export interface ScoreSnapshot {
-  scoreSnapshotId: number;
-  companyId: string;
-  companyName?: string;
-  projectId: string;
-  candidateId: string;
-  partnerFitScore: number;
-  competitionLevel: number;
-  riskLevel: number;
-  relationshipStrength: number;
-  totalScore: number;
-  factorsJson: string;
-  ruleVersion: string;
-  generatedBy: string;
-  createdAt: string;
-}
 
 interface CompanyDetailProps {
   companyId?: string;
@@ -99,7 +83,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const { currentUser } = useUser();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [sources, setSources] = useState<ProfileSourcesResponse | null>(null);
-  const [recentScore, setRecentScore] = useState<ScoreSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [listingEditing, setListingEditing] = useState(false);
@@ -129,20 +112,14 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       setError(null);
 
       try {
-        const [profileRes, sourcesRes, scoreRes] = await Promise.all([
+        const [profileRes, sourcesRes] = await Promise.all([
           api.get<ProfileResponse>(`/profiles/${resolvedId}`, { signal: controller.signal }),
           api.get<ProfileSourcesResponse>(`/profiles/${resolvedId}/sources`, { signal: controller.signal }).catch(() => null),
-          api.get<ScoreSnapshot[]>('/dashboard/recent-scores', { signal: controller.signal }).catch(() => null),
         ]);
 
         if (controller.signal.aborted) return;
         setProfile(profileRes.data ?? null);
         setSources(sourcesRes?.data ?? null);
-
-        if (scoreRes?.data && Array.isArray(scoreRes.data)) {
-          const match = scoreRes.data.find((s) => s.companyId === resolvedId);
-          setRecentScore(match || null);
-        }
       } catch (err) {
         if (!controller.signal.aborted) {
           setProfile(null);
@@ -169,6 +146,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const ticker = profile?.stockTicker?.trim() || '';
   const exchange = profile?.stockExchange || 'NONE';
   const exchangeLabel = (ex?: string) => (ex && ex !== 'NONE' ? ex : 'Chưa niêm yết');
+  const relationshipClosenessProfileId = profile?.id || resolvedId;
 
   const startListingEdit = () => {
     setTickerDraft(ticker);
@@ -602,96 +580,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 </section>
 
                 {/* Panel 3: AI Strategic & Risk Assessment */}
-                <section style={C.card}>
-                  <div style={C.cardHeader}>
-                    <h2 style={C.h2}>Đánh giá Chiến lược & Rủi ro (AI Assessment)</h2>
-                  </div>
-
-                  {recentScore ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {/* Fit Score Progress Bar */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Điểm Phù Hợp Đối Tác (Partner Fit Score)</span>
-                          <strong style={{ color: '#16A34A', fontWeight: 700 }}>{recentScore.partnerFitScore} / 100</strong>
-                        </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.partnerFitScore}%`,
-                              height: '100%',
-                              background: recentScore.partnerFitScore >= 70 ? '#16A34A' : '#D97706',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Risk Level Progress Bar */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Rủi Ro (Risk Level)</span>
-                          <strong style={{ color: recentScore.riskLevel <= 30 ? '#16A34A' : '#D97706', fontWeight: 700 }}>
-                            {recentScore.riskLevel} / 100 (Thấp)
-                          </strong>
-                        </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.riskLevel}%`,
-                              height: '100%',
-                              background: recentScore.riskLevel <= 30 ? '#16A34A' : recentScore.riskLevel <= 60 ? '#D97706' : '#DC2626',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Competition Level */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px', fontSize: '0.72rem' }}>
-                          <span style={{ fontWeight: 600, color: '#334155' }}>Mức Độ Cạnh Tranh (Competition Level)</span>
-                          <strong style={{ color: '#2563EB', fontWeight: 700 }}>{recentScore.competitionLevel} / 100</strong>
-                        </div>
-                        <div style={{ height: '6px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${recentScore.competitionLevel}%`,
-                              height: '100%',
-                              background: '#2563EB',
-                              borderRadius: '6px',
-                              transition: 'width 0.5s ease',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Light theme empty state */
-                    <div
-                      style={{
-                        padding: '12px 14px',
-                        textAlign: 'center',
-                        background: '#F8FAFC',
-                        borderRadius: '8px',
-                        border: '1px dashed #CBD5E1',
-                      }}
-                    >
-                      <h3 style={{ margin: '0 0 2px', fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>
-                        Chưa có kết quả chấm điểm AI
-                      </h3>
-                      <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748B' }}>
-                        Doanh nghiệp này chưa thực hiện quy trình đánh giá điểm số rủi ro & phù hợp tự động.
-                      </p>
-                    </div>
-                  )}
-                </section>
               </div>
 
               {/* Right Column */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <CompanyRelationshipClosenessPanel
+                  companyProfileId={relationshipClosenessProfileId}
+                  currentUserRole={currentUser?.role}
+                />
+
                 {/* Card 3: Quick Info Summary */}
                 <section style={C.card}>
                   <div style={C.cardHeader}>
@@ -766,7 +663,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
           </>
         ) : (
-          <ListingTabContent companyId={resolvedId} activeTab={activeTab} userRole={currentUser?.role} />
+          <ListingTabContent
+            companyId={resolvedId}
+            companyProfileId={relationshipClosenessProfileId}
+            activeTab={activeTab}
+            userRole={currentUser?.role}
+          />
         )}
       </div>
     </div>

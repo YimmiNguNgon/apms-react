@@ -19,6 +19,7 @@ interface ListingTabsProps {
 
 interface ListingTabContentProps {
   companyId: string;
+  companyProfileId?: string;
   activeTab: ListingTabId;
   userRole?: string | null;
 }
@@ -40,7 +41,7 @@ export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChan
   </div>
 );
 
-export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId, activeTab, userRole }) => {
+export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId, companyProfileId, activeTab, userRole }) => {
   switch (activeTab) {
     case 'listing-info':
       return <ListingInfoTab companyId={companyId} />;
@@ -51,7 +52,7 @@ export const ListingTabContent: React.FC<ListingTabContentProps> = ({ companyId,
     case 'news':
       return <NewsTab companyId={companyId} />;
     case 'documents':
-      return <DocumentsTab companyId={companyId} />;
+      return <DocumentsTab companyProfileId={companyProfileId || companyId} />;
     case 'confidential-news':
       return <ConfidentialNewsTab companyId={companyId} userRole={userRole} />;
     default:

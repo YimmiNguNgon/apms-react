@@ -1,5 +1,5 @@
 import { api } from "../services/api";
-import type { ApproveCandidateRequest, CandidateResponse, PageResult, RejectCandidateRequest, UpdateCandidateRequest } from "../types/domain";
+import type { ApproveCandidateRequest, CandidateResponse, CandidateWorkflowResponse, PageResult, RejectCandidateRequest, UpdateCandidateRequest } from "../types/domain";
 
 export const candidateApi = {
   getProjectCandidates: async (projectId: number) => {
@@ -33,6 +33,28 @@ export const candidateApi = {
   submitCandidate: async (candidateId: string) => {
     return api.post<CandidateResponse>(
       `/candidates/${candidateId}/submit`
+    );
+  },
+
+  submitCandidateWorkflow: async (candidateId: string, taskId: number) => {
+    return api.post<CandidateWorkflowResponse>(
+      `/candidates/${candidateId}/workflow/submit?taskId=${taskId}`
+    );
+  },
+
+  rejectCandidateWorkflow: async (candidateId: string, comment?: string) => {
+    return api.post<CandidateWorkflowResponse>(
+      `/candidates/${candidateId}/workflow/manager-reject`,
+      undefined,
+      { params: { comment } }
+    );
+  },
+
+  approveCandidateWorkflow: async (candidateId: string, comment?: string) => {
+    return api.post<CandidateWorkflowResponse>(
+      `/candidates/${candidateId}/workflow/manager-approve`,
+      undefined,
+      { params: { comment } }
     );
   },
 
