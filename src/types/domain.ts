@@ -1127,6 +1127,11 @@ export interface OwnerCompanyIntelligenceResponse {
     whyItMatters: string[];
     confidence: number | null;
   };
+  aiSummary: {
+    available: boolean;
+    content: string | null;
+    status: 'AVAILABLE' | 'NO_DATA';
+  };
   news: Array<{
     id: string;
     title: string;

@@ -204,6 +204,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   const [news, setNews] = useState<ExternalDataItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [intelligenceById, setIntelligenceById] = useState<Record<string, CompanyIntelligenceSummary>>({});
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState('attention');
 
@@ -323,7 +324,11 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const controller = new AbortController();
     const companyRows = allRows.filter((row) => !row.id.startsWith('project-company-'));
     const missingRows = companyRows.filter((row) => !intelligenceById[row.id]);
-    if (missingRows.length === 0) return () => controller.abort();
+    if (missingRows.length === 0) {
+      setIntelligenceLoading(false);
+      return () => controller.abort();
+    }
+    setIntelligenceLoading(true);
 
     void Promise.allSettled(missingRows.map(async (row) => {
       const response = await api.get<any>(`/owner/company-intelligence/${row.id}`, { signal: controller.signal });
@@ -358,17 +363,35 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       if (controller.signal.aborted) return;
       const updates = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
       if (updates.length) setIntelligenceById((current) => ({ ...current, ...Object.fromEntries(updates) }));
+      setIntelligenceLoading(false);
     });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      setIntelligenceLoading(false);
+    };
   }, [allRows, intelligenceById]);
 
-  const intelligenceFor = useCallback((row: PartnerRow): CompanyIntelligenceSummary => intelligenceById[row.id] ?? {
-    businessImpact: null,
-    strategicRelevance: null,
-    impactTrend: null,
-    whyItMatters: null,
-    lastUpdated: null,
-    signals: [],
+  const intelligenceFor = useCallback((row: PartnerRow): CompanyIntelligenceSummary => {
+    const intelligence = intelligenceById[row.id];
+    const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
+    const verifiedRelationship = ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship);
+
+    // A confirmed graph relationship is valid operational evidence even when the
+    // optional intelligence profile has no enrichment yet. Do not synthesize
+    // news, trends, or timestamps without a backing record.
+    const baselineStrategicRelevance: ImpactLevel = activeProject && ['Partner', 'Supplier'].includes(row.relationship)
+      ? 'HIGH'
+      : verifiedRelationship ? 'MEDIUM' : null;
+    const baselineBusinessImpact: ImpactLevel = activeProject ? 'HIGH' : verifiedRelationship ? 'MEDIUM' : null;
+
+    return {
+      businessImpact: intelligence?.businessImpact ?? baselineBusinessImpact,
+      strategicRelevance: intelligence?.strategicRelevance ?? baselineStrategicRelevance,
+      impactTrend: intelligence?.impactTrend ?? null,
+      whyItMatters: intelligence?.whyItMatters ?? null,
+      lastUpdated: intelligence?.lastUpdated ?? null,
+      signals: intelligence?.signals ?? [],
+    };
   }, [intelligenceById]);
 
   const attentionPriority = useCallback((row: PartnerRow): 'HIGH' | 'MEDIUM' | 'LOW' => {
@@ -377,6 +400,10 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
     if (intelligence.businessImpact === 'HIGH' || intelligence.businessImpact === 'CRITICAL' || (intelligence.strategicRelevance === 'HIGH' && recentSignal) || (activeProject && recentSignal)) return 'HIGH';
     if (intelligence.strategicRelevance === 'HIGH' || intelligence.strategicRelevance === 'MEDIUM' || intelligence.impactTrend === 'UP') return 'MEDIUM';
+    // Graph relationships and active projects are already verified APMS evidence.
+    // Use them as a fallback when the intelligence endpoint cannot resolve a
+    // profile/graph identifier to a relationship record.
+    if (activeProject || ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship)) return 'MEDIUM';
     return 'LOW';
   }, [intelligenceFor]);
 
@@ -389,6 +416,28 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     .flatMap((intelligence) => intelligence.signals)
     .sort((left, right) => new Date(right.date || 0).getTime() - new Date(left.date || 0).getTime())
     .slice(0, 8), [intelligenceById]);
+
+  const displayedSignals = useMemo((): EcosystemSignal[] => {
+    if (recentSignals.length > 0) return recentSignals;
+
+    // When the crawler has not supplied news yet, graph relationships remain
+    // useful, verified APMS business signals. They are clearly identified as
+    // internal relationship evidence rather than presented as external news.
+    return allRows
+      .filter((row) => ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship))
+      .slice(0, 8)
+      .map((row) => ({
+        id: `relationship-${row.id}`,
+        companyId: row.id,
+        companyName: row.name,
+        title: `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`,
+        category: 'RELATIONSHIP',
+        date: row.lastUpdated,
+        businessImpact: intelligenceFor(row).businessImpact,
+        source: 'APMS graph',
+        sourceUrl: null,
+      }));
+  }, [allRows, intelligenceFor, recentSignals]);
 
   const activeProjectCount = useMemo(() => projects.filter((project) => project.status === 'ACTIVE' && Boolean(project.targetCompanyProfileId || project.targetCompanyName)).length, [projects]);
 
@@ -411,6 +460,11 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       return right.projects.filter((project) => project.status === 'ACTIVE').length - left.projects.filter((project) => project.status === 'ACTIVE').length;
     });
   }, [allRows, search, filterIndustry, filterRel, filterStatus, filterImportance, intelligenceFor, attentionPriority]);
+
+  const attentionRows = useMemo(
+    () => filteredRows.filter((row) => attentionPriority(row) !== 'LOW'),
+    [filteredRows, attentionPriority],
+  );
 
   // ── KPI metrics ───────────────────────────────────────────────────────────
   const totalPartners    = allRows.length;
@@ -914,7 +968,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
 
           <section className="ecosystem-attention" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
             <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Doanh nghiệp cần Owner quan tâm</h2>
-          {filteredRows.filter((row) => attentionPriority(row) !== 'LOW').slice(0, 5).map((row) => {
+          {attentionRows.slice(0, 5).map((row) => {
             const intelligence = intelligenceFor(row);
             const signal = latestSignalFor(row);
             return (
@@ -936,25 +990,26 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
                 <div style={{ minWidth: 0 }}>
                   <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Tín hiệu gần đây</span>
                   <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {signal?.title || 'Chưa ghi nhận tín hiệu'}
+                    {signal?.title || `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`}
                   </div>
-                  {signal?.date && (
-                    <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px' }}>
-                      {formatDate(signal.date)}
-                    </div>
-                  )}
+                  <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px' }}>
+                    {signal?.date ? formatDate(signal.date) : 'Chưa có tín hiệu tin tức được thu thập'}
+                  </div>
                 </div>
                 <div>
                   <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Cập nhật</span>
                   <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
-                    {formatDate(intelligence.lastUpdated || row.lastUpdated)}
+                    {intelligence.lastUpdated || row.lastUpdated
+                      ? formatDate(intelligence.lastUpdated || row.lastUpdated)
+                      : 'Quan hệ đã xác minh'}
                   </div>
                 </div>
                 <SecondaryButton size="sm" onClick={() => openCompanyDetail(row)}>Xem công ty</SecondaryButton>
               </div>
             );
           })}
-          {filteredRows.every((row) => attentionPriority(row) === 'LOW') && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
+          {!intelligenceLoading && attentionRows.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
+          {intelligenceLoading && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang xác minh tín hiệu doanh nghiệp...</p>}
           </section>
         </>
       )}
@@ -963,7 +1018,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       {mainTab === 'signals' && (
         <section className="ecosystem-signals" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
           <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Tín hiệu kinh doanh gần đây</h2>
-        {recentSignals.length > 0 && (
+        {displayedSignals.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--cds-border-subtle-00)', fontWeight: 600, fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
             <div>Doanh nghiệp / Phân loại</div>
             <div>Tín hiệu / Tin tức</div>
@@ -972,7 +1027,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
             <div>Nguồn bằng chứng</div>
           </div>
         )}
-        {recentSignals.map((signal) => (
+        {displayedSignals.map((signal) => (
           <div className="ecosystem-signal-row" key={`${signal.companyId}-${signal.id}`} style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
             <div>
               <strong style={{ fontSize: '12px', color: 'var(--cds-text-primary)' }}>{signal.companyName}</strong>
@@ -989,7 +1044,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
               </span>
             </div>
             <div>
-              <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{formatDate(signal.date)}</span>
+              <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.date ? formatDate(signal.date) : 'Đã xác minh'}</span>
             </div>
             <div>
               {signal.sourceUrl ? (
@@ -1003,7 +1058,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
             </div>
           </div>
         ))}
-        {recentSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
+        {displayedSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
         </section>
       )}
 
@@ -1180,3 +1235,4 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     </div>
   );
 };
+

@@ -33,7 +33,7 @@ export interface TimelineEvent {
   summary: string;
   source: string;
   sourceUrl?: string | null;
-  importance: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  importance: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | null;
   sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
   confidence?: number | null;
   rawDate?: string;
@@ -61,6 +61,7 @@ export interface MarketExpansionItem {
   impact: string;
   source: string;
   sourceUrl: string | null;
+  date?: string | null;
 }
 
 export interface HiringItem {
@@ -101,10 +102,10 @@ export interface EnterpriseCompetitor {
   industry: string;
   country: string;
   threatScore: number;
-  threatTrend: 'UP' | 'DOWN' | 'STABLE';
-  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  threatTrend: 'UP' | 'DOWN' | 'STABLE' | null;
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | null;
   latestActivity: string;
-  marketShare: number;
+  marketShare: number | null;
   aiConfidence: number | null;
   lastUpdated: string;
   isWatchlist: boolean;
@@ -118,6 +119,7 @@ export interface EnterpriseCompetitor {
   strengths: string[];
   weaknesses: string[];
   aiRecommendation: string | null;
+  aiSummaryStatus: 'AVAILABLE' | 'NO_DATA';
   strategicActions: StrategicAction[];
   relationship: 'PARTNER' | 'COMPETITOR' | 'SUPPLIER' | 'CUSTOM' | null;
   businessImpact: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | null;
@@ -426,6 +428,10 @@ export const CompetitorIntelligenceView: React.FC = () => {
   const [threatScoreFilter, setThreatScoreFilter] = useState('All');
   const [countryFilter, setCountryFilter] = useState('All');
   const [watchlistFilter, setWatchlistFilter] = useState('All');
+  const [comparisonIds, setComparisonIds] = useState<string[]>([]);
+  const [comparisonDays, setComparisonDays] = useState(30);
+  const [comparisonSubmitted, setComparisonSubmitted] = useState(false);
+  const [comparisonReferenceTime, setComparisonReferenceTime] = useState(0);
 
   // Dynamic synchronization & freshness state
   const [mainTab, setMainTab] = useState('watchlist');
@@ -448,6 +454,14 @@ export const CompetitorIntelligenceView: React.FC = () => {
   const [runningDeepAnalysis, setRunningDeepAnalysis] = useState(false);
   const [opMessage, setOpMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    setComparisonIds((current) => {
+      const available = new Set(competitors.map((company) => company.id));
+      const retained = current.filter((id) => available.has(id));
+      return retained.length ? retained : competitors.slice(0, 2).map((company) => company.id);
+    });
+  }, [competitors]);
 
   // â”€â”€ Backend API Fetching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
@@ -563,9 +577,9 @@ export const CompetitorIntelligenceView: React.FC = () => {
             summary: toSafeText(item.summary) || 'Summary not available.',
             source: toSafeText(item.source) || 'Source not available',
             sourceUrl: safeUrl(item.sourceUrl),
-            importance: normalizeImpact(item.impact) || 'MEDIUM',
+            importance: normalizeImpact(item.impact),
             sentiment: item.sentiment || 'NEUTRAL',
-            confidence: normalizeConfidence(item.confidence || intelligence.executiveBrief?.confidence || 85),
+            confidence: normalizeConfidence(item.confidence ?? intelligence.executiveBrief?.confidence),
           })) : companyArticles.map((article) => ({
             id: article.id,
             icon: '•',
@@ -576,9 +590,9 @@ export const CompetitorIntelligenceView: React.FC = () => {
             summary: toSafeText(article.aiSummary) || toSafeText(article.summary) || 'Summary not available.',
             source: normalizeSource(article.source || article.sourceDomain, article.url).name,
             sourceUrl: normalizeSource(article.source || article.sourceDomain, article.url).url,
-            importance: article.riskLevel === 'HIGH' || article.riskLevel === 'CRITICAL' ? 'HIGH' : article.riskLevel === 'MEDIUM' ? 'MEDIUM' : 'LOW',
+            importance: normalizeImpact(article.riskLevel || article.opportunityLevel),
             sentiment: article.sentiment === 'POSITIVE' || article.sentiment === 'NEGATIVE' ? article.sentiment : 'NEUTRAL',
-            confidence: normalizeConfidence(article.sentimentConfidence || 85),
+            confidence: normalizeConfidence(article.sentimentConfidence),
           }));
 
           const timeline = [...rawTimeline].sort((left, right) => {
@@ -593,7 +607,8 @@ export const CompetitorIntelligenceView: React.FC = () => {
             status: 'ACTIVE' as const,
             impact: item.businessImpact || 'Chưa có dữ liệu xác minh',
             source: item.source || 'Source not available',
-            sourceUrl: safeUrl(item.sourceUrl)
+            sourceUrl: safeUrl(item.sourceUrl),
+            date: item.date || null,
           })) : companyArticles
               .filter((article) => article.topics?.includes('MARKET_EXPANSION'))
               .map((article) => ({
@@ -602,7 +617,8 @@ export const CompetitorIntelligenceView: React.FC = () => {
                 status: 'ACTIVE' as const,
                 impact: normalizeImpact(article.riskLevel || article.opportunityLevel) || 'Chưa có dữ liệu xác minh',
                 source: normalizeSource(article.source || article.sourceDomain, article.url).name,
-                sourceUrl: normalizeSource(article.source || article.sourceDomain, article.url).url
+                sourceUrl: normalizeSource(article.source || article.sourceDomain, article.url).url,
+                date: article.publishedAt || article.createdAt || null,
               }));
 
           const hiringActivity = intelligence?.hiring && intelligence.hiring.length > 0 ? intelligence.hiring.map((item: any) => ({
@@ -617,7 +633,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
               .filter((article) => article.topics?.includes('HIRING'))
               .map((article) => ({
                 role: toSafeText(article.title) || 'Hiring signal',
-                count: 1,
+                count: null,
                 location: profile?.contact?.addresses?.[0]?.city || 'Chưa có dữ liệu xác minh',
                 focusArea: toSafeText(article.aiSummary) || toSafeText(article.summary) || 'Chưa có dữ liệu xác minh',
                 date: formatBackendDate(article.publishedAt || article.createdAt),
@@ -625,8 +641,8 @@ export const CompetitorIntelligenceView: React.FC = () => {
                 sourceUrl: normalizeSource(article.source || article.sourceDomain, article.url).url
               }));
 
-          const relType = normalizeRelationship(intelligence?.relationship?.type || c.relationshipType || c.relationship) || 'COMPETITOR';
-          const businessImpact = normalizeImpact(intelligence?.relationship?.businessImpact || snap?.riskLevel || null);
+          const relType = normalizeRelationship(intelligence?.relationship?.type || c.relationshipType || c.relationship);
+          const businessImpact = normalizeImpact(intelligence?.relationship?.businessImpact);
           const strategicRelevance = normalizeImpact(intelligence?.relationship?.strategicRelevance || null);
           const impactTrend = intelligence?.relationship?.impactTrend || null;
 
@@ -648,11 +664,11 @@ export const CompetitorIntelligenceView: React.FC = () => {
             industry: profile?.business?.industries?.join(', ') || c.industry || 'Chưa có dữ liệu xác minh',
             country: profile?.contact?.addresses?.find((address) => address.country)?.country || c.country || 'Chưa có dữ liệu xác minh',
             threatScore: Number(scoreVal),
-            threatTrend: scoreVal >= 70 ? 'UP' : scoreVal >= 40 ? 'STABLE' : 'DOWN',
-            riskLevel: scoreVal >= 85 ? 'CRITICAL' : scoreVal >= 70 ? 'HIGH' : scoreVal >= 40 ? 'MEDIUM' : 'LOW',
+            threatTrend: null,
+            riskLevel: null,
             latestActivity: news[0]?.title || c.latestActivity || profile?.business?.businessModel || 'Chưa có dữ liệu xác minh',
-            marketShare: c.marketShare ? Number(c.marketShare) : 0,
-            aiConfidence: normalizeConfidence(intelligence?.executiveBrief?.confidence || 85),
+            marketShare: c.marketShare ? Number(c.marketShare) : null,
+            aiConfidence: normalizeConfidence(intelligence?.executiveBrief?.confidence),
             lastUpdated: formatBackendDate(lastUpdatedStr),
             isWatchlist: true,
             overview: intelligence?.executiveBrief?.summary || buildOverview(profile, c.description) || 'Chưa có dữ liệu xác minh',
@@ -665,6 +681,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
             strengths: profile?.insights?.strengths ?? [],
             weaknesses: profile?.insights?.weaknesses ?? [],
             aiRecommendation: intelligence?.executiveBrief?.summary || null,
+            aiSummaryStatus: intelligence?.aiSummary?.status === 'AVAILABLE' ? 'AVAILABLE' : 'NO_DATA',
             strategicActions: [],
             relationship: relType,
             businessImpact,
@@ -837,12 +854,14 @@ export const CompetitorIntelligenceView: React.FC = () => {
           strategicRelevance: normalizeImpact(intelligence.relationship?.strategicRelevance) || current.strategicRelevance,
           impactTrend: intelligence.relationship?.impactTrend || null,
           overview: intelligence.executiveBrief?.summary || current.overview,
+          aiRecommendation: intelligence.aiSummary?.content || null,
+          aiSummaryStatus: intelligence.aiSummary?.status === 'AVAILABLE' ? 'AVAILABLE' : 'NO_DATA',
           whyItMatters: Array.isArray(intelligence.executiveBrief?.whyItMatters) ? intelligence.executiveBrief.whyItMatters : current.whyItMatters,
           aiConfidence: normalizeConfidence(intelligence.executiveBrief?.confidence),
           lastUpdated: formatBackendDate(intelligence.metadata?.lastUpdated),
           news,
           timeline,
-          marketExpansion: Array.isArray(intelligence.marketExpansion) ? intelligence.marketExpansion.map((item: any) => ({ region: item.market || 'Not available', details: item.description || 'No verified data available.', status: 'ACTIVE', impact: item.businessImpact || 'No verified data available.', source: item.source || 'Source not available', sourceUrl: safeUrl(item.sourceUrl) })) : current.marketExpansion,
+          marketExpansion: Array.isArray(intelligence.marketExpansion) ? intelligence.marketExpansion.map((item: any) => ({ region: item.market || 'Not available', details: item.description || 'No verified data available.', status: 'ACTIVE', impact: item.businessImpact || 'No verified data available.', source: item.source || 'Source not available', sourceUrl: safeUrl(item.sourceUrl), date: item.date || null })) : current.marketExpansion,
           hiringActivity: Array.isArray(intelligence.hiring) ? intelligence.hiring.map((item: any) => ({ role: toSafeText(item.title) || 'Hiring signal', count: typeof item.openPositions === 'number' ? item.openPositions : null, location: toSafeText(item.location) || 'Not available', focusArea: toSafeText(item.description) || 'No verified data available.', date: formatBackendDate(item.date), source: toSafeText(item.source) || 'Source not available', sourceUrl: safeUrl(item.sourceUrl) })) : current.hiringActivity,
         };
       });
@@ -1318,7 +1337,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                 {renderField('Legal Name', selected.legalName)}
                 {renderField('Ticker', selected.ticker)}
                 {renderField('Industry', selected.industry)}
-                {renderField('Relationship', selected.relationship || 'COMPETITOR')}
+                {renderField('Relationship', selected.relationship)}
                 {renderField('Headquarters', selected.headquarters || selected.country)}
                 {renderField('Employees', selected.employeeCount != null ? `${selected.employeeCount} employees` : null)}
                 {renderField('Website', selected.website ? <a href={selected.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cds-interactive)' }}>{selected.website}</a> : null)}
@@ -1459,7 +1478,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                         <div style={{ marginTop: '8px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--cds-text-helper)' }}>
                             <span style={{ color: item.importance === 'HIGH' || item.importance === 'CRITICAL' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)', fontWeight: 600 }}>
-                              Impact: {item.importance || 'MEDIUM'}
+                              Impact: {item.importance || 'Chưa có dữ liệu'}
                             </span>
                           </div>
                           {renderSourceQuality({
@@ -1495,7 +1514,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                         confidence: item.confidence
                       })}
                       <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '4px' }}>
-                        Business impact: <strong>{item.businessImpact || 'MEDIUM'}</strong>
+                        Business impact: <strong>{item.businessImpact || 'Chưa có dữ liệu'}</strong>
                       </div>
                     </div>
                   );
@@ -1534,7 +1553,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                     sourceUrl: exp.sourceUrl || undefined
                   })}
                   <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '4px' }}>
-                    <strong>Business Impact:</strong> {exp.impact || 'MEDIUM'}
+                    <strong>Business Impact:</strong> {exp.impact || 'Chưa có dữ liệu'}
                   </div>
                 </div>
               ))
@@ -1578,6 +1597,15 @@ export const CompetitorIntelligenceView: React.FC = () => {
         );
 
       case 'ai-analysis': {
+        const hasAiSummary = selected.aiSummaryStatus === 'AVAILABLE' && Boolean(selected.aiRecommendation);
+        if (!hasAiSummary) {
+          return (
+            <div style={{ padding: '32px', textAlign: 'center', border: '1px dashed var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)' }}>
+              <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Chưa có dữ liệu tổng hợp AI</p>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Hệ thống chưa có đủ dữ liệu để tạo phân tích cho doanh nghiệp này.</p>
+            </div>
+          );
+        }
         const potentialOpportunities = selected.marketExpansion.length > 0
           ? `Khai phá cơ hội tăng trưởng tại các thị trường mới: ${selected.marketExpansion.map((e) => e.region).join(', ')}.`
           : 'Chưa xác định cơ hội phát triển đột phá.';
@@ -1590,7 +1618,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
               </span>
               <h4 style={{ margin: '6px 0 4px', fontSize: '14px', color: 'var(--cds-text-primary)' }}>Executive Summary</h4>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--cds-text-secondary)', lineHeight: '20px' }}>
-                {selected.overview || 'Chưa có phân tích tổng quan.'}
+                {selected.aiRecommendation}
               </p>
             </div>
 
@@ -1670,39 +1698,50 @@ export const CompetitorIntelligenceView: React.FC = () => {
     increasing: competitors.filter((company) => company.impactTrend === 'INCREASING').length,
   };
 
-  const topCompetitorsList = useMemo(() => {
-    return [...competitors]
-      .sort((a, b) => b.threatScore - a.threatScore)
-      .slice(0, 4);
-  }, [competitors]);
-
-  const aiInsights = useMemo(() => {
-    return competitors
-      .filter((c) => c.overview && c.overview !== 'Chưa có dữ liệu xác minh')
-      .map((c) => {
-        const latestEvent = c.timeline[0];
-        const latestExpansion = c.marketExpansion[0];
-        const sourceText = latestEvent ? `${latestEvent.source} (${latestEvent.date})` : latestExpansion ? `${latestExpansion.source}` : c.name;
-        
-        return {
-          id: c.id,
-          companyName: c.name,
-          keyDevelopment: `Đối thủ ${c.name} đang tập trung hoạt động trong lĩnh vực ${c.industry}. Hoạt động nổi bật gần đây: ${c.latestActivity}.`,
-          potentialImpact: c.businessImpact || 'MEDIUM',
-          riskLevel: c.riskLevel || 'MEDIUM',
-          opportunity: c.threatTrend === 'DOWN' ? 'HIGH' : 'MEDIUM',
-          recommendedAction: c.whyItMatters[0] ? `Dựa trên phân tích: ${c.whyItMatters[0]}` : `Theo dõi sát sao động thái của ${c.name} trong 30 ngày tới.`,
-          source: sourceText,
-          timestamp: c.lastUpdated,
-          confidence: c.aiConfidence || 85,
-        };
-      });
-  }, [competitors]);
+  const topCompetitorsList = useMemo(() => (
+    [...competitors]
+      .sort((a, b) => b.timeline.length - a.timeline.length)
+      .slice(0, 4)
+  ), [competitors]);
 
   const highImpactCount = competitors.filter((c) => c.businessImpact === 'HIGH' || c.businessImpact === 'CRITICAL').length;
   const mediumImpactCount = competitors.filter((c) => c.businessImpact === 'MEDIUM').length;
   const highSignalsCount = competitors.reduce((acc, c) => acc + c.timeline.filter(t => t.importance === 'HIGH').length, 0);
   const expandingCount = competitors.filter(c => c.marketExpansion.length > 0).length;
+
+  const comparisonCompetitors = useMemo(
+    () => competitors.filter((company) => comparisonIds.includes(company.id)).slice(0, 4),
+    [competitors, comparisonIds],
+  );
+  const comparisonCategories = useMemo(() => {
+    const values = new Set<string>();
+    comparisonCompetitors.forEach((company) => company.timeline.forEach((signal) => {
+      if (signal.category) values.add(signal.category.toUpperCase());
+    }));
+    return Array.from(values).sort();
+  }, [comparisonCompetitors]);
+  const comparisonStats = useMemo(() => {
+    const currentStart = comparisonReferenceTime - comparisonDays * 24 * 60 * 60 * 1000;
+    const previousStart = currentStart - comparisonDays * 24 * 60 * 60 * 1000;
+    return comparisonCompetitors.map((company) => {
+      const datedSignals = company.timeline.filter((signal) => {
+        const timestamp = signal.rawDate ? new Date(signal.rawDate).getTime() : Number.NaN;
+        return !Number.isNaN(timestamp);
+      });
+      const current = datedSignals.filter((signal) => new Date(signal.rawDate as string).getTime() >= currentStart);
+      const previous = datedSignals.filter((signal) => {
+        const timestamp = new Date(signal.rawDate as string).getTime();
+        return timestamp >= previousStart && timestamp < currentStart;
+      });
+      const countCategory = (category: string) => current.filter((signal) => signal.category.toUpperCase() === category).length;
+      const countImpact = (impact: string) => current.filter((signal) => signal.importance === impact).length;
+      const trend = !datedSignals.length || !previous.length
+        ? 'NO_DATA'
+        : current.length > previous.length ? 'UP'
+          : current.length < previous.length ? 'DOWN' : 'STABLE';
+      return { company, current, previous, countCategory, countImpact, trend };
+    });
+  }, [comparisonCompetitors, comparisonDays, comparisonReferenceTime]);
 
   // —— Main Render ————————————————————————————————————————————————————————
   return (
@@ -1817,7 +1856,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
-                      <div>{t('overview.relationship')}: <strong>{company.relationship || 'COMPETITOR'}</strong></div>
+                      <div>{t('overview.relationship')}: <strong>{company.relationship || t('overview.noData')}</strong></div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {t('overview.businessImpact')}:
                         <RiskBadge level={company.businessImpact || ''} label={company.businessImpact || t('overview.noData')} />
@@ -1956,50 +1995,54 @@ export const CompetitorIntelligenceView: React.FC = () => {
       {mainTab === 'matrix' && (
       <section style={{ marginBottom: '24px' }}>
         <div style={{ marginBottom: '12px' }}>
-          <div style={{ color: 'var(--cds-text-helper)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>{t('overview.comparisonAnalysis')}</div>
-          <h3 style={{ margin: '4px 0 0', fontSize: '18px', color: 'var(--cds-text-primary)' }}>{t('overview.list')}</h3>
+          <div style={{ color: 'var(--cds-text-helper)', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>Competitor intelligence comparison</div>
+          <h3 style={{ margin: '4px 0 0', fontSize: '18px', color: 'var(--cds-text-primary)' }}>So sánh đối thủ</h3>
         </div>
-
-        <FilterBar
-          searchValue={search}
-          searchPlaceholder={t('filters.search')}
-          onSearchChange={setSearch}
-          filters={filters}
-        />
-
-        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px', marginTop: '12px' }}>
-          <DataTable<EnterpriseCompetitor>
-            columns={columns}
-            data={filtered}
-            rowKey={(row) => row.id}
-            onRowClick={openDrawer}
-            pageSize={10}
-            exportFilename="competitor-comparison-matrix"
-            loading={loading}
-            emptyState={
-              <EmptyState
-                title={t('overview.emptyMatrixTitle')}
-                body={t('overview.emptyMatrixBody')}
-                action={
-                  <PrimaryButton
-                    size="sm"
-                    onClick={() => {
-                      setSearch('');
-                      setIndustry('All');
-                      setRiskLevel('All');
-                      setRelationshipFilter('All');
-                      setSignalTypeFilter('All');
-                      setCountryFilter('All');
-                      setWatchlistFilter('All');
-                    }}
-                  >
-                    {t('filters.reset')}
-                  </PrimaryButton>
-                }
-              />
-            }
-          />
+        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', padding: '16px', borderRadius: 'var(--cds-border-radius)' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'end', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: '320px', flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '7px', fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-secondary)' }}>Chọn đối thủ (2-4)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {competitors.map((company) => {
+                  const checked = comparisonIds.includes(company.id);
+                  return <label key={company.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', padding: '5px 8px', border: '1px solid var(--cds-border-subtle-00)', background: checked ? 'var(--cds-support-info-bg)' : 'var(--cds-layer-01)', borderRadius: '4px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={checked} onChange={() => setComparisonIds((current) => checked ? current.filter((id) => id !== company.id) : current.length < 4 ? [...current, company.id] : current)} />
+                    {company.name}
+                  </label>;
+                })}
+              </div>
+            </div>
+            <label style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>Khoảng thời gian
+              <select value={comparisonDays} onChange={(event) => setComparisonDays(Number(event.target.value))} style={{ display: 'block', marginTop: '7px', minWidth: '160px', padding: '7px', border: '1px solid var(--cds-border-color)', background: 'var(--cds-background)' }}>
+                <option value={30}>30 ngày gần đây</option><option value={60}>60 ngày gần đây</option><option value={90}>90 ngày gần đây</option>
+              </select>
+            </label>
+            <PrimaryButton size="sm" onClick={() => { setComparisonReferenceTime(Date.now()); setComparisonSubmitted(true); }}>So sánh</PrimaryButton>
+          </div>
         </div>
+        {comparisonSubmitted && comparisonStats.length < 2 && <div style={{ padding: '28px', textAlign: 'center', color: 'var(--cds-text-helper)' }}>Chọn ít nhất 2 đối thủ để bắt đầu so sánh.</div>}
+        {comparisonSubmitted && comparisonStats.length >= 2 && (() => {
+          const maxSignals = Math.max(...comparisonStats.map((stat) => stat.current.length), 1);
+          const highest = Math.max(...comparisonStats.map((stat) => stat.current.length));
+          const rows: Array<[string, (stat: typeof comparisonStats[number]) => string | number]> = [
+            ['Tổng tín hiệu', (stat) => stat.current.length], ['Tín hiệu mới', (stat) => stat.current.length], ['News', (stat) => stat.countCategory('NEWS')],
+            ...comparisonCategories.filter((category) => category !== 'NEWS').map((category) => [category.replace(/_/g, ' '), (stat: typeof comparisonStats[number]) => stat.countCategory(category)] as [string, (stat: typeof comparisonStats[number]) => number]),
+            ['High Impact', (stat) => stat.countImpact('HIGH')], ['Medium Impact', (stat) => stat.countImpact('MEDIUM')], ['Low Impact', (stat) => stat.countImpact('LOW')],
+            ['Xu hướng', (stat) => stat.trend === 'UP' ? 'Tăng' : stat.trend === 'DOWN' ? 'Giảm' : stat.trend === 'STABLE' ? 'Ổn định' : 'Chưa đủ dữ liệu'],
+          ];
+          const differences = comparisonStats.filter((stat) => stat.current.length === highest && highest > 0).map((stat) => stat.company.name);
+          return <div style={{ marginTop: '16px', display: 'grid', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `150px repeat(${comparisonStats.length}, minmax(140px, 1fr))`, gap: '8px', overflowX: 'auto' }}>
+              <div />{comparisonStats.map((stat) => <MetricCard key={stat.company.id} label={stat.company.name} value={stat.current.length} description={`${comparisonDays} ngày`} />)}
+            </div>
+            <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: `${180 + comparisonStats.length * 160}px`, borderCollapse: 'collapse', fontSize: '12px' }}><thead><tr style={{ background: 'var(--cds-layer-01)', textAlign: 'left' }}><th style={{ padding: '10px' }}>Chỉ số tình báo</th>{comparisonStats.map((stat) => <th key={stat.company.id} style={{ padding: '10px', textAlign: 'right' }}>{stat.company.name}</th>)}</tr></thead><tbody>{rows.map(([label, value]) => <tr key={label} style={{ borderTop: '1px solid var(--cds-border-subtle-00)' }}><td style={{ padding: '9px', fontWeight: 600 }}>{label}</td>{comparisonStats.map((stat) => <td key={stat.company.id} style={{ padding: '9px', textAlign: 'right' }}>{value(stat)}</td>)}</tr>)}</tbody></table>
+            </div>
+            <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', padding: '16px', borderRadius: 'var(--cds-border-radius)' }}><h4 style={{ margin: '0 0 12px', fontSize: '14px' }}>Mức độ hoạt động cạnh tranh</h4>{comparisonStats.map((stat) => <div key={stat.company.id} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 42px', gap: '8px', alignItems: 'center', marginBottom: '8px', fontSize: '12px' }}><span>{stat.company.name}</span><div style={{ height: '12px', background: 'var(--cds-layer-01)' }}><div style={{ height: '100%', width: `${(stat.current.length / maxSignals) * 100}%`, background: 'var(--cds-interactive)' }} /></div><strong>{stat.current.length}</strong></div>)}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '12px' }}>{comparisonStats.map((stat) => <div key={stat.company.id} style={{ border: '1px solid var(--cds-border-color)', padding: '14px', borderRadius: 'var(--cds-border-radius)' }}><strong>{stat.company.name}</strong><p style={{ margin: '7px 0 0', fontSize: '12px', color: 'var(--cds-text-secondary)' }}>{stat.current.length ? `${stat.current.length} tín hiệu trong kỳ. ${stat.trend === 'UP' ? 'Xu hướng tăng.' : stat.trend === 'DOWN' ? 'Xu hướng giảm.' : stat.trend === 'STABLE' ? 'Xu hướng ổn định.' : 'Chưa đủ dữ liệu kỳ trước để kết luận xu hướng.'}` : 'Chưa có tín hiệu trong khoảng thời gian đã chọn.'}</p></div>)}</div>
+            {highest > 0 && <div style={{ background: 'var(--cds-support-info-bg)', padding: '14px', borderLeft: '3px solid var(--cds-interactive)' }}><strong>Tổng hợp tình báo</strong><p style={{ margin: '6px 0 0', fontSize: '12px' }}>{differences.join(', ')} có mức độ hoạt động cạnh tranh cao nhất trong {comparisonDays} ngày gần đây ({highest} tín hiệu). Kết luận chỉ dựa trên các tín hiệu đã ghi nhận trong APMS.</p></div>}
+          </div>;
+        })()}
       </section>
       )}
 
