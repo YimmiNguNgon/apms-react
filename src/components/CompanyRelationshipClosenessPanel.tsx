@@ -39,14 +39,29 @@ const formatTime = (value?: string | null) => {
   });
 };
 
-const buildUnrated = (companyProfileId: string): RelationshipClosenessResponse => ({
+const buildUnrated = (
+  companyProfileId: string,
+  permissions?: { canUpdate?: boolean; canDelete?: boolean },
+): RelationshipClosenessResponse => ({
   targetCompanyProfileId: companyProfileId,
   stars: null,
   label: 'UNRATED',
   note: null,
   ratedByAccountId: null,
+  ratedByRole: null,
   ratedAt: null,
   updatedAt: null,
+  ownerFinalized: false,
+  managerStars: null,
+  managerNote: null,
+  managerRatedByAccountId: null,
+  managerRatedAt: null,
+  ownerStars: null,
+  ownerNote: null,
+  ownerRatedByAccountId: null,
+  ownerRatedAt: null,
+  canUpdate: Boolean(permissions?.canUpdate),
+  canDelete: Boolean(permissions?.canDelete),
 });
 
 export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClosenessPanelProps> = ({
@@ -63,8 +78,13 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 
   const isAdmin = currentUserRole === ROLES.ADMIN;
   const canRequest = Boolean(currentUserRole) && !isAdmin;
-  const canEdit = currentUserRole === ROLES.OWNER || currentUserRole === ROLES.MANAGER;
-  const canClear = currentUserRole === ROLES.OWNER;
+  const canEditByRole = currentUserRole === ROLES.OWNER || currentUserRole === ROLES.MANAGER;
+  const canClearByRole = currentUserRole === ROLES.OWNER;
+  const ownerFinalized = Boolean(data?.ownerFinalized);
+  const managerLockedByOwner = currentUserRole === ROLES.MANAGER && ownerFinalized;
+  const canEdit = Boolean(data ? data.canUpdate : canEditByRole) && !managerLockedByOwner;
+  const canClear = Boolean(data ? data.canDelete : canClearByRole);
+  const effectiveTime = ownerFinalized ? data?.ownerRatedAt : data?.updatedAt || data?.ratedAt;
 
   const displayLabel = useMemo(() => {
     const label = data?.label || 'UNRATED';
@@ -83,7 +103,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     setMessage(null);
     try {
       const response = await companyRelationshipClosenessApi.get(companyProfileId);
-      const next = response.data ?? buildUnrated(companyProfileId);
+      const next = response.data ?? buildUnrated(companyProfileId, { canUpdate: canEditByRole, canDelete: canClearByRole });
       setData(next);
       syncDraft(next);
     } catch (error) {
@@ -110,7 +130,8 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
   }, [companyProfileId, canRequest]);
 
   const startEdit = () => {
-    syncDraft(data ?? buildUnrated(companyProfileId));
+    if (!canEdit) return;
+    syncDraft(data ?? buildUnrated(companyProfileId, { canUpdate: canEditByRole, canDelete: canClearByRole }));
     setMessage(null);
     setEditing(true);
   };
@@ -165,7 +186,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     setMessage(null);
     try {
       await companyRelationshipClosenessApi.clear(companyProfileId);
-      const unrated = buildUnrated(companyProfileId);
+      const unrated = buildUnrated(companyProfileId, { canUpdate: canEditByRole, canDelete: canClearByRole });
       setData(unrated);
       syncDraft(unrated);
       setEditing(false);
@@ -179,6 +200,10 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       setSaving(false);
     }
   };
+
+  const editButtonText = currentUserRole === ROLES.OWNER
+    ? (data?.ownerFinalized ? 'Cập nhật đánh giá cuối' : 'Đánh giá cuối')
+    : (data?.stars ? 'Cập nhật' : 'Đánh giá');
 
   if (!currentUserRole || isAdmin) {
     const lockedText = !currentUserRole
@@ -254,10 +279,34 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               {describeStars(editing ? draftStars : data?.stars)} · {displayLabel}
             </div>
             <div className={styles.timestamp}>
-              {formatTime(data?.updatedAt || data?.ratedAt) ? `Cập nhật: ${formatTime(data?.updatedAt || data?.ratedAt)}` : 'Chưa có lịch sử cập nhật'}
+              {formatTime(effectiveTime) ? `Cập nhật: ${formatTime(effectiveTime)}` : 'Chưa có lịch sử cập nhật'}
             </div>
           </div>
         </div>
+
+        {managerLockedByOwner ? (
+          <div className={styles.finalNotice}>
+            <Lock size={14} />
+            <span>Owner đã đánh giá cuối cùng. Manager chỉ có thể xem, không thể cập nhật đánh giá này nữa.</span>
+          </div>
+        ) : null}
+
+        {(data?.managerStars || data?.ownerStars) ? (
+          <div className={styles.ratingTrail}>
+            {data?.managerStars ? (
+              <div className={styles.trailItem}>
+                <span className={styles.trailLabel}>Manager</span>
+                <span>{describeStars(data.managerStars)}{formatTime(data.managerRatedAt) ? ` · ${formatTime(data.managerRatedAt)}` : ''}</span>
+              </div>
+            ) : null}
+            {data?.ownerStars ? (
+              <div className={styles.trailItem}>
+                <span className={styles.trailLabel}>Owner cuối cùng</span>
+                <span>{describeStars(data.ownerStars)}{formatTime(data.ownerRatedAt) ? ` · ${formatTime(data.ownerRatedAt)}` : ''}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {editing ? (
           <div className={styles.editor}>
@@ -328,12 +377,12 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               {canEdit ? (
                 <button type="button" className={`${styles.button} ${styles.primaryButton}`} onClick={startEdit} disabled={loading || saving}>
                   <Edit3 size={13} />
-                  {data?.stars ? 'Cập nhật' : 'Đánh giá'}
+                  {editButtonText}
                 </button>
               ) : (
                 <span className={styles.locked}>
                   <Lock size={14} />
-                  Staff chỉ có quyền xem trong phạm vi project.
+                  {managerLockedByOwner ? 'Owner đã đánh giá cuối cùng.' : 'Staff chỉ có quyền xem trong phạm vi project.'}
                 </span>
               )}
             </>

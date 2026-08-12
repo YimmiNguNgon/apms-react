@@ -275,6 +275,8 @@
 .evidenceSummary {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   min-width: 0;
 }
 .evidenceButton {
@@ -301,6 +303,30 @@
 .evidenceButton:focus-visible {
   outline: 3px solid rgba(59, 130, 246, 0.24);
   outline-offset: 2px;
+}
+.researchButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #3730a3;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.researchButton:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+.researchButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .evidenceUnavailable {
   display: inline-flex;

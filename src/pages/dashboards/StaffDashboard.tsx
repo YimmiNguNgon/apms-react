@@ -36,6 +36,7 @@ const statusLabel: Record<TaskStatus, string> = {
 const taskTypeLabel: Record<TaskType, string> = {
   DOCUMENT_COLLECTION: 'Document collection',
   COMPANY_DATA_PREPARATION: 'AI company preparation',
+  PARTNER_CONTRACT_COLLECTION: 'Partner contract collection',
   ROLE_EVALUATION: 'Role evaluation',
   COMPANY_MEMBER_RESEARCH: 'Company member research',
   COMPANY_NEWS_RESEARCH: 'Company news research',
@@ -45,6 +46,7 @@ const taskTypeLabel: Record<TaskType, string> = {
 const taskTypeHint: Record<TaskType, string> = {
   DOCUMENT_COLLECTION: 'Upload evidence documents, then submit the package.',
   COMPANY_DATA_PREPARATION: 'Select project documents, run AI extract, create candidate, and submit.',
+  PARTNER_CONTRACT_COLLECTION: 'Upload partner contracts and submit them for manager approval.',
   ROLE_EVALUATION: 'Evaluate relationship, risk, evidence, and recommendation.',
   COMPANY_MEMBER_RESEARCH: 'Research key people and attach verified source URLs.',
   COMPANY_NEWS_RESEARCH: 'Research and attach recent news about the target company.',

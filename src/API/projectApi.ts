@@ -119,6 +119,27 @@ export const projectApi = {
       throw error;
     }
   },
+  removeMember: async (projectId: number, userId: number) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/members/${userId}`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Remove member failed:", { status: response.status, payload, projectId, userId });
+        throw new Error(payload?.message || "Failed to remove member");
+      }
+
+      return payload as ApiResponse<void>;
+    } catch (error) {
+      console.error("Error removing member:", error);
+      throw error;
+    }
+  },
   updateProjectStatus: async (projectId: number, statusData: UpdateProjectStatusRequest) => {
     try {
       const response = await fetch(`${BASE_URL}/${projectId}/status`, {

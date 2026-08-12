@@ -145,6 +145,44 @@
   word-break: break-word;
 }
 
+.finalNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.4;
+  padding: 7px 9px;
+}
+
+.ratingTrail {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.trailItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.trailLabel {
+  color: #0f172a;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .noteMuted {
   color: #94a3b8;
 }

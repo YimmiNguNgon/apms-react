@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Copy, CheckCircle2, AlertTriangle, Shield } from 'lucide-react';
 import totpApi from '../API/totpApi';
-import type { TotpEnrollmentStartResponse } from '../API/totpApi';
+import type { StepUpVerifyResponse, TotpEnrollmentStartResponse } from '../API/totpApi';
 
 interface TotpSetupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (secureSession: StepUpVerifyResponse) => void;
 }
 
 export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -69,11 +69,11 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({ isOpen, onClose,
     setLoading(true);
     setError(null);
     try {
-      await totpApi.confirmEnrollment({
+      const res = await totpApi.confirmEnrollment({
         enrollmentId: setupData.enrollmentId,
         code
       });
-      onSuccess();
+      onSuccess(res.data);
       onClose();
     } catch (err: unknown) {
       const apiError = err as { payload?: { message?: string }; message?: string };
@@ -91,7 +91,7 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({ isOpen, onClose,
         <div style={styles.header}>
           <div style={styles.titleContainer}>
             <Shield size={24} color="#3b82f6" />
-            <h2 style={styles.title}>Cài đặt bảo mật 2 lớp (TOTP)</h2>
+            <h2 style={styles.title}>Secure Access Setup</h2>
           </div>
           <button style={styles.closeBtn} onClick={onClose}>
             <X size={20} />
@@ -113,7 +113,7 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({ isOpen, onClose,
           ) : setupData ? (
             <>
               <p style={styles.description}>
-                Quét mã QR dưới đây bằng ứng dụng Google Authenticator hoặc Microsoft Authenticator.
+                Quét mã QR bằng Google Authenticator hoặc Microsoft Authenticator, sau đó nhập một mã 6 số để tiếp tục.
               </p>
               
               <div style={styles.twoColumn}>
@@ -148,7 +148,7 @@ export const TotpSetupModal: React.FC<TotpSetupModalProps> = ({ isOpen, onClose,
                       disabled={code.length !== 6 || loading}
                       onClick={handleVerify}
                     >
-                      {loading ? 'Đang xác minh...' : 'Xác minh và Bật'}
+                      {loading ? 'Đang xác minh...' : 'Verify & Continue'}
                     </button>
                   </div>
                 </div>

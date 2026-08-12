@@ -219,7 +219,7 @@ export const listingDataApi = {
 
   getNews: async (companyId: string): Promise<ListingTabResponse<CompanyNews[]>> => {
     const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot) {
+    if (snapshot && snapshot.news && snapshot.news.length > 0) {
       const news = (snapshot.news ?? []).map((item, index) => ({
         id: index + 1, companyId, title: item.title ?? null, summary: item.summary ?? null,
         category: item.category ?? null, sourceName: item.sourceName ?? null, sourceUrl: item.sourceUrl ?? null,
@@ -227,10 +227,9 @@ export const listingDataApi = {
       }));
       return { hasData: news.length > 0, crawledAt: snapshot.fetchedAt ?? null, data: news };
     }
-    const response = await externalDataApi.getItems('NEWS', { page: 0, size: 100 });
-    const news = response.content
-      .filter((article) => article.companyProfileId === companyId || article.relatedCompanyId === companyId)
-      .map((article, index) => ({
+
+    const response = await externalDataApi.getNewsByCompanyId(companyId, 0, 100);
+    const news = (response.content || []).map((article, index) => ({
       id: Number(article.id) || index + 1,
       companyId,
       title: article.title ?? null,
@@ -238,9 +237,9 @@ export const listingDataApi = {
       category: article.category ?? 'NEWS',
       sourceName: article.source ?? article.sourceDomain ?? null,
       sourceUrl: article.url ?? null,
-      imageUrl: null,
+      imageUrl: article.imageUrl ?? null,
       publishedAt: article.publishedAt ?? article.createdAt ?? null,
-      crawledAt: article.updatedAt ?? article.createdAt ?? null,
+      crawledAt: article.crawledAt ?? article.createdAt ?? null,
     }));
 
     return { hasData: news.length > 0, crawledAt: news[0]?.crawledAt ?? null, data: news };

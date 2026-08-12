@@ -155,6 +155,28 @@
   line-height: 1.5;
 }
 
+.feedbackList {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.feedbackList li {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.feedbackList li span {
+  color: #78350f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 /* --- Quality Metric Bar --- */
 .qualityBar {
   background: #fff;
@@ -566,6 +588,10 @@
   color: #2563eb;
 }
 
+.reviewReturned {
+  color: #b45309;
+}
+
 .reviewPending {
   color: #94a3b8;
 }
@@ -582,6 +608,35 @@
 .validFail { color: #dc2626; }
 .validWarn { color: #d97706; }
 .validNone { color: #cbd5e1; }
+
+.managerFeedbackInline {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+}
+
+.managerFeedbackInline div {
+  display: grid;
+  gap: 3px;
+}
+
+.managerFeedbackInline span,
+.managerFeedbackInline small {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.managerFeedbackInline strong {
+  color: #431407;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
 
 /* --- Evidence Summary Line --- */
 .evidenceLine {
@@ -1044,6 +1099,15 @@
   background: #cbd5e1;
   color: #94a3b8;
   cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .btnSubmit {

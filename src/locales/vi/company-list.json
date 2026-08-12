@@ -43,6 +43,7 @@
   },
   "table": {
     "company": "Doanh nghiệp",
+    "relationship": "Mối quan hệ",
     "ticker": "Mã CK",
     "industry": "Ngành nghề",
     "status": "Trạng thái",

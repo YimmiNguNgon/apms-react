@@ -19,7 +19,6 @@ interface ManagerCandidateReviewWorkspaceProps {
 }
 
 type TabType = 'Overview' | 'Business' | 'SWOT' | 'Analysis';
-type FilterType = 'ALL' | 'PENDING' | 'STAFF_EDITED' | 'LOW_CONFIDENCE' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED';
 type ManagerUiStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED';
 type EvidenceItem = CandidateFieldEvidence & Record<string, unknown>;
 
@@ -157,6 +156,9 @@ const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, k
     managerReviewedAt: approval.reviewedAt ?? field?.managerReviewedAt,
     previousManagerReviewStatus: approval.previousStatus ? normalizeManagerStatus(approval.previousStatus) : field?.previousManagerReviewStatus,
     previousManagerReviewComment: approval.previousComment ?? field?.previousManagerReviewComment,
+    previousSubmittedValue: approval.pendingValue ?? field?.previousSubmittedValue,
+    previousReviewedRevision: approval.reviewedRevision ?? field?.previousReviewedRevision,
+    changedInRevision: approval.changedInRevision ?? field?.changedInRevision,
   };
 };
 
@@ -295,7 +297,6 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('Overview');
-  const [filter, setFilter] = useState<FilterType>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -427,7 +428,6 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         await fetchData();
         if (tab) {
           setActiveTab(tab);
-          setFilter('PENDING');
           window.setTimeout(() => {
             const el = document.getElementById(`field-${fieldKey}`);
             if (el) {
@@ -515,36 +515,13 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         const currentValue = getEffectiveReviewedValue(field);
         const matchesSearch = !normalizedSearch || `${f.label} ${fieldValueToText(currentValue)}`.toLowerCase().includes(normalizedSearch);
         if (!matchesSearch) return false;
-        if (filter === 'ALL') return true;
-        if (filter === 'PENDING') {
-          return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
-        }
-        if (filter === 'STAFF_EDITED') {
-          return field?.staffReviewStatus === 'EDITED'
-            || field?.staffReviewStatus === 'ADDED'
-            || field?.staffReviewStatus === 'REMOVED'
-            || hasReviewedValue(field);
-        }
-        if (filter === 'LOW_CONFIDENCE') {
-          return field?.confidence && field.confidence < 0.6;
-        }
-        if (filter === 'ACCEPTED') {
-          return normalizeManagerStatus(field?.managerReviewStatus) === 'ACCEPTED';
-        }
-        if (filter === 'REJECTED') {
-          return normalizeManagerStatus(field?.managerReviewStatus) === 'REJECTED';
-        }
-        if (filter === 'CHANGES_REQUESTED') {
-          return normalizeManagerStatus(field?.managerReviewStatus) === 'CHANGES_REQUESTED';
-        }
         return true;
       });
 
     if (fields.length === 0) {
-      const filterLabel = filter === 'CHANGES_REQUESTED' ? 'needs review' : filter.toLowerCase().replace('_', ' ');
       return (
         <div className={styles.emptyTab}>
-          {filter === 'PENDING' ? 'All fields in this tab have been reviewed.' : `No ${filter === 'ALL' ? '' : filterLabel} fields match the current view.`}
+          No fields match the current search.
         </div>
       );
     }
@@ -678,30 +655,6 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 placeholder="Search fields..."
               />
             </label>
-            <div className={styles.quickFilterActions}>
-            {(['ALL', 'PENDING', 'ACCEPTED', 'CHANGES_REQUESTED', 'REJECTED', 'STAFF_EDITED', 'LOW_CONFIDENCE'] as FilterType[]).map(f => {
-              let count = 0;
-              let label = f.toString();
-              if (f === 'ALL') { count = stats.total; label = 'All'; }
-              if (f === 'PENDING') { count = stats.pending; label = 'Pending'; }
-              if (f === 'ACCEPTED') { count = stats.approved; label = 'Approved'; }
-              if (f === 'CHANGES_REQUESTED') { count = stats.needsReview; label = 'Needs Review'; }
-              if (f === 'REJECTED') { count = stats.rejected; label = 'Rejected'; }
-              if (f === 'STAFF_EDITED') { count = stats.staffEdited; label = 'Staff Edited'; }
-              if (f === 'LOW_CONFIDENCE') { count = stats.lowConfidence; label = 'Low Confidence'; }
-              
-              const isActive = filter === f;
-              return (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`${styles.quickFilterButton} ${isActive ? styles.quickFilterButtonActive : ''}`}
-                >
-                  {label} <strong>{count}</strong>
-                </button>
-              );
-            })}
-            </div>
           </div>
           
           <div className={styles.tabContent}>
@@ -730,31 +683,19 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
             {/* Breakdown */}
             <div className={styles.managerStatsList}>
-              <div 
-                className={`${styles.managerStatRow} ${filter === 'ACCEPTED' ? styles.managerStatRowActive : ''}`}
-                onClick={() => setFilter('ACCEPTED')}
-              >
+              <div className={styles.managerStatRow}>
                 <span className={styles.managerStatApproved}><CheckCircle size={13} /> Approved</span>
                 <strong>{stats.approved}</strong>
               </div>
-              <div 
-                className={`${styles.managerStatRow} ${filter === 'REJECTED' ? styles.managerStatRowActive : ''}`}
-                onClick={() => setFilter('REJECTED')}
-              >
+              <div className={styles.managerStatRow}>
                 <span className={styles.managerStatRejected}><XCircle size={13} /> Rejected</span>
                 <strong>{stats.rejected}</strong>
               </div>
-              <div 
-                className={`${styles.managerStatRow} ${filter === 'CHANGES_REQUESTED' ? styles.managerStatRowActive : ''}`}
-                onClick={() => setFilter('CHANGES_REQUESTED')}
-              >
+              <div className={styles.managerStatRow}>
                 <span className={styles.managerStatNeedsReview}><AlertTriangle size={13} /> Needs Review</span>
                 <strong>{stats.needsReview}</strong>
               </div>
-              <div 
-                className={`${styles.managerStatRow} ${filter === 'PENDING' ? styles.managerStatRowActive : ''}`}
-                onClick={() => setFilter('PENDING')}
-              >
+              <div className={styles.managerStatRow}>
                 <span className={styles.managerStatPending}>Pending</span>
                 <strong>{stats.pending}</strong>
               </div>

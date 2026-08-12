@@ -203,7 +203,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return (
       <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
         <button
-          onClick={() => (setActivePage ? setActivePage('partner-ecosystem') : history.back())}
+          onClick={() => (setActivePage ? setActivePage('company-profiles') : history.back())}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -219,7 +219,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             marginBottom: '16px',
           }}
         >
-          Quay lại Ecosystem
+          &larr; Quay lại danh sách doanh nghiệp
         </button>
 
         <div
@@ -261,7 +261,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
-              onClick={() => (setActivePage ? setActivePage('partner-ecosystem') : history.back())}
+              onClick={() => (setActivePage ? setActivePage('company-profiles') : history.back())}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -273,9 +273,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 cursor: 'pointer',
                 padding: 0,
               }}
-              id="btn-back-to-ecosystem"
+              id="btn-back-to-company-list"
             >
-              &larr; Quay lại Ecosystem
+              &larr; Quay lại danh sách doanh nghiệp
             </button>
             <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
             <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>

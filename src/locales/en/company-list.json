@@ -43,6 +43,7 @@
   },
   "table": {
     "company": "Company",
+    "relationship": "Relationship",
     "ticker": "Ticker",
     "industry": "Industry",
     "status": "Status",

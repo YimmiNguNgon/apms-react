@@ -6,26 +6,31 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
-  Lock,
   Newspaper,
-  QrCode,
   Shield,
   Tag,
-  Unlock,
   User,
 } from 'lucide-react';
 import { confidentialNewsApi } from '../../API/confidentialNewsApi';
 import totpApi from '../../API/totpApi';
 import type { CompanyIntelligenceArticleResponse } from '../../types/domain';
-import { TotpSetupModal } from '../../components/TotpSetupModal';
-import { TotpVerificationModal } from '../../components/TotpVerificationModal';
+import { SecureTotpAccessGate, type SecureTotpGateState } from '../../components/SecureTotpAccessGate';
+import { ownerSecureAccess } from '../../utils/ownerSecureAccess';
+import type { StepUpVerifyResponse } from '../../API/totpApi';
 
 interface ConfidentialNewsTabProps {
   companyId: string;
   userRole?: string | null;
 }
 
-type AuthState = 'CHECKING' | 'NOT_ENROLLED' | 'TOTP_REQUIRED' | 'VERIFIED' | 'LOCKED' | 'FORBIDDEN';
+type AuthState = SecureTotpGateState | 'VERIFIED';
+
+const INTERNAL_NEWS_SCOPE = 'COMPANY_INTERNAL_NEWS';
+
+const resolveExpiresInSeconds = (expiresAt?: string, fallback?: number) => {
+  if (!expiresAt) return fallback ?? 0;
+  return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+};
 
 const formatDate = (dateString?: string | null) => {
   if (!dateString) return 'Unknown date';
@@ -101,6 +106,15 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
 
     try {
       setAuthState('CHECKING');
+      const storedSession = ownerSecureAccess.get();
+      const secureStatus = await totpApi.getStepUpStatus(INTERNAL_NEWS_SCOPE, companyId, storedSession?.token);
+      if (storedSession?.token && secureStatus.data.secureAccessActive) {
+        setStepUpToken(storedSession.token);
+        setTokenExpiry(resolveExpiresInSeconds(secureStatus.data.expiresAt, storedSession.expiresInSeconds));
+        setAuthState('VERIFIED');
+        return;
+      }
+
       const statusRes = await totpApi.getStatus();
 
       if (!statusRes.data.enrolled || !statusRes.data.enabled) {
@@ -134,6 +148,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     const checkExpiry = window.setInterval(() => {
       if (Date.now() > expiryTime) {
         setStepUpToken(null);
+        ownerSecureAccess.clear();
         setArticles([]);
         setSelectedArticle(null);
         void checkInitialState();
@@ -156,6 +171,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
       setError(errorObj);
       if (errorObj?.status === 401 || errorObj?.status === 403) {
         setStepUpToken(null);
+        ownerSecureAccess.clear();
         setSelectedArticle(null);
         void checkInitialState();
       }
@@ -169,10 +185,13 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepUpToken, companyId]);
 
-  const handleVerified = (token: string, expiry: number) => {
-    setStepUpToken(token);
-    setTokenExpiry(expiry);
+  const handleVerified = (secureSession: StepUpVerifyResponse) => {
+    const savedSession = ownerSecureAccess.save(secureSession);
+    setStepUpToken(savedSession.token);
+    setTokenExpiry(resolveExpiresInSeconds(savedSession.expiresAt, savedSession.expiresInSeconds));
+    setAuthState('VERIFIED');
     setIsVerifyModalOpen(false);
+    setIsSetupModalOpen(false);
   };
 
   const openArticleDetail = async (article: CompanyIntelligenceArticleResponse) => {
@@ -189,6 +208,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
       setError(errorObj);
       if (errorObj.status === 401 || errorObj.status === 403) {
         setStepUpToken(null);
+        ownerSecureAccess.clear();
         setSelectedArticle(null);
         void checkInitialState();
       }
@@ -202,77 +222,24 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (authState === 'CHECKING') {
+  if (authState !== 'VERIFIED') {
     return (
-      <div style={styles.centerContainer}>
-        <div style={styles.spinner} />
-        <p style={styles.centerText}>Đang kiểm tra bảo mật...</p>
-      </div>
-    );
-  }
-
-  if (authState === 'FORBIDDEN') {
-    return (
-      <div style={styles.centerContainer}>
-        <div style={styles.deniedIcon}><Shield size={48} color="#ef4444" /></div>
-        <h3 style={styles.title}>Truy cập bị từ chối</h3>
-        <p style={styles.text}>Tin tức nội bộ là dữ liệu bảo mật cao. Chỉ BUSINESS_OWNER mới có quyền truy cập.</p>
-      </div>
-    );
-  }
-
-  if (authState === 'LOCKED') {
-    return (
-      <div style={styles.centerContainer}>
-        <div style={styles.deniedIcon}><AlertTriangle size={48} color="#ef4444" /></div>
-        <h3 style={styles.title}>Tính năng bị khóa</h3>
-        <p style={styles.text}>
-          Xác thực 2 lớp của bạn đã bị khóa tạm thời do nhập sai quá nhiều lần.
-          <br />Vui lòng thử lại sau: <strong>{lockedUntil}</strong>
-        </p>
-      </div>
-    );
-  }
-
-  if (authState === 'NOT_ENROLLED') {
-    return (
-      <div style={styles.centerContainer}>
-        <div style={styles.infoIcon}><QrCode size={48} color="#3b82f6" /></div>
-        <h3 style={styles.title}>Cài đặt bảo mật 2 lớp</h3>
-        <p style={styles.text}>Để xem dữ liệu nhạy cảm, bạn cần cài đặt xác thực 2 lớp bằng ứng dụng Authenticator.</p>
-        <button style={styles.actionBtn} onClick={() => setIsSetupModalOpen(true)}>
-          <Shield size={18} /> Cài đặt TOTP ngay
-        </button>
-        <TotpSetupModal
-          isOpen={isSetupModalOpen}
-          onClose={() => setIsSetupModalOpen(false)}
-          onSuccess={() => {
-            setIsSetupModalOpen(false);
-            setAuthState('TOTP_REQUIRED');
-            setIsVerifyModalOpen(true);
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (authState === 'TOTP_REQUIRED') {
-    return (
-      <div style={styles.centerContainer}>
-        <div style={styles.infoIcon}><Lock size={48} color="#3b82f6" /></div>
-        <h3 style={styles.title}>Yêu cầu xác thực bổ sung</h3>
-        <p style={styles.text}>Bạn đang truy cập dữ liệu tình báo doanh nghiệp nhạy cảm. Vui lòng xác thực để tiếp tục.</p>
-        <button style={styles.actionBtn} onClick={() => setIsVerifyModalOpen(true)}>
-          <Unlock size={18} /> Xác thực bằng Authenticator
-        </button>
-        <TotpVerificationModal
-          isOpen={isVerifyModalOpen}
-          onClose={() => setIsVerifyModalOpen(false)}
-          onVerified={handleVerified}
-          scope="COMPANY_INTERNAL_NEWS"
-          resourceId={companyId}
-        />
-      </div>
+      <SecureTotpAccessGate
+        state={authState}
+        lockedUntil={lockedUntil}
+        setupOpen={isSetupModalOpen}
+        verifyOpen={isVerifyModalOpen}
+        scope={INTERNAL_NEWS_SCOPE}
+        resourceId={companyId}
+        forbiddenText={'Tin t\u1ee9c n\u1ed9i b\u1ed9 l\u00e0 d\u1eef li\u1ec7u b\u1ea3o m\u1eadt cao. Ch\u1ec9 BUSINESS_OWNER m\u1edbi c\u00f3 quy\u1ec1n truy c\u1eadp.'}
+        requiredText={'B\u1ea1n \u0111ang truy c\u1eadp d\u1eef li\u1ec7u t\u00ecnh b\u00e1o doanh nghi\u1ec7p nh\u1ea1y c\u1ea3m. Vui l\u00f2ng x\u00e1c th\u1ef1c \u0111\u1ec3 ti\u1ebfp t\u1ee5c.'}
+        onOpenSetup={() => setIsSetupModalOpen(true)}
+        onCloseSetup={() => setIsSetupModalOpen(false)}
+        onSetupSuccess={handleVerified}
+        onOpenVerify={() => setIsVerifyModalOpen(true)}
+        onCloseVerify={() => setIsVerifyModalOpen(false)}
+        onVerified={handleVerified}
+      />
     );
   }
 

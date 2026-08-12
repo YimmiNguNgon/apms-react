@@ -25,19 +25,23 @@ export interface StepUpStatusResponse {
     required: boolean;
     verified: boolean;
     expiresAt?: string;
-    scope: string;
-    resourceId: string;
+    secureAccessActive: boolean;
+    totpConfigured: boolean;
+    scope?: string;
+    resourceId?: string;
 }
 
 export interface TotpStepUpVerifyRequest {
     code: string;
-    scope: string;
-    resourceId: string;
+    scope?: string;
+    resourceId?: string;
 }
 
 export interface StepUpVerifyResponse {
     stepUpToken: string;
     expiresInSeconds: number;
+    expiresAt?: string;
+    secureAccessGranted?: boolean;
 }
 
 const totpApi = {
@@ -48,10 +52,13 @@ const totpApi = {
         api.post<TotpEnrollmentStartResponse>('/security/totp/enrollment'),
         
     confirmEnrollment: (data: TotpEnrollmentConfirmRequest) => 
-        api.post<void>('/security/totp/enrollment/confirm', data),
+        api.post<StepUpVerifyResponse>('/security/totp/enrollment/confirm', data),
 
-    getStepUpStatus: (scope: string, resourceId: string) => 
-        api.get<StepUpStatusResponse>(`/security/step-up/status`, { params: { scope, resourceId } }),
+    getStepUpStatus: (scope?: string, resourceId?: string, stepUpToken?: string | null) => 
+        api.get<StepUpStatusResponse>('/security/step-up/status', {
+            params: { scope, resourceId },
+            headers: stepUpToken ? { 'X-Step-Up-Token': stepUpToken } : undefined,
+        }),
 
     verifyStepUp: (data: TotpStepUpVerifyRequest) => 
         api.post<StepUpVerifyResponse>('/security/step-up/totp/verify', data),

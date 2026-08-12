@@ -162,7 +162,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page manager-dashboard-v2" id="page-manager-dashboard">
       <div className="workspace-shell manager-dashboard-shell">
         <div className="workspace-main">
-          <div className="workspace-breadcrumbs">Operations <span>/</span> Manager workspace</div>
+          {/* <div className="workspace-breadcrumbs">Operations <span>/</span> Manager workspace</div> */}
           <div className="workspace-page-head">
             <div>
               {/* <span className="workspace-side-eyebrow">Operations command center</span> */}

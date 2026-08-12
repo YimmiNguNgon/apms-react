@@ -1,0 +1,330 @@
+/* ============================================================
+   Article Detail - Modern Editorial Layout
+   ============================================================ */
+
+.detailPage {
+  background-color: var(--cds-background);
+  min-height: 100vh;
+  padding: 24px 16px 64px;
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* ── Top Nav ────────────────────────────────────────────── */
+.topNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  padding-bottom: 12px;
+}
+
+.backBtn {
+  background: transparent;
+  border: none;
+  color: var(--cds-link-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.backBtn:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--cds-text-helper);
+}
+
+/* ── Article Header ─────────────────────────────────────── */
+.header {
+  margin-bottom: 32px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+}
+
+.source {
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.title {
+  font-family: var(--cds-font-family-serif, "Georgia", serif);
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--cds-text-primary);
+  margin: 0 0 16px 0;
+  letter-spacing: -0.5px;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 2rem;
+  }
+}
+
+.summary {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--cds-text-secondary);
+  margin: 0 0 24px 0;
+  max-width: 900px;
+}
+
+.heroImage {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--cds-layer-02);
+  border: 1px solid var(--cds-border-subtle-00);
+  margin-bottom: 32px;
+}
+
+/* ── Layout Grid ────────────────────────────────────────── */
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 48px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+/* ── Article Content ────────────────────────────────────── */
+.articleBody {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--cds-text-primary);
+  max-width: 800px;
+  white-space: pre-wrap;
+}
+
+/* ── Sidebar Panels ─────────────────────────────────────── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.panel {
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.panelTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cds-text-secondary);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiBriefText {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.signalsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.signalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.signalLabel {
+  color: var(--cds-text-secondary);
+}
+
+.signalValue {
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.sourcePanel {
+  background: transparent;
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.sourceInfoRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 0.875rem;
+}
+
+/* ── Badges ─────────────────────────────────────────────── */
+.badgeGroup {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+
+.badgeNew {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.badgeHot {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.badgeSuccess {
+  color: #15803d;
+}
+
+.badgeDanger {
+  color: #b91c1c;
+}
+
+.badgeWarning {
+  color: #b45309;
+}
+
+/* ── Common Utilities ───────────────────────────────────── */
+.companyPill {
+  display: inline-block;
+  padding: 6px 12px;
+  background: var(--cds-background-brand, #eff6ff);
+  color: var(--cds-text-brand, #1d4ed8);
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.companyPill:hover {
+  background: #dbeafe;
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--cds-button-primary);
+  color: var(--cds-text-inverse);
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+}
+
+.divider {
+  height: 1px;
+  background: var(--cds-border-subtle-01);
+  margin: 16px 0;
+}
+
+/* ── Original Source Section At Very Bottom ─────────────── */
+.originalSourceSection {
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 2px solid var(--cds-border-subtle-01);
+  max-width: 800px;
+}
+
+.originalSourceTitle {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--cds-text-primary);
+  margin: 0 0 8px 0;
+}
+
+.originalSourceText {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+  margin: 0 0 16px 0;
+}
+
+.originalSourceBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #1d4ed8;
+  color: #ffffff;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.2s ease;
+}
+
+.originalSourceBtn:hover {
+  background: #1e40af;
+  color: #ffffff;
+}
+
+.originalSourceUnavailable {
+  font-size: 0.875rem;
+  color: var(--cds-text-helper);
+  font-style: italic;
+}

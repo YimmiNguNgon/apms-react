@@ -408,6 +408,9 @@ export interface AiFieldResult {
   managerReviewedByUserId?: number;
   previousManagerReviewStatus?: string;
   previousManagerReviewComment?: string;
+  previousSubmittedValue?: unknown;
+  previousReviewedRevision?: number;
+  changedInRevision?: number;
   reviewedValue?: unknown;
   staffReviewedValue?: unknown;
   reviewStatus?: FieldReviewStatus | string; // Synthetic status used by frontend
@@ -426,7 +429,7 @@ export interface UpdateCandidateRequest {
 }
 
 export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'REVISION_REQUESTED' | 'CHANGES_REQUESTED';
-export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'OTHER';
+export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'PARTNER_CONTRACT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'OTHER';
 
 export interface WorkbenchDocumentResponse extends ImportJobResponse {
   latestExtractionId?: string | null;
@@ -572,7 +575,7 @@ export interface ImportJobResponse {
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
-export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'GENERAL_TASK';
+export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'PARTNER_CONTRACT_COLLECTION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'GENERAL_TASK';
 
 export type NewsDraftStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'DELETED';
 
@@ -760,8 +763,10 @@ export type RoleEvaluationStatus =
   | 'REVISION_REQUIRED'
   | 'APPROVAL_PROCESSING'
   | 'APPROVED'
+  | 'FINAL'
   | 'APPROVAL_FAILED'
   | 'REJECTED';
+export type SystemRoleName = 'SYSTEM_ADMIN' | 'BUSINESS_OWNER' | 'BUSINESS_DEVELOPMENT_MANAGER' | 'BUSINESS_DEVELOPMENT_STAFF' | 'RESEARCH_STAFF';
 export type EvaluationCompletenessStatus = 'COMPLETE' | 'PARTIAL' | 'INCOMPLETE';
 export type CriterionInputMethod = 'AUTOMATIC_PROPOSAL' | 'MANUAL_REVIEWED' | 'MANUAL_OVERRIDE' | 'AI_ASSISTED' | 'AI_ASSISTED_EDITED';
 export type CriterionSuggestionReviewStatus = 'PENDING' | 'ACCEPTED' | 'EDITED' | 'REJECTED' | 'NEEDS_MORE_DATA';
@@ -860,6 +865,13 @@ export interface RoleEvaluationDraftResponse {
   submittedAt?: string | null;
   reviewedAt?: string | null;
   reviewComment?: string | null;
+  evaluatorRole?: SystemRoleName | null;
+  ownerFinalized?: boolean | null;
+  ownerFinalEvaluationExists?: boolean | null;
+  canEdit?: boolean | null;
+  canSubmit?: boolean | null;
+  canReview?: boolean | null;
+  canReevaluate?: boolean | null;
 }
 
 export interface RoleCriterionReadinessResult {
@@ -910,6 +922,8 @@ export interface RoleScoreSnapshotResponse {
   weightingMethod?: string | null;
   weightSource?: string | null;
   calculatedAt?: string | null;
+  evaluatorRole?: SystemRoleName | null;
+  authoritative?: boolean | null;
 }
 
 export interface RoleEvaluationVersionCriterionResponse {
@@ -963,6 +977,8 @@ export interface RoleEvaluationVersionResponse {
   approvedByAccountId?: number | null;
   approvedAt?: string | null;
   reviewComment?: string | null;
+  evaluatorRole?: SystemRoleName | null;
+  authoritative?: boolean | null;
   createdAt?: string | null;
 }
 

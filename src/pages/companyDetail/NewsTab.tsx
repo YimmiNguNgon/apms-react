@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExternalLink, Newspaper, Search, Sparkles, Filter } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import { externalDataApi } from '../../API/externalDataApi';
@@ -6,12 +6,24 @@ import type { CompanyNews } from '../../types/listingData';
 import { ListingTabShell } from './common';
 import { formatDateTime, useListingTabData } from './utils';
 
-const BATCH_SIZE = 10;
+const PAGE_SIZE = 8;
 const CATEGORIES = ['Tất cả', 'CÔNG BỐ THÔNG TIN', 'HOẠT ĐỘNG KINH DOANH', 'CỔ TỨC & PHÁT HÀNH', 'BÁO CÁO PHÂN TÍCH', 'CẢNH BẢO RỦI RO', 'CƠ HỘI ĐẦU TƯ'];
 
 interface NewsTabProps {
   companyId: string;
 }
+
+const repairMojibake = (value?: string | null): string => {
+  if (!value) return '';
+  if (!/[\u00c2\u00c3\u00e2á»Ä½ºÆ°â]/.test(value)) return value;
+  try {
+    const bytes = Uint8Array.from(Array.from(value, (character) => character.charCodeAt(0)));
+    const repaired = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return repaired.includes('\uFFFD') ? value : repaired;
+  } catch {
+    return value;
+  }
+};
 
 const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
   const { loading, error, data, reload } = useListingTabData<CompanyNews[]>(
@@ -19,12 +31,17 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
     companyId,
     listingDataApi.getNews,
   );
-  const [visible, setVisible] = useState(BATCH_SIZE);
+  const [currentPage, setCurrentPage] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
   const [crawling, setCrawling] = useState(false);
   const [crawlMsg, setCrawlMsg] = useState<string | null>(null);
   const showManualCrawler = companyId !== '6a31a0000000000000000001';
+
+  // Reset pagination when companyId, searchQuery, or selectedCategory changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [companyId, searchQuery, selectedCategory]);
 
   const news = data?.data ?? [];
 
@@ -36,20 +53,104 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
     return matchCat && matchQuery;
   });
 
-  const shown = filteredNews.slice(0, visible);
+  const totalPages = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
+  const shown = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const startItem = filteredNews.length > 0 ? currentPage * PAGE_SIZE + 1 : 0;
+  const endItem = Math.min((currentPage + 1) * PAGE_SIZE, filteredNews.length);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 0 || newPage >= totalPages || newPage === currentPage) return;
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 250, behavior: 'smooth' });
+  };
 
   const handleRunAiCrawler = async () => {
     setCrawling(true);
-    setCrawlMsg(null);
+    setCrawlMsg('Đang kích hoạt AI Crawler thu thập tin tức cho doanh nghiệp...');
     try {
-      const msg = await externalDataApi.runFetch({ forceRefresh: true });
-      setCrawlMsg(msg || 'Đã kích hoạt AI crawler lấy tin tức CafeF tự động!');
-      reload();
+      await externalDataApi.triggerCompanyCrawl(companyId);
+      setCrawlMsg('Đang thu thập tin tức... Vui lòng chờ trong giây lát.');
+
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const statusRes = await externalDataApi.getCompanyCrawlStatus(companyId);
+          if (statusRes.status === 'COMPLETED') {
+            clearInterval(interval);
+            setCrawlMsg('Thu thập tin tức hoàn tất!');
+            setCrawling(false);
+            reload();
+          } else if (statusRes.status === 'FAILED' || attempts >= 15) {
+            clearInterval(interval);
+            setCrawlMsg(statusRes.status === 'FAILED' ? 'Thu thập tin tức thất bại.' : 'Hoàn tất thu thập.');
+            setCrawling(false);
+            reload();
+          }
+        } catch {
+          if (attempts >= 15) {
+            clearInterval(interval);
+            setCrawling(false);
+            reload();
+          }
+        }
+      }, 2000);
     } catch (err) {
       setCrawlMsg(err instanceof Error ? err.message : 'Kích hoạt crawler thất bại.');
-    } finally {
       setCrawling(false);
     }
+  };
+
+  const renderPageButtons = () => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible) {
+      for (let i = 0; i < totalPages; i++) pages.push(i);
+    } else {
+      pages.push(0);
+      let start = Math.max(1, currentPage - 1);
+      let end = Math.min(totalPages - 2, currentPage + 1);
+
+      if (currentPage <= 2) {
+        end = 3;
+      } else if (currentPage >= totalPages - 3) {
+        start = totalPages - 4;
+      }
+
+      if (start > 1) pages.push('...');
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (end < totalPages - 2) pages.push('...');
+      pages.push(totalPages - 1);
+    }
+
+    return pages.map((p, idx) => {
+      if (p === '...') {
+        return <span key={`ellipsis-${idx}`} style={{ padding: '0 4px', fontSize: '0.72rem', color: '#94A3B8' }}>...</span>;
+      }
+      const pageNum = p as number;
+      const isActive = pageNum === currentPage;
+      return (
+        <button
+          key={pageNum}
+          type="button"
+          onClick={() => handlePageChange(pageNum)}
+          style={{
+            padding: '4px 9px',
+            borderRadius: '6px',
+            border: '1px solid',
+            borderColor: isActive ? '#2563EB' : '#CBD5E1',
+            background: isActive ? '#2563EB' : '#FFFFFF',
+            color: isActive ? '#FFFFFF' : '#334155',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          {pageNum + 1}
+        </button>
+      );
+    });
   };
 
   return (
@@ -61,7 +162,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Newspaper size={20} style={{ color: '#2563EB' }} />
               <h2 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                Tin Tức & Truyền Thông AI ({filteredNews.length} bài)
+                Tin Tức & Truyền Thông ({filteredNews.length} bài)
               </h2>
             </div>
 
@@ -122,7 +223,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
                 <button
                   key={cat}
                   type="button"
-                  onClick={() => { setSelectedCategory(cat); setVisible(BATCH_SIZE); }}
+                  onClick={() => setSelectedCategory(cat)}
                   style={{
                     padding: '3px 9px',
                     borderRadius: '999px',
@@ -142,7 +243,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
           </div>
         </div>
 
-        {/* News Stream List */}
+        {/* News Stream List (Max 8 articles per page) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {shown.map((item) => (
             <div key={item.id ?? item.sourceUrl} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 14px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -169,16 +270,16 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
                 <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', margin: '0 0 4px', lineHeight: 1.35 }}>
                   {item.sourceUrl ? (
                     <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0F172A', textDecoration: 'none' }}>
-                      {item.title} <ExternalLink size={11} style={{ display: 'inline', color: '#2563EB' }} />
+                      {repairMojibake(item.title)} <ExternalLink size={11} style={{ display: 'inline', color: '#2563EB' }} />
                     </a>
                   ) : (
-                    item.title
+                    repairMojibake(item.title)
                   )}
                 </h3>
 
                 {item.summary && (
                   <p style={{ fontSize: '0.72rem', color: '#475569', margin: 0, lineHeight: 1.4 }}>
-                    {item.summary}
+                    {repairMojibake(item.summary)}
                   </p>
                 )}
               </div>
@@ -186,26 +287,69 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
           ))}
         </div>
 
-        {visible < filteredNews.length && (
-          <button
-            type="button"
-            onClick={() => setVisible((count) => count + BATCH_SIZE)}
-            style={{
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              borderRadius: '6px',
-              padding: '6px 14px',
-              fontSize: '0.73rem',
-              fontWeight: 700,
-              color: '#334155',
-              cursor: 'pointer',
-              alignSelf: 'center',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-            }}
-          >
-            Xem thêm tin tức ({filteredNews.length - visible} bài còn lại)
-          </button>
+        {/* Numerated Pagination Bar */}
+        {filteredNews.length > 0 && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            background: '#FFFFFF',
+            border: '1px solid #E2E8F0',
+            borderRadius: '10px',
+            padding: '10px 16px',
+            marginTop: '4px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+              Hiển thị {startItem}–{endItem} trong tổng số {filteredNews.length} bài báo (Trang {currentPage + 1}/{totalPages})
+            </div>
+
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 0}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #CBD5E1',
+                    background: currentPage === 0 ? '#F1F5F9' : '#FFFFFF',
+                    color: currentPage === 0 ? '#94A3B8' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ‹ Trước
+                </button>
+
+                {renderPageButtons()}
+
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages - 1}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #CBD5E1',
+                    background: currentPage >= totalPages - 1 ? '#F1F5F9' : '#FFFFFF',
+                    color: currentPage >= totalPages - 1 ? '#94A3B8' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: currentPage >= totalPages - 1 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Sau ›
+                </button>
+              </div>
+            )}
+          </div>
         )}
+
       </div>
     </ListingTabShell>
   );

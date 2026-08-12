@@ -4,6 +4,7 @@ export const roleEvaluationReadOnlyStatuses: RoleEvaluationStatus[] = [
   'IN_REVIEW',
   'APPROVAL_PROCESSING',
   'APPROVED',
+  'FINAL',
   'APPROVAL_FAILED',
   'REJECTED',
 ];
@@ -24,6 +25,22 @@ export const canStaffEditEvaluation = (
 export const canManagerReviewEvaluation = (status?: RoleEvaluationStatus | null) =>
   status === 'IN_REVIEW';
 
+export const canEditCompanyEvaluation = ({
+  mode,
+  status,
+  canEdit,
+  ownerFinalized,
+}: {
+  mode: 'staff' | 'manager' | 'owner';
+  status?: RoleEvaluationStatus | null;
+  canEdit?: boolean | null;
+  ownerFinalized?: boolean | null;
+}) => {
+  if (mode === 'owner') return Boolean(canEdit && status && roleEvaluationEditableStatuses.includes(status));
+  if (mode === 'manager' && ownerFinalized) return false;
+  return Boolean(canEdit && status && roleEvaluationEditableStatuses.includes(status));
+};
+
 export const shouldPollEvaluation = (status?: RoleEvaluationStatus | null) =>
   status === 'APPROVAL_PROCESSING';
 
@@ -39,6 +56,8 @@ export const roleEvaluationStatusLabel = (status?: RoleEvaluationStatus | null) 
       return 'Approval processing';
     case 'APPROVED':
       return 'Approved';
+    case 'FINAL':
+      return 'Finalized by Owner';
     case 'APPROVAL_FAILED':
       return 'Approval failed';
     case 'REJECTED':

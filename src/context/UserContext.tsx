@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../services/api';
 import type { PageResponse } from '../services/api';
 import { loginApi } from '../API/loginApi';
+import { queryClient } from '../main';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLES = {
@@ -15,10 +16,10 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat'],
-  [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'news', 'profile', 'system-chat'],
-  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
-  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile', 'system-chat'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat', 'news', 'article-detail', 'company-profiles', 'companies', 'company-detail', 'partner-ecosystem'],
+  [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'news', 'article-detail', 'profile', 'system-chat'],
+  [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'partner-ecosystem', 'verify', 'news', 'article-detail', 'profile', 'project-management', 'project-detail', 'system-chat'],
+  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'partner-ecosystem', 'add-company', 'ai-agent', 'news', 'article-detail', 'profile', 'system-chat'],
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -177,6 +178,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const user = mapBackendRoles(payload.id, payload.email || email, Array.isArray(payload.roles) ? payload.roles : []);
       setCurrentUser(user);
       localStorage.setItem('apms-user', JSON.stringify(user));
+      queryClient.clear();
       return true;
     } catch (err: unknown) {
       throw new Error(err instanceof Error ? err.message : 'Cannot connect to the server.', { cause: err });
@@ -188,6 +190,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     clearAuthSession();
     sessionStorage.clear();
+    queryClient.clear();
   };
 
   return (

@@ -21,15 +21,53 @@ const profileLegalName = (profile: ProfileResponse) =>
 const profileIndustry = (profile: ProfileResponse) =>
   profile.business?.industries?.filter(Boolean).join(', ') || i18n.t('company-list:profile.industryFallback');
 
-const profileTicker = (profile: ProfileResponse) => {
-  const ticker = profile.stockTicker?.trim();
-  return ticker ? ticker.toUpperCase() : null;
+const profileRelationshipBadge = (profile: ProfileResponse) => {
+  const rel = (profile as unknown as Record<string, unknown>).relationshipType ||
+              (profile as unknown as Record<string, unknown>).relationship ||
+              (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
+
+  const relStr = String(rel || 'PARTNER_WITH');
+
+  switch (relStr) {
+    case 'PARTNER_WITH':
+    case 'PARTNER':
+      return {
+        label: 'Partner',
+        style: { color: '#1D4ED8', background: '#EFF6FF', border: '1px solid #DBEAFE' },
+      };
+    case 'COMPETITOR_OF':
+    case 'COMPETITOR':
+      return {
+        label: 'COMPETITOR',
+        style: { color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA' },
+      };
+    case 'SUPPLIER_OF':
+    case 'SUPPLIER':
+      return {
+        label: 'SUPPLIER',
+        style: { color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0' },
+      };
+    case 'CUSTOMER_OF':
+    case 'CUSTOMER':
+      return {
+        label: 'CUSTOMER',
+        style: { color: '#6B21A8', background: '#F3E8FF', border: '1px solid #E9D5FF' },
+      };
+    case 'POTENTIAL_PARTNER_OF':
+    case 'INVESTOR':
+      return {
+        label: 'POTENTIAL PARTNER',
+        style: { color: '#4338CA', background: '#EEF2FF', border: '1px solid #C7D2FE' },
+      };
+    default:
+      return {
+        label: relStr,
+        style: { color: '#334155', background: '#F1F5F9', border: '1px solid #E2E8F0' },
+      };
+  }
 };
 
-const profileExchange = (profile: ProfileResponse) => {
-  const exchange = profile.stockExchange;
-  return exchange && exchange !== 'NONE' ? exchange : null;
-};
+
 
 const formatDate = (value?: string | null) => {
   if (!value) return i18n.t('company-list:table.notUpdated');
@@ -248,7 +286,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <thead>
               <tr>
                 <th>{t('table.company')}</th>
-                <th>{t('table.ticker')}</th>
+                <th>{t('table.relationship')}</th>
                 <th>{t('table.industry')}</th>
                 <th>{t('table.status')}</th>
                 <th>{t('table.updated')}</th>
@@ -278,14 +316,21 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                     </div>
                   </td>
                   <td>
-                    {profileTicker(profile) ? (
-                      <div className={styles.tickerCell}>
-                        <strong>{profileTicker(profile)}</strong>
-                        <small>{profileExchange(profile) || '—'}</small>
-                      </div>
-                    ) : (
-                      <span className={styles.tickerEmpty}>—</span>
-                    )}
+                    {(() => {
+                      const badge = profileRelationshipBadge(profile);
+                      return (
+                        <span style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '3px 9px',
+                          borderRadius: '6px',
+                          display: 'inline-block',
+                          ...badge.style,
+                        }}>
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td>{profileIndustry(profile)}</td>
                   <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
