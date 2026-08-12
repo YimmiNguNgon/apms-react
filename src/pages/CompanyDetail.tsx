@@ -489,19 +489,19 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Ngành nghề</span>
                 <span style={{ fontWeight: 600, color: '#1E293B', background: '#F1F5F9', padding: '1px 6px', borderRadius: '4px' }}>
-                  {profile.business?.industries?.[0] || 'Chung'}
+                  {profile?.business?.industries?.[0] || 'Chung'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Trạng thái xác minh</span>
                 <span style={{ fontWeight: 600, color: '#15803D', background: '#DCFCE7', padding: '1px 6px', borderRadius: '4px' }}>
-                  {profile.reviewStatus || 'VERIFIED'}
+                  {profile?.reviewStatus || 'VERIFIED'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Cập nhật lần cuối</span>
                 <span style={{ fontWeight: 600, color: '#334155' }}>
-                  {profile.metadata?.updatedAt ? new Date(profile.metadata.updatedAt).toLocaleDateString() : 'Vừa xong'}
+                  {profile?.metadata?.updatedAt ? new Date(profile.metadata.updatedAt).toLocaleDateString() : 'Vừa xong'}
                 </span>
               </div>
             </div>
@@ -695,7 +695,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   };
 
   const renderRelationshipTab = () => {
-    const relType = intelligence?.relationship?.type || profile?.relationshipType || 'Chưa cập nhật';
+    const relType = intelligence?.relationship?.type || 'Chưa cập nhật';
     const impact = intelligence?.relationship?.businessImpact || 'Chưa cập nhật';
     const relevance = intelligence?.relationship?.strategicRelevance || 'Chưa cập nhật';
     const trend = intelligence?.relationship?.impactTrend || 'STABLE';

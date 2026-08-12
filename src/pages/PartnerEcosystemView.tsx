@@ -663,7 +663,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
 
     const intelligence = intelligenceFor(selectedRow);
     const activeProj = selectedRow.projects.filter(p => p.status === 'ACTIVE');
-    const relStatus = selectedRow.projects.some(p => p.status === 'AT_RISK') || intelligence.businessImpact === 'CRITICAL' 
+    const relStatus = intelligence.businessImpact === 'CRITICAL'
       ? 'AT RISK' 
       : (selectedRow.projects.some(p => p.status === 'ACTIVE') ? 'ACTIVE' : 'INACTIVE');
     const relTrend = intelligence.impactTrend === 'UP' 
@@ -728,12 +728,12 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
             date: n.publishedAt || n.updatedAt || null,
             categoryOrSentiment: n.sentiment || 'NEUTRAL',
             source: n.source || 'N/A',
-            url: n.url,
+            url: n.url ?? null,
             summary: cleanText(n.aiSummary || n.summary)
           })),
           ...intelligence.signals.map(s => ({
             id: `act-${s.id}`,
-            type: s.category === 'NEWS' ? 'NEWS' : 'ACTIVITY' as const,
+            type: s.category === 'NEWS' ? ('NEWS' as const) : ('ACTIVITY' as const),
             title: s.title,
             date: s.date,
             categoryOrSentiment: s.category,
@@ -810,15 +810,15 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
                 <div key={project.id} style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
                     <strong style={{ fontSize: '13.5px', color: 'var(--cds-text-primary)' }}>{cleanText(project.projectName) || 'Chưa có tên'}</strong>
-                    <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : project.status === 'AT_RISK' ? '#FEE2E2' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : project.status === 'AT_RISK' ? '#B91C1C' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                    <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
                       {project.status}
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
                     <div>Role (APMS): <strong>{project.targetRelationshipType || 'PARTNER'}</strong></div>
-                    <div>Business Impact: <strong>{displayImpact(normalizeImpact(project.businessImpact))}</strong></div>
-                    <div>Start Date: <strong>{formatDate(project.startDate)}</strong></div>
-                    <div>End Date: <strong>{formatDate(project.endDate)}</strong></div>
+                    <div>Business Impact: <strong>{displayImpact(normalizeImpact(intelligence.businessImpact))}</strong></div>
+                    <div>Start Date: <strong>{formatDate(project.createdAt)}</strong></div>
+                    <div>End Date: <strong>{formatDate(project.plannedEndDate)}</strong></div>
                   </div>
                   {project.description && (
                     <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--cds-text-secondary)', fontStyle: 'italic' }}>
