@@ -1,0 +1,81 @@
+{
+  "hero": {
+    "administration": "Quản trị hệ thống",
+    "title": "Không gian làm việc Quản trị viên",
+    "subtitle": "Giám sát sức khỏe nền tảng, bảo mật, người dùng và hoạt động hệ thống."
+  },
+  "buttons": {
+    "refresh": "Làm mới",
+    "exportAudit": "Xuất nhật ký",
+    "createAccount": "Tạo tài khoản"
+  },
+  "stats": {
+    "totalUsers": "Tổng số người dùng",
+    "activeUsers": "Người dùng hoạt động",
+    "pendingInactive": "Chờ duyệt / Vô hiệu",
+    "securityAlerts": "Cảnh báo bảo mật",
+    "nonDeleted": "Tài khoản hiện có",
+    "enabledAccounts": "Tài khoản đang hoạt động",
+    "disabledPending": "Tài khoản bị khóa hoặc chờ duyệt",
+    "failedDenied": "Sự kiện thất bại/từ chối gần đây"
+  },
+  "bento": {
+    "title": "Sức khỏe Hệ thống",
+    "subtitle": "Kiểm tra kết nối thời gian thực tới cơ sở dữ liệu và dịch vụ.",
+    "checking": "Đang kiểm tra…",
+    "notAvailable": "Không khả dụng",
+    "healthUnavailable": "Kiểm tra sức khỏe không khả dụng",
+    "noResponse": "Endpoint sức khỏe của backend không phản hồi",
+    "latency": "Độ trễ: ",
+    "checked": "Đã kiểm tra lúc: "
+  },
+  "audit": {
+    "title": "Bảo mật & Kiểm toán",
+    "subtitle": "Xem lại các sự kiện bảo mật, xác thực, truy cập và cấu hình.",
+    "viewAuditLog": "Xem nhật ký kiểm toán",
+    "securityAlerts": "Cảnh báo bảo mật",
+    "failedLogins": "Số lần đăng nhập lỗi",
+    "permissionChanges": "Thay đổi quyền hạn",
+    "all": "Tất cả",
+    "security": "Bảo mật",
+    "authentication": "Xác thực",
+    "usersRoles": "Tài khoản & Vai trò",
+    "systemConfig": "Cấu hình Hệ thống",
+    "searchPlaceholder": "Tìm kiếm nhật ký",
+    "loadingRecords": "Đang tải bản ghi...",
+    "noRecords": "Không có bản ghi nhật ký nào."
+  },
+  "role": {
+    "title": "Tổng quan Người dùng & Vai trò",
+    "subtitle": "Phân bổ tài khoản theo vai trò.",
+    "manage": "Quản lý vai trò"
+  },
+  "activity": {
+    "title": "Hoạt động Admin Gần đây",
+    "subtitle": "Các sự kiện quản trị và bảo mật được ghi nhận mới nhất.",
+    "loading": "Đang tải hoạt động...",
+    "table": {
+      "timestamp": "Thời gian",
+      "actor": "Người thực hiện",
+      "action": "Hành động",
+      "target": "Đối tượng",
+      "status": "Trạng thái"
+    }
+  },
+  "tabs": {
+    "audit": "Bảo mật & kiểm toán",
+    "activity": "Hoạt động quản trị",
+    "system": "Hệ thống & vai trò",
+    "quick": "Thao tác nhanh"
+  },
+  "quick": {
+    "title": "Thao tác Nhanh",
+    "subtitle": "Mở nhanh các công cụ quản trị.",
+    "createUser": "Tạo người dùng",
+    "manageUsers": "Quản lý người dùng",
+    "manageRoles": "Quản lý vai trò",
+    "managePermissions": "Quản lý quyền hạn",
+    "viewAuditLog": "Xem nhật ký kiểm toán",
+    "systemSettings": "Cấu hình hệ thống"
+  }
+}

@@ -3,6 +3,7 @@
 // Top KPI Row | Below-Graph Drawer on Node Click | Level-based Circular Network Redesign
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Minus, Plus, RotateCcw, Building, Search, X, ArrowRight, CheckCircle2, AlertTriangle, AlertCircle, Play } from 'lucide-react';
 import { api } from '../services/api';
 import type { GraphCompanyDto, ProfileResponse, ProjectResponse } from '../types/domain';
@@ -70,14 +71,11 @@ const RELATIONSHIP_STYLES: Record<string, { color: string; label: string; dashed
   'potential-partner': { color: '#8B5CF6', label: 'Potential Partner', dashed: true }, // Purple
 };
 
-// RESTORED ORIGINAL 6 TABS EXACTLY
 const DRAWER_TABS = [
   { id: 'overview',     label: 'Overview' },
   { id: 'strength',     label: 'Relationship Strength' },
   { id: 'projects',     label: 'Shared Projects' },
   { id: 'contacts',     label: 'Contacts' },
-  { id: 'meetings',     label: 'Recent Meetings' },
-  { id: 'ai-recommend', label: 'AI Recommendations' },
 ];
 
 const getCurvePath = (x1: number, y1: number, x2: number, y2: number, bend = 20) => {
@@ -107,6 +105,19 @@ interface RelationshipMapProps {
 }
 
 export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage }) => {
+  const { t, i18n } = useTranslation('relationship-map');
+
+  const getGroupLabel = (group: string) => {
+    switch (group) {
+      case 'partner': return t('relationshipTypes.partnerWith', 'Partner');
+      case 'competitor': return t('relationshipTypes.competitorOf', 'Competitor');
+      case 'supplier': return t('relationshipTypes.supplierOf', 'Supplier');
+      case 'customer': return t('relationshipTypes.customerOf', 'Customer');
+      case 'potential-partner': return t('relationshipTypes.potentialPartnerOf', 'Potential Partner');
+      default: return t('relationshipTypes.fallback', 'Other link');
+    }
+  };
+
   // ── State ────────────────────────────────────────────────────────
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -139,6 +150,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState('overview');
+  const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
+  const [loadingAi, setLoadingAi] = useState(false);
 
   // ── Sync API Graph Data ──────────────────────────────────────────
   useEffect(() => {
@@ -210,12 +223,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               color: RELATIONSHIP_STYLES[group]?.color || '#2563EB',
               overview: company.industry ? `${company.name} operates in the ${company.industry} sector, serving key roles within our business network.` : 'Ecosystem node details are loaded and monitored.',
               sharedProjects: [],
-              contacts: [
-                { name: `Executive Contact ${company.companyId.slice(-3).toUpperCase()}`, role: 'Strategic Account Director', email: `partner-desk@${(company.name || 'company').toLowerCase().replace(/[^a-z0-9]/g, '') || 'company'}.com`, phone: '+84 908 123 456' }
-              ],
-              meetings: [
-                { title: 'Ecosystem Alignment Session', date: '2026-07-20', notes: 'Reviewed ongoing collaborations, timeline milestones, and discussed risk mitigation strategies.' }
-              ],
+              contacts: [],
+              meetings: [],
               aiRecommendation: aiRec,
             };
           });
@@ -372,6 +381,35 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       });
     }
 
+    if (layoutMode === 'grid') {
+      const itemsPerRow = 5;
+      const spacingX = 240;
+      const spacingY = 180;
+      const startX = 200;
+      const startY = 150;
+
+      const sortedNodes = [
+        ...filtered.filter(n => n.id === centerId),
+        ...filtered.filter(n => levels.get(n.id) === 1),
+        ...filtered.filter(n => levels.get(n.id) === 2)
+      ];
+
+      const positioned = sortedNodes.map((node, idx) => {
+        const row = Math.floor(idx / itemsPerRow);
+        const col = idx % itemsPerRow;
+        const x = startX + col * spacingX;
+        const y = startY + row * spacingY;
+        const connCount = edges.filter(e => e.from === node.id || e.to === node.id).length;
+        return {
+          ...node,
+          x,
+          y,
+          connections: connCount
+        };
+      });
+      return { positionedNodes: positioned, l1NodeIds: l1Ids, l2NodeIds: l2Ids, l2ParentMap: parentMap };
+    }
+
     // Radial layout coordinates calculations (Canvas size 1400x900 - Taller and Wider)
     const centerX = 700;
     const centerY = 450;
@@ -432,7 +470,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     });
 
     return { positionedNodes: positioned, l1NodeIds: l1Ids, l2NodeIds: l2Ids, l2ParentMap: parentMap };
-  }, [nodes, edges, centerId, search, groupFilter, minHealth, industryFilter, depthFilter, showAllL2, expandedL1Ids]);
+  }, [nodes, edges, centerId, search, groupFilter, minHealth, industryFilter, depthFilter, showAllL2, expandedL1Ids, layoutMode]);
 
   const visibleNodeIds = useMemo(() => new Set(positionedNodes.map(n => n.id)), [positionedNodes]);
 
@@ -565,8 +603,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       if (isConnectedToPartner) sharingCompetitorsCount++;
     });
 
-    return `You have ${partnersCount} direct partners. ${sharingCompetitorsCount} of your competitors share ecosystem connections with your partners.`;
-  }, [nodes, edges, centerId, l1NodeIds]);
+    return t('network.insightText', 'You have {{partnersCount}} direct partners. {{sharingCompetitorsCount}} of your competitors share ecosystem connections with your partners.', { partnersCount, sharingCompetitorsCount });
+  }, [nodes, edges, centerId, l1NodeIds, t]);
 
   const industryOptions = useMemo(() => {
     const set = new Set(nodes.map((n) => n.industry).filter(Boolean));
@@ -575,6 +613,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   // Handle Node Click to open Drawer & Expand L2 connections (Incremental Graph Expansion)
   const handleNodeClick = (node: GraphNode) => {
+    if (node.id === centerId) return;
     setSelectedNode(node);
     setDrawerTab('overview'); // Set default tab to 'overview'
     setDrawerOpen(true);
@@ -619,19 +658,6 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     URL.revokeObjectURL(url);
   };
 
-  const scheduleMeeting = () => {
-    if (!selectedNode) return;
-    const email = selectedNode.contacts?.[0]?.email;
-    if (email) {
-      const subject = encodeURIComponent(`Strategy meeting proposal — ${selectedNode.name}`);
-      const body = encodeURIComponent(
-        `Hi,\n\nI would like to schedule a strategy meeting regarding ${selectedNode.name} (${selectedNode.industry}).\n\nBest regards,`
-      );
-      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-    } else {
-      window.alert(`No contact email on file for ${selectedNode.name} — cannot schedule a meeting.`);
-    }
-  };
 
   // ── Owner-Centric Visual Flow & Path Computations ────────────────────────
   const sharedNodes = useMemo(() => {
@@ -777,6 +803,29 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     );
   };
 
+  useEffect(() => {
+    if (drawerTab === 'ai-recommend' && selectedNode && !aiRecommendations[selectedNode.id]) {
+      const fetchAiRecs = async () => {
+        setLoadingAi(true);
+        try {
+          const res = await api.get<any>(`/graph/companies/${encodeURIComponent(selectedNode.id)}/ai-recommendations`);
+          if (res?.data) {
+            setAiRecommendations(prev => ({
+              ...prev,
+              [selectedNode.id]: res.data
+            }));
+          }
+        } catch (err: any) {
+          console.error("Failed to fetch AI recommendations:", err);
+          window.alert("Lỗi tải AI: " + (err.message || String(err)));
+        } finally {
+          setLoadingAi(false);
+        }
+      };
+      void fetchAiRecs();
+    }
+  }, [drawerTab, selectedNode, aiRecommendations]);
+
   // Render Restored Original 6 Drawer Tabs with Improved Owner-Centric Content
   const renderDrawerTab = () => {
     if (!selectedNode) return null;
@@ -839,13 +888,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               </div>
             </div>
 
-            {/* RELATIONSHIP WITH YOUR COMPANY */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', background: '#f8fafc' }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Relationship With Your Company
-              </h4>
-              {renderVisualPathVertical(selectedNode)}
-            </div>
+
 
             {/* WHY THIS RELATIONSHIP MATTERS */}
             <div style={{ background: '#f8fafc', borderLeft: '4px solid #3b82f6', padding: '14px', borderRadius: '0 8px 8px 0', fontSize: '12.5px', lineHeight: '20px' }}>
@@ -860,7 +903,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             {/* NETWORK CONNECTIONS */}
             <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
               <h4 style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Network Connections
+                {t('drawer.networkConnections', 'Network Connections')}
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(() => {
@@ -870,7 +913,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     return otherId !== centerId;
                   });
                   if (validEdges.length === 0) {
-                    return <span style={{ fontSize: '12px', color: '#64748b' }}>No connections mapped.</span>;
+                    return <span style={{ fontSize: '12px', color: '#64748b' }}>{t('drawer.noConnectionsMapped', 'No connections mapped.')}</span>;
                   }
                   return validEdges.map(edge => {
                     const otherId = edge.from === selectedNode.id ? edge.to : edge.from;
@@ -888,12 +931,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       <div key={edge.id} style={{ fontSize: '12px', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
                         <strong style={{ color: '#0f172a' }}>{otherNode.name}</strong>
                         <div style={{ color: '#64748b', marginTop: '2px', display: 'flex', gap: '8px' }}>
-                          <span>→ {style.label} with {selectedNode.name}</span>
+                          <span>→ {getGroupLabel(edge.group)} {t('drawer.with', 'with')} {selectedNode.name}</span>
                           <span>|</span>
                           <span>
                             {isConnectedToOwner 
-                              ? `→ ${ownerRelStyle?.label} with Your Company` 
-                              : `→ No direct relationship with Your Company`}
+                              ? `→ ${getGroupLabel(isConnectedToOwner.group)} ${t('drawer.withYourCompany', 'with Your Company')}` 
+                              : `→ ${t('drawer.noDirectRelationship', 'No direct relationship with Your Company')}`}
                           </span>
                         </div>
                       </div>
@@ -911,43 +954,33 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#1e293b' }}>
             <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Relationship Assessment
+              {t('drawer.relationshipAssessment', 'Relationship Assessment')}
             </h4>
 
             {/* Assessment Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Relationship Type</span>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a', marginTop: '2px' }}>
-                  {selectedNode.group.toUpperCase()}
+                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{t('drawer.relationshipType', 'Relationship Type')}</span>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a', marginTop: '2px', textTransform: 'uppercase' }}>
+                  {getGroupLabel(selectedNode.group)}
                 </strong>
               </div>
+
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Relationship Direction</span>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#0f172a', marginTop: '2px' }}>
-                  {l1NodeIds.has(selectedNode.id) ? 'Direct Connection' : 'Second-Degree'}
-                </strong>
-              </div>
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Relationship Status</span>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{t('drawer.relationshipStatus', 'Relationship Status')}</span>
                 <strong style={{ display: 'block', fontSize: '13px', color: '#10b981', marginTop: '2px' }}>
-                  ACTIVE
+                  {t('priority.active', 'ACTIVE')}
                 </strong>
               </div>
+
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Network Overlap</span>
-                <strong style={{ display: 'block', fontSize: '13px', color: businessImpactData.ecosystemOverlap.level === 'HIGH' ? '#ef4444' : '#64748b', marginTop: '2px' }}>
-                  {businessImpactData.ecosystemOverlap.level}
-                </strong>
-              </div>
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Business Risk</span>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{t('drawer.businessRisk', 'Business Risk')}</span>
                 <strong style={{ display: 'block', fontSize: '13px', color: businessImpactData.competitiveRisk.level === 'HIGH' ? '#ef4444' : '#64748b', marginTop: '2px' }}>
                   {businessImpactData.competitiveRisk.level}
                 </strong>
               </div>
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#f8fafc' }}>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Network Impact</span>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{t('drawer.networkImpact', 'Network Impact')}</span>
                 <strong style={{ display: 'block', fontSize: '13px', color: '#3b82f6', marginTop: '2px' }}>
                   {businessImpactData.opportunity.level}
                 </strong>
@@ -956,16 +989,16 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
             {/* Explanatory breakdown */}
             <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
-              <h5 style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Assessment Rationale</h5>
+              <h5 style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{t('drawer.assessmentRationale', 'Assessment Rationale')}</h5>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#475569' }}>
-                <div>• Type: Direct {selectedNode.group} relationship</div>
-                <div>• Industry coverage: {selectedNode.industry} sector operations</div>
+                <div>• {t('drawer.typeDirect', 'Type: Direct relationship')}</div>
+                <div>• {t('drawer.industryCoverage', 'Industry coverage:')} {selectedNode.industry}</div>
                 {hasOverlap ? (
-                  <div>• Shared ecosystem partners: Connected to {sharedNodeNamesText}</div>
+                  <div>• {t('drawer.sharedEcosystemPartners', 'Shared ecosystem partners:')} {sharedNodeNamesText}</div>
                 ) : (
-                  <div>• No direct shared partners detected in map</div>
+                  <div>• {t('drawer.noDirectSharedPartners', 'No direct shared partners detected in map')}</div>
                 )}
-                <div>• Operational status: Active database sync</div>
+                <div>• {t('drawer.operationalStatusSync', 'Operational status: Active database sync')}</div>
               </div>
             </div>
 
@@ -986,7 +1019,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#1e293b' }}>
             <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Shared Projects
+              {t('drawer.sharedProjects', 'Shared Projects')}
             </h4>
 
             {directProjects.length > 0 ? (
@@ -996,7 +1029,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                       <strong style={{ fontSize: '13px', color: '#0f172a' }}>{p.name}</strong>
                       <span style={{ fontSize: '9px', fontWeight: 800, color: p.status === 'ACTIVE' ? '#2563eb' : '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
-                        {p.status}
+                        {p.status === 'ACTIVE' ? t('priority.active', 'ACTIVE') : t('priority.inactive', 'COMPLETED')}
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748b' }}>Target Completion: {p.due}</div>
@@ -1011,11 +1044,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               </div>
             ) : (
               <div style={{ padding: '16px', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '10px' }}>No direct shared projects.</span>
+                <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '10px' }}>{t('drawer.noSharedProjects', 'No direct shared projects.')}</span>
                 
                 {hasOverlap && (
                   <div style={{ fontSize: '11.5px', color: '#475569', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                    <strong>Ecosystem Project Potential:</strong> Ecosystem project involving {sharedName}, which is connected to both companies.
+                    <strong>{t('drawer.ecosystemProjectPotential', 'Ecosystem Project Potential:')}</strong> Ecosystem project involving {sharedName}, which is connected to both companies.
                   </div>
                 )}
               </div>
@@ -1028,13 +1061,13 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#1e293b' }}>
             <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Relationship Contacts
+              {t('drawer.relationshipContacts', 'Relationship Contacts')}
             </h4>
 
             {(() => {
               const contacts = selectedNode.contacts || [];
               if (contacts.length === 0) {
-                return <p style={{ fontSize: '12px', color: '#64748b' }}>No contacts listed.</p>;
+                return <p style={{ fontSize: '12px', color: '#64748b' }}>{t('drawer.noContactsListed', 'No contacts listed.')}</p>;
               }
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1044,10 +1077,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       <div style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 6px' }}>{cnt.role} - {selectedNode.name}</div>
                       
                       <div style={{ fontSize: '11px', color: '#475569' }}>
-                        <div>Relationship Role: <strong style={{ color: '#0f172a' }}>Primary business contact</strong></div>
-                        <div style={{ marginTop: '2px' }}>Last Interaction: <strong>20 Jul 2026</strong></div>
-                        <div style={{ marginTop: '2px' }}>Related Projects: <strong>Joint Integration Project</strong></div>
-                        <div style={{ marginTop: '4px', borderTop: '1px solid #f1f5f9', paddingTop: '4px' }}>
+                        <div style={{ marginTop: '4px', paddingTop: '4px' }}>
                           Email: <a href={`mailto:${cnt.email}`} style={{ color: '#2563eb' }}>{cnt.email}</a> • Phone: {cnt.phone}
                         </div>
                       </div>
@@ -1063,122 +1093,130 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#1e293b' }}>
             <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Meetings History
+              {t('drawer.meetingsHistory', 'Meetings History')}
             </h4>
-
-            <div style={{ padding: '12px', border: '1px solid #cbd5e1', borderRadius: '10px', background: '#ffffff' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>20 Jul 2026</span>
-              <div style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a', margin: '3px 0 6px' }}>
-                Ecosystem Alignment Session
-              </div>
-              <div style={{ fontSize: '12px', color: '#475569', lineHeight: '18px' }}>
-                <div><strong>Participants:</strong> Your Company, {selectedNode.name} {sharedNodeNamesText ? `, ${sharedNodeNamesText}` : ''}</div>
-                <div style={{ marginTop: '4px' }}><strong>Topics:</strong></div>
-                <ul style={{ margin: '2px 0 0 16px', padding: 0 }}>
-                  <li>Collaboration positioning</li>
-                  <li>Project milestones alignment</li>
-                  <li>Risk mitigation workflows</li>
-                </ul>
-                <div style={{ marginTop: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '4px', fontStyle: 'italic' }}>
-                  Relationship Impact: "Shared ecosystem relationship discussed."
+            {(() => {
+              const meetings = selectedNode.meetings || [];
+              if (meetings.length === 0) {
+                return <p style={{ fontSize: '12px', color: '#64748b' }}>Không có lịch họp nào.</p>;
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {meetings.map((mtg, i) => (
+                    <div key={i} style={{ padding: '12px', border: '1px solid #cbd5e1', borderRadius: '10px', background: '#ffffff' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>{mtg.date}</span>
+                      <div style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a', margin: '3px 0 6px' }}>
+                        {mtg.title}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: '18px' }}>
+                        {mtg.notes}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         );
 
-      case 'ai-recommend':
+      case 'ai-recommend': {
+        if (loadingAi) {
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: '16px', color: '#64748b' }}>
+              <div className="cds--loading" style={{ width: '40px', height: '40px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>Vui lòng đợi, AI đang phân tích mạng lưới...</div>
+              <style>{`
+                @keyframes spin { 100% { transform: rotate(360deg); } }
+              `}</style>
+            </div>
+          );
+        }
+
+        const aiData = aiRecommendations[selectedNode.id];
+        if (!aiData) {
+          return (
+            <div style={{ padding: '20px', color: '#64748b', fontSize: '13px', textAlign: 'center' }}>
+              Không thể tải dữ liệu AI tại thời điểm này.
+            </div>
+          );
+        }
+
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#1e293b' }}>
             <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Prescriptive AI Recommendations
+              {t('drawer.aiRecommendationsTitle', 'Prescriptive AI Recommendations')}
             </h4>
 
             {/* HIGH PRIORITY */}
-            <div style={{ border: '1px solid #fee2e2', borderRadius: '10px', padding: '14px', background: '#fff5f5' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <AlertCircle size={14} style={{ color: '#ef4444' }} />
-                <span style={{ fontSize: '9px', fontWeight: 900, background: '#ef4444', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
-                  HIGH PRIORITY
-                </span>
-              </div>
-              <strong style={{ display: 'block', fontSize: '13px', color: '#991b1b', marginBottom: '4px' }}>
-                {isComp ? `Monitor ${selectedNode.name}'s relationship with ${sharedName}.` : `Validate SLA delivery alignment.`}
-              </strong>
-              
-              <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '18px', marginBottom: '10px' }}>
-                <div style={{ fontWeight: 700 }}>WHY:</div>
-                <div style={{ marginTop: '2px' }}>
-                  {isComp 
-                    ? `${selectedNode.name} is a direct competitor.` 
-                    : `${selectedNode.name} is an active ecosystem node.`}
+            {aiData.highPriority && (
+              <div style={{ border: '1px solid #fee2e2', borderRadius: '10px', padding: '14px', background: '#fff5f5' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <AlertCircle size={14} style={{ color: '#ef4444' }} />
+                  <span style={{ fontSize: '9px', fontWeight: 900, background: '#ef4444', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
+                    {t('drawer.highPriority', 'HIGH PRIORITY')}
+                  </span>
                 </div>
-                <div style={{ marginTop: '4px', fontWeight: 700 }}>EVIDENCE:</div>
-                <div style={{ marginTop: '2px' }}>
-                  {sharedName} is connected to both {selectedNode.name} and Your Company. This creates an ecosystem overlap.
+                <strong style={{ display: 'block', fontSize: '13px', color: '#991b1b', marginBottom: '4px' }}>
+                  {aiData.highPriority.title}
+                </strong>
+                
+                <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '18px', marginBottom: '10px' }}>
+                  <div style={{ fontWeight: 700 }}>WHY:</div>
+                  <div style={{ marginTop: '2px' }}>{aiData.highPriority.reason}</div>
+                  <div style={{ marginTop: '4px', fontWeight: 700 }}>EVIDENCE:</div>
+                  <div style={{ marginTop: '2px' }}>{aiData.highPriority.evidence}</div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '18px', marginBottom: '12px' }}>
+                  <strong>RECOMMENDED ACTION:</strong> {aiData.highPriority.action}
                 </div>
               </div>
-
-              <div style={{ fontSize: '12px', color: '#7f1d1d', lineHeight: '18px', marginBottom: '12px' }}>
-                <strong>RECOMMENDED ACTION:</strong> Review current {sharedName} partnership and monitor competitive activity involving {selectedNode.name}.
-              </div>
-
-              <button 
-                onClick={() => window.alert('Navigating to relationship path...')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #ef4444', background: '#ffffff', color: '#ef4444', fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-              >
-                <Play size={10} fill="#ef4444" />
-                View Relationship Path
-              </button>
-            </div>
+            )}
 
             {/* MEDIUM PRIORITY */}
-            <div style={{ border: '1px solid #fef3c7', borderRadius: '10px', padding: '14px', background: '#fffbeb' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <AlertTriangle size={14} style={{ color: '#d97706' }} />
-                <span style={{ fontSize: '9px', fontWeight: 900, background: '#d97706', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
-                  MEDIUM PRIORITY
-                </span>
+            {aiData.mediumPriority && (
+              <div style={{ border: '1px solid #fef3c7', borderRadius: '10px', padding: '14px', background: '#fffbeb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <AlertTriangle size={14} style={{ color: '#d97706' }} />
+                  <span style={{ fontSize: '9px', fontWeight: 900, background: '#d97706', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
+                    MEDIUM PRIORITY
+                  </span>
+                </div>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#92400e', marginBottom: '4px' }}>
+                  {aiData.mediumPriority.title}
+                </strong>
+                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#78350f', lineHeight: '18px' }}>
+                  {aiData.mediumPriority.reason} {aiData.mediumPriority.evidence}
+                </p>
+                <div style={{ fontSize: '12px', color: '#78350f', lineHeight: '18px' }}>
+                  <strong>RECOMMENDED ACTION:</strong> {aiData.mediumPriority.action}
+                </div>
               </div>
-              <strong style={{ display: 'block', fontSize: '13px', color: '#92400e', marginBottom: '4px' }}>
-                {isComp ? `Review competitive positioning in ${selectedNode.industry}.` : `Audit trust parameters for health status.`}
-              </strong>
-              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#78350f', lineHeight: '18px' }}>
-                Assess the competitive footprint and design counter-strategies.
-              </p>
-              <button 
-                onClick={() => window.alert('Navigating to competitor dashboard...')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #d97706', background: '#ffffff', color: '#d97706', fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-              >
-                <Play size={10} fill="#d97706" />
-                View Competitor
-              </button>
-            </div>
+            )}
 
             {/* OPPORTUNITY */}
-            <div style={{ border: '1px solid #dcfce7', borderRadius: '10px', padding: '14px', background: '#f0fdf4' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <CheckCircle2 size={14} style={{ color: '#16a34a' }} />
-                <span style={{ fontSize: '9px', fontWeight: 900, background: '#16a34a', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
-                  OPPORTUNITY
-                </span>
+            {aiData.opportunity && (
+              <div style={{ border: '1px solid #dcfce7', borderRadius: '10px', padding: '14px', background: '#f0fdf4' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <CheckCircle2 size={14} style={{ color: '#16a34a' }} />
+                  <span style={{ fontSize: '9px', fontWeight: 900, background: '#16a34a', color: '#ffffff', padding: '1px 6px', borderRadius: '10px' }}>
+                    OPPORTUNITY
+                  </span>
+                </div>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#166534', marginBottom: '4px' }}>
+                  {aiData.opportunity.title}
+                </strong>
+                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#14532d', lineHeight: '18px' }}>
+                  {aiData.opportunity.reason} {aiData.opportunity.evidence}
+                </p>
+                <div style={{ fontSize: '12px', color: '#14532d', lineHeight: '18px' }}>
+                  <strong>RECOMMENDED ACTION:</strong> {aiData.opportunity.action}
+                </div>
               </div>
-              <strong style={{ display: 'block', fontSize: '13px', color: '#166534', marginBottom: '4px' }}>
-                Explore joint project opportunities via shared partners.
-              </strong>
-              <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#14532d', lineHeight: '18px' }}>
-                Leverage shared partners like {sharedName} to initiate collaborative pilot projects.
-              </p>
-              <button 
-                onClick={() => window.alert('Opening localized network view...')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #16a34a', background: '#ffffff', color: '#16a34a', fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer' }}
-              >
-                <Play size={10} fill="#16a34a" />
-                View Network
-              </button>
-            </div>
+            )}
           </div>
         );
+      }
 
       default:
         return null;
@@ -1212,17 +1250,14 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       
       {/* 1. Page Header */}
       <PageHeader
-        title="Enterprise Ecosystem Relationship Map"
-        eyebrow="Business Ecosystem Intelligence"
-        description="Visualize multi-entity connection topographies, evaluate health scores, and analyze strategic network dependencies."
-        breadcrumb={[{ label: 'Dashboard' }, { label: 'Relationship Map' }]}
+        title={t('title', 'Enterprise Ecosystem Relationship Map')}
         actions={
           <>
             <SecondaryButton size="md" onClick={() => setLayoutMode(layoutMode === 'radial' ? 'grid' : 'radial')}>
-              Layout: {layoutMode === 'radial' ? 'Radial Radar' : 'Grid Topography'}
+              {t('network.layout', 'Layout')}: {layoutMode === 'radial' ? t('network.radial', 'Radial Radar') : t('network.grid', 'Grid Topography')}
             </SecondaryButton>
             <PrimaryButton size="md" loading={refreshing} disabled={refreshing} onClick={() => setDataVersion((v) => v + 1)}>
-              Refresh Graph Topology
+              {t('network.refreshTopology', 'Refresh Graph Topology')}
             </PrimaryButton>
           </>
         }
@@ -1233,41 +1268,33 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         
         {/* KPI Row */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', borderBottom: '1px dashed #cbd5e1', paddingBottom: '14px', marginBottom: '12px' }}>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Direct Relationships</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.directRelationships', 'Direct Relationships')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{metrics.directRelationships}</div>
           </div>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ecosystem Companies</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.ecosystemCompanies', 'Ecosystem Companies')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{metrics.connectedCompanies}</div>
           </div>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Partners</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.partners', 'Partners')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>{metrics.partners}</div>
           </div>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Customers</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.customers', 'Customers')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#2563EB', marginTop: '2px' }}>{metrics.customers}</div>
           </div>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suppliers</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.suppliers', 'Suppliers')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#F59E0B', marginTop: '2px' }}>{metrics.suppliers}</div>
           </div>
-          <div style={{ padding: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Competitors</span>
+          <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#EF4444', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.competitors', 'Competitors')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#EF4444', marginTop: '2px' }}>{metrics.competitors}</div>
           </div>
         </div>
 
-        {/* Network Insight */}
-        <div>
-          <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Network Insight
-          </span>
-          <p style={{ margin: '8px 0 0', fontSize: '12.5px', fontWeight: 600, color: '#334155', lineHeight: '20px' }}>
-            {networkInsightText}
-          </p>
-        </div>
+
 
       </div>
 
@@ -1277,10 +1304,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         {/* CENTER: REDESIGNED Circular Level Network panel */}
         <div className="relationship-network-panel" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', position: 'relative', minWidth: 0 }}>
           <div style={{ marginBottom: '10px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>Relationship Network</h3>
-            <p style={{ margin: '3px 0 0', fontSize: '12px', lineHeight: '18px', color: 'var(--cds-text-secondary)' }}>
-              Visualize connections between partners, competitors, suppliers, customers, and potential partners. Click a direct connection to expand/collapse.
-            </p>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>{t('network.title', 'Relationship Network')}</h3>
           </div>
 
           {/* Local Toolbar above Graph Canvas */}
@@ -1304,7 +1328,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search..."
+                  placeholder={t('filters.searchPlaceholder', 'Search...')}
                   style={{
                     width: '100%',
                     padding: '4px 6px 4px 24px',
@@ -1331,12 +1355,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   cursor: 'pointer',
                 }}
               >
-                <option value="ALL">All Groups</option>
-                <option value="partner">Partners</option>
-                <option value="customer">Customers</option>
-                <option value="supplier">Suppliers</option>
-                <option value="competitor">Competitors</option>
-                <option value="potential-partner">Potential Partners</option>
+                <option value="ALL">{t('chips.all', 'All Groups')}</option>
+                <option value="partner">{t('relationshipTypes.partnerWith', 'Partners')}</option>
+                <option value="customer">{t('relationshipTypes.customerOf', 'Customers')}</option>
+                <option value="supplier">{t('relationshipTypes.supplierOf', 'Suppliers')}</option>
+                <option value="competitor">{t('relationshipTypes.competitorOf', 'Competitors')}</option>
+                <option value="potential-partner">{t('relationshipTypes.potentialPartnerOf', 'Potential Partners')}</option>
               </select>
 
               <select
@@ -1353,7 +1377,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                 }}
               >
                 {industryOptions.map((ind) => (
-                  <option key={ind} value={ind}>{ind === 'All' ? 'All Industries' : ind}</option>
+                  <option key={ind} value={ind}>{ind === 'All' ? t('filters.allIndustries', 'All Industries') : ind}</option>
                 ))}
               </select>
             </div>
@@ -1386,7 +1410,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                 }}
               >
                 <RotateCcw size={11} />
-                Reset
+                {t('network.reset', 'Reset')}
               </button>
               
               <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--cds-border-color, #cbd5e1)', borderRadius: '4px', overflow: 'hidden', background: '#ffffff' }}>
@@ -1409,8 +1433,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div>
                   <Building size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
-                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>No company relationship data available.</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>No companies match the current filters.</span>
+                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>{t('network.emptyData', 'No company relationship data available.')}</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{t('network.emptyFiltered', 'No companies match the current filters.')}</span>
                 </div>
               </div>
             ) : (
@@ -1418,7 +1442,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                 <svg
                   viewBox="0 0 1400 900"
                   role="img"
-                  aria-label="Business relationship network"
+                  aria-label={t('network.ariaLabel', 'Business relationship network')}
                   style={{ width: '100%', height: '680px', display: 'block', cursor: isDragging ? 'grabbing' : 'grab' }}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
@@ -1470,8 +1494,18 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       const levelA = posA.id === centerId ? 0 : (l1NodeIds.has(posA.id) ? 1 : 2);
                       const levelB = posB.id === centerId ? 0 : (l1NodeIds.has(posB.id) ? 1 : 2);
 
-                      const paddingA = Math.min(levelA === 0 ? 115 : (levelA === 1 ? 85 : 75), D * 0.45);
-                      const paddingB = Math.min(levelB === 0 ? 115 : (levelB === 1 ? 85 : 75), D * 0.45);
+                      const getRectPadding = (level: number, dx: number, dy: number, isTarget: boolean) => {
+                        const width = level === 0 ? 220 : (level === 1 ? 170 : 150);
+                        const height = level === 0 ? 80 : (level === 1 ? 64 : 54);
+                        // Add some gap so arrow doesn't overlap text/border
+                        const gap = isTarget ? 12 : 0; 
+                        const tx = (width / 2 + gap) / (Math.abs(dx) || 0.001);
+                        const ty = (height / 2 + gap) / (Math.abs(dy) || 0.001);
+                        return Math.min(tx, ty);
+                      };
+
+                      const paddingA = Math.min(getRectPadding(levelA, dx, dy, false), D * 0.45);
+                      const paddingB = Math.min(getRectPadding(levelB, dx, dy, true), D * 0.45);
 
                       const xStart = xa + dx * paddingA;
                       const yStart = ya + dy * paddingA;
@@ -1558,7 +1592,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                           height={height}
                           style={{
                             opacity,
-                            cursor: 'pointer',
+                            cursor: isOwner ? 'default' : 'pointer',
                             overflow: 'visible'
                           }}
                         >
@@ -1639,6 +1673,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             >
                               <strong
                                 style={{
+                                  display: 'block',
                                   fontSize: level === 1 ? '11px' : '10px',
                                   color: '#0f172a',
                                   whiteSpace: 'nowrap',
@@ -1649,7 +1684,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                               >
                                 {node.name}
                               </strong>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', minWidth: 0 }}>
                                 {level === 1 ? (
                                   <span
                                     style={{
@@ -1660,19 +1695,22 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                       padding: '1px 6px',
                                       borderRadius: '999px',
                                       textTransform: 'uppercase',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
                                     }}
                                   >
-                                    {style.label} {isExpandedL1 ? '• Expanded' : ''}
+                                    {getGroupLabel(node.group)} {isExpandedL1 ? `• ${t('network.expanded', 'Expanded')}` : ''}
                                   </span>
                                 ) : (
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', color: '#64748b' }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                     <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: style.color }} />
-                                    Level 2
+                                    {t('network.level2', 'Level 2')}
                                   </span>
                                 )}
                                 
-                                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b' }}>
-                                  {node.connections} links
+                                <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  {node.connections} {t('topographyAnalytics.links', 'links')}
                                 </span>
                               </div>
                             </div>
@@ -1689,7 +1727,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   {(['partner', 'competitor', 'supplier', 'customer', 'potential-partner'] as const).map((group) => (
                     <span key={group} style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
                       <i style={{ width: '7px', height: '7px', borderRadius: '50%', background: RELATIONSHIP_STYLES[group].color }} />
-                      {RELATIONSHIP_STYLES[group].label}
+                      {getGroupLabel(group)}
                     </span>
                   ))}
                 </div>
@@ -1715,7 +1753,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       color: '#475569',
                     }}
                   >
-                    <span>Showing 12 of {visibleL2Nodes.length} second-degree connections</span>
+                    <span>{t('network.showingL2', 'Showing 12 of {{total}} second-degree connections', { total: visibleL2Nodes.length })}</span>
                     <button
                       onClick={() => setShowAllL2(true)}
                       style={{
@@ -1728,7 +1766,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
                       onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
                     >
-                      Show all
+                      {t('network.showAll', 'Show all')}
                     </button>
                   </div>
                 )}
@@ -1740,42 +1778,20 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         {/* RIGHT SIDEBAR: Topography Analytics (Original kept - slightly narrowed) */}
         <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            Topography Analytics
+            {t('topographyAnalytics.title', 'Topography Analytics')}
           </h3>
 
-          {/* Network Density */}
-          <div style={{ background: 'var(--cds-layer-01)', padding: '10px 12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
-              <span style={{ color: 'var(--cds-text-secondary)' }}>Network Density</span>
-              <strong style={{ color: 'var(--cds-interactive)' }}>74.2%</strong>
-            </div>
-            <div style={{ height: '4px', background: 'var(--cds-border-subtle-00)', borderRadius: '2px', overflow: 'hidden' }}>
-              <div style={{ width: '74.2%', height: '100%', background: 'var(--cds-interactive)', borderRadius: '2px' }} />
-            </div>
-          </div>
 
-          {/* Centrality Metrics */}
-          <div style={{ background: 'var(--cds-layer-01)', padding: '10px 12px', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)', fontSize: '12px' }}>
-            <div style={{ fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '6px' }}>Highest Degree Centrality</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--cds-text-secondary)', marginBottom: '3px' }}>
-              <span>{ownerName.length > 15 ? `${ownerName.slice(0, 14)}...` : ownerName}</span>
-              <strong>{metrics.directRelationships} Links</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--cds-text-secondary)' }}>
-              <span>Apex Rivals Inc</span>
-              <strong>5 Links</strong>
-            </div>
-          </div>
 
           {/* Cluster Breakdown */}
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '8px' }}>Ecosystem Clusters</div>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '8px' }}>{t('topographyAnalytics.ecosystemClusters', 'Ecosystem Clusters')}</div>
             {[
-              { label: 'Partners', count: metrics.partners, color: '#10B981' },
-              { label: 'Suppliers', count: metrics.suppliers, color: '#F59E0B' },
-              { label: 'Competitors', count: metrics.competitors, color: '#EF4444' },
-              { label: 'Customers', count: metrics.customers, color: '#2563EB' },
-              { label: 'Potential Partners', count: metrics.potentialPartners, color: '#8B5CF6' },
+              { label: t('stats.partners', 'Partners'), count: metrics.partners, color: '#10B981' },
+              { label: t('stats.suppliers', 'Suppliers'), count: metrics.suppliers, color: '#F59E0B' },
+              { label: t('stats.competitors', 'Competitors'), count: metrics.competitors, color: '#EF4444' },
+              { label: t('stats.customers', 'Customers'), count: metrics.customers, color: '#2563EB' },
+              { label: t('stats.potentialPartners', 'Potential Partners'), count: metrics.potentialPartners, color: '#8B5CF6' },
             ].map((cluster, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1795,16 +1811,14 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setSelectedNode(null); }}
         title={selectedNode ? `${selectedNode.name}` : ''}
-        subtitle={selectedNode ? `${selectedNode.industry} • ${selectedNode.group.toUpperCase()}` : ''}
+        subtitle={selectedNode ? `${selectedNode.industry} • ${getGroupLabel(selectedNode.group).toUpperCase()}` : ''}
         width={840}
         footerActions={
           <>
             <SecondaryButton size="sm" onClick={exportNodeDossierCsv}>
-              Export Dossier
+              {t('actions.exportDossier', 'Export Dossier')}
             </SecondaryButton>
-            <PrimaryButton size="sm" onClick={scheduleMeeting}>
-              Schedule Meeting
-            </PrimaryButton>
+
           </>
         }
       >
@@ -1812,16 +1826,29 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
               <RiskBadge level={selectedNode.riskLevel} showDot />
-              <span style={{ fontSize: '12px', color: '#64748b' }}>Ecosystem Status:</span>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>{t('drawer.ecosystemStatus', 'Ecosystem Status:')}</span>
               <strong style={{ fontSize: '12px', color: '#0f172a', textTransform: 'uppercase' }}>
-                {l1NodeIds.has(selectedNode.id) ? 'Direct Connection' : 'Second-Degree Connection'}
+                {l1NodeIds.has(selectedNode.id) ? t('drawer.directConnection', 'Direct Connection') : t('drawer.secondDegreeConnection', 'Second-Degree Connection')}
               </strong>
               <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#64748b' }}>
                 {selectedNode.connections} Connections
               </span>
             </div>
 
-            <Tabs items={DRAWER_TABS} activeId={drawerTab} onChange={setDrawerTab} />
+            <div style={{ flexShrink: 0 }}>
+              <Tabs
+                items={DRAWER_TABS.filter(tab => !(['projects'].includes(tab.id) && selectedNode.group === 'competitor')).map((tab) => {
+                  let label = tab.label;
+                  if (tab.id === 'overview') label = t('drawer.overview', 'Overview');
+                  else if (tab.id === 'strength') label = t('drawer.strength', 'Relationship Strength');
+                  else if (tab.id === 'projects') label = t('drawer.projects', 'Shared Projects');
+                  else if (tab.id === 'contacts') label = t('drawer.contacts', 'Contacts');
+                  return { ...tab, label };
+                })}
+                activeId={drawerTab}
+                onChange={setDrawerTab}
+              />
+            </div>
 
             <div style={{ marginTop: '16px' }}>
               {renderDrawerTab()}

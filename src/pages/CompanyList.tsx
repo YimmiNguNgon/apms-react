@@ -3,8 +3,30 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import i18n from '../i18n';
 import { formatDate as utilFormatDate } from '../utils/format';
-import type { PageResult, ProfileResponse } from '../types/domain';
+import type { PageResult, ProfileResponse, GraphCompanyDto } from '../types/domain';
 import styles from './CompanyProfiles.module.css';
+
+const relationshipLabel = (rel?: string | null) => {
+  if (!rel) return 'Chưa thiết lập';
+  const r = rel.toUpperCase();
+  if (r === 'PARTNER_WITH' || r === 'PARTNER') return 'Đối tác';
+  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return 'Đối thủ';
+  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return 'Nhà cung cấp';
+  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return 'Khách hàng';
+  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return 'Đối tác tiềm năng';
+  return r;
+};
+
+const relationshipStyle = (rel?: string | null): React.CSSProperties => {
+  if (!rel) return { background: '#f1f5f9', color: '#64748b' };
+  const r = rel.toUpperCase();
+  if (r === 'PARTNER_WITH' || r === 'PARTNER') return { background: '#e0f2fe', color: '#0369a1' };
+  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return { background: '#fee2e2', color: '#b91c1c' };
+  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return { background: '#fef3c7', color: '#d97706' };
+  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return { background: '#dcfce7', color: '#15803d' };
+  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return { background: '#faf5ff', color: '#7e22ce' };
+  return { background: '#f1f5f9', color: '#64748b' };
+};
 
 interface CompanyListProps {
   setActivePage: (page: string) => void;
@@ -74,6 +96,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
   const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
+  const [relationsMap, setRelationsMap] = useState<Record<string, string>>({});
 
   const fetchProfiles = async (page = 0) => {
     setLoading(true);
@@ -119,6 +142,24 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
 
   useEffect(() => {
     void fetchProfiles(0);
+    api.get<GraphCompanyDto[]>('/graph/network').then((res) => {
+      if (res.data) {
+        const map: Record<string, string> = {};
+        res.data.forEach((c) => {
+          if (c.companyId && c.relationshipType) {
+            map[c.companyId] = c.relationshipType;
+          }
+          if (c.relationships && Array.isArray(c.relationships)) {
+            c.relationships.forEach((r: any) => {
+              if (r.targetCompanyId && r.relationshipType) {
+                map[r.targetCompanyId] = r.relationshipType;
+              }
+            });
+          }
+        });
+        setRelationsMap(map);
+      }
+    }).catch(err => console.error('Failed to load graph network', err));
   }, []);
 
   const metrics = useMemo(() => {
@@ -250,6 +291,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                 <th>{t('table.company')}</th>
                 <th>{t('table.ticker')}</th>
                 <th>{t('table.industry')}</th>
+                <th>Quan hệ</th>
                 <th>{t('table.status')}</th>
                 <th>{t('table.updated')}</th>
                 <th style={{ textAlign: 'right' }}>{t('table.actions')}</th>
@@ -258,12 +300,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>{t('table.loading')}</div></td>
+                  <td colSpan={7}><div className={styles.empty}>{t('table.loading')}</div></td>
                 </tr>
               )}
               {!loading && profiles.length === 0 && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>{t('table.empty')}</div></td>
+                  <td colSpan={7}><div className={styles.empty}>{t('table.empty')}</div></td>
                 </tr>
               )}
               {!loading && profiles.map((profile) => (
@@ -288,6 +330,14 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                     )}
                   </td>
                   <td>{profileIndustry(profile)}</td>
+                  <td>
+                    {(() => {
+                      const rel = relationsMap[profile.companyId || profile.id];
+                      return rel
+                        ? <span style={{ ...relationshipStyle(rel), fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '10px', whiteSpace: 'nowrap' }}>{relationshipLabel(rel)}</span>
+                        : <span style={{ fontSize: '11px', color: '#94a3b8' }}>—</span>;
+                    })()}
+                  </td>
                   <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
                   <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
                   <td style={{ textAlign: 'right' }}>

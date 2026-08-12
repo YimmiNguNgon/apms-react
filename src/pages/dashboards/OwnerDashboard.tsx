@@ -114,7 +114,7 @@ const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 3
 
 // ─── Main Owner Dashboard Component ──────────────────────────────────────────
 export const OwnerDashboard: React.FC = () => {
-  const { t } = useTranslation('owner-dashboard');
+  const { t, i18n } = useTranslation('owner-dashboard');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -192,7 +192,7 @@ export const OwnerDashboard: React.FC = () => {
   // ── Bind Metrics directly to Backend DTO Response Fields ────────────────────
   const ecosystemScoreDisplay = recentScores.length > 0
     ? (recentScores.reduce((acc, s) => acc + (s.totalScore ?? s.partnerFitScore ?? 0), 0) / recentScores.length).toFixed(1)
-    : (summary?.totalCompanyProfiles ? String(summary.totalCompanyProfiles) : t('notAvailable'));
+    : t('notAvailable');
 
   const partnerCountDisplay = summary?.partnerCount !== undefined
     ? String(summary.partnerCount)
@@ -418,7 +418,7 @@ export const OwnerDashboard: React.FC = () => {
                     <div style={{ padding: '6px 0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                         <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{act.action}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.timestamp ? new Date(act.timestamp).toLocaleTimeString('vi-VN') : 'Chưa cập nhật'}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.timestamp ? new Date(act.timestamp).toLocaleTimeString(i18n.language?.startsWith('vi') ? 'vi-VN' : 'en-US') : t('content.notUpdated')}</span>
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
                         {act.detail || `${t('fallback.actor')}: ${act.actorEmail || t('fallback.system')}`}

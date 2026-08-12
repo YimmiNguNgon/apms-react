@@ -266,6 +266,7 @@ const MainApp: React.FC = () => {
 
       // ── Admin pages ──
       case 'users':            return <UserManagement defaultTab="users" />;
+      case 'users-new':        return <UserManagement defaultTab="users" openCreate />;
       case 'roles':            return <UserManagement defaultTab="roles" />;
       case 'permissions':      return <UserManagement defaultTab="permissions" />;
       case 'activity-history': return <ActivityAudit defaultTab="activity" />;

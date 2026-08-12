@@ -72,6 +72,29 @@
       "save": "Save Changes",
       "create": "Create Account",
       "cancel": "Cancel"
+    },
+    "adminUi": {
+      "loadingAccounts": "Loading account directory...",
+      "noAccounts": "No accounts match the current filter.",
+      "password": "Password",
+      "resetPassword": "Reset password",
+      "assignRole": "Assign role",
+      "roleSelection": "Role selection",
+      "close": "Close",
+      "review": "Review",
+      "users": "Users",
+      "permissions": "Permissions",
+      "scope": "Scope",
+      "roleDetail": "Role detail",
+      "noUsers": "No users assigned to this role.",
+      "noPermissions": "No permissions assigned.",
+      "loadingPermissions": "Loading permissions...",
+      "loadingRoles": "Loading role matrix...",
+      "noRoles": "No roles were returned by the backend.",
+      "permissionMatrix": "Permission matrix",
+      "readOnlyPermissions": "Read-only view of module access by system roles.",
+      "noPermissionMatrix": "No permission matrix available from the backend.",
+      "unassigned": "Not assigned"
     }
   }
 }

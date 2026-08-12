@@ -38,7 +38,7 @@
     "competitor": "Đối thủ",
     "supplier": "Nhà cung cấp",
     "customer": "Khách hàng",
-    "investorShareholder": "Đầu tư – Cổ đông",
+    "investorShareholder": "Đối tác tiềm năng",
     "searchButton": "Tìm kiếm"
   },
   "table": {
@@ -59,5 +59,36 @@
     "prev": "Trước",
     "page": "Trang {{current}} / {{total}}",
     "next": "Sau"
+  },
+  "swot": {
+    "headerTitle": "Phân tích SWOT từ AI",
+    "headerDesc": "Các phân tích điểm mạnh, điểm yếu, cơ hội và thách thức của doanh nghiệp được xử lý tự động bởi AI.",
+    "strengths": "Điểm mạnh",
+    "weaknesses": "Điểm yếu",
+    "opportunities": "Cơ hội",
+    "threats": "Thách thức",
+    "noData": "Chưa có dữ liệu phân tích SWOT từ AI cho doanh nghiệp này.",
+    "noStrengths": "Chưa ghi nhận điểm mạnh.",
+    "noWeaknesses": "Chưa ghi nhận điểm yếu.",
+    "noOpportunities": "Chưa ghi nhận cơ hội.",
+    "noThreats": "Chưa ghi nhận thách thức."
+  },
+  "tabs": {
+    "overview": "Tổng quan",
+    "swot": "SWOT",
+    "businessFields": "Lĩnh vực kinh doanh",
+    "relationship": "Mối quan hệ",
+    "board": "Ban lãnh đạo",
+    "financials": "Tài chính",
+    "news": "Tin tức",
+    "documents": "Tài liệu"
+  },
+  "detail": {
+    "additionalInfo": "Thông tin bổ sung & Bằng chứng",
+    "boardMembers": "Ban lãnh đạo & Cơ cấu sở hữu",
+    "financialReport": "Báo cáo Tài chính",
+    "newsMedia": "Tin tức & Truyền thông",
+    "confidentialNews": "Tin tức nội bộ (Confidential News)",
+    "documents": "Tài liệu & Hồ sơ thô"
   }
 }

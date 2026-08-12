@@ -50,13 +50,19 @@
     "existingCompanyLabel": "Existing company",
     "selectCompany": "Select an existing company",
     "loadingCompanies": "Loading companies...",
+    "loadingRelationships": "Loading relationships...",
     "relationshipLabel": "Target relationship",
     "selectRelationship": "Select target relationship type",
     "descriptionLabel": "Description",
     "descriptionPlaceholder": "Describe the project goal (optional)",
     "cancel": "Cancel",
     "submit": "Create project",
-    "submitting": "Creating..."
+    "submitting": "Creating...",
+    "plannedEndDateLabel": "Planned end date",
+    "duplicateWarningTitle": "Similar project detected",
+    "duplicateWarningDesc": "There are {{count}} projects with a similar company name:",
+    "duplicateWarningNote": "You can still continue creating this project.",
+    "checkingDuplicate": "Checking for duplicates..."
   },
   "relationships": {
     "partner": "Partner",
@@ -70,7 +76,8 @@
     "nameRequired": "Please enter a project name.",
     "targetCompanyRequired": "Please select a target company.",
     "relationshipRequired": "Please select a target relationship type.",
-    "createFailed": "Unable to create project. Please try again."
+    "createFailed": "Unable to create project. Please try again.",
+    "dateRequired": "Please select a planned end date."
   },
   "companyName": {
     "unknown": "Not specified"

@@ -67,9 +67,9 @@ export const Login: React.FC = () => {
             Business Ecosystem Intelligence
           </div> */}
           <h1 className="login-hero-title">
-            AI-Powered<br />
-            <span>Partnership</span><br />
-            Management
+            {t('heroTitle1')}<br />
+            <span>{t('heroTitle2')}</span><br />
+            {t('heroTitle3')}
           </h1>
           <p className="login-hero-sub">
             {t('heroSub')}
@@ -107,11 +107,11 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          <div className="login-form-title">Sign in</div>
+          <div className="login-form-title">{t('signIn')}</div>
           {/* <div className="login-form-sub">Use your backend account credentials.</div> */}
 
           <div className="form-field">
-            <label className="form-label">Email</label>
+            <label className="form-label">{t('emailLabel')}</label>
             <input
               className="form-input"
               type="text"

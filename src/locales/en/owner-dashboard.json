@@ -16,7 +16,7 @@
     "dashboardUnavailable": "Unable to connect to the backend API; dashboard data could not be loaded.",
     "syncFailed": "Market data synchronization failed."
   },
-  "priority": { "high": "High", "critical": "Critical", "medium": "Medium", "low": "Low" },
+  "priority": { "high": "High", "critical": "Critical", "medium": "Medium", "low": "Low", "active": "Active", "pending": "Pending", "inactive": "Inactive" },
   "scan": { "run": "Run AI Scan", "running": "Scanning...", "connecting": "Synchronizing market data..." },
   "metrics": {
     "ecosystemScore": { "label": "Ecosystem Score", "description": "Average verified score snapshot" },

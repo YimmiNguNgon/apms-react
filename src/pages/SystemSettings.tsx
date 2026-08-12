@@ -155,6 +155,10 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
 
   // ─── IP Whitelist toggle ────────────────────────────────────
   const handleToggleWhitelist = async (enabled: boolean) => {
+    if (enabled && !ipEntries.some((entry) => entry.enabled)) {
+      showError('Add and enable at least one IP address before turning on whitelist enforcement.');
+      return;
+    }
     try {
       await api.patch('/admin/security/ip-whitelist/status', { enabled });
       setIpWhitelistEnabled(enabled);
@@ -202,10 +206,19 @@ export const SystemSettingsPage: React.FC<{ defaultTab?: Tab }> = ({ defaultTab 
   // ─── Update IP entry ───────────────────────────────────────
   const handleUpdateIp = async () => {
     if (!editingIp?.id) return;
+    const ipAddress = editingIp.ipAddress.trim();
+    if (!IP_REGEX.test(ipAddress)) {
+      showError(`Invalid IP/CIDR format: "${ipAddress}". Example: 192.168.1.1 or 10.0.0.0/24`);
+      return;
+    }
+    if (ipEntries.some((entry) => entry.id !== editingIp.id && entry.ipAddress === ipAddress)) {
+      showError('IP address already exists in whitelist.');
+      return;
+    }
     setIpLoading(true);
     try {
       const res = await api.put<IpEntry>(`/admin/security/ip-whitelist/${editingIp.id}`, {
-        ipAddress: editingIp.ipAddress,
+        ipAddress,
         description: editingIp.description,
         enabled: editingIp.enabled,
       });

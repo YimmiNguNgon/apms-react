@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { API_BASE_URL, api } from '../../services/api';
 import type { AuditLogDto, PageResult } from '../../types/domain';
 import {
@@ -16,7 +17,45 @@ import {
   UserCog,
   Users,
 } from 'lucide-react';
+import {
+  PageHeader,
+  MetricCard,
+  PrimaryButton,
+  SecondaryButton,
+} from '../../components/ui';
 import styles from './AdminDashboard.module.css';
+
+// ─── Section header helper ──────────────────────────────────────────────────
+const SectionTitle: React.FC<{ icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode }> = ({ icon, title, subtitle, action }) => (
+  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+    <div>
+      <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {icon && <span style={{ fontSize: '13px', display: 'flex' }}>{icon}</span>}
+        {title}
+      </h2>
+      {subtitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--cds-text-helper)' }}>{subtitle}</p>}
+    </div>
+    {action}
+  </div>
+);
+
+// ─── Divider ────────────────────────────────────────────────────────────────
+const Divider: React.FC = () => (
+  <hr style={{ border: 'none', borderTop: '1px solid var(--cds-border-subtle-00)', margin: '8px 0' }} />
+);
+
+// ─── Card wrapper ────────────────────────────────────────────────────────────
+const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties; onClick?: () => void }> = ({ children, style, onClick }) => (
+  <section className="admin-dashboard-card" onClick={onClick} style={{
+    background: 'var(--cds-background)',
+    border: '1px solid var(--cds-border-color)',
+    borderRadius: 'var(--cds-border-radius)',
+    padding: '16px',
+    ...style,
+  }}>
+    {children}
+  </section>
+);
 
 type AuditFilter = 'ALL' | 'SECURITY' | 'AUTHENTICATION' | 'USERS_ROLES' | 'SYSTEM_CONFIGURATION';
 
@@ -45,8 +84,6 @@ const ROLE_OVERVIEW = [
   { label: 'BD Manager', keys: ['ROLE_BUSINESS_DEVELOPMENT_MANAGER', 'ROLE_MANAGER', 'BUSINESS_DEVELOPMENT_MANAGER', 'MANAGER'] },
   { label: 'Research Staff', keys: ['ROLE_RESEARCH_STAFF', 'ROLE_STAFF', 'RESEARCH_STAFF', 'STAFF'] },
 ];
-
-
 
 const containsAny = (value: string, words: string[]) => words.some((word) => value.includes(word));
 
@@ -77,6 +114,7 @@ const statusLabel = (action: string) => {
 };
 
 export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }> = ({ setActivePage }) => {
+  const { t } = useTranslation('admin-dashboard');
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [auditAvailable, setAuditAvailable] = useState(false);
@@ -86,6 +124,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
   const [searchQuery, setSearchQuery] = useState('');
   const [healthServices, setHealthServices] = useState<ServiceHealth[]>([]);
   const [healthLoading, setHealthLoading] = useState(true);
+  const [dashboardTab, setDashboardTab] = useState<'audit' | 'activity' | 'system' | 'quick'>('audit');
 
   const loadDashboard = useCallback(async () => {
     const [auditResult, usersResult] = await Promise.allSettled([
@@ -196,154 +235,220 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
     : null;
 
   const kpis = [
-    { label: 'Total users', value: totalUsers, detail: totalUsers === undefined ? 'Not available' : 'Non-deleted accounts', icon: Users, tone: 'blue' },
-    { label: 'Active users', value: activeUsers, detail: activeUsers === undefined ? 'Not available' : 'Enabled accounts', icon: Activity, tone: 'green' },
-    { label: 'Pending / Inactive', value: pendingAccounts, detail: pendingAccounts === undefined ? 'Not available' : 'Disabled or pending accounts', icon: UserCog, tone: 'amber' },
-    { label: 'Security alerts', value: securityAlerts, detail: securityAlerts === null ? 'Not available' : 'Failed/denied events in recent logs', icon: ShieldAlert, tone: 'red' },
+    { label: t('stats.totalUsers', 'Total users'), value: totalUsers, detail: totalUsers === undefined ? t('bento.notAvailable', 'Not available') : t('stats.nonDeleted', 'Non-deleted accounts'), icon: Users, tone: 'blue' },
+    { label: t('stats.activeUsers', 'Active users'), value: activeUsers, detail: activeUsers === undefined ? t('bento.notAvailable', 'Not available') : t('stats.enabledAccounts', 'Enabled accounts'), icon: Activity, tone: 'green' },
+    { label: t('stats.pendingInactive', 'Pending / Inactive'), value: pendingAccounts, detail: pendingAccounts === undefined ? t('bento.notAvailable', 'Not available') : t('stats.disabledPending', 'Disabled or pending accounts'), icon: UserCog, tone: 'amber' },
+    { label: t('stats.securityAlerts', 'Security alerts'), value: securityAlerts, detail: securityAlerts === null ? t('bento.notAvailable', 'Not available') : t('stats.failedDenied', 'Failed/denied events in recent logs'), icon: ShieldAlert, tone: 'red' },
   ];
 
   return (
-    <main className={styles.adminDashboard} id="admin-dashboard">
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Administration</p>
-          <h1>System Administrator Workspace</h1>
-          <p className={styles.subtitle}>Monitor platform health, security, users and system activity.</p>
-        </div>
-        <div className={styles.headerActions}>
-          <button className={styles.secondaryButton} onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw size={16} className={refreshing ? styles.spin : undefined} /> Refresh
-          </button>
-          <button className={styles.secondaryButton} onClick={exportAudit}>
-            <Download size={16} /> Export Audit
-          </button>
-          <button className={styles.primaryButton} onClick={() => setActivePage('users')}>
-            <Plus size={16} /> Create Account
-          </button>
-        </div>
-      </header>
+    <main className="cds-page-shell admin-console-page" id="admin-dashboard">
+      <PageHeader
+        title={t('hero.title', 'System Administration')}
+        eyebrow={t('hero.administration', 'System administrator')}
+        description={t('hero.subtitle', 'Monitor users, access control, security, and system governance.')}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <SecondaryButton onClick={exportAudit}>
+              <Download size={16} style={{ marginRight: '8px' }} /> {t('buttons.exportAudit', 'Export Audit')}
+            </SecondaryButton>
+            <SecondaryButton onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw size={16} style={{ marginRight: '8px' }} className={refreshing ? styles.spin : undefined} /> {t('buttons.refresh', 'Refresh')}
+            </SecondaryButton>
+            <PrimaryButton onClick={() => setActivePage('users-new')}>
+              <Plus size={16} style={{ marginRight: '8px' }} /> {t('buttons.createAccount', 'Create Account')}
+            </PrimaryButton>
+          </div>
+        }
+      />
 
-      <section className={styles.kpiGrid} aria-label="User and security metrics">
+      {/* 4 KPI Cards bound to Admin Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '8px', marginBottom: '16px' }}>
         {kpis.map(({ label, value, detail, icon: Icon, tone }) => (
-          <article key={label} className={styles.kpiCard}>
-            <div className={`${styles.kpiIcon} ${styles[`tone${tone}`]}`}><Icon size={20} /></div>
-            <p>{label}</p>
-            <strong>{loading ? 'Loading…' : value ?? 'Not available'}</strong>
-            <span>{detail}</span>
-          </article>
+          <MetricCard
+            key={label}
+            label={label}
+            value={loading ? 'Loading…' : (value !== undefined && value !== null ? String(value) : t('bento.notAvailable', 'Not available'))}
+            description={detail}
+            icon={<Icon size={24} color={`var(--cds-support-${tone === 'red' ? 'error' : tone === 'green' ? 'success' : tone === 'amber' ? 'warning' : 'info'})`} />}
+          />
         ))}
-      </section>
+      </div>
 
-      <section className={styles.section} aria-labelledby="system-health-heading">
-        <div className={styles.sectionHeading}>
-          <div><h2 id="system-health-heading">System Health</h2><p>Real-time database and service connectivity checks.</p></div>
-          <span className={styles.availabilityNote}>{healthLoading ? 'Checking…' : healthServices.length > 0 ? `${healthServices.filter(s => s.status === 'UP').length}/${healthServices.length} UP` : 'Not available'}</span>
-        </div>
-        <div className={styles.healthGrid}>
-          {healthLoading && [1,2,3,4].map((i) => (
-            <article key={i} className={styles.healthCard}>
-              <Server size={18} />
-              <div><strong>Checking…</strong><span>Status: Loading</span></div>
-            </article>
-          ))}
-          {!healthLoading && healthServices.length === 0 && (
-            <article className={styles.healthCard}>
-              <Server size={18} />
-              <div><strong>Health check unavailable</strong><span>Backend health endpoint did not respond</span></div>
-            </article>
-          )}
-          {!healthLoading && healthServices.map((svc) => {
-            const isUp = svc.status === 'UP';
-            const isDown = svc.status === 'DOWN';
-            const statusColor = isUp ? '#10B981' : isDown ? '#EF4444' : '#F59E0B';
-            const statusLabel = isUp ? '● UP' : isDown ? '● DOWN' : `● ${svc.status}`;
-            return (
-              <article key={svc.name} className={styles.healthCard} style={{ borderLeft: `3px solid ${statusColor}` }}>
-                <Server size={18} style={{ color: statusColor }} />
-                <div>
-                  <strong>{svc.name}</strong>
-                  <span style={{ color: statusColor, fontWeight: 600 }}>Status: {statusLabel}</span>
-                  {svc.errorReason && <span style={{ fontSize: '11px', color: '#EF4444' }}>{svc.errorReason}</span>}
-                </div>
-                <div className={styles.healthMeta}>
-                  <span>Latency: {svc.latencyMs !== null && svc.latencyMs !== undefined ? `${svc.latencyMs}ms` : 'N/A'}</span>
-                  <span>Checked: {svc.lastChecked ? new Date(svc.lastChecked).toLocaleTimeString('vi-VN') : 'N/A'}</span>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+      <div className="admin-tabs" style={{ marginBottom: '16px' }}>
+        <button className={dashboardTab === 'audit' ? 'active' : ''} onClick={() => setDashboardTab('audit')}>{t('tabs.audit')}</button>
+        <button className={dashboardTab === 'activity' ? 'active' : ''} onClick={() => setDashboardTab('activity')}>{t('tabs.activity')}</button>
+        <button className={dashboardTab === 'system' ? 'active' : ''} onClick={() => setDashboardTab('system')}>{t('tabs.system')}</button>
+        <button className={dashboardTab === 'quick' ? 'active' : ''} onClick={() => setDashboardTab('quick')}>{t('tabs.quick')}</button>
+      </div>
 
-      <section className={styles.auditSection} aria-labelledby="security-audit-heading">
-        <div className={styles.sectionHeading}>
-          <div><h2 id="security-audit-heading">Security &amp; Audit</h2><p>Review security, authentication, access and configuration events.</p></div>
-          <button className={styles.textButton} onClick={() => setActivePage('audit-logs')}>View audit log</button>
-        </div>
-        <div className={styles.auditLayout}>
-          <aside className={styles.securitySummary}>
-            <div><ShieldAlert size={18} /><span>Security alerts</span><strong>{securityAlerts ?? 'Not available'}</strong></div>
-            <div><KeyRound size={18} /><span>Failed login attempts</span><strong>{failedLogins ?? 'Not available'}</strong></div>
-            <div><UserCog size={18} /><span>Permission changes</span><strong>{permissionChanges ?? 'Not available'}</strong></div>
-          </aside>
-          <div className={styles.auditLog}>
-            <div className={styles.auditToolbar}>
-              <div className={styles.filterTabs} role="tablist" aria-label="Audit filters">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingBottom: '32px' }}>
+        {dashboardTab === 'audit' && (
+          <Card>
+            <SectionTitle icon={<ShieldAlert size={14} />} title={t('audit.title', 'Security & Audit')} subtitle={t('audit.subtitle', 'Review security, authentication, access and configuration events.')} action={
+              <SecondaryButton size="sm" onClick={() => setActivePage('audit-logs')}>{t('audit.viewAuditLog', 'View logs')}</SecondaryButton>
+            } />
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
                 {([
-                  ['ALL', 'All'], ['SECURITY', 'Security'], ['AUTHENTICATION', 'Authentication'], ['USERS_ROLES', 'Users & Roles'], ['SYSTEM_CONFIGURATION', 'System Configuration'],
+                  ['ALL', t('audit.all', 'All')], 
+                  ['SECURITY', t('audit.security', 'Security')], 
+                  ['AUTHENTICATION', t('audit.authentication', 'Auth')], 
+                  ['USERS_ROLES', t('audit.usersRoles', 'Users')], 
+                  ['SYSTEM_CONFIGURATION', t('audit.systemConfig', 'Config')],
                 ] as [AuditFilter, string][]).map(([key, label]) => (
-                  <button key={key} className={filter === key ? styles.activeFilter : ''} onClick={() => setFilter(key)}>{label}</button>
+                  <button key={key} style={{ background: filter === key ? 'var(--cds-layer-selected)' : 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', cursor: 'pointer', fontWeight: filter === key ? 600 : 500, color: filter === key ? 'var(--cds-text-primary)' : 'var(--cds-text-secondary)', whiteSpace: 'nowrap' }} onClick={() => setFilter(key)}>{label}</button>
                 ))}
               </div>
-              <label className={styles.searchBox}><Search size={16} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search audit log" /></label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--cds-field)', padding: '6px 12px', borderRadius: '4px', border: '1px solid var(--cds-border-interactive)' }}>
+                <Search size={14} color="var(--cds-icon-secondary)" />
+                <input style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', width: '100%' }} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('audit.searchPlaceholder', 'Search audit log')} />
+              </label>
             </div>
-            {loading ? <div className={styles.emptyState}>Loading audit records…</div> : filteredAuditLogs.length === 0 ? <div className={styles.emptyState}>No audit records available.</div> : (
-              <div className={styles.auditList}>
-                {filteredAuditLogs.slice(0, 8).map((log) => <AuditRow key={log.id} log={log} />)}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
 
-      <section className={styles.section} aria-labelledby="role-overview-heading">
-        <div className={styles.sectionHeading}><div><h2 id="role-overview-heading">User &amp; Role Overview</h2><p>Account distribution by role.</p></div></div>
-        <div className={styles.roleGrid}>
-          {roleCounts.map((role) => (
-            <button key={role.label} className={styles.roleCard} onClick={() => setActivePage('roles')}>
-              <span>{role.label}</span><strong>{role.count ?? 'Not available'}</strong><span className={styles.manageLink}>Manage roles</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.section} aria-labelledby="recent-activity-heading">
-        <div className={styles.sectionHeading}><div><h2 id="recent-activity-heading">Recent Admin Activity</h2><p>Latest recorded administrative and security events.</p></div></div>
-        {loading ? <div className={styles.emptyState}>Loading recent activity…</div> : recentAdminActivities.length === 0 ? <div className={styles.emptyState}>No audit records available.</div> : (
-          <div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th></tr></thead><tbody>
-            {recentAdminActivities.map((log) => <tr key={log.id}><td>{formatTimestamp(log.timestamp)}</td><td>{log.actorEmail || 'System'}</td><td>{log.action || 'Not available'}</td><td>{log.entityType || log.entityId || 'Not available'}</td><td><span className={styles.status}>{statusLabel(log.action || '')}</span></td></tr>)}
-          </tbody></table></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '500px', overflowY: 'auto' }}>
+              {loading ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.loadingRecords', 'Loading audit records…')}</div> : filteredAuditLogs.length === 0 ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.noRecords', 'No audit records available.')}</div> : (
+                filteredAuditLogs.slice(0, 15).map((log, i) => (
+                  <div key={log.id || i}>
+                    {i > 0 && <Divider />}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '2px', wordBreak: 'break-word' }}>{log.action || t('bento.notAvailable', 'Not available')}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', wordBreak: 'break-word' }}>{log.detail || log.entityType || 'No detail available'}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--cds-text-primary)' }}>{log.actorEmail || 'System'}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{formatTimestamp(log.timestamp)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
         )}
-      </section>
 
-      <section className={styles.section} aria-labelledby="quick-actions-heading">
-        <div className={styles.sectionHeading}><div><h2 id="quick-actions-heading">Quick Actions</h2><p>Open administrative tools.</p></div></div>
-        <div className={styles.quickActions}>
-          {[
-            ['Create User', Plus, 'users'], ['Manage Users', Users, 'users'], ['Manage Roles', UserCog, 'roles'], ['Manage Permissions', ShieldCheck, 'permissions'], ['View Audit Log', FileText, 'audit-logs'], ['System Settings', Settings, 'system-settings'],
-          ].map(([label, Icon, page]) => {
-            const ActionIcon = Icon as typeof Plus;
-            return <button key={label as string} onClick={() => setActivePage(page as string)}><ActionIcon size={18} /><span>{label as string}</span></button>;
-          })}
-        </div>
-      </section>
+        {dashboardTab === 'activity' && (
+          <Card>
+            <SectionTitle icon={<Activity size={14} />} title={t('activity.title', 'Recent Admin Activity')} subtitle={t('activity.subtitle', 'Latest recorded administrative events.')} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {loading ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('activity.loading', 'Loading recent activity…')}</div> : recentAdminActivities.length === 0 ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.noRecords', 'No audit records available.')}</div> : (
+                recentAdminActivities.map((log, i) => (
+                  <div key={log.id || i}>
+                    {i > 0 && <Divider />}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {log.action || t('bento.notAvailable', 'Not available')}
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '12px', fontWeight: 600, background: statusLabel(log.action || '') === 'Attention' ? 'var(--cds-support-error-bg)' : 'var(--cds-layer-01)', color: statusLabel(log.action || '') === 'Attention' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)' }}>
+                            {statusLabel(log.action || '')}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', marginTop: '2px' }}>
+                          Target: {log.entityType || log.entityId || 'N/A'} · By: {log.actorEmail || 'System'}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
+                        {formatTimestamp(log.timestamp)}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {dashboardTab === 'system' && (
+          <>
+            <Card>
+              <SectionTitle title={t('bento.title', 'System Health')} subtitle={t('bento.subtitle', 'Real-time database and service connectivity checks.')} icon={<Server size={14} />} action={
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-helper)' }}>
+                  {healthLoading 
+                    ? t('bento.checking', 'Checking…') 
+                    : healthServices.length > 0 
+                      ? `${healthServices.filter(s => s.status === 'UP').length}/${healthServices.length} UP` 
+                      : t('bento.notAvailable', 'Not available')}
+                </span>
+              } />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {healthLoading ? (
+                   [1, 2, 3].map((i) => (
+                     <div key={i}>
+                       {i > 1 && <Divider />}
+                       <div style={{ padding: '6px 0', color: 'var(--cds-text-helper)', fontSize: '13px' }}>{t('bento.checking', 'Checking…')}</div>
+                     </div>
+                   ))
+                ) : healthServices.length === 0 ? (
+                   <div style={{ padding: '6px 0', color: 'var(--cds-support-error)', fontSize: '13px' }}>{t('bento.healthUnavailable', 'Health check unavailable')}</div>
+                ) : (
+                  healthServices.map((svc, i) => {
+                    const isUp = svc.status === 'UP';
+                    const isDown = svc.status === 'DOWN';
+                    const statusColor = isUp ? 'var(--cds-support-success)' : isDown ? 'var(--cds-support-error)' : 'var(--cds-support-warning)';
+                    const statusLabel = isUp ? 'UP' : isDown ? 'DOWN' : svc.status;
+                    return (
+                      <div key={svc.name}>
+                        {i > 0 && <Divider />}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '6px 0' }}>
+                          <Server size={16} style={{ color: statusColor, marginTop: '2px', flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{svc.name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
+                               Latency: {svc.latencyMs ?? 'N/A'}ms · Checked: {svc.lastChecked ? new Date(svc.lastChecked).toLocaleTimeString('vi-VN') : 'N/A'}
+                            </div>
+                            {svc.errorReason && <div style={{ fontSize: '11px', color: 'var(--cds-support-error)', marginTop: '2px' }}>{svc.errorReason}</div>}
+                          </div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: statusColor, background: `color-mix(in srgb, ${statusColor} 15%, transparent)`, padding: '2px 6px', borderRadius: '4px' }}>
+                            {statusLabel}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionTitle icon={<Users size={14} />} title={t('role.title', 'User & Role Overview')} subtitle={t('role.subtitle', 'Account distribution by role.')} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {roleCounts.map((role) => (
+                  <div key={role.label} style={{ background: 'var(--cds-layer-01)', padding: '12px', borderRadius: 'var(--cds-border-radius-sm)', border: '1px solid var(--cds-border-subtle-00)', cursor: 'pointer' }} onClick={() => setActivePage('roles')}>
+                    <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', marginBottom: '4px' }}>{role.label}</div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>{role.count ?? t('bento.notAvailable', 'N/A')}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {dashboardTab === 'quick' && (
+          <Card>
+            <SectionTitle icon={<Settings size={14} />} title={t('quick.title', 'Quick Actions')} subtitle={t('quick.subtitle', 'Open administrative tools.')} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {[
+                [t('quick.createUser', 'Create User'), Plus, 'users-new'], 
+                [t('quick.manageUsers', 'Manage Users'), Users, 'users'], 
+                [t('quick.manageRoles', 'Manage Roles'), UserCog, 'roles'], 
+                [t('quick.managePermissions', 'Manage Permissions'), ShieldCheck, 'permissions'], 
+                [t('quick.viewAuditLog', 'View Audit Log'), FileText, 'audit-logs'], 
+                [t('quick.systemSettings', 'System Settings'), Settings, 'system-settings'],
+              ].map(([label, Icon, page]) => {
+                const ActionIcon = Icon as typeof Plus;
+                return (
+                  <button key={label as string} onClick={() => setActivePage(page as string)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius-sm)', cursor: 'pointer', textAlign: 'left', color: 'var(--cds-text-primary)' }}>
+                    <ActionIcon size={16} color="var(--cds-interactive)" />
+                    <span style={{ fontSize: '12px', fontWeight: 500 }}>{label as string}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </div>
     </main>
   );
 };
-
-const AuditRow: React.FC<{ log: AuditLogDto }> = ({ log }) => (
-  <article className={styles.auditRow}>
-    <div><strong>{log.action || 'Not available'}</strong><span>{log.detail || log.entityType || 'No detail available'}</span></div>
-    <div><span>{log.actorEmail || 'System'}</span><time>{formatTimestamp(log.timestamp)}</time></div>
-  </article>
-);

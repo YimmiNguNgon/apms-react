@@ -13,6 +13,7 @@ export interface TabsProps {
   onChange: (id: string) => void;
   size?: 'sm' | 'md' | 'lg';
   contained?: boolean; // "contained" variant with background pill per tab
+  wrap?: boolean;
 }
 
 export const Tabs: React.FC<TabsProps> = ({
@@ -21,6 +22,7 @@ export const Tabs: React.FC<TabsProps> = ({
   onChange,
   size = 'md',
   contained = false,
+  wrap = false,
 }) => {
   const heights = { sm: '32px', md: '40px', lg: '48px' };
   const fontSizes = { sm: '12px', md: '14px', lg: '14px' };
@@ -98,10 +100,11 @@ export const Tabs: React.FC<TabsProps> = ({
     <div
       style={{
         display: 'flex',
+        flexWrap: wrap ? 'wrap' : 'nowrap',
         borderBottom: '1px solid var(--cds-border-subtle-01)',
         gap: '0',
-        overflowX: 'auto',
-        scrollbarWidth: 'none',
+        overflowX: wrap ? 'visible' : 'auto',
+        scrollbarWidth: wrap ? 'auto' : 'none',
       }}
     >
       {items.map((item) => {

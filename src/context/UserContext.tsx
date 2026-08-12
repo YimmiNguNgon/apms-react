@@ -15,7 +15,7 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'users-new', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat'],
   [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'news', 'profile', 'system-chat'],
   [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'verify', 'news', 'profile', 'project-management', 'project-detail', 'system-chat'],
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'add-company', 'ai-agent', 'news', 'profile', 'system-chat'],
