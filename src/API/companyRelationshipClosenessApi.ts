@@ -6,8 +6,20 @@ export interface RelationshipClosenessResponse {
   label: string;
   note: string | null;
   ratedByAccountId: number | null;
+  ratedByRole: string | null;
   ratedAt: string | null;
   updatedAt: string | null;
+  ownerFinalized: boolean;
+  managerStars: number | null;
+  managerNote: string | null;
+  managerRatedByAccountId: number | null;
+  managerRatedAt: string | null;
+  ownerStars: number | null;
+  ownerNote: string | null;
+  ownerRatedByAccountId: number | null;
+  ownerRatedAt: string | null;
+  canUpdate: boolean;
+  canDelete: boolean;
 }
 
 export interface UpdateRelationshipClosenessRequest {

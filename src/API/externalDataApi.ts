@@ -34,10 +34,12 @@ export interface ExternalDataItem {
   projectId?: number | null;
   companyProfileId?: string | null;
   createdAt?: string | null;
+  crawledAt?: string | null;
   updatedAt?: string | null;
   aiStatus?: ArticleAiStatus | null;
   aiError?: string | null;
   aiSummary?: string | null;
+  content?: string | null;
   summaryGeneratedAt?: string | null;
   topics?: string[] | null;
   topicLabels?: string[] | null;
@@ -108,6 +110,8 @@ export interface ExternalDataQuery {
   keyword?: string;
   source?: string;
   companyName?: string;
+  sentiment?: string;
+  importance?: string;
   page?: number;
   size?: number;
   projectId?: number;
@@ -128,18 +132,37 @@ export const externalDataApi = {
         keyword: query.keyword || undefined,
         source: query.source || undefined,
         companyName: query.companyName || undefined,
+        sentiment: query.sentiment || undefined,
+        importance: query.importance || undefined,
       },
     });
     return response.data ?? { content: [], pageNumber: 0, pageSize: 0, totalElements: 0, totalPages: 0, last: true };
   },
 
-  getCount: async (category: ExternalDataCategory): Promise<number> => {
+  getItemById: async (id: string): Promise<ExternalDataItem | null> => {
     try {
-      const page = await externalDataApi.getItems(category, { page: 0, size: 0 });
-      return Number(page.totalElements ?? 0);
+      const response = await api.get<ExternalDataItem>(`/external-data/news/${id}`);
+      return response.data ?? null;
     } catch {
-      return 0;
+      return null;
     }
+  },
+
+  getNewsByCompanyId: async (companyId: string, page: number = 0, size: number = 20): Promise<PageResponse<ExternalDataItem>> => {
+    const response = await api.get<PageResponse<ExternalDataItem>>(`/companies/${companyId}/articles`, {
+      params: { page, size },
+    });
+    return response.data ?? { content: [], pageNumber: 0, pageSize: 0, totalElements: 0, totalPages: 0, last: true };
+  },
+
+  triggerCompanyCrawl: async (companyId: string): Promise<string> => {
+    const response = await api.post<{ message?: string }>(`/crawler/companies/${companyId}/trigger`);
+    return response.data?.message || 'Company news crawler triggered.';
+  },
+
+  getCompanyCrawlStatus: async (companyId: string): Promise<{ companyId: string; status: string }> => {
+    const response = await api.get<{ companyId: string; status: string }>(`/crawler/companies/${companyId}/status`);
+    return response.data ?? { companyId, status: 'IDLE' };
   },
 
   getTrackedCompanies: async (activeOnly: boolean = true) => {

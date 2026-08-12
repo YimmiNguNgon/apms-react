@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Lock, ShieldAlert } from 'lucide-react';
 import totpApi from '../API/totpApi';
+import type { StepUpVerifyResponse } from '../API/totpApi';
 
 interface TotpVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onVerified: (token: string, expiresInSeconds: number) => void;
-  scope: string;
-  resourceId: string;
+  onVerified: (secureSession: StepUpVerifyResponse) => void;
+  scope?: string;
+  resourceId?: string;
 }
 
 export const TotpVerificationModal: React.FC<TotpVerificationModalProps> = ({ 
@@ -48,7 +49,7 @@ export const TotpVerificationModal: React.FC<TotpVerificationModalProps> = ({
     setError(null);
     try {
       const res = await totpApi.verifyStepUp({ code, scope, resourceId });
-      onVerified(res.data.stepUpToken, res.data.expiresInSeconds);
+      onVerified(res.data);
       onClose();
     } catch (err: unknown) {
       const apiError = err as { status?: number; payload?: { message?: string; lockedUntil?: string }; message?: string };

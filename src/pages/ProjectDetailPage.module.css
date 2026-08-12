@@ -2056,6 +2056,20 @@
   line-height: 1.4;
 }
 
+.fieldWarning {
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.fieldError {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
 .inviteField input,
 .inviteField select,
 .inviteField textarea {
@@ -2080,6 +2094,13 @@
 .inviteField textarea {
   min-height: 98px;
   resize: vertical;
+}
+
+.inviteField input[aria-invalid="true"],
+.inviteField select[aria-invalid="true"],
+.inviteField textarea[aria-invalid="true"] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
 }
 
 .fieldAiContextGrid {
@@ -6620,4 +6641,41 @@
   .board {
     grid-template-columns: repeat(4, minmax(280px, 1fr));
   }
+}
+
+.removeMemberBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.removeMemberBtn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.removeMemberBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dangerModalButton {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border: 1px solid #dc2626 !important;
+}
+
+.dangerModalButton:hover {
+  background: #b91c1c !important;
+  border-color: #b91c1c !important;
 }

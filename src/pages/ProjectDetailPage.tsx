@@ -33,6 +33,7 @@ import {
   TrendingUp,
   type LucideIcon,
   UserPlus,
+  UserX,
   Users,
   X,
 } from 'lucide-react';
@@ -67,6 +68,7 @@ import { ProjectProgressOverview } from '../components/ProjectProgressOverview/P
 import type {
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
+  CandidateDraftSummary,
   CreateProjectTaskRequest,
   MergeCandidateResponse,
   PageResult,
@@ -239,7 +241,13 @@ const candidateStatusClass: Record<CandidateStatus, string> = {
   APPROVED: styles.candidateAPPROVED,
 };
 
-const visibleCandidateStatuses = new Set<CandidateStatus>(['PENDING_REVIEW', 'APPROVED', 'REJECTED']);
+const visibleCandidateStatuses = new Set<CandidateStatus>(['PENDING_REVIEW', 'REVISION_REQUIRED', 'APPROVED', 'REJECTED']);
+const isStaffEditableCandidateStatus = (status?: CandidateStatus | null) => status === 'DRAFT' || status === 'REVISION_REQUIRED';
+const selectPreferredStaffCandidateDraft = (drafts: CandidateDraftSummary[] = []) => (
+  drafts.find((draft) => draft.status === 'REVISION_REQUIRED')
+  ?? drafts.find((draft) => draft.status === 'DRAFT')
+  ?? drafts[0]
+);
 
 type CandidateReviewTab = 'profile' | 'swot' | 'evidence';
 type ManagerCandidateTab = 'overview' | 'swot' | 'evidence' | 'decision';
@@ -2965,6 +2973,11 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
     description: 'Select project documents, run AI extraction, create a candidate draft, correct data, then submit to manager.',
     steps: ['AI extraction', 'Candidate draft', 'Submit review'],
   },
+  PARTNER_CONTRACT_COLLECTION: {
+    title: 'Partner contract collection',
+    description: 'Upload partner contract documents, submit them to manager, then approved contracts are saved to the company profile.',
+    steps: ['Start work', 'Upload contracts', 'Submit review'],
+  },
   COMPANY_DATA_PREPARATION: {
     title: 'Company data preparation',
     description: 'Select project documents, run AI extraction, create a candidate draft, correct data, then submit to manager.',
@@ -2998,7 +3011,7 @@ const createTaskTypeOptions: Array<{ value: TaskType; label: string }> = [
   { value: 'COMPANY_MEMBER_RESEARCH', label: 'Company member research' },
   { value: 'COMPANY_NEWS_RESEARCH', label: 'Company news research' },
   { value: 'ROLE_EVALUATION', label: 'Role evaluation' },
-  { value: 'DOCUMENT_COLLECTION', label: 'Document collection' },
+  { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Partner contract collection' },
 ];
 
 const emptyCompanyMemberForm: CompanyMemberResearchItem = {
@@ -3206,6 +3219,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [documentsTabItems, setDocumentsTabItems] = useState<WorkbenchDocumentResponse[]>([]);
   const [documentsTabLoading, setDocumentsTabLoading] = useState(false);
   const [documentsTabError, setDocumentsTabError] = useState<string | null>(null);
+  const [contractPendingDelete, setContractPendingDelete] = useState<WorkbenchDocumentResponse | null>(null);
+  const [contractDeleteLoading, setContractDeleteLoading] = useState(false);
+  const [documentPendingDelete, setDocumentPendingDelete] = useState<WorkbenchDocumentResponse | null>(null);
+  const [documentDeleteLoading, setDocumentDeleteLoading] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<ProjectMemberResponse | null>(null);
+  const [removeMemberLoading, setRemoveMemberLoading] = useState(false);
   const [companyMembersProfile, setCompanyMembersProfile] = useState<ProfileResponse | null>(null);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [companyMembersError, setCompanyMembersError] = useState<string | null>(null);
@@ -3343,6 +3362,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     taskType: 'GENERAL_TASK' as TaskType,
     targetCompanyProfileId: '',
   });
+  const projectEndDateInput = toInputDate(apiProject?.plannedEndDate || null);
+  const projectEndDateLabel = formatOptionalDate(apiProject?.plannedEndDate);
+  const projectStartDateLabel = formatOptionalDate(apiProject?.createdAt);
+  const createTaskDueDateError = createTaskForm.dueDate && projectEndDateInput && createTaskForm.dueDate > projectEndDateInput
+    ? `Task due date cannot be later than the project's planned end date (${projectEndDateLabel}).`
+    : null;
+  const projectAlreadyOverdueWarning = projectEndDateInput && new Date(projectEndDateInput).getTime() < new Date(toInputDate(new Date().toISOString())).getTime()
+    ? 'This project has already passed its planned end date.'
+    : null;
   const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
@@ -3368,6 +3396,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (selectedStaffTask && ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType)) {
       if (step === 'AI extraction') return extractingSelectedDocuments || selectedProjectDocumentIds.length > 0 || hasAiExtraction;
       if (step === 'Candidate draft') return hasCandidateDraft;
+      if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
+      return false;
+    }
+
+    if (selectedStaffTask?.taskType === 'PARTNER_CONTRACT_COLLECTION') {
+      if (step === 'Start work') return staffTaskStatus !== 'TODO';
+      if (step === 'Upload contracts') return (workbench?.documents?.length ?? 0) > 0;
       if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
       return false;
     }
@@ -3947,6 +3982,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setCreateTaskError('Company news research requires this project to have a target company profile.');
       return;
     }
+    if (createTaskDueDateError) {
+      setCreateTaskError(createTaskDueDateError);
+      return;
+    }
 
     const payload: CreateProjectTaskRequest = {
       title,
@@ -4151,10 +4190,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await taskApi.getTaskWorkbench(task.projectId, task.id);
       setWorkbench(payload.data);
 
-      const firstDraftId = (
-        payload.data?.candidateDrafts?.find((draft) => draft.status === 'DRAFT')
-        ?? payload.data?.candidateDrafts?.[0]
-      )?.candidateId;
+      const firstDraftId = selectPreferredStaffCandidateDraft(payload.data?.candidateDrafts ?? [])?.candidateId;
       if (options.loadCandidateDraft && firstDraftId) {
         const candidatePayload = await candidateApi.getCandidateById(firstDraftId);
         setStaffCandidate(candidatePayload.data);
@@ -4475,7 +4511,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       formData.append('file', file);
       formData.append('taskId', String(selectedStaffTask.id));
       const token = localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
-      const response = await fetch(`${API_BASE_URL}/projects/${selectedStaffTask.projectId}/documents/upload`, {
+      const uploadUrl = selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+        ? `${API_BASE_URL}/projects/${selectedStaffTask.projectId}/tasks/${selectedStaffTask.id}/partner-contracts/documents`
+        : `${API_BASE_URL}/projects/${selectedStaffTask.projectId}/documents/upload`;
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
@@ -4486,16 +4525,94 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         throw new Error(payload?.message || 'Cannot upload file.');
       }
 
-      setWorkbenchMessage('Evidence uploaded. You can run AI extraction now.');
+      setWorkbenchMessage(selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+        ? 'Contract uploaded. Submit it to manager when ready.'
+        : 'Evidence uploaded. You can run AI extraction now.');
       await loadStaffWorkbench(selectedStaffTask);
-      const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
-        params: { includeHidden: false, page: 0, size: 100 },
-      });
-      setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
+      if (selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION') {
+        const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
+          params: { includeHidden: false, page: 0, size: 100 },
+        });
+        setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
+      }
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot upload file.');
     } finally {
       setUploadingEvidence(false);
+    }
+  };
+
+  const handleDeletePartnerContractDocument = async () => {
+    if (!selectedStaffTask || !contractPendingDelete?.rawDocumentId) return;
+    setContractDeleteLoading(true);
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      await taskApi.deletePartnerContractDocument(
+        selectedStaffTask.projectId,
+        selectedStaffTask.id,
+        contractPendingDelete.rawDocumentId,
+      );
+      setWorkbench((current) => current ? {
+        ...current,
+        documents: current.documents?.filter((document) => document.rawDocumentId !== contractPendingDelete.rawDocumentId),
+      } : current);
+      setContractPendingDelete(null);
+      setToast({ kind: 'success', message: 'Contract deleted successfully.' });
+      await loadStaffWorkbench(selectedStaffTask);
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot delete contract.');
+    } finally {
+      setContractDeleteLoading(false);
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!documentPendingDelete?.rawDocumentId || !documentPendingDelete?.projectId) return;
+    setDocumentDeleteLoading(true);
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
+
+    try {
+      const taskId = documentPendingDelete.taskId || selectedStaffTask?.id;
+      const url = `/projects/${documentPendingDelete.projectId}/documents/${encodeURIComponent(documentPendingDelete.rawDocumentId)}${taskId ? `?taskId=${taskId}` : ''}`;
+      await api.delete(url);
+
+      setToast({ kind: 'success', message: 'Document deleted successfully.' });
+      setDocumentPendingDelete(null);
+      if (selectedStaffTask) {
+        await loadStaffWorkbench(selectedStaffTask);
+      }
+      if (currentProjectId) {
+        const payload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${currentProjectId}/documents`, {
+          params: { includeHidden: false, page: 0, size: 200 },
+        });
+        setDocumentsTabItems(unwrapList<WorkbenchDocumentResponse>(payload));
+      }
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot delete document.');
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Cannot delete document.' });
+    } finally {
+      setDocumentDeleteLoading(false);
+    }
+  };
+
+  const handleConfirmRemoveMember = async () => {
+    if (!memberToRemove || !currentProjectId) return;
+    setRemoveMemberLoading(true);
+    try {
+      await projectApi.removeMember(currentProjectId, memberToRemove.accountId);
+      setToast({ kind: 'success', message: `Member ${memberDisplayName(memberToRemove)} removed from project.` });
+      setMemberToRemove(null);
+      await queryClient.invalidateQueries({ queryKey: ['projectMembers', currentProjectId] });
+      await queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to remove member from project.';
+      setToast({ kind: 'error', message: msg });
+    } finally {
+      setRemoveMemberLoading(false);
     }
   };
 
@@ -4691,6 +4808,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please extract at least one document before creating a candidate.');
       return;
     }
+    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
+    if (returnedCandidate) {
+      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
+      await handleOpenStaffCandidate(returnedCandidate.candidateId);
+      return;
+    }
 
     setStaffCandidateLoading(true);
     setWorkbenchError(null);
@@ -4767,6 +4890,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before creating a candidate draft.');
+      return;
+    }
+    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
+    if (returnedCandidate) {
+      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
+      await handleOpenStaffCandidate(returnedCandidate.candidateId);
       return;
     }
     setStaffCandidateLoading(true);
@@ -4851,7 +4980,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please start this task before submitting a candidate.');
       return;
     }
-    if (staffCandidate.status !== 'DRAFT' && staffCandidate.status !== 'REVISION_REQUIRED') {
+    if (!isStaffEditableCandidateStatus(staffCandidate.status)) {
       setWorkbenchError('Only the selected candidate draft with DRAFT or REVISION_REQUIRED status can be submitted to manager.');
       return;
     }
@@ -4949,38 +5078,74 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setWorkbenchMessage(null);
 
     try {
-      await taskApi.submitTask(selectedStaffTask.projectId, selectedStaffTask.id, {
+      if (selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') {
+        const rawDocumentIds = (workbench?.documents ?? [])
+          .map((document) => document.rawDocumentId)
+          .filter((id): id is string => Boolean(id));
+
+        if (rawDocumentIds.length === 0) {
+          throw new Error('Upload at least one contract document before submitting to manager.');
+        }
+
+        await taskApi.submitPartnerContractCollection(selectedStaffTask.projectId, selectedStaffTask.id, {
+          rawDocumentIds,
+          note,
+        });
+
+        const updatedTask: ProjectTaskResponse = {
+          ...selectedStaffTask,
+          status: 'IN_REVIEW',
+        };
+        updateTaskInState(updatedTask);
+        setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
+        setWorkbenchMessage('Contract documents submitted to manager review.');
+        await loadStaffWorkbench(updatedTask);
+        setSelectedStaffTask(null);
+        setStaffTaskNote('');
+        return;
+      }
+
+      const submitRes = await taskApi.submitTask(selectedStaffTask.projectId, selectedStaffTask.id, {
         submissionType,
         targetEntityType: latestDocument ? 'ImportJob' : selectedStaffTask.taskType,
         targetEntityId: latestDocument?.id ? String(latestDocument.id) : String(selectedStaffTask.id),
         note,
       });
 
-      if (selectedStaffTask.taskType === 'DOCUMENT_COLLECTION') {
-        const completedTask: ProjectTaskResponse = {
-          ...selectedStaffTask,
-          status: 'DONE',
-          completedAt: new Date().toISOString(),
-        };
-        updateTaskInState(completedTask);
-        setWorkbench((current) => current ? { ...current, taskStatus: 'DONE' } : current);
-        setToast({ kind: 'success', message: 'Documents submitted directly to the project.' });
-        await loadStaffWorkbench(completedTask);
-        setSelectedStaffTask(null);
-        setStaffTaskNote('');
-        if (activeTab === 'Documents') {
-          setDocumentsTabItems([]);
+      // Refetch task to get updated status
+      const taskRes = await taskApi.getProjectTasks(selectedStaffTask.projectId);
+      if (taskRes.success && taskRes.data) {
+        const rows = 'content' in taskRes.data ? taskRes.data.content : taskRes.data;
+        const freshTask = (rows as ProjectTaskResponse[]).find((t: ProjectTaskResponse) => t.id === selectedStaffTask.id);
+        if (freshTask) {
+          updateTaskInState(freshTask);
+          setSelectedStaffTask(freshTask);
+          setWorkbench((current) => current ? { ...current, taskStatus: freshTask.status } : current);
+          await loadStaffWorkbench(freshTask);
         }
-        return;
+      } else {
+        // Fallback if fetch fails
+        const fallbackTask: ProjectTaskResponse = {
+          ...selectedStaffTask,
+          status: 'IN_REVIEW',
+        };
+        updateTaskInState(fallbackTask);
+        setSelectedStaffTask(fallbackTask);
+        setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
+        await loadStaffWorkbench(fallbackTask);
       }
 
-      const updatedTask = await taskApi.updateTaskStatus(selectedStaffTask.projectId, selectedStaffTask.id, 'IN_REVIEW');
-      updateTaskInState(updatedTask.data);
-      setWorkbench((current) => current ? { ...current, taskStatus: 'IN_REVIEW' } : current);
       setWorkbenchMessage('Task submitted to manager review.');
-      await loadStaffWorkbench(updatedTask.data);
       setSelectedStaffTask(null);
       setStaffTaskNote('');
+      setTaskRefreshTick((current) => current + 1);
+
+      if (queryClient) {
+        queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+        queryClient.invalidateQueries({ queryKey: ['submissions'] });
+        queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
+      }
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot submit this task to manager.');
     } finally {
@@ -5046,7 +5211,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     try {
       const token = localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
-      const url = `${API_BASE_URL}/projects/${document.projectId}/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`;
+      const isPartnerContract = document.sourceType === 'PARTNER_CONTRACT'
+        || selectedManagerReviewTask?.taskType === 'PARTNER_CONTRACT_COLLECTION'
+        || selectedStaffTask?.taskType === 'PARTNER_CONTRACT_COLLECTION';
+      const taskId = document.taskId || selectedManagerReviewTask?.id || selectedStaffTask?.id;
+
+      if (isPartnerContract && !taskId) {
+        setWorkbenchError('This contract document is missing its task context.');
+        return;
+      }
+      const url = isPartnerContract
+        ? `${API_BASE_URL}/projects/${document.projectId}/tasks/${encodeURIComponent(taskId!)}/partner-contracts/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`
+        : `${API_BASE_URL}/projects/${document.projectId}/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`;
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -5364,7 +5540,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={styles.memberPanelHead}>
                 <div>
                   <h2>Project documents</h2>
-                  <p>View documents uploaded from document collection tasks and other project evidence sources.</p>
+                  <p>Research documents used for company data preparation and AI extraction.</p>
                 </div>
                 <span className={styles.count}>{filteredDocuments.length}/{documentsTabItems.length}</span>
               </div>
@@ -5397,8 +5573,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {!documentsTabLoading && filteredDocuments.length === 0 && (
                   <div className={styles.documentEmptyState}>
                     <FileText size={26} />
-                    <strong>No documents found</strong>
-                    <span>Uploaded documents from Document Collection tasks will appear here after staff submit them to the project.</span>
+                    <strong>No research documents found</strong>
+                    <span>Upload research sources from Company Data Preparation to use them for AI extraction.</span>
                   </div>
                 )}
                 {!documentsTabLoading && filteredDocuments.map((document) => (
@@ -5521,12 +5697,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <th>Member</th>
                       <th>Role</th>
                       <th>Joined</th>
+                      {!isStaffView && <th>Action</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {projectMembers.length === 0 && (
                       <tr>
-                        <td colSpan={4}>
+                        <td colSpan={isStaffView ? 4 : 5}>
                           <div className={styles.empty}>No members found in this project.</div>
                         </td>
                       </tr>
@@ -5553,6 +5730,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             </span>
                           </td>
                           <td>{formatMemberDate(member.joinedAt)}</td>
+                          {!isStaffView && (
+                            <td>
+                              {!isManager && (
+                                <button
+                                  className={`${styles.button} ${styles.dangerButton || ''}`}
+                                  type="button"
+                                  onClick={() => setMemberToRemove(member)}
+                                  title="Remove staff member from project"
+                                >
+                                  <UserX size={16} />Remove
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -5717,8 +5908,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     type="date"
                     value={createTaskForm.dueDate}
                     min={toInputDate(new Date().toISOString())}
+                    max={projectEndDateInput || undefined}
+                    aria-invalid={Boolean(createTaskDueDateError)}
                     onChange={(event) => setCreateTaskForm((current) => ({ ...current, dueDate: event.target.value }))}
                   />
+                  {projectEndDateInput && (
+                    <small className={styles.fieldHint}>
+                      Project timeline: {projectStartDateLabel} to {projectEndDateLabel}
+                    </small>
+                  )}
+                  {projectAlreadyOverdueWarning && (
+                    <small className={styles.fieldWarning}>{projectAlreadyOverdueWarning}</small>
+                  )}
+                  {createTaskDueDateError && (
+                    <small className={styles.fieldError}>{createTaskDueDateError}</small>
+                  )}
                 </label>
 
                 <label className={styles.inviteField}>
@@ -5782,7 +5986,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   className={`${styles.button} ${styles.primaryButton}`}
                   type="button"
                   onClick={() => void handleCreateTask()}
-                  disabled={createTaskLoading || projectMembers.length === 0}
+                  disabled={createTaskLoading || projectMembers.length === 0 || Boolean(createTaskDueDateError)}
                 >
                   {createTaskLoading ? 'Creating...' : 'Create task'}
                 </button>
@@ -5863,6 +6067,76 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         )}
       </AnimatePresence>
       <AnimatePresence>
+        {contractPendingDelete && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => !contractDeleteLoading && setContractPendingDelete(null)}
+          >
+            <motion.div
+              className={styles.deleteTaskModal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-contract-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.deleteTaskHead}>
+                <div>
+                  <span>Contract package</span>
+                  <h2 id="delete-contract-title">Delete contract?</h2>
+                </div>
+                <button
+                  className={styles.iconButton}
+                  type="button"
+                  aria-label="Close delete contract confirmation"
+                  onClick={() => setContractPendingDelete(null)}
+                  disabled={contractDeleteLoading}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className={styles.deleteTaskCopy}>
+                <strong>{contractPendingDelete.fileName || 'This contract'}</strong> will be removed from this contract package. This action cannot be undone.
+              </p>
+
+              <div className={styles.deleteTaskPreview}>
+                <Trash2 size={20} />
+                <div>
+                  <strong>{contractPendingDelete.fileName || `Raw document ${contractPendingDelete.rawDocumentId}`}</strong>
+                  <span>{contractPendingDelete.rawDocumentId || 'Partner contract'}</span>
+                </div>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => setContractPendingDelete(null)}
+                  disabled={contractDeleteLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`${styles.button} ${styles.dangerButton}`}
+                  type="button"
+                  onClick={() => void handleDeletePartnerContractDocument()}
+                  disabled={contractDeleteLoading}
+                >
+                  {contractDeleteLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {selectedStaffTask && (
           <motion.div
             className={`${styles.modalOverlay} ${styles.taskWorkbenchOverlay}`}
@@ -5897,12 +6171,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               {workbenchMessage && <div className={styles.inlineSuccess}>{workbenchMessage}</div>}
               {(() => {
                 const rejectedSubmission = workbench?.submissions
-                  ?.filter((submission) => submission.status === 'REJECTED' && submission.reviewComment)
+                  ?.filter((submission) => ['REJECTED', 'CHANGES_REQUESTED', 'REVISION_REQUESTED'].includes(submission.status) && submission.reviewComment)
                   .at(-1);
 
                 return rejectedSubmission ? (
                   <div className={styles.reviewNoteAlert}>
-                    <strong>Manager requested correction</strong>
+                    <strong>{['DOCUMENT_COLLECTION', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) ? 'Document rejected' : 'Manager requested correction'}</strong>
                     <span>{rejectedSubmission.reviewComment}</span>
                   </div>
                 ) : null;
@@ -5956,7 +6230,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               {!canUseStaffWorkbench && staffTaskStatus === 'TODO' && (
                 <div className={styles.reviewNoteAlert}>
                   <strong>Task has not started yet</strong>
-                  <span>Click Start task to move this task to In Progress before using upload, AI extraction, candidate draft, submit, or delete actions.</span>
+                  <span>
+                    {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                      ? 'Click Start task to move this task to In Progress before uploading or submitting partner contracts.'
+                      : 'Click Start task to move this task to In Progress before using upload, AI extraction, candidate draft, submit, or delete actions.'}
+                  </span>
+                </div>
+              )}
+              {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' && !workbench?.targetCompanyProfileId && (
+                <div className={styles.reviewNoteAlert}>
+                  <strong>Target partner profile unavailable</strong>
+                  <span>This contract task cannot be submitted until the partner Company Profile is available from an approved company candidate.</span>
                 </div>
               )}
 
@@ -6041,7 +6325,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                         <div className={styles.aiProgressChecklist}>
                           <div className={styles.checklistRow}>
-                            <span>{extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
+                            <span>{extractionJob.stage === 'PREPARING' || extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
                           </div>
                           <div className={styles.checklistRow}>
                             <span>{extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> AI analysis in progress
@@ -6115,6 +6399,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               disabled={!canUseStaffWorkbench || extractingImportJobId === document.id || extractingSelectedDocuments}
                             >
                               <Sparkles size={16} />{extractingImportJobId === document.id ? 'Running...' : 'Extract for review'}
+                            </button>
+                            <button
+                              className={`${styles.button} ${styles.dangerButton}`}
+                              type="button"
+                              onClick={() => setDocumentPendingDelete(document)}
+                              disabled={!canUseStaffWorkbench || !document.rawDocumentId || staffTaskStatus !== 'IN_PROGRESS'}
+                            >
+                              <Trash2 size={16} />Delete
                             </button>
                           </div>
                         </article>
@@ -6204,10 +6496,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           candidateId={staffCandidate.id}
                           taskId={selectedStaffTask.id}
                           role="STAFF"
-                          readOnly={staffCandidate.status === 'PENDING_REVIEW'}
+                          readOnly={staffTaskStatus !== 'IN_PROGRESS' || !isStaffEditableCandidateStatus(staffCandidate.status)}
                           onReviewed={() => {
-                            setStaffCandidate(null);
-                            setStaffCandidateEdit(emptyStaffCandidateEdit);
                             taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
                               .then((payload: any) => setWorkbench(payload.data))
                               .catch(console.error);
@@ -6404,11 +6694,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div>
                         <h3>
                           {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Document package'}
+                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' && 'Contract package'}
                           {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Evaluation result'}
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Task result'}
                         </h3>
                         <p>
                           {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit them directly to the project.'}
+                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' && 'Upload the partner contract files, then submit them to manager for approval and profile storage.'}
                           {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Write your evaluation notes and attach evidence before sending it for manager review.'}
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Add a clear result note so the manager knows what has been completed.'}
                         </p>
@@ -6452,8 +6744,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           disabled={!canUseStaffWorkbench || uploadingEvidence}
                         />
                         <FileText size={24} />
-                        <strong>{uploadingEvidence ? 'Uploading evidence...' : 'Upload evidence'}</strong>
-                        <span>Attach files that support this task before submitting them to the project.</span>
+                        <strong>
+                          {uploadingEvidence
+                            ? (selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Uploading contract...' : 'Uploading evidence...')
+                            : (selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Upload contract' : 'Upload evidence')}
+                        </strong>
+                        <span>
+                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                            ? 'Attach partner contract files for manager approval.'
+                            : 'Attach files that support this task before submitting them to the project.'}
+                        </span>
                       </label>
                     )}
 
@@ -6461,7 +6761,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div className={styles.documentList}>
                         {workbenchLoading && <div className={styles.empty}>Loading workbench...</div>}
                         {!workbenchLoading && (workbench?.documents?.length ?? 0) === 0 && (
-                          <div className={styles.empty}>No evidence uploaded yet.</div>
+                          <div className={styles.empty}>
+                            {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                              ? 'No contracts uploaded yet. Upload the agreement, MoU, NDA or other contract documents associated with this partner.'
+                              : 'No evidence uploaded yet.'}
+                          </div>
                         )}
                         {workbench?.documents?.map((document) => (
                           <article className={styles.documentItem} key={document.id}>
@@ -6489,6 +6793,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 disabled={!canUseStaffWorkbench || !document.rawDocumentId}
                               >
                                 <Download size={16} />Download
+                              </button>
+                              <button
+                                className={`${styles.button} ${styles.dangerButton}`}
+                                type="button"
+                                onClick={() => selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? setContractPendingDelete(document) : setDocumentPendingDelete(document)}
+                                disabled={!canUseStaffWorkbench || !document.rawDocumentId || staffTaskStatus !== 'IN_PROGRESS'}
+                              >
+                                <Trash2 size={16} />Delete
                               </button>
                             </div>
                           </article>
@@ -6567,7 +6879,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <div className={styles.workbenchResultGrid}>
                       <div className={styles.workbenchResultCard}>
                         <FileText size={22} />
-                        <span>Evidence files</span>
+                        <span>{selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Contracts' : 'Evidence files'}</span>
                         <strong>{workbench?.documents?.length ?? 0}</strong>
                       </div>
                       <div className={styles.workbenchResultCard}>
@@ -6591,6 +6903,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         placeholder={
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Example: Uploaded annual report and registration evidence. Ready to add to project documents.'
+                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                              ? 'Example: Uploaded signed partner contract for manager approval.'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Example: Based on the uploaded evidence, this company fits the partner role because...'
                               : 'Example: Completed the assigned work and attached supporting evidence.'
@@ -6608,6 +6922,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' ? 'DOCUMENT_COLLECTION' : 'OTHER',
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Documents submitted for manager review.'
+                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                              ? 'Partner contracts submitted for manager review.'
                             : 'Task result submitted for manager review.'
                         )}
                         disabled={!canUseStaffWorkbench || staffSubmitLoading || selectedStaffTask.taskType === 'ROLE_EVALUATION'}
@@ -6617,6 +6933,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           ? 'Submitting...'
                           : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Submit for manager review'
+                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                              ? 'Submit contracts for review'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Use evaluation submit'
                               : 'Submit to manager'}
@@ -6630,6 +6948,36 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <aside className={styles.workbenchSidebar}>
                   {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                     <>
+                    <section className={styles.workbenchPanel}>
+                      <h3>Changes requested</h3>
+                      <div className={styles.draftList}>
+                        {(workbench?.candidateDrafts?.filter((draft) => draft.status === 'REVISION_REQUIRED').length ?? 0) === 0 && (
+                          <div className={styles.empty}>No returned candidate awaiting revision.</div>
+                        )}
+                        {workbench?.candidateDrafts?.filter((draft) => draft.status === 'REVISION_REQUIRED').map((draft) => {
+                          const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
+
+                          return (
+                            <article
+                              className={styles.draftItem}
+                              key={draft.candidateId}
+                            >
+                              <button
+                                className={styles.draftItemMain}
+                                type="button"
+                                onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                disabled={!canUseStaffWorkbench}
+                              >
+                                <strong>{draftLabel}</strong>
+                                {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
+                                <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>Round {draft.linkedSubmissionId ? 'changes requested' : 'revision required'}</span>
+                                <small>Continue revision on the same candidate.</small>
+                              </button>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
                     <section className={styles.workbenchPanel}>
                       <h3>Candidate drafts</h3>
                       <div className={styles.draftList}>
@@ -7007,8 +7355,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
-                        <h3>Uploaded evidence</h3>
-                        <p>These are the files uploaded by staff for this task.</p>
+                        <h3>{selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Submitted contracts' : 'Uploaded evidence'}</h3>
+                        <p>
+                          {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                            ? 'These are the partner contract files submitted by staff for approval.'
+                            : 'These are the files uploaded by staff for this task.'}
+                        </p>
                       </div>
                       <span className={styles.taskTypeBadge}>{managerReviewDocuments.length} file(s)</span>
                     </div>
@@ -7025,7 +7377,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{document.fileName || `Import job #${document.id}`}</strong>
                             <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
                             <small>
-                              Raw document: {document.rawDocumentId || 'N/A'} | Extraction: {document.latestExtractionId || 'Not generated'}
+                              {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                                ? `Raw document: ${document.rawDocumentId || 'N/A'}`
+                                : `Raw document: ${document.rawDocumentId || 'N/A'} | Extraction: ${document.latestExtractionId || 'Not generated'}`}
                             </small>
                           </div>
                           <div className={styles.documentActions}>
@@ -7116,7 +7470,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   {selectedManagerReviewTask.taskType === 'ROLE_EVALUATION' && (
                     <section className={styles.workbenchPanel}>
                       <RoleEvaluationWorkspace
-                        mode="manager"
+                        mode={currentUser?.role === ROLES.OWNER ? 'owner' : 'manager'}
                         project={apiProject}
                         task={selectedManagerReviewTask}
                         documents={projectDocuments.length > 0 ? projectDocuments : workbench?.documents || []}
@@ -7140,6 +7494,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             {selectedManagerReviewTask.status === 'DONE'
                               ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
                                 ? 'This document collection has been approved. The submitted documents remain available in the project.'
+                                : selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                                  ? 'This contract package has been approved. The contracts were linked to the target Company Profile.'
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'This company member research has been approved. The members were applied to the Company Profile.'
                                 : 'This task has already been approved. The submitted evidence remains available for audit.'
@@ -7152,8 +7508,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </div>
                     </div>
 
-                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
-                      <div className={styles.inlineSuccess}>Documents were approved and are available in the project Documents tab.</div>
+                    {['DOCUMENT_COLLECTION', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status === 'DONE' ? (
+                      <div className={styles.inlineSuccess}>
+                        {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
+                          ? 'Contracts were approved and are available from the target Company Profile.'
+                          : 'Documents were approved and are available in the project Documents tab.'}
+                      </div>
                     ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>
                         <button
@@ -7585,6 +7945,92 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   ))}
                 </section>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {documentPendingDelete && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => !documentDeleteLoading && setDocumentPendingDelete(null)}
+          >
+            <motion.div
+              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-doc-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.inviteHead}>
+                <div>
+                  <span className={styles.taskKey}>Delete document</span>
+                  <h2 id="delete-doc-title">Delete document?</h2>
+                  <p>
+                    <strong>{documentPendingDelete.fileName || 'This document'}</strong> will be removed from this task.
+                  </p>
+                </div>
+                <button className={styles.iconButton} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className={styles.modalActions}>
+                <button className={styles.button} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
+                  Cancel
+                </button>
+                <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleDeleteDocument()} disabled={documentDeleteLoading}>
+                  {documentDeleteLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {memberToRemove && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => !removeMemberLoading && setMemberToRemove(null)}
+          >
+            <motion.div
+              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="remove-member-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.inviteHead}>
+                <div>
+                  <span className={styles.taskKey}>Remove member</span>
+                  <h2 id="remove-member-title">Remove member from project?</h2>
+                  <p>
+                    This staff member (<strong>{memberDisplayName(memberToRemove)}</strong>) will lose access to this project.
+                  </p>
+                </div>
+                <button className={styles.iconButton} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className={styles.modalActions}>
+                <button className={styles.button} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
+                  Cancel
+                </button>
+                <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleConfirmRemoveMember()} disabled={removeMemberLoading}>
+                  {removeMemberLoading ? 'Removing...' : 'Remove Member'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

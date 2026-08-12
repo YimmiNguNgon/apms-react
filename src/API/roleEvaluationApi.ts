@@ -118,4 +118,9 @@ export const roleEvaluationApi = {
     api.get<RoleScoreSnapshotResponse[]>(`/profiles/${companyProfileId}/role-scores`, {
       params: { role },
     }),
+
+  getEffectiveEvaluation: (companyProfileId: string, role: ScoreRole) =>
+    api.get<RoleEvaluationVersionResponse | null>(`/profiles/${companyProfileId}/role-scores/effective`, {
+      params: { role },
+    }),
 };

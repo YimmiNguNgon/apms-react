@@ -28,8 +28,8 @@ import {
 import { roleEvaluationApi } from '../API/roleEvaluationApi';
 import { API_BASE_URL, api } from '../services/api';
 import {
+  canEditCompanyEvaluation,
   canManagerReviewEvaluation,
-  canStaffEditEvaluation,
   isNumericEvaluationRole,
   roleEvaluationRoleLabel,
   roleEvaluationStatusLabel,
@@ -51,7 +51,7 @@ import type {
 } from '../types/domain';
 import styles from './RoleEvaluationWorkspace.module.css';
 
-type Mode = 'staff' | 'manager';
+type Mode = 'staff' | 'manager' | 'owner';
 
 interface RoleEvaluationWorkspaceProps {
   mode: Mode;
@@ -264,11 +264,20 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
   const selectedCriterion = effectiveCriteria.find((item) => item.criterionKey === activeCriterion) || effectiveCriteria[0] || null;
   const selectedKey = selectedCriterion?.criterionKey;
   const numericRole = isNumericEvaluationRole(activeRole);
-  const editable = mode === 'staff' && canStaffEditEvaluation(draft?.status, canEdit);
-  const managerCanReview = mode === 'manager' && canManagerReviewEvaluation(draft?.status);
+  const ownerFinalized = Boolean(draft?.ownerFinalEvaluationExists || draft?.ownerFinalized || draft?.status === 'FINAL');
+  const backendCanEdit = draft?.canEdit ?? canEdit;
+  const canStartDraft = Boolean(canEdit || mode === 'manager' || mode === 'owner');
+  const editable = canEditCompanyEvaluation({
+    mode,
+    status: draft?.status,
+    canEdit: backendCanEdit,
+    ownerFinalized,
+  });
+  const managerCanReview = (mode === 'manager' || mode === 'owner')
+    && Boolean(draft?.canReview ?? canManagerReviewEvaluation(draft?.status));
 
   const steps = useMemo<Array<{ key: EvaluationStep; label: string; note: string }>>(() => {
-    if (mode === 'manager') {
+    if (mode === 'manager' || mode === 'owner') {
       return [
         { key: 'overview', label: 'Overview', note: 'Task and submission context' },
         { key: 'profile', label: 'Profile', note: 'Official company profile' },
@@ -286,13 +295,6 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
   const attachedEvidenceCount = useMemo(
     () => Object.values(draft?.criterionEvidence || {}).reduce((total, items) => total + items.length, 0),
     [draft?.criterionEvidence]
-  );
-  const readinessBlockingCriteria = useMemo(
-    () => effectiveCriteria.filter((criterion) => {
-      const status = readiness?.criterionResults?.[criterion.criterionKey]?.sufficiencyStatus;
-      return status === 'INCOMPLETE';
-    }),
-    [effectiveCriteria, readiness?.criterionResults]
   );
   const staffSubmissionMissingCriteria = useMemo(
     () => effectiveCriteria.filter((criterion) => {
@@ -348,7 +350,7 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
     if (step === 'profile') return Boolean(project?.targetCompanyProfileId || draft.targetProfileDocumentId || draft.targetCompanyId);
     if (step === 'criteria') return completion === 100 && attachedEvidenceCount > 0;
     if (step === 'preview') return draft.status !== 'DRAFT' || Boolean(preview);
-    if (step === 'decision') return draft.status === 'APPROVED' || draft.status === 'REJECTED' || draft.status === 'REVISION_REQUIRED';
+    if (step === 'decision') return draft.status === 'APPROVED' || draft.status === 'FINAL' || draft.status === 'REJECTED' || draft.status === 'REVISION_REQUIRED';
     return false;
   };
 
@@ -418,7 +420,7 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
     }
 
     const targetScoreProfileId = currentDraft.targetProfileDocumentId || project?.targetCompanyProfileId || currentDraft.targetCompanyId;
-    if (currentDraft.status === 'APPROVED' && currentDraft.evaluatedRole !== 'PARTNER' && targetScoreProfileId) {
+    if ((currentDraft.status === 'APPROVED' || currentDraft.status === 'FINAL') && currentDraft.evaluatedRole !== 'PARTNER' && targetScoreProfileId) {
       calls.push(
         roleEvaluationApi.getOfficialScores(targetScoreProfileId, currentDraft.evaluatedRole)
           .then((payload) => setOfficialScores(payload.data || []))
@@ -742,10 +744,12 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
     try {
       await roleEvaluationApi.review(draft.id, {
         decision,
-        comment: managerComment.trim() || (decision === 'APPROVE' ? 'Approved by manager.' : 'Needs revision.'),
+        comment: managerComment.trim() || (decision === 'APPROVE'
+          ? (mode === 'owner' ? 'Finalized by Business Owner.' : 'Approved by manager.')
+          : 'Needs revision.'),
         acknowledgeStaleVersions: true,
       }, `${draft.id}-${decision}-${Date.now()}`);
-      setMessage(decision === 'APPROVE' ? 'Approval started.' : 'Review decision saved.');
+      setMessage(decision === 'APPROVE' ? (mode === 'owner' ? 'Final evaluation saved.' : 'Approval started.') : 'Review decision saved.');
       await loadAll(true);
       await onReviewed?.();
     } catch (err) {
@@ -769,7 +773,7 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
   const officialOverallScore = clampScore(officialScore?.overallScore);
   const isApprovalProcessing = draft?.status === 'APPROVAL_PROCESSING';
   const isApprovalFailed = draft?.status === 'APPROVAL_FAILED';
-  const isApproved = draft?.status === 'APPROVED';
+  const isApproved = draft?.status === 'APPROVED' || draft?.status === 'FINAL';
   const evidenceDocumentTypes = useMemo(
     () => ['ALL', ...Array.from(new Set(documents.map(documentTypeLabel).filter(Boolean)))],
     [documents]
@@ -834,7 +838,9 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
           <p>
             {mode === 'staff'
               ? 'Review the company profile, score each criterion with evidence, use AI as a reference, then submit to manager.'
-              : 'Review Staff scores, AI rationale, evidence, and approve or request revisions.'}
+              : mode === 'owner'
+                ? 'Review Manager evaluation, AI rationale, and evidence, then finalize the authoritative company score.'
+                : 'Review Staff scores, AI rationale, evidence, and approve or request revisions.'}
           </p>
           <div className={styles.metaStrip}>
             <span><strong>Project</strong>{project?.projectName || `#${task.projectId}`}</span>
@@ -848,8 +854,8 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
           <button className={styles.secondaryButton} type="button" onClick={() => void loadAll()} disabled={loading}>
             <RotateCw size={15} /> Refresh
           </button>
-          {mode === 'staff' && !draft && (
-            <button className={styles.primaryButton} type="button" onClick={() => void createDraft()} disabled={!canEdit || actionLoading === 'create'}>
+          {!draft && (
+            <button className={styles.primaryButton} type="button" onClick={() => void createDraft()} disabled={!canStartDraft || actionLoading === 'create'}>
               {actionLoading === 'create' ? <Loader2 size={15} className={styles.spin} /> : <Plus size={15} />} Create draft
             </button>
           )}
@@ -858,6 +864,15 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
 
       {error && <div className={styles.error}><AlertTriangle size={16} />{error}</div>}
       {message && <div className={styles.success}><CheckCircle2 size={16} />{message}</div>}
+      {mode === 'manager' && ownerFinalized && (
+        <div className={styles.infoBanner}>
+          <ShieldCheck size={16} />
+          <div>
+            <strong>Owner Finalized</strong>
+            <span>The Business Owner has finalized this company's evaluation. Manager evaluation is now read-only.</span>
+          </div>
+        </div>
+      )}
 
       <nav className={styles.stepper} aria-label="Role evaluation workflow">
         {steps.map((step, index) => {
@@ -899,11 +914,9 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
             <ClipboardCheck size={26} />
             <strong>No role evaluation draft yet</strong>
             <span>Click Start evaluation after the task is in progress. The backend derives the role from the project relationship.</span>
-            {mode === 'staff' && (
-              <button className={styles.primaryButton} type="button" onClick={() => void createDraft()} disabled={!canEdit || actionLoading === 'create'}>
+            <button className={styles.primaryButton} type="button" onClick={() => void createDraft()} disabled={!canStartDraft || actionLoading === 'create'}>
                 {actionLoading === 'create' ? <Loader2 size={15} className={styles.spin} /> : <Plus size={15} />} Start evaluation
-              </button>
-            )}
+            </button>
           </div>
         </div>
       ) : (
@@ -1953,7 +1966,7 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
             </main>
 
             <aside className={`${styles.sidePanel} ${mode === 'manager' ? styles.managerDecisionSide : ''}`}>
-              <section className={mode === 'manager' ? styles.managerSideCard : undefined}>
+              <section className={mode !== 'staff' ? styles.managerSideCard : undefined}>
                 <h4>Preview</h4>
                 {numericRole ? (
                   <div className={styles.previewRing} style={{ '--score': displayedPreviewScore ?? 0 } as React.CSSProperties}>
@@ -1966,7 +1979,7 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
                     <span>PARTNER evaluations do not create an overall numeric score.</span>
                   </div>
                 )}
-                <button type="button" onClick={() => draft && void loadDerived(draft)} disabled={Boolean(actionLoading)}>
+                <button type="button" onClick={() => draft && void loadDerived(draft)} disabled={Boolean(actionLoading || (mode === 'manager' && ownerFinalized))}>
                   <Gauge size={15} /> Recalculate preview
                 </button>
               </section>
@@ -1991,17 +2004,20 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
                 </div>
               </section>
 
-              {mode === 'staff' ? (
+              {mode === 'staff' || editable ? (
                 <section>
-                  <h4>Submit</h4>
+                  <h4>{mode === 'owner' ? 'Prepare finalization' : 'Submit'}</h4>
                   <textarea
                     value={submitNote}
                     disabled={!editable}
-                    placeholder="Optional submission note for the manager..."
+                    placeholder={mode === 'owner'
+                      ? 'Optional note before finalizing this evaluation...'
+                      : 'Optional submission note for the manager...'}
                     onChange={(event) => setSubmitNote(event.target.value)}
                   />
                   <button className={styles.primaryButton} type="button" onClick={() => void submitEvaluation()} disabled={!editable || actionLoading === 'submit'}>
-                    {actionLoading === 'submit' ? <Loader2 size={15} className={styles.spin} /> : <Send size={15} />} Submit evaluation
+                    {actionLoading === 'submit' ? <Loader2 size={15} className={styles.spin} /> : <Send size={15} />}
+                    {mode === 'owner' ? 'Send to final decision' : 'Submit evaluation'}
                   </button>
                 </section>
               ) : (
@@ -2009,31 +2025,42 @@ export const RoleEvaluationWorkspace: React.FC<RoleEvaluationWorkspaceProps> = (
                   <div className={styles.managerDecisionHead}>
                     <div>
                       <span className={styles.eyebrow}>Final decision</span>
-                      <h4>Manager decision</h4>
+                      <h4>{mode === 'owner' ? 'Owner final evaluation' : 'Manager decision'}</h4>
                     </div>
                     <span className={`${styles.badge} ${managerCanReview ? styles.good : styles.neutral}`}>
-                      {managerCanReview ? 'Action required' : 'Locked'}
+                      {managerCanReview ? (mode === 'owner' ? 'Ready to finalize' : 'Action required') : 'Locked'}
                     </span>
                   </div>
                   <textarea
                     value={managerComment}
-                    placeholder="Write a clear review note. Revision and reject decisions require a justification."
+                    placeholder={mode === 'owner'
+                      ? 'Write a note for the final Owner evaluation.'
+                      : 'Write a clear review note. Revision and reject decisions require a justification.'}
                     onChange={(event) => onManagerCommentChange?.(event.target.value)}
-                    disabled={draft.status === 'APPROVED' || draft.status === 'REJECTED' || draft.status === 'APPROVAL_PROCESSING'}
+                    disabled={draft.status === 'APPROVED' || draft.status === 'FINAL' || draft.status === 'REJECTED' || draft.status === 'APPROVAL_PROCESSING'}
                   />
                   <div className={styles.managerDecisionHint}>
                     <ClipboardCheck size={16} />
-                    <span>Approve only when Staff score, reason, and supporting evidence are consistent for every criterion.</span>
+                    <span>
+                      {mode === 'owner'
+                        ? 'Finalizing makes the Owner evaluation authoritative and keeps Manager evaluation read-only.'
+                        : 'Approve only when Staff score, reason, and supporting evidence are consistent for every criterion.'}
+                    </span>
                   </div>
                   <div className={styles.reviewActions}>
-                    <button className={styles.revisionButton} type="button" onClick={() => void reviewEvaluation('REQUEST_REVISION')} disabled={Boolean(actionLoading || !managerCanReview)}>
-                      <AlertTriangle size={15} /> Revision
-                    </button>
-                    <button className={styles.rejectButton} type="button" onClick={() => void reviewEvaluation('REJECT')} disabled={Boolean(actionLoading || !managerCanReview)}>
-                      <XCircle size={15} /> Reject
-                    </button>
+                    {mode !== 'owner' && (
+                      <>
+                        <button className={styles.revisionButton} type="button" onClick={() => void reviewEvaluation('REQUEST_REVISION')} disabled={Boolean(actionLoading || !managerCanReview)}>
+                          <AlertTriangle size={15} /> Revision
+                        </button>
+                        <button className={styles.rejectButton} type="button" onClick={() => void reviewEvaluation('REJECT')} disabled={Boolean(actionLoading || !managerCanReview)}>
+                          <XCircle size={15} /> Reject
+                        </button>
+                      </>
+                    )}
                     <button className={styles.primaryButton} type="button" onClick={() => void reviewEvaluation('APPROVE')} disabled={Boolean(actionLoading || !managerCanReview)}>
-                      {actionLoading === 'review-APPROVE' ? <Loader2 size={15} className={styles.spin} /> : <CheckCircle2 size={15} />} Approve
+                      {actionLoading === 'review-APPROVE' ? <Loader2 size={15} className={styles.spin} /> : <CheckCircle2 size={15} />}
+                      {mode === 'owner' ? (ownerFinalized ? 'Update final evaluation' : 'Finalize evaluation') : 'Approve'}
                     </button>
                   </div>
                 </section>

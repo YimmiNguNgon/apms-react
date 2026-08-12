@@ -20,7 +20,7 @@ interface EditableFieldCardProps {
 export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({ 
   label, fieldResult, dirty, 
   onSave, onCancel, onConfirm, onRestore, 
-  currentValueDisplay, children, isList,
+  currentValueDisplay, children,
   disabled
 }) => {
   const [expandedEvidence, setExpandedEvidence] = useState(false);
@@ -56,6 +56,17 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
   const isRemoved = fieldResult?.staffReviewStatus === 'REMOVED' || (hasAiOriginal && !hasCurrentValue && hasReviewedValue);
 
   const isValidationFail = fieldResult?.validationStatus === 'FAIL';
+  const managerStatus = String(fieldResult?.managerReviewStatus || 'PENDING').toUpperCase();
+  const previousManagerStatus = String(fieldResult?.previousManagerReviewStatus || '').toUpperCase();
+  const isManagerApproved = managerStatus === 'ACCEPTED' || managerStatus === 'APPROVED';
+  const isReturned = managerStatus === 'REJECTED'
+    || managerStatus === 'CHANGES_REQUESTED'
+    || managerStatus === 'NEEDS_REVIEW'
+    || previousManagerStatus === 'REJECTED'
+    || previousManagerStatus === 'CHANGES_REQUESTED'
+    || previousManagerStatus === 'NEEDS_REVIEW';
+  const managerFeedback = fieldResult?.previousManagerReviewComment || fieldResult?.managerReviewComment;
+  const previousSubmittedValue = fieldResult?.previousSubmittedValue;
 
   const handleEditClick = () => setIsEditing(true);
   const handleCancelClick = () => { setIsEditing(false); onCancel(); };
@@ -66,6 +77,16 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
       <div className={styles.fieldRowHeader}>
         <span className={styles.fieldLabel}>{label}</span>
         <div className={styles.fieldBadges}>
+          {isManagerApproved && (
+            <span className={`${styles.reviewBadge} ${styles.reviewConfirmed}`}>
+              Approved by Manager
+            </span>
+          )}
+          {isReturned && !isManagerApproved && (
+            <span className={`${styles.reviewBadge} ${styles.reviewReturned}`}>
+              Changes Requested
+            </span>
+          )}
           {confidence > 0 && (
             <span className={`${styles.confidenceBadge} ${confidenceClass}`}>
               {(confidence * 100).toFixed(0)}% &middot; {confidenceLabel}
@@ -98,6 +119,13 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
           
           {!isEditing && (
             <div className={styles.evidenceLine}>
+              {isManagerApproved && (
+                <>
+                  <span>Approved in Round {fieldResult?.previousReviewedRevision || fieldResult?.changedInRevision || ''}</span>
+                  <span>&middot;</span>
+                  <span>Locked</span>
+                </>
+              )}
               {isValidationFail && (
                 <span className={`${styles.validationBadge} ${styles.validFail}`}>
                   Validation Issue
@@ -117,6 +145,23 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
                   <span>{expandedEvidence ? `"${fieldResult.evidenceText}"` : '1 source'}</span>
                   {expandedEvidence && fieldResult.pageNumber && <span>(Page {fieldResult.pageNumber})</span>}
                 </>
+              )}
+            </div>
+          )}
+          {!isEditing && isReturned && (
+            <div className={styles.managerFeedbackInline}>
+              {previousSubmittedValue !== undefined && (
+                <div>
+                  <span>Previous submitted value</span>
+                  <strong>{typeof previousSubmittedValue === 'string' ? previousSubmittedValue : JSON.stringify(previousSubmittedValue)}</strong>
+                </div>
+              )}
+              <div>
+                <span>Manager feedback</span>
+                <strong>{managerFeedback || 'Manager requested a change.'}</strong>
+              </div>
+              {fieldResult?.previousManagerReviewStatus && (
+                <small>{fieldResult.previousManagerReviewStatus} in Round {fieldResult.previousReviewedRevision || 1}</small>
               )}
             </div>
           )}

@@ -56,6 +56,23 @@ export const taskApi = {
     );
   },
 
+  submitPartnerContractCollection: async (
+    projectId: number,
+    taskId: number,
+    data: { rawDocumentIds: string[]; note?: string | null }
+  ) => {
+    return api.post<ProjectTaskSubmissionResponse>(
+      `/projects/${projectId}/tasks/${taskId}/partner-contracts/submissions`,
+      data
+    );
+  },
+
+  deletePartnerContractDocument: async (projectId: number, taskId: number, rawDocumentId: string) => {
+    return api.delete<void>(
+      `/projects/${projectId}/tasks/${taskId}/partner-contracts/documents/${encodeURIComponent(rawDocumentId)}`
+    );
+  },
+
   reviewSubmission: async (projectId: number, taskId: number, submissionId: number, data: ReviewTaskSubmissionRequest) => {
     return api.post<ProjectTaskSubmissionResponse>(
       `/projects/${projectId}/tasks/${taskId}/submissions/${submissionId}/review`,

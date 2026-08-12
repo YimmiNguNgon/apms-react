@@ -44,6 +44,7 @@ import { AddCompany }      from './pages/AddCompany';
 import { AdminPanel }      from './pages/AdminPanel';
 import { AIAgent }         from './pages/AIAgent';
 import { News }            from './pages/News';
+import { ArticleDetail }   from './pages/ArticleDetail';
 import { SystemChat }      from './pages/SystemChat';
 import { CrawlerControl }  from './pages/CrawlerControl';
 
@@ -258,6 +259,7 @@ const MainApp: React.FC = () => {
       case 'ai-agent':
       case 'personal-ai-agent':return renderDashboard();
       case 'news':             return <News setActivePage={navigateToPage} />;
+      case 'article-detail':   return <ArticleDetail setActivePage={navigateToPage} />;
       case 'system-chat':      return <SystemChat />;
       case 'crawler-control':  return <CrawlerControl />;
 

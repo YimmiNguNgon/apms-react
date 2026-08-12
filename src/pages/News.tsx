@@ -1,20 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useEffect, useState, useCallback } from 'react';
 import { externalDataApi, type ExternalDataItem } from '../API/externalDataApi';
-import {
-  DataTable,
-  Drawer,
-  EmptyState,
-  FilterBar,
-  MetricCard,
-  PageHeader,
-  PrimaryButton,
-  RiskBadge,
-  SecondaryButton,
-  Tabs,
-} from '../components/ui';
-import type { ColumnDef } from '../components/ui/DataTable';
-import type { FilterConfig } from '../components/ui/FilterBar';
+import { SecondaryButton } from '../components/ui';
+import styles from './News.module.css';
+
+interface TrackedCompany {
+  id: string;
+  companyName: string;
+  aliases?: string[];
+}
 
 interface NormalizedNewsArticle {
   id: string;
@@ -36,6 +29,8 @@ interface NormalizedNewsArticle {
   relatedCompanyId: string | null;
   companyProfileId: string | null;
   topics: string[];
+  imageUrl: string | null;
+  crawledAt: string | null;
 }
 
 type NewsArticleItem = NormalizedNewsArticle;
@@ -43,6 +38,8 @@ type NewsArticleItem = NormalizedNewsArticle;
 interface NewsProps {
   setActivePage?: (page: string) => void;
 }
+
+// ── Utils ───────────────────────────────────────────────────
 
 const repairMojibake = (value: string) => {
   if (!/[\u00c2\u00c3\u00e2]/.test(value)) return value;
@@ -89,10 +86,21 @@ const extractSource = (value?: string | null) => {
   };
 };
 
-const formatPublishedAt = (value?: string | null) => {
-  if (!value) return 'Date not available';
+const formatRelativeTime = (value?: string | null) => {
+  if (!value) return 'Unknown date';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Date not available' : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHrs / 24);
+
+  if (diffHrs < 1) return 'Just now';
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays <= 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 const normalizeConfidence = (value?: number | null) => {
@@ -103,18 +111,18 @@ const normalizeConfidence = (value?: number | null) => {
 
 const normalizeArticle = (item: ExternalDataItem): NormalizedNewsArticle => {
   const source = extractSource(item.source || item.sourceDomain);
-  const publishedAt = formatPublishedAt(item.publishedAt || item.createdAt);
   const title = parseHtmlContent(item.title) || 'Untitled news item';
   const summary = parseHtmlContent(item.aiSummary) || parseHtmlContent(item.summary);
+  const content = parseHtmlContent(item.content);
   const topics = (item.topics || []).filter(Boolean);
   const importance = item.riskLevel || item.opportunityLevel || null;
   const companyName = displayValue(item.relatedCompanyName);
   return {
     id: item.id,
     title,
-    source: { name: source.name, publishedAt, url: safeExternalUrl(item.url) || source.url },
+    source: { name: source.name, publishedAt: item.publishedAt || item.createdAt || '', url: safeExternalUrl(item.url) || source.url },
     summary: { text: summary },
-    originalArticle: { content: parseHtmlContent(item.summary), url: item.url || source.url },
+    originalArticle: { content, url: safeExternalUrl(item.url) || source.url },
     aiAnalysis: {
       sentiment: displayValue(item.sentiment)?.toUpperCase() || null,
       importance: importance?.toUpperCase() || null,
@@ -129,640 +137,439 @@ const normalizeArticle = (item: ExternalDataItem): NormalizedNewsArticle => {
     relatedCompanyId: item.relatedCompanyId || null,
     companyProfileId: item.companyProfileId || null,
     topics,
+    imageUrl: item.imageUrl || null,
+    crawledAt: item.crawledAt || item.createdAt || null,
   };
 };
 
-const DRAWER_TABS = [
-  { id: 'summary',     label: 'Summary' },
-  { id: 'original',    label: 'Original Article' },
-  { id: 'analysis',    label: 'AI Analysis' },
-  { id: 'companies',   label: 'Related Companies' },
-  { id: 'recommended', label: 'Recommended Action' },
-];
+const getCompanyDisplayName = (company: TrackedCompany) => {
+  if (company.aliases && company.aliases.length > 0) {
+    const sorted = [...company.aliases].sort((a, b) => a.length - b.length);
+    return sorted[0];
+  }
+  return company.companyName.replace(/Công ty Cổ phần Tập đoàn|Công ty Cổ phần|Công ty TNHH|Tập đoàn|Tổng công ty/gi, '').trim();
+};
 
-// Helper Badge
+const PAGE_SIZE = 12;
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=800';
+
+// ── Badge Components ────────────────────────────────────────
+
 const SentimentBadge: React.FC<{ sentiment?: string | null }> = ({ sentiment }) => {
-  const value = sentiment?.toUpperCase() || '';
-  const colors = {
-    POSITIVE: { bg: 'var(--cds-support-success-bg)', color: 'var(--cds-support-success)', label: 'Positive' },
-    NEGATIVE: { bg: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', label: 'Negative' },
-    NEUTRAL:  { bg: 'var(--cds-layer-01)', color: 'var(--cds-text-secondary)', label: 'Neutral' },
-  };
-  const theme = colors[value as keyof typeof colors] || { bg: 'var(--cds-layer-01)', color: 'var(--cds-text-helper)', label: 'Not available' };
+  if (!sentiment || sentiment === 'NEUTRAL') return null;
+  const isPos = sentiment === 'POSITIVE';
   return (
-    <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', background: theme.bg, color: theme.color, whiteSpace: 'nowrap' }}>
-      {theme.label}
+    <span className={`${styles.tagPill} ${isPos ? styles.newsPillSuccess : styles.newsPillDanger}`}>
+      {isPos ? 'Positive' : 'Negative'}
     </span>
   );
 };
 
-export const News: React.FC<NewsProps> = ({ setActivePage }) => {
-  const { t } = useTranslation('news');
-  const drawerTabs = [
-    { id: 'summary', label: t('modal.aiSummaryTitle') },
-    { id: 'original', label: t('modal.collectedContent') },
-    { id: 'analysis', label: t('aiState.completed') },
-    { id: 'companies', label: t('company.related') },
-    { id: 'recommended', label: t('actions.details') },
-  ];
-  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main Component ──────────────────────────────────────────
+
+export const News: React.FC<NewsProps> = () => {
+  const [trackedCompanies, setTrackedCompanies] = useState<TrackedCompany[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+
   const [articles, setArticles] = useState<NewsArticleItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('All');
   const [sentimentFilter, setSentimentFilter] = useState('All');
   const [importanceFilter, setImportanceFilter] = useState('All');
-  const [refreshing, setRefreshing] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
-  // Drawer state
-  const [selectedArticle, setSelectedArticle] = useState<NewsArticleItem | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState('summary');
-
-  // Load from API on mount
+  // Load Companies
   useEffect(() => {
-    const fetchNews = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const res = await externalDataApi.getItems('NEWS', { page: 0, size: 100 });
-        if (res?.content && Array.isArray(res.content)) {
-          const mapped: NewsArticleItem[] = res.content.map(normalizeArticle);
-          setArticles(mapped);
-        } else {
-          setArticles([]);
+    externalDataApi.getTrackedCompanies(true)
+      .then((data: any) => {
+        if (Array.isArray(data)) {
+          setTrackedCompanies(data);
         }
-      } catch {
-        setArticles([]);
-        setLoadError('Unable to load intelligence data. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void fetchNews();
-  }, [dataVersion]);
+      })
+      .catch((err) => console.error('Failed to load companies', err));
+  }, []);
+
+  // Server-side fetching with pagination
+  const fetchNews = useCallback(async (targetPage = 0) => {
+    setLoading(true);
+    try {
+      const selectedCompany = trackedCompanies.find(c => c.id === selectedCompanyId);
+      const companyNameQuery = selectedCompany ? selectedCompany.companyName : undefined;
+
+      const res = await externalDataApi.getItems('NEWS', {
+        page: targetPage,
+        size: PAGE_SIZE,
+        keyword: search || undefined,
+        companyName: companyNameQuery,
+        sentiment: sentimentFilter !== 'All' ? sentimentFilter : undefined,
+        importance: importanceFilter !== 'All' ? importanceFilter : undefined,
+      });
+      
+      const mapped = (res?.content || []).map(normalizeArticle);
+      setArticles(mapped);
+      setPage(targetPage);
+      setTotalCount(res ? res.totalElements : 0);
+    } catch (error) {
+      console.error('Failed to load news', error);
+      setArticles([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, sentimentFilter, importanceFilter, selectedCompanyId, dataVersion, trackedCompanies]);
+
+  // Fetch when filters change (resets to page 0)
+  useEffect(() => {
+    void fetchNews(0);
+  }, [search, sentimentFilter, importanceFilter, selectedCompanyId, dataVersion, trackedCompanies]);
 
   const refreshCompanyNews = async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await externalDataApi.runApprovedProfilesFetch();
-      setDataVersion((version) => version + 1);
+      await externalDataApi.runFetch(); 
+      setTimeout(() => {
+        setDataVersion((v) => v + 1);
+      }, 3000);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const shareDigest = async () => {
-    if (!selectedArticle) return;
-    const digest = [
-      selectedArticle.title,
-      `${selectedArticle.source.name} - ${selectedArticle.source.publishedAt}`,
-      selectedArticle.summary.text,
-    ].filter(Boolean).join('\n\n');
-    const shareData = {
-      title: selectedArticle.title,
-      text: digest,
-      ...(selectedArticle.source.url ? { url: selectedArticle.source.url } : {}),
-    };
-
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-        return;
-      }
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(digest);
-        window.alert('News digest copied to the clipboard.');
-        return;
-      }
-      window.alert('Sharing is not available in this browser.');
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        window.alert('Unable to share the news digest. Please try again.');
-      }
+  const handleCompanyTagClick = (e: React.MouseEvent, companyName: string) => {
+    e.stopPropagation();
+    const found = trackedCompanies.find(c => c.companyName === companyName);
+    if (found) {
+      setSelectedCompanyId(found.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  // Filtered Articles
-  const filteredArticles = useMemo(() => {
-    return articles.filter((item) => {
-      const matchSearch =
-        !search ||
-        (item.title || '').toLowerCase().includes(search.toLowerCase()) ||
-        (item.relatedCompanies[0]?.name || '').toLowerCase().includes(search.toLowerCase()) ||
-        item.source.name.toLowerCase().includes(search.toLowerCase());
-
-      const matchSource = sourceFilter === 'All' || item.source.name === sourceFilter;
-      const matchSentiment = sentimentFilter === 'All' || item.aiAnalysis.sentiment === sentimentFilter;
-      const matchImportance = importanceFilter === 'All' || item.aiAnalysis.importance === importanceFilter;
-
-      return matchSearch && matchSource && matchSentiment && matchImportance;
-    });
-  }, [articles, search, sourceFilter, sentimentFilter, importanceFilter]);
-
-  // Unique sources for filter
-  const uniqueSources = useMemo(() => {
-    const set = new Set(articles.map((a) => a.source.name).filter(Boolean));
-    return [{ value: 'All', label: 'All Sources' }, ...Array.from(set).map((s) => ({ value: s, label: s }))];
-  }, [articles]);
-
-  // Key Metrics
-  const totalArticles = articles.length;
-  const uniqueCompaniesCount = new Set(articles.flatMap((a) => a.relatedCompanies.map((company) => company.name))).size;
-  const uniqueSourcesCount = uniqueSources.length - 1;
-  const positiveNewsCount = articles.filter((a) => a.aiAnalysis.sentiment === 'POSITIVE').length;
-  const negativeNewsCount = articles.filter((a) => a.aiAnalysis.sentiment === 'NEGATIVE').length;
-
-  // Trending Companies Computation
-  const trendingCompanies = useMemo(() => {
-    const map: Record<string, { count: number; sentiment: string }> = {};
-    articles.forEach((a) => {
-      const comp = a.relatedCompanies[0]?.name;
-      if (comp) {
-        if (!map[comp]) map[comp] = { count: 0, sentiment: a.aiAnalysis.sentiment || '' };
-        map[comp].count += 1;
-      }
-    });
-    return Object.entries(map).map(([name, val]) => ({ name, ...val })).sort((a, b) => b.count - a.count).slice(0, 4);
-  }, [articles]);
-
-  // Topic Distribution Computation
-  const topicDistribution = useMemo(() => {
-    const map: Record<string, number> = {};
-    articles.forEach((a) => {
-      a.topics.forEach((tp) => {
-        map[tp] = (map[tp] || 0) + 1;
-      });
-    });
-    return Object.entries(map).map(([topic, count]) => ({ topic, count }));
-  }, [articles]);
-
-  // Source Ranking Computation
-  const sourceRanking = useMemo(() => {
-    const map: Record<string, number> = {};
-    articles.forEach((a) => {
-      const src = a.source.name || 'Web Outlet';
-      map[src] = (map[src] || 0) + 1;
-    });
-    return Object.entries(map).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count).slice(0, 5);
-  }, [articles]);
-
-  // Open Drawer
-  const openDrawer = (item: NewsArticleItem) => {
-    setSelectedArticle(item);
-    setDrawerTab('summary');
-    setDrawerOpen(true);
+  const handleArticleClick = (item: NewsArticleItem) => {
+    const targetUrl = item.originalArticle.url || item.source.url;
+    if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
-  // â”€â”€ Table Column Definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const columns: ColumnDef<NewsArticleItem>[] = [
-    {
-      key: 'title',
-      header: 'Title & Snippet',
-      width: '280px',
-      render: (_, row) => (
-        <div>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', lineHeight: '18px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-            {row.title || 'Untitled News Item'}
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 0 || newPage >= totalPages || newPage === page) return;
+    void fetchNews(newPage);
+    window.scrollTo({ top: 180, behavior: 'smooth' });
+  };
+
+  // Helper for computing badges
+  const isRecentlyCrawled = (crawledAt?: string | null) => 
+    crawledAt ? (Date.now() - new Date(crawledAt).getTime()) < 12 * 60 * 60 * 1000 : false;
+  
+  const isHotItem = (article: NewsArticleItem) => 
+    article.aiAnalysis.riskLevel === 'HIGH' && article.source.publishedAt
+      ? (Date.now() - new Date(article.source.publishedAt).getTime()) < 48 * 60 * 60 * 1000
+      : false;
+
+  // Layout derivations
+  const featuredArticle = articles.length > 0 ? articles[0] : null;
+  const secondaryArticles = articles.length > 1 ? articles.slice(1, 4) : [];
+  const latestArticles = articles.length > 4 ? articles.slice(4) : [];
+
+  const selectedCompanyName = selectedCompanyId 
+    ? getCompanyDisplayName(trackedCompanies.find(c => c.id === selectedCompanyId)!) 
+    : null;
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const startItemIndex = totalCount > 0 ? page * PAGE_SIZE + 1 : 0;
+  const endItemIndex = Math.min((page + 1) * PAGE_SIZE, totalCount);
+
+  // Pagination pages array helper
+  const renderPaginationButtons = () => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 0; i < totalPages; i++) pages.push(i);
+    } else {
+      pages.push(0);
+      let start = Math.max(1, page - 1);
+      let end = Math.min(totalPages - 2, page + 1);
+
+      if (page <= 2) {
+        end = 3;
+      } else if (page >= totalPages - 3) {
+        start = totalPages - 4;
+      }
+
+      if (start > 1) pages.push('...');
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (end < totalPages - 2) pages.push('...');
+      pages.push(totalPages - 1);
+    }
+
+    return pages.map((p, idx) => {
+      if (p === '...') {
+        return <span key={`ellipsis-${idx}`} className={styles.pageEllipsis}>...</span>;
+      }
+      const pageNum = p as number;
+      return (
+        <button
+          key={pageNum}
+          className={`${styles.pageBtn} ${pageNum === page ? styles.pageBtnActive : ''}`}
+          onClick={() => handlePageChange(pageNum)}
+        >
+          {pageNum + 1}
+        </button>
+      );
+    });
+  };
+
+  return (
+    <div className={styles.newsPage}>
+      {/* ── Custom Newspaper Header ───────────────────────── */}
+      <div className={styles.newsHeader}>
+        <div className={styles.newsHeaderLeft}>
+          <div className={styles.headerEyebrow}>
+            Business Intelligence
           </div>
-          {row.summary.text && (
-            <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '270px' }}>
-              {row.summary.text}
-            </div>
+          <h1 className={styles.newsTitle}>News & Media</h1>
+          <p className={styles.newsSub}>
+            Latest company-related articles collected from trusted news sources.
+          </p>
+        </div>
+        <div className={styles.newsHeaderRight}>
+          <div className={styles.newsLastUpdated}>
+            {loading ? 'Updating...' : `Updated ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
+          </div>
+          <SecondaryButton size="sm" onClick={() => void refreshCompanyNews()} disabled={refreshing}>
+            <span className={refreshing ? styles.spinIcon : ''}>↻</span> {refreshing ? 'Crawling...' : 'Crawl Latest News'}
+          </SecondaryButton>
+        </div>
+      </div>
+
+      {/* ── Company Filter Bar ────────────────────────────── */}
+      <div className={styles.companyFilterBar}>
+        <div 
+          className={`${styles.companyChip} ${!selectedCompanyId ? styles.companyChipActive : ''}`}
+          onClick={() => setSelectedCompanyId(null)}
+        >
+          All Companies
+        </div>
+        {trackedCompanies.map(c => (
+          <div 
+            key={c.id} 
+            className={`${styles.companyChip} ${selectedCompanyId === c.id ? styles.companyChipActive : ''}`}
+            onClick={() => setSelectedCompanyId(c.id)}
+          >
+            {getCompanyDisplayName(c)}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Search & Secondary Filters ────────────────────── */}
+      <div className={styles.toolsBar}>
+        <div className={styles.searchBox}>
+          <input 
+            type="text" 
+            placeholder="Search headlines, companies..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className={styles.filtersContainer}>
+          <select className={styles.filterSelect} value={sentimentFilter} onChange={e => setSentimentFilter(e.target.value)}>
+            <option value="All">All Sentiments</option>
+            <option value="POSITIVE">Positive</option>
+            <option value="NEUTRAL">Neutral</option>
+            <option value="NEGATIVE">Negative</option>
+          </select>
+          <select className={styles.filterSelect} value={importanceFilter} onChange={e => setImportanceFilter(e.target.value)}>
+            <option value="All">All Importance</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+          {(search || sentimentFilter !== 'All' || importanceFilter !== 'All') && (
+            <button 
+              className={styles.clearFiltersBtn} 
+              onClick={() => { setSearch(''); setSentimentFilter('All'); setImportanceFilter('All'); }}
+            >
+              Clear filters
+            </button>
           )}
         </div>
-      ),
-    },
-    {
-      key: 'relatedCompanyName',
-      header: 'Company',
-      width: '150px',
-      sortable: true,
-      render: (_, row) => (
-        <span style={{ fontSize: '12px', fontWeight: 600, color: row.relatedCompanies[0] ? 'var(--cds-text-primary)' : 'var(--cds-text-helper)' }}>
-          {row.relatedCompanies[0]?.name || 'Not available'}
-        </span>
-      ),
-    },
-    {
-      key: 'source',
-      header: 'Source',
-      width: '120px',
-      sortable: true,
-      render: (_, row) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>{row.source.name}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'sentiment',
-      header: 'Sentiment',
-      width: '100px',
-      sortable: true,
-      render: (_, row) => <SentimentBadge sentiment={row.aiAnalysis.sentiment} />,
-    },
-    {
-      key: 'importanceLevel',
-      header: 'Importance',
-      width: '100px',
-      sortable: true,
-      render: (_, row) => {
-        const importance = row.aiAnalysis.importance || row.aiAnalysis.riskLevel;
-        return <RiskBadge level={importance || ''} label={importance || 'Not available'} />;
-      },
-    },
-    {
-      key: 'publishedAt',
-      header: 'Date',
-      width: '110px',
-      render: (_, row) => <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{row.source.publishedAt}</span>,
-    },
-    {
-      key: 'confidenceScore',
-      header: 'Confidence',
-      width: '100px',
-      align: 'center',
-      render: (_, row) => (
-        <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'var(--cds-support-info-bg)', color: 'var(--cds-interactive)' }}>
-          {row.aiAnalysis.confidence == null ? 'Not available' : `${row.aiAnalysis.confidence}%`}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      width: '100px',
-      align: 'right',
-      render: (_, row) => (
-        <SecondaryButton size="sm" onClick={() => openDrawer(row)}>
-          Details
-        </SecondaryButton>
-      ),
-    },
-  ];
+      </div>
 
-  // â”€â”€ Filter Bar Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const filters: FilterConfig[] = [
-    { id: 'source', type: 'select', label: 'Source', value: sourceFilter, onChange: (v) => setSourceFilter(v as string), options: uniqueSources },
-    {
-      id: 'sentiment',
-      type: 'select',
-      label: 'Sentiment',
-      value: sentimentFilter,
-      onChange: (v) => setSentimentFilter(v as string),
-      options: [
-        { value: 'All', label: 'All Sentiments' },
-        { value: 'POSITIVE', label: 'Positive' },
-        { value: 'NEUTRAL', label: 'Neutral' },
-        { value: 'NEGATIVE', label: 'Negative' },
-      ],
-    },
-    {
-      id: 'importance',
-      type: 'select',
-      label: 'Importance',
-      value: importanceFilter,
-      onChange: (v) => setImportanceFilter(v as string),
-      options: [
-        { value: 'All', label: 'All Importances' },
-        { value: 'HIGH', label: 'High Importance' },
-        { value: 'MEDIUM', label: 'Medium Importance' },
-        { value: 'LOW', label: 'Low Importance' },
-      ],
-    },
-  ];
-
-  // â”€â”€ Render Drawer Tab Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const renderDrawerTab = () => {
-    if (!selectedArticle) return null;
-
-    switch (drawerTab) {
-      case 'summary':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ background: 'var(--cds-layer-01)', borderLeft: '3px solid var(--cds-interactive)', padding: '14px', borderRadius: '0 6px 6px 0', fontSize: '13px', lineHeight: '22px', color: 'var(--cds-text-primary)' }}>
-              <strong>AI Executive Briefing</strong>
-              <p style={{ margin: '8px 0 0' }}>{selectedArticle.summary.text || 'Summary not available.'}</p>
-            </div>
-
-            <div>
-              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>At a Glance</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                <MetricCard label="Sentiment" value={selectedArticle.aiAnalysis.sentiment || 'Not available'} />
-                <MetricCard label="Importance" value={selectedArticle.aiAnalysis.importance || 'Not available'} />
-                <MetricCard label="AI Confidence" value={selectedArticle.aiAnalysis.confidence == null ? 'Not available' : `${selectedArticle.aiAnalysis.confidence}%`} />
-                <MetricCard label="Risk Level" value={selectedArticle.aiAnalysis.riskLevel || 'Not available'} />
-              </div>
-            </div>
-
-            <div>
-              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Key Takeaways</h4>
-              {selectedArticle.aiAnalysis.keyPoints.length > 0 ? selectedArticle.aiAnalysis.keyPoints.map((point) => <div key={point} style={{ fontSize: '12px', lineHeight: '20px', color: 'var(--cds-text-secondary)' }}>- {point}</div>) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Key takeaways not available.</p>}
-            </div>
-
-            <div style={{ background: 'var(--cds-layer-01)', padding: '12px', border: '1px solid var(--cds-border-subtle-00)' }}>
-              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Business Impact</h4>
-              <p style={{ margin: 0, fontSize: '12px', lineHeight: '20px', color: 'var(--cds-text-secondary)' }}>{selectedArticle.aiAnalysis.businessImpact || 'Business impact not available.'}</p>
-            </div>
-          </div>
-        );
-
-      case 'original':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', lineHeight: '20px' }}>
-              <strong style={{ color: 'var(--cds-text-primary)', display: 'block', fontSize: '14px', marginBottom: '8px' }}>{selectedArticle.title}</strong>
-              Source: {selectedArticle.source.name}<br />
-              Published: {selectedArticle.source.publishedAt}
-            </div>
-            <div style={{ background: 'var(--cds-layer-01)', padding: '14px', border: '1px solid var(--cds-border-subtle-00)', fontSize: '13px', lineHeight: '22px', color: 'var(--cds-text-primary)', whiteSpace: 'pre-wrap' }}>
-              {selectedArticle.originalArticle.content || 'Article content is not available in the system.'}
-            </div>
-            {selectedArticle.originalArticle.url && (
-              <SecondaryButton size="sm" onClick={() => window.open(selectedArticle.originalArticle.url || '', '_blank', 'noopener,noreferrer')}>
-                Open Original Publisher Link
-              </SecondaryButton>
-            )}
-          </div>
-        );
-
-      case 'analysis':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              <MetricCard label="Sentiment" value={selectedArticle.aiAnalysis.sentiment || 'Not available'} />
-              <MetricCard label="Importance" value={selectedArticle.aiAnalysis.importance || 'Not available'} />
-              <MetricCard label="AI Confidence" value={selectedArticle.aiAnalysis.confidence == null ? 'Not available' : `${selectedArticle.aiAnalysis.confidence}%`} />
-            </div>
-            <div style={{ background: 'var(--cds-layer-01)', padding: '12px', border: '1px solid var(--cds-border-subtle-00)' }}>
-              <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Topics</h4>
-              {selectedArticle.aiAnalysis.topics.length > 0 ? selectedArticle.aiAnalysis.topics.map((topic) => <span key={topic} style={{ display: 'inline-block', marginRight: '6px', padding: '3px 8px', background: 'var(--cds-border-subtle-00)', color: 'var(--cds-text-primary)', fontSize: '11px' }}>{topic.replace(/_/g, ' ')}</span>) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>AI analysis is not available for this article.</p>}
-            </div>
-            <div>
-              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Business Impact</h4>
-              <p style={{ margin: 0, fontSize: '12px', lineHeight: '20px', color: 'var(--cds-text-secondary)' }}>{selectedArticle.aiAnalysis.businessImpact || 'Business impact not available.'}</p>
-            </div>
-            <div>
-              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Key Points</h4>
-              {selectedArticle.aiAnalysis.keyPoints.length > 0 ? (
-                <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '12px', lineHeight: '20px', color: 'var(--cds-text-secondary)' }}>
-                  {selectedArticle.aiAnalysis.keyPoints.map((point) => <li key={point}>{point}</li>)}
-                </ol>
-              ) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Key points not available.</p>}
-            </div>
-            <div>
-              <h4 style={{ margin: '0 0 6px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Risk Assessment</h4>
-              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-secondary)' }}>{selectedArticle.aiAnalysis.riskLevel || 'Risk assessment not available.'}</p>
-            </div>
-          </div>
-        );
-
-      case 'companies':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {selectedArticle.relatedCompanies.length > 0 ? selectedArticle.relatedCompanies.map((company) => {
-              const companyId = company.id;
-              return (
-              <div key={companyId || company.name} style={{ background: 'var(--cds-layer-01)', padding: '12px', border: '1px solid var(--cds-border-subtle-00)' }}>
-                <strong style={{ display: 'block', fontSize: '14px', color: 'var(--cds-text-primary)' }}>{company.name}</strong>
-                <div style={{ marginTop: '8px', fontSize: '12px', lineHeight: '20px', color: 'var(--cds-text-secondary)' }}>Ticker: {company.ticker || 'Not available'}<br />Relationship: {company.relationship}<br />Relevance: {company.relevance || 'Not available'}</div>
-                {companyId && setActivePage && <SecondaryButton size="sm" onClick={() => { localStorage.setItem('apms-selected-company', companyId); setDrawerOpen(false); setActivePage('company-detail'); }}>View Company Profile</SecondaryButton>}
-              </div>
-              );
-            }) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>No related companies were identified.</p>}
-          </div>
-        );
-
-      case 'recommended':
-        return (
-          <div style={{ background: 'var(--cds-layer-01)', borderLeft: '3px solid var(--cds-interactive)', padding: '14px', borderRadius: '0 6px 6px 0' }}>
-            <h4 style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--cds-text-primary)' }}>Recommended Action</h4>
-            {selectedArticle.recommendedAction.action ? (
-              <div style={{ fontSize: '13px', color: 'var(--cds-text-secondary)', lineHeight: '22px' }}>
-                {selectedArticle.recommendedAction.priority && <p style={{ margin: '0 0 6px' }}><strong>Priority:</strong> {selectedArticle.recommendedAction.priority}</p>}
-                <p style={{ margin: '0 0 6px' }}><strong>Recommended Action:</strong> {selectedArticle.recommendedAction.action}</p>
-                {selectedArticle.recommendedAction.reason && <p style={{ margin: '0 0 6px' }}><strong>Reason:</strong> {selectedArticle.recommendedAction.reason}</p>}
-                {selectedArticle.recommendedAction.timeframe && <p style={{ margin: 0 }}><strong>Timeframe:</strong> {selectedArticle.recommendedAction.timeframe}</p>}
-              </div>
-            ) : <><p style={{ margin: 0, fontSize: '13px', color: 'var(--cds-text-secondary)' }}>No recommended action is available for this article.</p><p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--cds-text-helper)' }}>Owner may review the related company profile and original source.</p></>}
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  // â”€â”€ Main Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  return (
-    <div className="cds-page-shell" id="page-news-intelligence">
-      {/* 1. Page Header */}
-      <PageHeader
-        title={t('header.title')}
-        eyebrow={t('header.eyebrow')}
-        description={t('header.description')}
-        breadcrumb={[{ label: t('header.dashboard') }, { label: t('header.breadcrumb') }]}
-        actions={
-          <>
-            <SecondaryButton size="md" onClick={() => alert('Exporting Media Digest PDF...')}>
-              {t('header.exportDigest')}
-            </SecondaryButton>
-            <PrimaryButton size="md" loading={refreshing} disabled={refreshing} onClick={() => void refreshCompanyNews()}>
-              {refreshing ? t('header.refreshFeed') : t('header.refreshFeed')}
-            </PrimaryButton>
-          </>
-        }
-      />
-
-      {loadError && (
-        <div style={{ marginBottom: '14px', padding: '10px 14px', border: '1px solid var(--cds-support-error)', background: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', fontSize: '13px' }}>
-          {loadError}
+      {/* ── Empty & Loading States ────────────────────────── */}
+      {loading && articles.length === 0 && (
+        <div className={styles.emptyStateContainer}>
+          Loading latest news...
         </div>
       )}
 
-      {/* 2. Top Executive KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginBottom: '16px' }}>
-        <MetricCard label={t('metrics.articles.label')} value={totalArticles} description={t('metrics.articles.description')} trend={14} trendLabel={t('metrics.today')} />
-        <MetricCard label={t('metrics.companies.label')} value={uniqueCompaniesCount} description={t('metrics.companies.description')} />
-        <MetricCard label={t('metrics.sources.label')} value={uniqueSourcesCount} description={t('metrics.sources.description')} />
-        <MetricCard label={t('metrics.positive.label')} value={positiveNewsCount} description={t('metrics.positive.description')} valueColor={positiveNewsCount > 0 ? 'var(--cds-support-success)' : undefined} />
-        <MetricCard label={t('metrics.negative.label')} value={negativeNewsCount} description={t('metrics.negative.description')} valueColor={negativeNewsCount > 0 ? 'var(--cds-support-error)' : undefined} />
-      </div>
+      {!loading && articles.length === 0 && (
+        <div className={styles.emptyStateContainer}>
+          <h3 className={styles.emptyStateTitle}>
+            {selectedCompanyName ? `No ${selectedCompanyName} articles found` : 'No articles found'}
+          </h3>
+          <p className={styles.emptyStateText}>
+            There are currently no crawled articles matching your filters.
+          </p>
+          {(search || sentimentFilter !== 'All' || importanceFilter !== 'All' || selectedCompanyId) && (
+            <SecondaryButton size="sm" onClick={() => {
+              setSearch('');
+              setSentimentFilter('All');
+              setImportanceFilter('All');
+              setSelectedCompanyId(null);
+            }}>
+              View all news
+            </SecondaryButton>
+          )}
+        </div>
+      )}
 
-      {/* 3. Featured News Feed Grid */}
-      <div style={{ marginBottom: '16px' }}>
-        <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-          {t('title')}
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
-          {filteredArticles.slice(0, 3).map((article) => (
-            <div
-              key={article.id}
-              onClick={() => openDrawer(article)}
-              style={{
-                background: 'var(--cds-background)',
-                border: '1px solid var(--cds-border-color)',
-                borderRadius: 'var(--cds-border-radius)',
-                padding: '14px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-helper)' }}>{article.source.name}</span>
-                  <SentimentBadge sentiment={article.aiAnalysis.sentiment} />
-                </div>
-                <h4 style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', lineHeight: '18px' }}>
-                  {article.title}
-                </h4>
-                <p style={{ margin: 0, fontSize: '11px', color: 'var(--cds-text-secondary)', lineHeight: '16px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {article.summary.text || t('summary.empty')}
-                </p>
+      {/* ── Top Stories (Featured + Secondary) ────────────── */}
+      {featuredArticle && (
+        <>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>Top Stories</h2>
+          </div>
+          <div className={styles.topStories}>
+            
+            {/* Featured Card - Clicking anywhere opens original article URL in new tab */}
+            <div className={styles.featuredCard} onClick={() => handleArticleClick(featuredArticle)}>
+              <img src={featuredArticle.imageUrl || FALLBACK_IMAGE} className={styles.featuredImage} alt={featuredArticle.title} />
+              <div className={styles.featuredMeta}>
+                <span className={styles.sourceNameText}>{featuredArticle.source.name}</span>
+                <span>•</span>
+                <span>{formatRelativeTime(featuredArticle.source.publishedAt)}</span>
+                
+                {featuredArticle.relatedCompanies.slice(0, 2).map(c => (
+                  <React.Fragment key={c.name}>
+                    <span>•</span>
+                    <span 
+                      className={`${styles.tagPill} ${styles.tagCompany}`}
+                      onClick={(e) => handleCompanyTagClick(e, c.name)}
+                    >
+                      {c.name}
+                    </span>
+                  </React.Fragment>
+                ))}
               </div>
-              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--cds-text-helper)' }}>
-                <span>{t('table.company')}: <strong>{article.relatedCompanies[0]?.name || t('company.noMatch')}</strong></span>
-                <span>{article.source.publishedAt}</span>
+              <h3 className={styles.featuredTitle}>{featuredArticle.title}</h3>
+              <p className={styles.featuredSummary}>{featuredArticle.summary.text}</p>
+              
+              <div className={styles.featuredFooter}>
+                <div className={styles.badgeGroup}>
+                  {/* {isRecentlyCrawled(featuredArticle.crawledAt) && (
+                    <span className={`${styles.tagPill} ${styles.newsPillNew}`}>NEW</span>
+                  )} */}
+                  {isHotItem(featuredArticle) && (
+                    <span className={`${styles.tagPill} ${styles.newsPillHot}`}>🔥 HOT</span>
+                  )}
+                  {/* <SentimentBadge sentiment={featuredArticle.aiAnalysis.sentiment} /> */}
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* 4. Analytics Section: Trending Companies | Topic Distribution | Sentiment & Source Ranking */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-        
-        {/* Trending Companies */}
-        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
-          <h4 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            {t('company.related')}
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {trendingCompanies.map((comp, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-                <span style={{ color: 'var(--cds-text-primary)', fontWeight: 600 }}>{comp.name}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <SentimentBadge sentiment={comp.sentiment} />
-                  <strong style={{ color: 'var(--cds-interactive)' }}>{comp.count}</strong>
-                </div>
+            {/* Secondary Stories */}
+            {secondaryArticles.length > 0 && (
+              <div className={styles.secondaryStories}>
+                {secondaryArticles.map(article => (
+                  <div key={article.id} className={styles.secondaryCard} onClick={() => handleArticleClick(article)}>
+                    <img src={article.imageUrl || FALLBACK_IMAGE} className={styles.secondaryImage} alt={article.title} />
+                    <div className={styles.secondaryContent}>
+                      <div className={styles.secondaryMeta}>
+                        <span className={styles.sourceNameText}>{article.source.name}</span>
+                        <span>•</span>
+                        <span>{formatRelativeTime(article.source.publishedAt)}</span>
+                      </div>
+                      <h4 className={styles.secondaryTitle}>{article.title}</h4>
+                      <div className={styles.badgeGroup}>
+                        {/* {isRecentlyCrawled(article.crawledAt) && <span className={`${styles.tagPill} ${styles.newsPillNew}`}>NEW</span>} */}
+                        {/* {isHotItem(article) && <span className={`${styles.tagPill} ${styles.newsPillHot}`}>🔥 HOT</span>} */}
+                        {article.relatedCompanies.slice(0, 1).map(c => (
+                          <span key={c.name} className={`${styles.tagPill} ${styles.tagCompany}`} onClick={(e) => handleCompanyTagClick(e, c.name)}>
+                            {c.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Topic Distribution */}
-        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
-          <h4 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            {t('modal.topics')}
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {topicDistribution.map((t, idx) => (
-              <div key={idx}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
-                  <span style={{ color: 'var(--cds-text-secondary)' }}>{t.topic}</span>
-                  <span style={{ color: 'var(--cds-text-primary)', fontWeight: 600 }}>{t.count}</span>
-                </div>
-                <div style={{ height: '4px', background: 'var(--cds-border-subtle-00)', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.min(100, t.count * 25)}%`, height: '100%', background: 'var(--cds-interactive)', borderRadius: '2px' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Source Ranking */}
-        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px' }}>
-          <h4 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            {t('metrics.sources.label')}
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {sourceRanking.map((s, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-                <span style={{ color: 'var(--cds-text-primary)', fontWeight: 500 }}>{idx + 1}. {s.source}</span>
-                <strong style={{ color: 'var(--cds-text-secondary)' }}>{s.count}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 5. Filter Bar */}
-      <FilterBar
-        searchValue={search}
-        searchPlaceholder={t('filters.searchPlaceholder')}
-        onSearchChange={setSearch}
-        filters={filters}
-      />
-
-      {/* 6. Enterprise Data Table */}
-      <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px' }}>
-        <DataTable<NewsArticleItem>
-          columns={columns}
-          data={filteredArticles}
-          rowKey={(row) => row.id}
-          onRowClick={openDrawer}
-          pageSize={10}
-          exportFilename="news-intelligence-digest"
-          loading={loading}
-          emptyState={
-            <EmptyState
-              title={t('empty.noResults')}
-              body={t('filters.searchPlaceholder')}
-              action={
-                <PrimaryButton size="sm" onClick={() => { setSearch(''); setSourceFilter('All'); setSentimentFilter('All'); setImportanceFilter('All'); }}>
-                  {t('filters.reset')}
-                </PrimaryButton>
-              }
-            />
-          }
-        />
-      </div>
-
-      {/* 7. Article Detail Drawer (5 Tabs, Zero Popups) */}
-      <Drawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title={selectedArticle?.title || t('actions.details')}
-        subtitle={selectedArticle ? `${selectedArticle.source.name} - ${selectedArticle.source.publishedAt}` : ''}
-        width={720}
-        footerActions={
-          <>
-            {selectedArticle?.source.url && (
-              <SecondaryButton size="sm" onClick={() => window.open(selectedArticle.source.url || '', '_blank', 'noopener,noreferrer')}>
-                {t('modal.openOriginal')}
-              </SecondaryButton>
             )}
-            <PrimaryButton size="sm" onClick={() => void shareDigest()}>
-              {t('header.exportDigest')}
-            </PrimaryButton>
-          </>
-        }
-      >
-        {selectedArticle && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '12px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-              <SentimentBadge sentiment={selectedArticle.aiAnalysis.sentiment} />
-              <RiskBadge level={selectedArticle.aiAnalysis.importance || selectedArticle.aiAnalysis.riskLevel || ''} label={selectedArticle.aiAnalysis.importance || selectedArticle.aiAnalysis.riskLevel || t('company.noMatch')} />
-              <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', marginLeft: 'auto' }}>
-                AI: <strong>{selectedArticle.aiAnalysis.confidence == null ? t('company.noMatch') : `${selectedArticle.aiAnalysis.confidence}%`}</strong>
-              </span>
-            </div>
+          </div>
+        </>
+      )}
 
-            <Tabs items={drawerTabs} activeId={drawerTab} onChange={setDrawerTab} />
+      {/* ── Latest News Grid ──────────────────────────────── */}
+      {latestArticles.length > 0 && (
+        <>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>Latest News</h2>
+            <div className={styles.sectionCount}>{totalCount} stories</div>
+          </div>
+          
+          <div className={styles.newsGrid}>
+            {latestArticles.map(article => (
+              <div key={article.id} className={styles.gridCard} onClick={() => handleArticleClick(article)}>
+                <img src={article.imageUrl || FALLBACK_IMAGE} className={styles.gridImage} alt={article.title} />
+                <div className={styles.gridMeta}>
+                  <span className={styles.sourceNameText}>{article.source.name}</span>
+                  <span>•</span>
+                  <span>{formatRelativeTime(article.source.publishedAt)}</span>
+                </div>
+                <h4 className={styles.gridTitle}>{article.title}</h4>
+                <p className={styles.gridSummary}>{article.summary.text}</p>
+                <div className={styles.badgeGroup}>
+                  {/* {isRecentlyCrawled(article.crawledAt) && <span className={`${styles.tagPill} ${styles.newsPillNew}`}>NEW</span>} */}
+                  {/* {isHotItem(article) && <span className={`${styles.tagPill} ${styles.newsPillHot}`}>🔥 HOT</span>} */}
+                  {article.relatedCompanies.slice(0, 2).map(c => (
+                    <span key={c.name} className={`${styles.tagPill} ${styles.tagCompany}`} onClick={(e) => handleCompanyTagClick(e, c.name)}>
+                      {c.name}
+                    </span>
+                  ))}
+                  {article.relatedCompanies.length > 2 && (
+                    <span className={styles.tagPill}>+{article.relatedCompanies.length - 2}</span>
+                  )}
+                  {/* <SentimentBadge sentiment={article.aiAnalysis.sentiment} /> */}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
-            <div style={{ marginTop: '16px' }}>
-              {renderDrawerTab()}
-            </div>
-          </>
-        )}
-      </Drawer>
+      {/* ── Numerated Server-side Pagination ───────────────── */}
+      {totalCount > 0 && (
+        <div className={styles.paginationContainer}>
+          <div className={styles.paginationInfo}>
+            Showing {startItemIndex}–{endItemIndex} of {totalCount} articles
+          </div>
+
+          <div className={styles.paginationControls}>
+            <button
+              className={styles.pageBtn}
+              onClick={() => handlePageChange(page - 1)}
+              disabled={page === 0 || loading}
+            >
+              ‹ Previous
+            </button>
+
+            {renderPaginationButtons()}
+
+            <button
+              className={styles.pageBtn}
+              onClick={() => handlePageChange(page + 1)}
+              disabled={page >= totalPages - 1 || loading}
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

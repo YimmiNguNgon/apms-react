@@ -1377,6 +1377,12 @@ img { max-width: 100%; display: block; }
 }
 .notif-list { max-height: 340px; overflow-y: auto; }
 .notif-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;

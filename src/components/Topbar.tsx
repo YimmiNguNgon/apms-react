@@ -17,6 +17,12 @@ type NotificationItem = {
   title: string;
   message?: string | null;
   type: 'SYSTEM' | 'TASK' | 'DOCUMENT' | 'AI' | 'REPORT' | 'RISK';
+  projectId?: number | null;
+  taskId?: number | null;
+  submissionId?: number | null;
+  actionType?: string | null;
+  documentId?: string | null;
+  rejectReason?: string | null;
   isRead: boolean;
   createdAt?: string | null;
 };
@@ -140,6 +146,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
   };
 
   useEffect(() => {
+    setNotifications([]);
     if (!currentUser) return;
 
     void fetchNotifications();
@@ -162,6 +169,26 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
   const pageLabelKey = PAGE_LABEL_KEYS[activePage] || 'topbar.dashboard';
   const unreadCount = notifications.filter((item) => !item.isRead).length;
+
+  const handleNotificationClick = async (item: NotificationItem) => {
+    if (!item.isRead) {
+      setNotifications((current) => current.map((notification) => (
+        notification.id === item.id ? { ...notification, isRead: true } : notification
+      )));
+      try {
+        await api.patch(`/notifications/${item.id}/read`, {});
+      } catch (error) {
+        console.warn('Cannot mark notification as read:', error);
+        void fetchNotifications();
+      }
+    }
+
+    if (item.projectId) {
+      localStorage.setItem('apms-active-project', String(item.projectId));
+      setActivePage('project-detail');
+    }
+    setShowNotif(false);
+  };
 
   return (
     <>
@@ -228,15 +255,23 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                     <div className="notif-empty">{t('topbar.notifications.empty')}</div>
                   )}
                   {notifications.map((item) => (
-                    <div key={item.id} className={`notif-item ${item.isRead ? '' : 'unread'}`}>
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`notif-item ${item.isRead ? '' : 'unread'}`}
+                      onClick={() => void handleNotificationClick(item)}
+                    >
                       <div className="notif-dot" style={{ background: notificationColor[item.type] ?? '#2563EB' }} />
                       <div className="notif-content">
                         <div className="notif-title">{item.title}</div>
                         {item.message && <div className="notif-message">{item.message}</div>}
+                        {item.actionType === 'DOCUMENT_REJECTED' && item.rejectReason && (
+                          <div className="notif-message">Reason: {item.rejectReason}</div>
+                        )}
                         <div className="notif-time">{formatNotificationTime(item.createdAt)}</div>
                       </div>
                       <span className="notif-chevron">›</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
                 <div className="notif-footer">

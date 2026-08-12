@@ -330,6 +330,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   // Previous decision history (Round 2+)
   const prevStatus = fieldResult?.previousManagerReviewStatus;
   const prevComment = fieldResult?.previousManagerReviewComment;
+  const previousSubmittedValue = fieldResult?.previousSubmittedValue;
 
   const handleApprove = useCallback(async () => {
     if (mutatingAction || disabled) return;
@@ -526,6 +527,14 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
             {mapManagerStatus(prevStatus).icon} {mapManagerStatus(prevStatus).text}
           </span>
           {prevComment && <div className={styles.historyComment}>&ldquo;{prevComment}&rdquo;</div>}
+          {previousSubmittedValue !== undefined && (
+            <div className={styles.historyComment}>
+              <strong>Previous submitted value:</strong> {renderValue(fieldKey, previousSubmittedValue)}
+            </div>
+          )}
+          <div className={styles.historyComment}>
+            <strong>Current Staff revision:</strong> {renderValue(fieldKey, staffValue)}
+          </div>
         </div>
       )}
 
