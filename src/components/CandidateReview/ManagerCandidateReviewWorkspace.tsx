@@ -691,10 +691,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 <span className={styles.managerStatRejected}><XCircle size={13} /> Rejected</span>
                 <strong>{stats.rejected}</strong>
               </div>
-              <div className={styles.managerStatRow}>
-                <span className={styles.managerStatNeedsReview}><AlertTriangle size={13} /> Needs Review</span>
-                <strong>{stats.needsReview}</strong>
-              </div>
+
               <div className={styles.managerStatRow}>
                 <span className={styles.managerStatPending}>Pending</span>
                 <strong>{stats.pending}</strong>

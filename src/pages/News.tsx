@@ -342,9 +342,6 @@ export const News: React.FC<NewsProps> = () => {
           <div className={styles.newsLastUpdated}>
             {loading ? 'Updating...' : `Updated ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
           </div>
-          <SecondaryButton size="sm" onClick={() => void refreshCompanyNews()} disabled={refreshing}>
-            <span className={refreshing ? styles.spinIcon : ''}>↻</span> {refreshing ? 'Crawling...' : 'Crawl Latest News'}
-          </SecondaryButton>
         </div>
       </div>
 
@@ -376,28 +373,6 @@ export const News: React.FC<NewsProps> = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-        <div className={styles.filtersContainer}>
-          <select className={styles.filterSelect} value={sentimentFilter} onChange={e => setSentimentFilter(e.target.value)}>
-            <option value="All">All Sentiments</option>
-            <option value="POSITIVE">Positive</option>
-            <option value="NEUTRAL">Neutral</option>
-            <option value="NEGATIVE">Negative</option>
-          </select>
-          <select className={styles.filterSelect} value={importanceFilter} onChange={e => setImportanceFilter(e.target.value)}>
-            <option value="All">All Importance</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
-          </select>
-          {(search || sentimentFilter !== 'All' || importanceFilter !== 'All') && (
-            <button 
-              className={styles.clearFiltersBtn} 
-              onClick={() => { setSearch(''); setSentimentFilter('All'); setImportanceFilter('All'); }}
-            >
-              Clear filters
-            </button>
-          )}
         </div>
       </div>
 

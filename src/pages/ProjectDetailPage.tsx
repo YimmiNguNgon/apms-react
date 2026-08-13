@@ -3341,7 +3341,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: React.ReactNode } | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [accounts, setAccounts] = useState<UserSearchResponse[]>([]);
@@ -3624,7 +3624,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     status: apiProject ? projectStatusLabel[apiProject.status] : projectDetail.status,
     type: apiProject ? projectTypeLabel[apiProject.projectType] : projectDetail.type,
     priority: projectDetail.priority,
-    owner: projectDetail.owner,
+    managerName: apiProject?.managerName || 'Not assigned',
     startDate: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
     dueDate: formatOptionalDate(apiProject?.plannedEndDate || projectDetail.dueDate),
     targetCompanyName: apiProject?.targetCompanyName,
@@ -3719,12 +3719,30 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               setExtractingSelectedDocuments(false);
               setWorkbenchMessage('Candidate draft created successfully from extractions.');
               await loadTaskWorkbench(selectedStaffTask);
+              setToast({
+                kind: 'success',
+                message: (
+                  <>
+                    <strong>AI Extraction completed</strong>
+                    <span>Company data has been extracted successfully.</span>
+                  </>
+                ),
+              });
               // Clear progress after short delay
               window.setTimeout(() => setExtractionJob(null), 2000);
             } else if (res.data.status === 'FAILED') {
               setExtractionJobId(null);
               setExtractingSelectedDocuments(false);
               setWorkbenchError('Extraction failed: ' + (res.data.errorMessage || 'Unknown error'));
+              setToast({
+                kind: 'error',
+                message: (
+                  <>
+                    <strong>AI Extraction failed</strong>
+                    <span>Unable to extract company data. Please try again.</span>
+                  </>
+                ),
+              });
               window.setTimeout(() => setExtractionJob(null), 2000);
             }
           }
@@ -4579,10 +4597,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const url = `/projects/${documentPendingDelete.projectId}/documents/${encodeURIComponent(documentPendingDelete.rawDocumentId)}${taskId ? `?taskId=${taskId}` : ''}`;
       await api.delete(url);
 
+      const deletedDocId = documentPendingDelete.id;
       setToast({ kind: 'success', message: 'Document deleted successfully.' });
       setDocumentPendingDelete(null);
+
+      setProjectDocuments((prev) => prev.filter((doc) => doc.id !== deletedDocId));
+      setSelectedProjectDocumentIds((prev) => prev.filter((id) => id !== deletedDocId));
+      setWorkbench((current) => current ? { ...current, documents: current.documents?.filter((doc) => doc.id !== deletedDocId) } : current);
+
       if (selectedStaffTask) {
         await loadStaffWorkbench(selectedStaffTask);
+        if (selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION') {
+          const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
+            params: { includeHidden: false, page: 0, size: 100 },
+          });
+          setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
+        }
       }
       if (currentProjectId) {
         const payload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${currentProjectId}/documents`, {
@@ -4603,6 +4633,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setRemoveMemberLoading(true);
     try {
       await projectApi.removeMember(currentProjectId, memberToRemove.accountId);
+      
+      setApiProject((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          members: current.members.filter((m) => m.accountId !== memberToRemove.accountId),
+        };
+      });
+
       setToast({ kind: 'success', message: `Member ${memberDisplayName(memberToRemove)} removed from project.` });
       setMemberToRemove(null);
       await queryClient.invalidateQueries({ queryKey: ['projectMembers', currentProjectId] });
@@ -4967,6 +5006,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       }
       setCandidateDraftPendingDelete(null);
       setToast({ kind: 'success', message: `Candidate "${label}" deleted successfully.` });
+
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.removeQueries({ queryKey: ['candidate', candidateId] });
+      if (selectedStaffTask) {
+        await loadStaffWorkbench(selectedStaffTask);
+      }
     } catch (error) {
       setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Cannot delete candidate draft.' });
     } finally {
@@ -4992,23 +5037,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const workflowPayload = await candidateApi.submitCandidateWorkflow(staffCandidate.id, selectedStaffTask.id);
       const { candidateStatus, taskStatus, candidateDetail } = workflowPayload.data;
       
+      const updatedTask: ProjectTaskResponse = { ...selectedStaffTask, status: taskStatus };
+      updateTaskInState(updatedTask);
+
       setStaffCandidate(null);
       setStaffCandidateEdit(emptyStaffCandidateEdit);
+      setSelectedStaffTask(null);
 
-      const taskRes = await taskApi.getProjectTasks(selectedStaffTask.projectId);
-      if (taskRes.success && taskRes.data) {
-        // Find the fresh task from the paginated result or list.
-        const rows = 'content' in taskRes.data ? taskRes.data.content : taskRes.data;
-        const freshTask = (rows as ProjectTaskResponse[]).find((t: ProjectTaskResponse) => t.id === selectedStaffTask.id);
-        if (freshTask) {
-          updateTaskInState(freshTask);
-          setSelectedStaffTask(freshTask);
-          setWorkbench((current) => current ? { ...current, taskStatus: freshTask.status } : current);
-          await loadTaskWorkbench(freshTask);
-        }
-      }
-      
-      setWorkbenchMessage(`Selected candidate draft ${candidateDetail?.id?.slice(-8) || staffCandidate.id.slice(-8)} submitted to manager review.`);
+      setToast({ kind: 'success', message: 'Submitted for review successfully.' });
       setTaskRefreshTick((current) => current + 1);
 
       if (queryClient) {
@@ -5297,7 +5333,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   return (
     <section className={styles.page}>
-      {toast && <div className={`apms-toast ${toast.kind}`}>{toast.message}</div>}
+      {toast && createPortal(<div className={`apms-toast ${toast.kind}`}>{toast.message}</div>, document.body)}
       <div className={styles.shell}>
         <main className={styles.main}>
           <div className={styles.backRow}>
@@ -5345,8 +5381,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
             </div>
             <div className={styles.metaGrid}>
-              <div className={styles.metaItem}><span>Priority</span><strong>{displayedProject.priority}</strong></div>
-              <div className={styles.metaItem}><span>Owner</span><strong>{displayedProject.owner.name}</strong></div>
+              {/* <div className={styles.metaItem}><span>Priority</span><strong>{displayedProject.priority}</strong></div> */}
+              {/* <div className={styles.metaItem}><span>Manager</span><strong>{displayedProject.managerName}</strong></div> */}
               <div className={styles.metaItem}><span>Start date</span><strong>{displayedProject.startDate}</strong></div>
               <div className={styles.metaItem}><span>Due date</span><strong>{displayedProject.dueDate}</strong></div>
             </div>
@@ -6393,14 +6429,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               <Download size={16} />Download
                             </button>
                             <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void extractProjectDocumentsForReview([document])}
-                              disabled={!canUseStaffWorkbench || extractingImportJobId === document.id || extractingSelectedDocuments}
-                            >
-                              <Sparkles size={16} />{extractingImportJobId === document.id ? 'Running...' : 'Extract for review'}
-                            </button>
-                            <button
                               className={`${styles.button} ${styles.dangerButton}`}
                               type="button"
                               onClick={() => setDocumentPendingDelete(document)}
@@ -7210,10 +7238,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         </AnimatePresence>,
         document.body
       )}
-      <AnimatePresence>
-        {candidateDraftPendingDelete && (
-          <motion.div
-            className={styles.modalOverlay}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {candidateDraftPendingDelete && (
+            <motion.div
+              className={styles.nestedConfirmOverlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -7282,7 +7311,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
       <AnimatePresence>
         {selectedManagerReviewTask && (
           <motion.div
@@ -7949,92 +7980,98 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           </motion.div>
         )}
       </AnimatePresence>
-      <AnimatePresence>
-        {documentPendingDelete && (
-          <motion.div
-            className={styles.modalOverlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => !documentDeleteLoading && setDocumentPendingDelete(null)}
-          >
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {documentPendingDelete && (
             <motion.div
-              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="delete-doc-title"
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              onClick={(e) => e.stopPropagation()}
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !documentDeleteLoading && setDocumentPendingDelete(null)}
             >
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>Delete document</span>
-                  <h2 id="delete-doc-title">Delete document?</h2>
-                  <p>
-                    <strong>{documentPendingDelete.fileName || 'This document'}</strong> will be removed from this task.
-                  </p>
+              <motion.div
+                className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-doc-title"
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>Delete document</span>
+                    <h2 id="delete-doc-title">Delete document?</h2>
+                    <p>
+                      <strong>{documentPendingDelete.fileName || 'This document'}</strong> will be removed from this task.
+                    </p>
+                  </div>
+                  <button className={styles.iconButton} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
+                    <X size={18} />
+                  </button>
                 </div>
-                <button className={styles.iconButton} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div className={styles.modalActions}>
-                <button className={styles.button} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
-                  Cancel
-                </button>
-                <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleDeleteDocument()} disabled={documentDeleteLoading}>
-                  {documentDeleteLoading ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
+                <div className={styles.modalActions}>
+                  <button className={styles.button} type="button" onClick={() => setDocumentPendingDelete(null)} disabled={documentDeleteLoading}>
+                    Cancel
+                  </button>
+                  <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleDeleteDocument()} disabled={documentDeleteLoading}>
+                    {documentDeleteLoading ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {memberToRemove && (
-          <motion.div
-            className={styles.modalOverlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => !removeMemberLoading && setMemberToRemove(null)}
-          >
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {memberToRemove && (
             <motion.div
-              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="remove-member-title"
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              onClick={(e) => e.stopPropagation()}
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !removeMemberLoading && setMemberToRemove(null)}
             >
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>Remove member</span>
-                  <h2 id="remove-member-title">Remove member from project?</h2>
-                  <p>
-                    This staff member (<strong>{memberDisplayName(memberToRemove)}</strong>) will lose access to this project.
-                  </p>
+              <motion.div
+                className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="remove-member-title"
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>Remove member</span>
+                    <h2 id="remove-member-title">Remove member from project?</h2>
+                    <p>
+                      This staff member (<strong>{memberDisplayName(memberToRemove)}</strong>) will lose access to this project.
+                    </p>
+                  </div>
+                  <button className={styles.iconButton} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
+                    <X size={18} />
+                  </button>
                 </div>
-                <button className={styles.iconButton} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div className={styles.modalActions}>
-                <button className={styles.button} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
-                  Cancel
-                </button>
-                <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleConfirmRemoveMember()} disabled={removeMemberLoading}>
-                  {removeMemberLoading ? 'Removing...' : 'Remove Member'}
-                </button>
-              </div>
+                <div className={styles.modalActions}>
+                  <button className={styles.button} type="button" onClick={() => setMemberToRemove(null)} disabled={removeMemberLoading}>
+                    Cancel
+                  </button>
+                  <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleConfirmRemoveMember()} disabled={removeMemberLoading}>
+                    {removeMemberLoading ? 'Removing...' : 'Remove Member'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
       <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
     </section>
   );
