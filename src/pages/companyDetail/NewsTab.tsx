@@ -166,28 +166,6 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
               </h2>
             </div>
 
-            {showManualCrawler && <button
-              type="button"
-              onClick={handleRunAiCrawler}
-              disabled={crawling}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#2563EB',
-                color: '#FFFFFF',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '5px 12px',
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                cursor: crawling ? 'not-allowed' : 'pointer',
-                opacity: crawling ? 0.7 : 1,
-              }}
-            >
-              <Sparkles size={12} />
-              <span>{crawling ? 'AI Crawling...' : 'AI Crawler Thu Thập'}</span>
-            </button>}
           </div>
 
           {showManualCrawler && crawlMsg && (

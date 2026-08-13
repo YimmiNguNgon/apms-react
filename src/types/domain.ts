@@ -222,6 +222,8 @@ export interface ProjectResponse {
   createdAt: string | null;
   updatedAt: string | null;
   plannedEndDate?: string | null;
+  managerId?: number | null;
+  managerName?: string | null;
   totalTasks?: number;
   completedTasks?: number;
   progressPercentage?: number;

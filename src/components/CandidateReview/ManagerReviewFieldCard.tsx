@@ -352,12 +352,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
     setIsCommentModalOpen(true);
   }, [managerComment]);
 
-  const openNeedsReviewModal = useCallback(() => {
-    setPendingDecision('CHANGES_REQUESTED');
-    setComment(managerComment || '');
-    setMutationError(null);
-    setIsCommentModalOpen(true);
-  }, [managerComment]);
+
 
   const submitCommentDecision = useCallback(async () => {
     if (!comment.trim() || !pendingDecision || mutatingAction) return;
@@ -560,14 +555,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
               <><Check size={14} /> Approve</>
             )}
           </button>
-          <button
-            type="button"
-            className={`${styles.btnAction} ${styles.btnNeedsReviewWarning}`}
-            onClick={openNeedsReviewModal}
-            disabled={disabled || isFieldMutating}
-          >
-            <MessageSquareWarning size={14} /> Needs Review
-          </button>
+
           <button
             type="button"
             className={`${styles.btnAction} ${styles.btnRejectOutline}`}
@@ -583,27 +571,21 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
       {isCommentModalOpen && ReactDOM.createPortal(
         <div className={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget && !mutatingAction) cancelModal(); }}>
           <div className={styles.modalContent}>
-            <h3>{pendingDecision === 'REJECTED' ? 'Reject Field' : 'Request Further Review'}</h3>
+            <h3>Reject Field</h3>
             <div className={styles.modalFieldName}>{label}</div>
             <p>
-              {pendingDecision === 'REJECTED'
-                ? 'Why is this field being rejected?'
-                : 'What should the Staff verify?'}
+              Why is this field being rejected?
               <span className={styles.required}> *</span>
             </p>
             <textarea
               className={styles.commentInput}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder={pendingDecision === 'REJECTED'
-                ? 'Describe why this field is incorrect or needs correction\u2026'
-                : 'Describe what the Staff should verify\u2026'}
+              placeholder="Describe why this field is incorrect or needs correction\u2026"
               autoFocus
             />
             <div className={styles.modalHelper}>
-              {pendingDecision === 'REJECTED'
-                ? 'Your feedback will be shown to the Staff during revision.'
-                : 'Your comment will be shown to the Staff for clarification.'}
+              Your feedback will be shown to the Staff during revision.
             </div>
             {mutationError && (
               <div className={styles.errorBanner} style={{ marginBottom: 12 }}>
@@ -614,7 +596,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
               <button type="button" className={styles.btnCancel} onClick={cancelModal} disabled={isFieldMutating}>Cancel</button>
               <button
                 type="button"
-                className={`${styles.btnSubmit} ${pendingDecision === 'REJECTED' ? styles.btnSubmitReject : styles.btnSubmitWarn}`}
+                className={`${styles.btnSubmit} ${styles.btnSubmitReject}`}
                 onClick={submitCommentDecision}
                 disabled={isFieldMutating || !comment.trim()}
               >

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../API/projectApi';
 import { ROLES, useUser } from '../context/UserContext';
 import type {
@@ -126,6 +127,7 @@ type ProjectManagementProps = {
 
 export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActivePage }) => {
   const { currentUser } = useUser();
+  const queryClient = useQueryClient();
   const isStaffView = currentUser?.role === ROLES.STAFF;
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [projectSearch, setProjectSearch] = useState('');
@@ -390,6 +392,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         ));
       }
       setToast({ kind: 'success', message: 'Project activated successfully.' });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['projectDetails', project.id] });
+      void queryClient.invalidateQueries({ queryKey: ['project', project.id] });
     } catch (err) {
       setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to activate project.' });
     }
@@ -444,6 +449,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       }
 
       setToast({ kind: 'success', message: 'Project deleted successfully.' });
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['projectDetails', deletedId] });
+      void queryClient.invalidateQueries({ queryKey: ['project', deletedId] });
     } catch (err) {
       setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to delete project.' });
     } finally {
@@ -551,17 +559,18 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         <span className="project-list-muted">{PROJECT_TYPE_LABELS[project.projectType]}</span>
         <span className="project-list-target">{project.targetCompanyName}</span>
         <span className="project-list-date">{formatProjectDate(project.createdAt)}</span>
+        <span className="project-list-date">{project.plannedEndDate ? formatProjectDate(project.plannedEndDate) : '—'}</span>
         <span className={`workspace-badge ${tone}`}>{PROJECT_STATUS_LABELS[project.status]}</span>
         <span className="project-row-actions">
           {!isStaffView && project.status === 'DRAFT' && (
             <button className="project-activate-btn" type="button" onClick={() => void handleActivateProject(project)}>
-              Activate
+              Active
             </button>
           )}
           <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
             View detail
           </button>
-          {!isStaffView && (
+          {!isStaffView && project.status === 'DRAFT' && (
             <button className="project-delete-btn" type="button" onClick={() => openDeleteProjectModal(project)}>
               Delete
             </button>
@@ -778,7 +787,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 style={{ width: '100%', maxWidth: '320px' }}
               />
             </div>
-            <div className="project-list-row project-list-head" role="row"><span>No.</span><span>Project</span><span>Type</span><span>Target company</span><span>Created</span><span>Status</span><span>Action</span></div>
+            <div className="project-list-row project-list-head" role="row"><span>No.</span><span>Project</span><span>Type</span><span>Target company</span><span>Created</span><span>End date</span><span>Status</span><span style={{ textAlign: 'right' }}>Action</span></div>
             {filteredProjects.length === 0 ? <div className="workspace-empty">No projects found.</div> : filteredProjects.map(renderProjectRow)}
             <div className="project-table-pagination">
               <span>Showing {pageStart}-{pageEnd} of {totalElements} projects</span>

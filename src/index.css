@@ -9828,8 +9828,8 @@ body {
 
 .project-list-row {
   display: grid;
-  grid-template-columns: 48px minmax(210px, 1.35fr) minmax(145px, .9fr) minmax(180px, 1.1fr) 98px 104px 244px;
-  min-width: 1140px;
+  grid-template-columns: 48px minmax(200px, 1.25fr) minmax(145px, .9fr) minmax(170px, 1.1fr) 98px 98px 104px 254px;
+  min-width: 1200px;
   width: 100%;
   align-items: center;
   gap: 12px;
@@ -9879,7 +9879,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
-  min-width: 0;
+  min-width: 254px;
   width: 100%;
 }
 
