@@ -146,6 +146,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   // Sync & Details Overlay
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -157,17 +158,27 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   useEffect(() => {
     const fetchGraphData = async () => {
       setRefreshing(true);
+      setLoadError(null);
       try {
         const res = await api.get<GraphCompanyDto[]>('/graph/network');
-        if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-          const details = await Promise.allSettled(
-            res.data.map((company) => api.get<GraphCompanyDto>(`/graph/companies/${encodeURIComponent(company.companyId)}`)),
-          );
+        if (!Array.isArray(res?.data)) throw new Error('Network API returned an invalid payload.');
+        const loadedRelationships = res.data.reduce((count, company) => count + (company.relationships?.length || 0), 0);
+        console.debug('[RelationshipNetwork] companies loaded:', res.data.length);
+        console.debug('[RelationshipNetwork] relationships loaded:', loadedRelationships);
+        if (res.data.length > 0) {
+          const needsDetails = res.data.some((company) => !company.relationships);
+          const details = needsDetails
+            ? await Promise.allSettled(
+              res.data.map((company) => api.get<GraphCompanyDto>(`/graph/companies/${encodeURIComponent(company.companyId)}`)),
+            )
+            : [];
           const companies = res.data.map((company, index) => {
             const detail = details[index];
             return detail?.status === 'fulfilled' && detail.value.data ? { ...company, ...detail.value.data } : company;
           });
-          const companyIds = new Set(companies.map((company) => company.companyId));
+          const canonicalCompanyIds = new Set(
+            companies.map((company) => company.companyId).filter((companyId): companyId is string => Boolean(companyId)),
+          );
           const groupByNode = new Map<string, GroupKey>();
           const edgeIds = new Set<string>();
           const hydratedEdges: GraphEdge[] = [];
@@ -175,7 +186,14 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           companies.forEach((company) => (company.relationships || []).forEach((relationship) => {
             const from = relationship.sourceCompanyId;
             const to = relationship.targetCompanyId;
-            if (!from || !to || !companyIds.has(from) || !companyIds.has(to)) return;
+            if (!from || !to) {
+              if (import.meta.env.DEV) console.warn('[RelationshipNetwork] skipped relationship without canonical endpoints:', relationship);
+              return;
+            }
+            if (!canonicalCompanyIds.has(from) || !canonicalCompanyIds.has(to)) {
+              if (import.meta.env.DEV) console.warn('[RelationshipNetwork] skipped relationship with endpoint absent from network nodes:', { from, to, relationship });
+              return;
+            }
             const group = toGroupKey(relationship.relationshipType);
             const id = `${[from, to].sort().join('|')}|${group}`;
             if (edgeIds.has(id)) return;
@@ -230,12 +248,17 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           });
           setNodes(hydratedNodes);
           setEdges(hydratedEdges);
+          if (import.meta.env.DEV) {
+            console.debug('[RelationshipNetwork] nodes:', hydratedNodes.length);
+            console.debug('[RelationshipNetwork] edges:', hydratedEdges.length);
+          }
         } else {
           setNodes([]);
           setEdges([]);
         }
       } catch (err) {
         console.error("Error fetching graph network data:", err);
+        setLoadError(err instanceof Error ? err.message : 'Unable to load relationship network data.');
         setNodes([]);
         setEdges([]);
       } finally {
@@ -477,6 +500,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   const visibleEdges = useMemo(() => {
     return edges.filter(e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
   }, [edges, visibleNodeIds]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.debug('[RelationshipNetwork] relationships after filter:', visibleEdges.length);
+    }
+  }, [visibleEdges]);
 
   const visibleL2Nodes = useMemo(() => {
     return positionedNodes.filter(n => l2NodeIds.has(n.id));
@@ -1429,12 +1458,24 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
           {/* Graph Canvas Container (Widened to 1400 viewbox and Heightened to 680px) */}
           <div className="relationship-network-canvas" style={{ width: '100%', minHeight: '680px', background: '#f8fafc', borderRadius: '6px', border: '1px solid var(--cds-border-subtle-00)', overflow: 'hidden', position: 'relative' }}>
-            {positionedNodes.length === 0 ? (
+            {loadError ? (
+              <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
+                <div><AlertCircle size={36} style={{ color: '#dc2626', marginBottom: '12px' }} /><strong style={{ display: 'block', fontSize: '14px', color: '#991b1b' }}>Không thể tải dữ liệu mạng lưới quan hệ.</strong><span style={{ fontSize: '12px', color: '#64748b' }}>{loadError}</span></div>
+              </div>
+            ) : edges.length === 0 ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div>
                   <Building size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
-                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>{t('network.emptyData', 'No company relationship data available.')}</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>{t('network.emptyFiltered', 'No companies match the current filters.')}</span>
+                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>Chưa có dữ liệu quan hệ doanh nghiệp.</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Chưa có quan hệ hợp lệ để hiển thị trong mạng lưới.</span>
+                </div>
+              </div>
+            ) : positionedNodes.length === 0 ? (
+              <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
+                <div>
+                  <Search size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
+                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>Không có quan hệ phù hợp với bộ lọc hiện tại.</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Hãy điều chỉnh bộ lọc hoặc chọn Reset để xem toàn bộ mạng lưới.</span>
                 </div>
               </div>
             ) : (

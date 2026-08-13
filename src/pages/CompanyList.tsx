@@ -329,7 +329,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                 <th>{t('table.company')}</th>
                 <th>{t('table.relationship')}</th>
                 <th>{t('table.industry')}</th>
-                <th>Quan hệ</th>
                 <th>{t('table.status')}</th>
                 <th>{t('table.updated')}</th>
                 <th style={{ textAlign: 'right' }}>{t('table.actions')}</th>
@@ -338,12 +337,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7}><div className={styles.empty}>{t('table.loading')}</div></td>
+                  <td colSpan={6}><div className={styles.empty}>{t('table.loading')}</div></td>
                 </tr>
               )}
               {!loading && profiles.length === 0 && (
                 <tr>
-                  <td colSpan={7}><div className={styles.empty}>{t('table.empty')}</div></td>
+                  <td colSpan={6}><div className={styles.empty}>{t('table.empty')}</div></td>
                 </tr>
               )}
               {!loading && profiles.map((profile) => (
@@ -375,14 +374,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                     })()}
                   </td>
                   <td>{profileIndustry(profile)}</td>
-                  <td>
-                    {(() => {
-                      const rel = relationsMap[profile.companyId || profile.id];
-                      return rel
-                        ? <span style={{ ...relationshipStyle(rel), fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '10px', whiteSpace: 'nowrap' }}>{relationshipLabel(rel)}</span>
-                        : <span style={{ fontSize: '11px', color: '#94a3b8' }}>—</span>;
-                    })()}
-                  </td>
                   <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
                   <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
                   <td style={{ textAlign: 'right' }}>

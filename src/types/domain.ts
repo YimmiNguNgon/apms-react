@@ -98,6 +98,7 @@ export interface ProfileFinancialsInfo {
 export interface ProfileResponse {
   id: string;
   companyId: string;
+  relationshipType?: string;
   identity?: CompanyProfileIdentity;
   business?: CompanyProfileBusiness;
   companySize?: CompanyProfileSize;
