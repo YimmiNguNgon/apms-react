@@ -56,9 +56,7 @@ const ADMIN_MENU: MenuSection[] = [
   {
     title: 'menu.userManagement',
     items: [
-      { id: 'users',       label: 'menu.users',       badge: 12, badgeType: 'danger' },
-      { id: 'roles',       label: 'menu.roles' },
-      { id: 'permissions', label: 'menu.permissions' },
+      { id: 'users',       label: 'menu.users' },
     ],
   },
   {
@@ -66,23 +64,14 @@ const ADMIN_MENU: MenuSection[] = [
     items: [
       { id: 'access-control',   label: 'menu.accessControl' },
       { id: 'activity-history', label: 'menu.activityHistory' },
-      { id: 'audit-logs',       label: 'menu.auditLogs', badge: 3, badgeType: 'warning' },
+      { id: 'audit-logs',       label: 'menu.auditLogs' },
     ],
   },
   {
     title: 'menu.system',
     items: [
-      { id: 'system-chat', label: 'menu.chat' },
       { id: 'system-settings',   label: 'menu.systemSettings' },
-      { id: 'security-settings', label: 'menu.securitySettings' },
-      { id: 'project-management', label: 'Project' },
-      { id: 'system-chat', label: 'Chat' },
-      { id: 'system-settings',   label: 'System Settings' },
-      { id: 'security-settings', label: 'Security Settings' },
     ],
-  },
-  {
-    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
@@ -99,14 +88,12 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
       { id: 'competitor-intelligence', label: 'menu.competitorIntelligence' },
-      { id: 'system-chat',             label: 'menu.chat' },
     ],
   },
   {
     title: 'menu.strategicGovernance',
     items: [
       { id: 'strategic-reports', label: 'menu.strategicReports' },
-      { id: 'strategic-reports', label: 'Strategic Reports' },
       // { id: 'score-rules',       label: 'Score Workspace' },
     ],
   },
@@ -115,11 +102,7 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'companies',    label: 'menu.companies' },
       { id: 'news',         label: 'menu.newsIntelligence' },
-      { id: 'project-management', label: 'menu.projectsOverview' },
     ],
-  },
-  {
-    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 
@@ -129,18 +112,7 @@ const MANAGER_MENU: MenuSection[] = [
       { id: 'manager-dashboard', label: 'menu.dashboard' },
     ],
   },
-  {
-    title: 'menu.operations',
-    items: [
-      // { id: 'project-management',      label: 'menu.projectManagement' },
-      // { id: 'system-chat',             label: 'menu.chat' },
-      { id: 'project-management',      label: 'Project' },
-      // { id: 'score-rules',             label: 'Score Workspace' },
-      { id: 'system-chat',             label: 'Chat' },
-      // { id: 'competitor-intelligence', label: 'Competitor Intel' },
-      // { id: 'analysis-history',        label: 'Analysis History' },
-    ],
-  },
+
   {
     // title: 'Monitoring',
     items: [
@@ -182,8 +154,6 @@ const STAFF_MENU: MenuSection[] = [
       // { id: 'my-tasks',            label: 'My Tasks' },
       // { id: 'project-management',  label: 'menu.projectManagement' },
       // { id: 'system-chat',         label: 'menu.chat' },
-      { id: 'project-management',  label: 'Project' },
-      { id: 'system-chat',         label: 'Chat' },
       // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
       // { id: 'candidate-review',    label: 'Candidate Review' },
       { id: 'company-profiles',    label: 'menu.companyProfiles' },
@@ -228,21 +198,13 @@ const OWNER_MENU: MenuSection[] = [
       { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
       { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
       { id: 'news',                    label: 'menu.newsIntelligence' },
-      { id: 'system-chat',             label: 'menu.chat' },
     ],
   },
   {
     title: 'menu.governanceSettings',
     items: [
       { id: 'company-profiles', label: 'menu.companyProfiles' },
-      { id: 'company-profiles', label: 'Company Profiles' },
-      // { id: 'score-rules',      label: 'Score Workspace' },
-      { id: 'audit-logs',       label: 'Audit Log Viewer' },
-      { id: 'system-settings',  label: 'System Settings' },
     ],
-  },
-  {
-    items: [{ id: 'profile', label: 'menu.profile' }],
   },
 ];
 

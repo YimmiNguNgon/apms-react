@@ -1,4 +1,15 @@
 {
+  "queues": {
+    "verifyTitle": "Hàng đợi phê duyệt dữ liệu",
+    "verifyEmpty": "Không có bản ghi nào đang chờ rà soát.",
+    "validationTitle": "Hàng đợi kiểm định dữ liệu AI",
+    "records": "{{count}} bản ghi",
+    "loading": "Đang tải bản ghi kiểm định...",
+    "empty": "Không tìm thấy bản ghi.",
+    "status": "Trạng thái",
+    "validationIssue": "Vấn đề kiểm định",
+    "noIssues": "Không có vấn đề kiểm định nào được trả về."
+  },
   "table": {
     "normal": "Bình thường",
     "compact": "Thu gọn",

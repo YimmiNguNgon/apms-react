@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../API/projectApi';
@@ -126,6 +127,7 @@ type ProjectManagementProps = {
 };
 
 export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActivePage }) => {
+  const { t } = useTranslation('projects-overview');
   const { currentUser } = useUser();
   const queryClient = useQueryClient();
   const isStaffView = currentUser?.role === ROLES.STAFF;
@@ -603,14 +605,14 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       <div className="workspace-main-full">
         <div className="workspace-page-head">
           <div>
-            <div className="workspace-breadcrumbs">Project workspace <span>/</span> APMS board</div>
-            <h1>Project management</h1>
+            <div className="workspace-breadcrumbs">{t('breadcrumb.section')} <span>/</span> {t('breadcrumb.current')}</div>
+            <h1>{t('title.heading')}</h1>
             {/* <p>Manage the kanban board, project scope, and member assignments from one workspace.</p> */}
           </div>
           <div className="workspace-head-actions">
             {/* <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button> */}
             {!isStaffView && (
-              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>Create project</button>
+              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>{t('create.submit')}</button>
             )}
           </div>
         </div>
@@ -621,27 +623,27 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()}>
             <div className="project-modal-head">
               <div>
-                <span className="workspace-side-eyebrow">New workspace</span>
-                <h3 id="create-project-title">Create project</h3>
-                <p>Add a new research board and assign the target company context.</p>
+                <span className="workspace-side-eyebrow">{t('create.eyebrow')}</span>
+                <h3 id="create-project-title">{t('create.title')}</h3>
+                <p>{t('create.description')}</p>
               </div>
-              <button className="project-modal-close" type="button" aria-label="Close create project modal" onClick={() => setShowCreateForm(false)}>&times;</button>
+              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => setShowCreateForm(false)}>&times;</button>
             </div>
             {feedback?.kind === 'error' && (
               <div className="project-modal-feedback workspace-inline-error">{feedback.message}</div>
             )}
             <div className="workspace-form-grid">
               <label>
-                <span>Project name</span>
+                <span>{t('create.projectNameLabel')}</span>
                 <input
                   className="search-input"
-                  placeholder="Example: CMC cloud partnership review Q3"
+                  placeholder={t('create.projectNamePlaceholder')}
                   value={projectForm.projectName}
                   onChange={(event) => setProjectForm((current) => ({ ...current, projectName: event.target.value }))}
                 />
               </label>
               <label>
-                <span>Project type</span>
+                <span>{t('create.projectTypeLabel')}</span>
                 <select
                   className="search-input"
                   value={projectForm.projectType}
@@ -655,13 +657,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     }));
                   }}
                 >
-                  <option value="RESEARCH_NEW_COMPANY">New company research</option>
-                  <option value="UPDATE_EXISTING_COMPANY">Update existing company</option>
+                  <option value="RESEARCH_NEW_COMPANY">{t('create.typeNewCompany')}</option>
+                  <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
                 </select>
               </label>
               {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
                 <label>
-                  <span>Existing company</span>
+                  <span>{t('create.existingCompanyLabel')}</span>
                   <select
                     className="search-input"
                     value={projectForm.targetCompanyProfileId}
@@ -675,7 +677,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                       }));
                     }}
                   >
-                    <option value="">{companyOptionsLoading ? 'Loading companies...' : 'Select an existing company'}</option>
+                    <option value="">{companyOptionsLoading ? t('create.loadingCompanies') : t('create.selectCompany')}</option>
                     {companyOptions.map((profile) => (
                       <option key={profile.companyId || profile.id} value={profile.companyId}>
                         {profileName(profile)} - {profileRoleLabel(profile)}
@@ -685,14 +687,14 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 </label>
               )}
               <label>
-                <span>Target relationship</span>
+                <span>{t('create.relationshipLabel')}</span>
                 <select
                   className="search-input"
                   value={projectForm.targetRelationshipType}
                   onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}
                   disabled={relationshipOptionsLoading}
                 >
-                  <option value="">{relationshipOptionsLoading ? 'Loading relationships...' : 'Select target relationship'}</option>
+                  <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
                   {relationshipOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -701,11 +703,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 </select>
               </label>
               <label>
-                <span>Description</span>
-                <input className="search-input" value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} />
+                <span>{t('create.descriptionLabel')}</span>
+                <input className="search-input" placeholder={t('create.descriptionPlaceholder')} value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} />
               </label>
               <label>
-                <span>Planned end date</span>
+                <span>{t('create.plannedEndDateLabel')}</span>
                 <input
                   className="search-input"
                   type="date"
@@ -716,9 +718,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               </label>
             </div>
             <div className="workspace-head-actions">
-              <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>Cancel</button>
+              <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>{t('create.cancel')}</button>
               <button className="btn btn-primary" onClick={() => void handleCreateProject()} disabled={createLoading}>
-                {createLoading ? 'Creating...' : 'Create project'}
+                {createLoading ? t('create.submitting') : t('create.submit')}
               </button>
             </div>
           </div>

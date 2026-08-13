@@ -114,7 +114,7 @@ const ScoreRing: React.FC<{ score: number; size?: number }> = ({ score, size = 3
 
 // ─── Main Owner Dashboard Component ──────────────────────────────────────────
 export const OwnerDashboard: React.FC = () => {
-  const { t } = useTranslation('owner-dashboard');
+  const { t, i18n } = useTranslation('owner-dashboard');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,11 +124,13 @@ export const OwnerDashboard: React.FC = () => {
   const [recommendations, setRecommendations] = useState<DashboardRecommendationDto[]>([]);
   const [partners, setPartners] = useState<GraphCompanyDto[]>([]);
   const [competitors, setCompetitors] = useState<GraphCompanyDto[]>([]);
+  const [network, setNetwork] = useState<GraphCompanyDto[]>([]);
   const [newsData, setNewsData] = useState<ExternalDataItem[]>([]);
   const [oppData, setOppData] = useState<ExternalDataItem[]>([]);
   const [riskAlertsData, setRiskAlertsData] = useState<ExternalDataItem[]>([]);
   const [activities, setActivities] = useState<AuditLogDto[]>([]);
   const [ownerProfile, setOwnerProfile] = useState<import('../../types/domain').ProfileResponse | null>(null);
+  const [companyProfiles, setCompanyProfiles] = useState<import('../../types/domain').ProfileResponse[]>([]);
   const [ownerProfileError, setOwnerProfileError] = useState<string | null>(null);
 
   const [isScanRunning, setIsScanRunning] = useState(false);
@@ -141,22 +143,25 @@ export const OwnerDashboard: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const [summaryRes, scoresRes, partnersRes, competitorsRes, newsRes, oppsRes, risksRes, profileRes] =
+        const [summaryRes, scoresRes, partnersRes, competitorsRes, networkRes, newsRes, oppsRes, risksRes, profileRes, profilesRes] =
           await Promise.allSettled([
             api.get<DashboardSummaryDto>('/dashboard/summary', { signal: controller.signal }),
             api.get<ScoreSnapshotDto[]>('/dashboard/recent-scores', { signal: controller.signal }),
             api.get<GraphCompanyDto[]>('/graph/partners', { signal: controller.signal }),
             api.get<GraphCompanyDto[]>('/graph/competitors', { signal: controller.signal }),
+            api.get<GraphCompanyDto[]>('/graph/network', { signal: controller.signal }),
             api.get<PageResponse<ExternalDataItem>>('/external-data/news?page=0&size=6', { signal: controller.signal }),
             api.get<PageResponse<ExternalDataItem>>('/external-data/opportunities?page=0&size=5', { signal: controller.signal }),
             api.get<PageResponse<ExternalDataItem>>('/external-data/risks?page=0&size=5', { signal: controller.signal }),
             api.get<import('../../types/domain').ProfileResponse>('/owner/company-profile', { signal: controller.signal }),
+            api.get<{ content?: import('../../types/domain').ProfileResponse[] }>('/profiles', { params: { page: 0, size: 200 }, signal: controller.signal }),
           ]);
         if (controller.signal.aborted) return;
         if (summaryRes.status === 'fulfilled' && summaryRes.value?.data) setSummary(summaryRes.value.data);
         if (scoresRes.status === 'fulfilled' && Array.isArray(scoresRes.value?.data)) setRecentScores(scoresRes.value.data);
         if (partnersRes.status === 'fulfilled' && Array.isArray(partnersRes.value?.data)) setPartners(partnersRes.value.data);
         if (competitorsRes.status === 'fulfilled' && Array.isArray(competitorsRes.value?.data)) setCompetitors(competitorsRes.value.data);
+        if (networkRes.status === 'fulfilled' && Array.isArray(networkRes.value?.data)) setNetwork(networkRes.value.data);
         if (newsRes.status === 'fulfilled' && newsRes.value?.data?.content) setNewsData(newsRes.value.data.content);
         if (oppsRes.status === 'fulfilled' && oppsRes.value?.data?.content) {
           const opportunities = oppsRes.value.data.content;
@@ -171,8 +176,9 @@ export const OwnerDashboard: React.FC = () => {
         if (risksRes.status === 'fulfilled' && risksRes.value?.data?.content) setRiskAlertsData(risksRes.value.data.content);
         if (profileRes.status === 'fulfilled') setOwnerProfile(profileRes.value.data);
         else setOwnerProfileError(profileRes.reason instanceof Error ? profileRes.reason.message : t('content.ownerProfile'));
+        if (profilesRes.status === 'fulfilled') setCompanyProfiles(profilesRes.value.data?.content ?? []);
 
-        const results = [summaryRes, scoresRes, partnersRes, competitorsRes, newsRes, oppsRes, risksRes, profileRes];
+        const results = [summaryRes, scoresRes, partnersRes, competitorsRes, networkRes, newsRes, oppsRes, risksRes, profileRes, profilesRes];
         const rejectedCount = results.filter((r) => r.status === 'rejected').length;
         if (rejectedCount === results.length) {
           setError(t('fallback.dashboardUnavailable'));
@@ -192,7 +198,7 @@ export const OwnerDashboard: React.FC = () => {
   // ── Bind Metrics directly to Backend DTO Response Fields ────────────────────
   const ecosystemScoreDisplay = recentScores.length > 0
     ? (recentScores.reduce((acc, s) => acc + (s.totalScore ?? s.partnerFitScore ?? 0), 0) / recentScores.length).toFixed(1)
-    : (summary?.totalCompanyProfiles ? String(summary.totalCompanyProfiles) : t('notAvailable'));
+    : t('notAvailable');
 
   const partnerCountDisplay = summary?.partnerCount !== undefined
     ? String(summary.partnerCount)
@@ -214,10 +220,25 @@ export const OwnerDashboard: React.FC = () => {
     ? `${oppData.length} ${t('fallback.deals')}`
     : summary?.potentialPartnerCount !== undefined ? `${summary.potentialPartnerCount}` : t('notAvailable');
 
-  const ownerRelationshipRows = [
-    ...partners.map((company) => ({ ...company, relationship: 'Partner' })),
-    ...competitors.map((company) => ({ ...company, relationship: 'Competitor' })),
-  ];
+  const ownerRelationshipRows = (() => {
+    const ownerId = ownerProfile?.companyId;
+    const rows = new Map<string, GraphCompanyDto & { relationship: string }>();
+    network.forEach((company) => (company.relationships || []).forEach((relationship) => {
+      if (relationship.sourceCompanyId !== ownerId || !relationship.targetCompanyId) return;
+      const target = network.find((node) => node.companyId === relationship.targetCompanyId);
+      if (!target) return;
+      rows.set(target.companyId, { ...target, relationship: relationship.relationshipType });
+    }));
+    if (rows.size > 0) return Array.from(rows.values());
+    return companyProfiles
+      .filter((profile) => profile.companyId && profile.companyId !== ownerId && profile.relationshipType)
+      .map((profile) => ({
+        companyId: profile.companyId,
+        name: profile.identity?.tradeName || profile.identity?.legalName || profile.companyId || 'Company',
+        industry: profile.business?.industries?.[0],
+        relationship: profile.relationshipType || 'RELATED',
+      }));
+  })();
 
   // Trigger Market Scan
   const handleRunScan = async () => {
@@ -418,7 +439,7 @@ export const OwnerDashboard: React.FC = () => {
                     <div style={{ padding: '6px 0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                         <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{act.action}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.timestamp ? new Date(act.timestamp).toLocaleTimeString('vi-VN') : 'Chưa cập nhật'}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.timestamp ? new Date(act.timestamp).toLocaleTimeString(i18n.language?.startsWith('vi') ? 'vi-VN' : 'en-US') : t('content.notUpdated')}</span>
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
                         {act.detail || `${t('fallback.actor')}: ${act.actorEmail || t('fallback.system')}`}
@@ -526,8 +547,8 @@ export const OwnerDashboard: React.FC = () => {
                     <span style={{ fontSize: '12px', color: 'var(--cds-text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {node.name}
                     </span>
-                    <span style={{ fontSize: '10px', color: node.relationship === 'Partner' ? 'var(--cds-support-success)' : 'var(--cds-support-error)', fontWeight: 700, marginLeft: 'auto' }}>
-                      {node.relationship === 'Partner' ? t('content.partner') : t('content.competitor')}
+                    <span style={{ fontSize: '10px', color: node.relationship === 'PARTNER_WITH' ? 'var(--cds-support-success)' : node.relationship === 'COMPETITOR_OF' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)', fontWeight: 700, marginLeft: 'auto' }}>
+                      {node.relationship.replace(/_OF$|_WITH$/g, '').replace(/_/g, ' ')}
                     </span>
                   </div>
                 ))

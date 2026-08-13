@@ -4,12 +4,13 @@ import type { ListingTabResponse } from '../../types/listingData';
 
 export type ListingTabId =
   | 'overview'
-  | 'listing-info'
-  | 'board-members'
+  | 'swot'
+  | 'business-fields'
+  | 'relationship'
+  | 'board'
   | 'financials'
   | 'news'
-  | 'documents'
-  | 'confidential-news';
+  | 'documents';
 
 export interface ListingTabDef {
   id: ListingTabId;
@@ -18,13 +19,14 @@ export interface ListingTabDef {
 }
 
 export const LISTING_TABS: ListingTabDef[] = [
-  { id: 'overview', label: 'Tổng quan', icon: <LayoutGrid size={14} /> },
-  { id: 'listing-info', label: 'Thông tin cơ bản', icon: <Building2 size={14} /> },
-  { id: 'board-members', label: 'Ban lãnh đạo & Sở hữu', icon: <Users size={14} /> },
-  { id: 'financials', label: 'Tài chính', icon: <TrendingUp size={14} /> },
+  { id: 'overview', label: 'Overview', icon: <LayoutGrid size={14} /> },
+  { id: 'swot', label: 'SWOT', icon: <TrendingUp size={14} /> },
+  { id: 'business-fields', label: 'Business Fields', icon: <Building2 size={14} /> },
+  { id: 'relationship', label: 'Relationship', icon: <Users size={14} /> },
+  { id: 'board', label: 'Ban lãnh đạo', icon: <Shield size={14} /> },
+  { id: 'financials', label: 'Tài chính', icon: <FileText size={14} /> },
   { id: 'news', label: 'Tin tức', icon: <Newspaper size={14} /> },
   { id: 'documents', label: 'Tài liệu', icon: <FileText size={14} /> },
-  { id: 'confidential-news', label: 'Tin tức nội bộ', icon: <Shield size={14} /> },
 ];
 
 const tabDataCache = new Map<string, unknown>();

@@ -16,7 +16,7 @@
     "dashboardUnavailable": "Không thể kết nối API backend, chưa tải được dữ liệu dashboard.",
     "syncFailed": "Đồng bộ dữ liệu thị trường thất bại."
   },
-  "priority": { "high": "Cao", "critical": "Nghiêm trọng", "medium": "Trung bình", "low": "Thấp" },
+  "priority": { "high": "Cao", "critical": "Nghiêm trọng", "medium": "Trung bình", "low": "Thấp", "active": "Hoạt động", "pending": "Chờ duyệt", "inactive": "Vô hiệu" },
   "scan": { "run": "Chạy quét AI", "running": "Đang quét...", "connecting": "Đang đồng bộ dữ liệu thị trường..." },
   "metrics": {
     "ecosystemScore": { "label": "Điểm hệ sinh thái", "description": "Snapshot điểm số trung bình đã xác minh" },

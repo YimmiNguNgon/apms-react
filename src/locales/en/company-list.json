@@ -60,5 +60,36 @@
     "prev": "Previous",
     "page": "Page {{current}} / {{total}}",
     "next": "Next"
+  },
+  "swot": {
+    "headerTitle": "AI SWOT Analysis",
+    "headerDesc": "Strengths, weaknesses, opportunities, and threats analyzed automatically by AI.",
+    "strengths": "Strengths",
+    "weaknesses": "Weaknesses",
+    "opportunities": "Opportunities",
+    "threats": "Threats",
+    "noData": "No SWOT analysis data is available yet for this company.",
+    "noStrengths": "No strengths identified.",
+    "noWeaknesses": "No weaknesses identified.",
+    "noOpportunities": "No opportunities identified.",
+    "noThreats": "No threats identified."
+  },
+  "tabs": {
+    "overview": "Overview",
+    "swot": "SWOT",
+    "businessFields": "Business Fields",
+    "relationship": "Relationship",
+    "board": "Board & Ownership",
+    "financials": "Financials",
+    "news": "News",
+    "documents": "Documents"
+  },
+  "detail": {
+    "additionalInfo": "Additional Information & Evidence",
+    "boardMembers": "Board Members & Ownership Structure",
+    "financialReport": "Financial Reports",
+    "newsMedia": "News & Media",
+    "confidentialNews": "Confidential Internal News",
+    "documents": "Documents & Raw Records"
   }
 }

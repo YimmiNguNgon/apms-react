@@ -268,6 +268,7 @@ const MainApp: React.FC = () => {
 
       // ── Admin pages ──
       case 'users':            return <UserManagement defaultTab="users" />;
+      case 'users-new':        return <UserManagement defaultTab="users" openCreate />;
       case 'roles':            return <UserManagement defaultTab="roles" />;
       case 'permissions':      return <UserManagement defaultTab="permissions" />;
       case 'activity-history': return <ActivityAudit defaultTab="activity" />;
@@ -278,8 +279,8 @@ const MainApp: React.FC = () => {
 
       // ── Director & Owner pages ──
       case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;
-      case 'competitor-intelligence':  return currentUser.role === ROLES.OWNER ? <CompetitorIntelligenceView /> : <CompetitorIntelligence />;
-      case 'relationship-map':         return currentUser.role === ROLES.OWNER ? <RelationshipMap /> : <EcosystemOverview setActivePage={navigateToPage} />;
+      case 'competitor-intelligence':  return currentUser.role === ROLES.OWNER ? <CompetitorIntelligenceView /> : <CompetitorWatchlist />;
+      case 'relationship-map':         return currentUser.role === ROLES.OWNER ? <RelationshipMap setActivePage={navigateToPage} /> : <EcosystemOverview setActivePage={navigateToPage} />;
       case 'market-opportunities':     return <MarketOpportunities />;
       case 'ai-recommendations':       return <AIRecommendations />;
       case 'strategic-reports':        return <StrategicReports />;

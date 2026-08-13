@@ -98,6 +98,7 @@ export interface ProfileFinancialsInfo {
 export interface ProfileResponse {
   id: string;
   companyId: string;
+  relationshipType?: string;
   identity?: CompanyProfileIdentity;
   business?: CompanyProfileBusiness;
   companySize?: CompanyProfileSize;
@@ -1051,13 +1052,16 @@ export interface RoleDto {
 }
 
 export interface PermissionDto {
-  id: string;
+  id: string | number;
+  name: string;
   module: string;
-  action: string;
-  admin: boolean;
-  director: boolean;
-  manager: boolean;
-  staff: boolean;
+  description?: string;
+  // Legacy fields kept for backward compatibility
+  action?: string;
+  admin?: boolean;
+  director?: boolean;
+  manager?: boolean;
+  staff?: boolean;
 }
 
 export interface CandidateAnalysisDto {
@@ -1108,4 +1112,111 @@ export interface CompanyDocumentResponse {
   approvedAt?: string | null;
   previewAvailable: boolean;
   downloadAvailable: boolean;
+}
+
+export interface OwnerCompanyIntelligenceResponse {
+  company: {
+    id: string;
+    name: string;
+    legalName: string;
+    ticker: string;
+    website: string;
+    headquarters: string;
+    industries: string[];
+    markets: string[];
+    businessModel: string;
+    employeeCount: number;
+  };
+  relationship: {
+    type: string;
+    businessImpact: string;
+    strategicRelevance: string;
+    impactTrend: string;
+    evidence: Array<{
+      sourceName: string;
+      sourceType: string;
+      sourceUrl: string | null;
+      publishedAt: string | null;
+      retrievedAt: string | null;
+      reliability: string;
+    }>;
+  };
+  executiveBrief: {
+    summary: string | null;
+    whyItMatters: string[];
+    confidence: number | null;
+  };
+  aiSummary: {
+    available: boolean;
+    content: string | null;
+    status: 'AVAILABLE' | 'NO_DATA';
+  };
+  news: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    content: string;
+    source: string;
+    sourceUrl: string;
+    publishedAt: string;
+    sentiment: string;
+    topics: string[];
+    businessImpact: string;
+    aiSummary: string;
+  }>;
+  timeline: Array<{
+    id: string;
+    date: string | null;
+    eventType: string;
+    summary: string;
+    impact: string;
+    source: string;
+    sourceUrl: string | null;
+  }>;
+  marketExpansion: Array<{
+    market: string;
+    eventType: string;
+    description: string;
+    businessImpact: string;
+    source: string;
+    sourceUrl: string | null;
+    date: string | null;
+  }>;
+  hiring: Array<{
+    title: string;
+    trend: string | null;
+    description: string;
+    source: string;
+    sourceUrl: string | null;
+    date: string | null;
+  }>;
+  financial: Array<{
+    name: string;
+    value: number;
+    currency: string;
+    period: string | null;
+  }>;
+  leadership: Array<{
+    name: string;
+    position: string;
+    sourceUrl: string | null;
+    researchedAt: string | null;
+  }>;
+  products: Array<{
+    name: string;
+    category: string;
+    description: string;
+  }>;
+  evidence: Array<{
+    sourceName: string;
+    sourceType: string;
+    sourceUrl: string | null;
+    publishedAt: string | null;
+    retrievedAt: string | null;
+    reliability: string;
+  }>;
+  metadata: {
+    lastUpdated: string | null;
+    dataQuality: string | null;
+  };
 }

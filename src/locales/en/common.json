@@ -193,6 +193,17 @@
     "searchPlaceholder": "Search...",
     "clearSearch": "Clear search"
   },
+  "queues": {
+    "verifyTitle": "Data approval queue",
+    "verifyEmpty": "No records are waiting for review.",
+    "validationTitle": "AI data validation queue",
+    "records": "{{count}} records",
+    "loading": "Loading validation records...",
+    "empty": "No records found.",
+    "status": "Status",
+    "validationIssue": "Validation issue",
+    "noIssues": "No validation issues returned."
+  },
   "table": {
     "normal": "Normal",
     "compact": "Compact",

@@ -1,10 +1,10 @@
 {
   "header": {
-    "title": "Thông tin đối thủ",
-    "eyebrow": "Thông tin hệ sinh thái doanh nghiệp",
-    "description": "Theo dõi biến động đối thủ đã xác minh và tác động kinh doanh.",
+    "title": "Tình báo đối thủ",
+    "eyebrow": "Bảng điều khiển điều hành",
+    "description": "Theo dõi biến động đối thủ, tín hiệu thị trường và tác động kinh doanh.",
     "dashboard": "Bảng điều khiển",
-    "breadcrumb": "Thông tin đối thủ"
+    "breadcrumb": "Tình báo đối thủ"
   },
   "actions": {
     "exportMatrix": "Xuất ma trận",
@@ -24,15 +24,17 @@
     "label": "Tổng quan điều hành",
     "readOnly": "Chế độ xem danh mục chỉ đọc",
     "total": { "label": "Tổng số đối thủ", "description": "Doanh nghiệp được liên kết là đối thủ" },
-    "highImpact": { "label": "Tác động cao", "description": "Tác động cao hoặc nghiêm trọng đã xác minh" },
-    "mediumImpact": { "label": "Tác động trung bình", "description": "Tác động trung bình đã xác minh" },
+    "highImpact": { "label": "Đối thủ tác động HIGH", "description": "Tác động HIGH hoặc CRITICAL đã xác minh" },
+    "mediumImpact": { "label": "Đối thủ tác động MEDIUM", "description": "Tác động MEDIUM đã xác minh" },
     "increasing": { "label": "Hoạt động tăng", "description": "Xu hướng tăng đã xác minh" },
     "signals": { "label": "Tín hiệu mới", "description": "Các tín hiệu đã xác minh gần nhất" },
-    "attention": "Doanh nghiệp cần quan tâm",
+    "highSignals": { "label": "Tín hiệu HIGH", "description": "Tín hiệu mức độ nghiêm trọng cao" },
+    "expanding": { "label": "Mở rộng thị trường", "description": "Đối thủ đang mở rộng thị trường/hạ tầng" },
+    "attention": "Đối thủ đáng quan tâm",
     "noAttention": "Không có đối thủ cần quan tâm",
-    "noSignals": "Chưa có tín hiệu cạnh tranh đã xác minh.",
-    "recentSignals": "Tín hiệu cạnh tranh gần đây",
-    "list": "Danh sách đối thủ",
+    "noSignals": "Chưa có tín hiệu cạnh tranh nào được ghi nhận.",
+    "recentSignals": "Dòng thời gian tín hiệu cạnh tranh",
+    "list": "So sánh đối thủ",
     "viewIntelligence": "Xem thông tin",
     "noData": "Chưa có dữ liệu",
     "verifiedSignal": "Tín hiệu đã xác minh",
@@ -42,7 +44,13 @@
     "recentSignalsColumn": "Tín hiệu gần đây",
     "marketActivity": "Hoạt động thị trường",
     "hiringActivity": "Hoạt động tuyển dụng",
-    "lastUpdated": "Cập nhật gần nhất"
+    "lastUpdated": "Cập nhật gần nhất",
+    "focusTracking": "Theo dõi tiêu điểm",
+    "trendAnalysis": "Phân tích xu hướng",
+    "aiInsightsTitle": "AI Competitive Insights",
+    "comparisonAnalysis": "Phân tích so sánh",
+    "emptyMatrixTitle": "Không có đối thủ nào khớp với bộ lọc",
+    "emptyMatrixBody": "Vui lòng thử đặt lại bộ lọc hoặc thay đổi tiêu chí tìm kiếm."
   },
   "watchlist": {
     "title": "Danh sách theo dõi đối thủ",
@@ -75,7 +83,7 @@
     "removeWatchlist": "Xóa khỏi danh sách theo dõi"
   },
   "filters": {
-    "search": "Tìm công ty, ngành hoặc hoạt động...",
+    "search": "Tìm kiếm tên, ngành hoặc hoạt động của đối thủ...",
     "industry": "Ngành",
     "riskLevel": "Mức rủi ro",
     "threatScore": "Điểm đe dọa",
@@ -112,13 +120,20 @@
     "assigned": "Phân công",
     "unassigned": "Chưa phân công",
     "notAvailable": "Chưa có dữ liệu",
-    "synced": "Đã đồng bộ",
-    "radarActive": "Radar AI đang hoạt động"
+    "synced": "Đồng bộ",
+    "radarActive": "AI Radar Active",
+    "radarNotAvailable": "AI Radar — Chưa có dữ liệu",
+    "sentiment": "Thái độ",
+    "date": "Ngày",
+    "signalType": "Loại tín hiệu",
+    "titleSummary": "Tiêu đề / Nội dung",
+    "sentimentCol": "Thái độ"
   },
   "tabs": {
     "overview": "Tổng quan",
-    "timeline": "Dòng thời gian đe dọa",
+    "timeline": "Dòng thời gian hoạt động",
     "news": "Tin tức gần đây",
+    "timeline_news": "Dòng thời gian & Tin tức",
     "expansion": "Mở rộng thị trường",
     "hiring": "Hoạt động tuyển dụng",
     "financial": "Tín hiệu tài chính",

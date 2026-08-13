@@ -49,10 +49,10 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         background: 'var(--cds-background)',
         border: '1px solid var(--cds-border-color)',
         borderRadius: 'var(--cds-border-radius)',
-        padding: '16px',
+        padding: '12px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '6px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'border-color 0.15s, box-shadow 0.15s',
         boxShadow: 'none',
@@ -71,11 +71,11 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       }}
     >
       {/* Header row: label */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span
           style={{
-            fontSize: '12px',
-            fontWeight: 400,
+            fontSize: '11px',
+            fontWeight: 500,
             lineHeight: '16px',
             letterSpacing: '0.32px',
             color: 'var(--cds-text-secondary)',
@@ -84,14 +84,15 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         >
           {label}
         </span>
+        {icon && <div style={{ color: 'var(--cds-icon-secondary)' }}>{icon}</div>}
       </div>
 
       {/* Metric value */}
       <div
         style={{
-          fontSize: '28px',
+          fontSize: '22px',
           fontWeight: 600,
-          lineHeight: '36px',
+          lineHeight: '28px',
           color: valueColor ?? 'var(--cds-text-primary)',
           fontVariantNumeric: 'tabular-nums',
           letterSpacing: '-0.01em',
@@ -113,8 +114,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           {description && (
             <span
               style={{
-                fontSize: '12px',
-                lineHeight: '16px',
+                fontSize: '11px',
+                lineHeight: '14px',
                 color: 'var(--cds-text-helper)',
                 flex: 1,
               }}

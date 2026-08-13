@@ -72,6 +72,29 @@
       "save": "Lưu thay đổi",
       "create": "Tạo tài khoản",
       "cancel": "Hủy"
+    },
+    "adminUi": {
+      "loadingAccounts": "Đang tải danh sách tài khoản...",
+      "noAccounts": "Không có tài khoản nào khớp với bộ lọc hiện tại.",
+      "password": "Mật khẩu",
+      "resetPassword": "Đặt lại mật khẩu",
+      "assignRole": "Gán vai trò",
+      "roleSelection": "Chọn vai trò",
+      "close": "Đóng",
+      "review": "Xem chi tiết",
+      "users": "Người dùng",
+      "permissions": "Quyền hạn",
+      "scope": "Phạm vi",
+      "roleDetail": "Chi tiết vai trò",
+      "noUsers": "Chưa có người dùng nào được gán vai trò này.",
+      "noPermissions": "Chưa có quyền nào được cấp.",
+      "loadingPermissions": "Đang tải quyền...",
+      "loadingRoles": "Đang tải ma trận vai trò...",
+      "noRoles": "Backend không trả về vai trò nào.",
+      "permissionMatrix": "Ma trận quyền hạn",
+      "readOnlyPermissions": "Chế độ chỉ xem quyền truy cập theo vai trò hệ thống.",
+      "noPermissionMatrix": "Backend chưa có ma trận quyền hạn.",
+      "unassigned": "Chưa cấp phát"
     }
   }
 }

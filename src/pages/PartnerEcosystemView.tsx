@@ -23,6 +23,8 @@ import {
 import type { ColumnDef } from '../components/ui/DataTable';
 import type { FilterConfig } from '../components/ui/FilterBar';
 
+import { ExternalLink } from 'lucide-react';
+
 // ─── Domain types ────────────────────────────────────────────────────────────
 export interface GraphCompany {
   companyId: string;
@@ -165,12 +167,10 @@ const viRelationship = (value: string) => ({ Partner: 'Đối tác', Supplier: '
 const viStatus = (value: string) => ({ VERIFIED: 'Đã xác minh', PENDING_REVIEW: 'Chờ duyệt', 'Not available': 'Chưa cập nhật' }[value] ?? value);
 
 const DRAWER_TABS = [
-  { id: 'overview',   label: 'Tổng quan' },
-  { id: 'projects',   label: 'Dự án' },
-  { id: 'contacts',   label: 'Liên hệ' },
-  { id: 'timeline',   label: 'Dòng thời gian' },
-  { id: 'documents',  label: 'Tài liệu' },
-  { id: 'ai-summary', label: 'Tóm tắt AI' },
+  { id: 'relationship-overview',  label: 'Tổng quan quan hệ' },
+  { id: 'activity-and-news',      label: 'Dòng thời gian & Tin tức' },
+  { id: 'active-projects',         label: 'Dự án hợp tác' },
+  { id: 'partner-opportunities',  label: 'Cơ hội hợp tác' },
 ];
 
 // ─── Divider ─────────────────────────────────────────────────────────────────
@@ -204,7 +204,9 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   const [news, setNews] = useState<ExternalDataItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [intelligenceById, setIntelligenceById] = useState<Record<string, CompanyIntelligenceSummary>>({});
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mainTab, setMainTab] = useState('attention');
 
   // Drawer state
   const [drawerOpen, setDrawerOpen]   = useState(false);
@@ -212,6 +214,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   const [selectedRow, setSelectedRow] = useState<PartnerRow | null>(null);
   const [companyProfile, setCompanyProfile] = useState<ProfileResponse | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [syncingPartnerId, setSyncingPartnerId] = useState<string | null>(null);
 
   // Filter state
   const [search, setSearch]         = useState('');
@@ -321,7 +324,11 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const controller = new AbortController();
     const companyRows = allRows.filter((row) => !row.id.startsWith('project-company-'));
     const missingRows = companyRows.filter((row) => !intelligenceById[row.id]);
-    if (missingRows.length === 0) return () => controller.abort();
+    if (missingRows.length === 0) {
+      setIntelligenceLoading(false);
+      return () => controller.abort();
+    }
+    setIntelligenceLoading(true);
 
     void Promise.allSettled(missingRows.map(async (row) => {
       const response = await api.get<any>(`/owner/company-intelligence/${row.id}`, { signal: controller.signal });
@@ -356,17 +363,35 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       if (controller.signal.aborted) return;
       const updates = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
       if (updates.length) setIntelligenceById((current) => ({ ...current, ...Object.fromEntries(updates) }));
+      setIntelligenceLoading(false);
     });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      setIntelligenceLoading(false);
+    };
   }, [allRows, intelligenceById]);
 
-  const intelligenceFor = useCallback((row: PartnerRow): CompanyIntelligenceSummary => intelligenceById[row.id] ?? {
-    businessImpact: null,
-    strategicRelevance: null,
-    impactTrend: null,
-    whyItMatters: null,
-    lastUpdated: null,
-    signals: [],
+  const intelligenceFor = useCallback((row: PartnerRow): CompanyIntelligenceSummary => {
+    const intelligence = intelligenceById[row.id];
+    const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
+    const verifiedRelationship = ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship);
+
+    // A confirmed graph relationship is valid operational evidence even when the
+    // optional intelligence profile has no enrichment yet. Do not synthesize
+    // news, trends, or timestamps without a backing record.
+    const baselineStrategicRelevance: ImpactLevel = activeProject && ['Partner', 'Supplier'].includes(row.relationship)
+      ? 'HIGH'
+      : verifiedRelationship ? 'MEDIUM' : null;
+    const baselineBusinessImpact: ImpactLevel = activeProject ? 'HIGH' : verifiedRelationship ? 'MEDIUM' : null;
+
+    return {
+      businessImpact: intelligence?.businessImpact ?? baselineBusinessImpact,
+      strategicRelevance: intelligence?.strategicRelevance ?? baselineStrategicRelevance,
+      impactTrend: intelligence?.impactTrend ?? null,
+      whyItMatters: intelligence?.whyItMatters ?? null,
+      lastUpdated: intelligence?.lastUpdated ?? null,
+      signals: intelligence?.signals ?? [],
+    };
   }, [intelligenceById]);
 
   const attentionPriority = useCallback((row: PartnerRow): 'HIGH' | 'MEDIUM' | 'LOW' => {
@@ -374,7 +399,11 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const recentSignal = intelligence.signals.length > 0;
     const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
     if (intelligence.businessImpact === 'HIGH' || intelligence.businessImpact === 'CRITICAL' || (intelligence.strategicRelevance === 'HIGH' && recentSignal) || (activeProject && recentSignal)) return 'HIGH';
-    if (intelligence.strategicRelevance === 'HIGH' || intelligence.impactTrend === 'UP') return 'MEDIUM';
+    if (intelligence.strategicRelevance === 'HIGH' || intelligence.strategicRelevance === 'MEDIUM' || intelligence.impactTrend === 'UP') return 'MEDIUM';
+    // Graph relationships and active projects are already verified APMS evidence.
+    // Use them as a fallback when the intelligence endpoint cannot resolve a
+    // profile/graph identifier to a relationship record.
+    if (activeProject || ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship)) return 'MEDIUM';
     return 'LOW';
   }, [intelligenceFor]);
 
@@ -387,6 +416,28 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     .flatMap((intelligence) => intelligence.signals)
     .sort((left, right) => new Date(right.date || 0).getTime() - new Date(left.date || 0).getTime())
     .slice(0, 8), [intelligenceById]);
+
+  const displayedSignals = useMemo((): EcosystemSignal[] => {
+    if (recentSignals.length > 0) return recentSignals;
+
+    // When the crawler has not supplied news yet, graph relationships remain
+    // useful, verified APMS business signals. They are clearly identified as
+    // internal relationship evidence rather than presented as external news.
+    return allRows
+      .filter((row) => ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship))
+      .slice(0, 8)
+      .map((row) => ({
+        id: `relationship-${row.id}`,
+        companyId: row.id,
+        companyName: row.name,
+        title: `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`,
+        category: 'RELATIONSHIP',
+        date: row.lastUpdated,
+        businessImpact: intelligenceFor(row).businessImpact,
+        source: 'APMS graph',
+        sourceUrl: null,
+      }));
+  }, [allRows, intelligenceFor, recentSignals]);
 
   const activeProjectCount = useMemo(() => projects.filter((project) => project.status === 'ACTIVE' && Boolean(project.targetCompanyProfileId || project.targetCompanyName)).length, [projects]);
 
@@ -410,10 +461,16 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     });
   }, [allRows, search, filterIndustry, filterRel, filterStatus, filterImportance, intelligenceFor, attentionPriority]);
 
+  const attentionRows = useMemo(
+    () => filteredRows.filter((row) => attentionPriority(row) !== 'LOW'),
+    [filteredRows, attentionPriority],
+  );
+
   // ── KPI metrics ───────────────────────────────────────────────────────────
   const totalPartners    = allRows.length;
   const strategicCount   = allRows.filter((row) => intelligenceFor(row).strategicRelevance === 'HIGH').length;
   const ownerAttentionCount = allRows.filter((row) => attentionPriority(row) !== 'LOW').length;
+  const businessImpactHighCount = allRows.filter((row) => { const ib = intelligenceFor(row).businessImpact; return ib === 'HIGH' || ib === 'CRITICAL'; }).length;
   const supplierCount = allRows.filter((row) => row.relationship === 'Supplier').length;
   const customerCount = allRows.filter((row) => row.relationship === 'Customer').length;
 
@@ -439,7 +496,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   // ── Open Drawer ───────────────────────────────────────────────────────────
   const openDrawer = useCallback((row: PartnerRow) => {
     setSelectedRow(row);
-    setDrawerTab('overview');
+    setDrawerTab('relationship-overview');
     setDrawerOpen(true);
     setCompanyProfile(null);
     setProfileLoading(true);
@@ -453,13 +510,8 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   }, []);
 
   const openCompanyDetail = useCallback((row: PartnerRow) => {
-    if (!setActivePage || row.id.startsWith('project-company-')) {
-      openDrawer(row);
-      return;
-    }
-    localStorage.setItem('apms-selected-company', row.id);
-    setActivePage('company-detail');
-  }, [openDrawer, setActivePage]);
+    openDrawer(row);
+  }, [openDrawer]);
 
   // ── Export selected partner dossier (client-side CSV) ────────────────────
   const exportSelectedPartnerCsv = useCallback(() => {
@@ -486,6 +538,52 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [selectedRow]);
+
+  const handleSyncPartner = async (partnerId: string) => {
+    if (syncingPartnerId) return;
+    setSyncingPartnerId(partnerId);
+    try {
+      await externalDataApi.runApprovedProfilesFetch();
+      await externalDataApi.runAnalyze();
+      
+      const response = await api.get<any>(`/owner/company-intelligence/${partnerId}`);
+      const payload = response.data;
+      const rawSignals = [
+        ...(Array.isArray(payload?.timeline) ? payload.timeline : []),
+        ...(Array.isArray(payload?.news) ? payload.news : []),
+      ];
+      const signals = rawSignals.map((item: any, index: number): EcosystemSignal => {
+        const source = normalizeSource(item.source || item.sourceName, item.sourceUrl || item.url);
+        return {
+          id: String(item.id || `${partnerId}-${index}`),
+          companyId: partnerId,
+          companyName: cleanText(payload?.company?.name) || selectedRow?.name || 'Partner',
+          title: cleanText(item.summary || item.aiSummary || item.title) || 'Tín hiệu kinh doanh',
+          category: cleanText(item.eventType || item.category) || 'NEWS',
+          date: item.date || item.publishedAt || item.updatedAt || null,
+          businessImpact: normalizeImpact(item.impact || item.businessImpact || item.riskLevel),
+          source: source.name,
+          sourceUrl: source.url,
+        };
+      }).filter((signal: EcosystemSignal, index: number, values: EcosystemSignal[]) => values.findIndex((candidate) => candidate.id === signal.id) === index);
+
+      setIntelligenceById((current) => ({
+        ...current,
+        [partnerId]: {
+          businessImpact: normalizeImpact(payload?.relationship?.businessImpact),
+          strategicRelevance: normalizeImpact(payload?.relationship?.strategicRelevance),
+          impactTrend: normalizeTrend(payload?.relationship?.impactTrend),
+          whyItMatters: cleanText(payload?.executiveBrief?.whyItMatters?.[0] || payload?.executiveBrief?.summary) || null,
+          lastUpdated: payload?.metadata?.lastUpdated || null,
+          signals,
+        }
+      }));
+    } catch (err) {
+      console.error('Failed to sync partner intelligence', err);
+    } finally {
+      setSyncingPartnerId(null);
+    }
+  };
 
   // ── Filter configs ─────────────────────────────────────────────────────────
   const filters: FilterConfig[] = [
@@ -540,7 +638,7 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       render: (_, row) => <span style={{ fontSize: '12px', fontWeight: 600, color: impactColor(intelligenceFor(row).businessImpact) }}>{displayImpact(intelligenceFor(row).businessImpact)}</span>,
     },
     { key: 'projects', header: 'Dự án', width: '70px', sortable: true, align: 'center',
-      render: (_, row) => <button type="button" onClick={(event) => { event.stopPropagation(); openDrawer(row); setDrawerTab('projects'); }} style={{ border: 0, background: 'transparent', color: 'var(--cds-interactive)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>{row.projects.length}</button>,
+      render: (_, row) => <button type="button" onClick={(event) => { event.stopPropagation(); openDrawer(row); setDrawerTab('active-projects'); }} style={{ border: 0, background: 'transparent', color: 'var(--cds-interactive)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>{row.projects.length}</button>,
     },
     { key: 'latestActivity', header: 'Hoạt động gần đây', width: '180px',
       render: (_, row) => {
@@ -563,90 +661,255 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     if (!selectedRow) return null;
     const profile = companyProfile as any;
 
+    const intelligence = intelligenceFor(selectedRow);
+    const activeProj = selectedRow.projects.filter(p => p.status === 'ACTIVE');
+    const relStatus = intelligence.businessImpact === 'CRITICAL'
+      ? 'AT RISK' 
+      : (selectedRow.projects.some(p => p.status === 'ACTIVE') ? 'ACTIVE' : 'INACTIVE');
+    const relTrend = intelligence.impactTrend === 'UP' 
+      ? 'IMPROVING' 
+      : intelligence.impactTrend === 'DOWN' 
+        ? 'DECLINING' 
+        : 'STABLE';
+
     switch (drawerTab) {
-      case 'overview':
+      case 'relationship-overview':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Summary metrics row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              <MetricCard label="Mức độ quan trọng" value={selectedRow.importance} />
-              <MetricCard label="Dự án" value={selectedRow.projects.length} />
-              <MetricCard label="Hoạt động gần đây" value={selectedRow.latestActivity ? formatDate(selectedRow.latestActivity.date) : 'Chưa có dữ liệu'} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+              <div style={{ background: 'var(--cds-layer-01)', padding: '12px', border: '1px solid var(--cds-border-subtle-00)', borderRadius: '4px' }}>
+                <strong style={{ display: 'block', marginBottom: '8px', color: 'var(--cds-text-primary)' }}>Relationship Summary</strong>
+                <InfoRow label="Relationship Type" value={viRelationship(selectedRow.relationship)} />
+                <Divider />
+                <InfoRow label="Relationship Status" value={relStatus} />
+                <Divider />
+                <InfoRow label="Relationship Trend" value={relTrend} />
+              </div>
+              <div style={{ background: 'var(--cds-layer-01)', padding: '12px', border: '1px solid var(--cds-border-subtle-00)', borderRadius: '4px' }}>
+                <strong style={{ display: 'block', marginBottom: '8px', color: 'var(--cds-text-primary)' }}>Strategic Alignment</strong>
+                <InfoRow label="Strategic Relevance" value={displayImpact(intelligence.strategicRelevance)} />
+                <Divider />
+                <InfoRow label="Business Impact" value={displayImpact(intelligence.businessImpact)} />
+                <Divider />
+                <InfoRow label="Active Projects" value={`${activeProj.length} projects`} />
+              </div>
             </div>
-            {/* Profile details */}
+
             <div style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
-              <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Thông tin doanh nghiệp</h3>
-              {profileLoading ? (
-                <p style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang tải hồ sơ...</p>
-              ) : (
-                <>
-                  <InfoRow label="Tên doanh nghiệp" value={selectedRow.name} />
-                  <Divider />
-                  <InfoRow label="Ngành" value={selectedRow.industry} />
-                  <Divider />
-                  <InfoRow label="Quan hệ" value={viRelationship(selectedRow.relationship)} />
-                  <Divider />
-                  <InfoRow label="Trạng thái" value={<StatusBadge status={viStatus(selectedRow.status)} />} />
-                  {profile?.contact?.email && (
-                    <>
-                      <Divider />
-                      <InfoRow label="Email" value={profile.contact.email} />
-                    </>
-                  )}
-                  {profile?.contact?.phone && (
-                    <>
-                      <Divider />
-                      <InfoRow label="Phone" value={profile.contact.phone} />
-                    </>
-                  )}
-                  {profile?.business?.website && (
-                    <>
-                      <Divider />
-                      <InfoRow label="Website" value={
-                        <a href={profile.business.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cds-link-primary)', fontSize: '13px' }}>
-                          {profile.business.website}
-                        </a>
-                      } />
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-            {/* Verified recent activity */}
-            <div style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
-              <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Hoạt động đã xác minh</h3>
-              {selectedRow.latestActivity ? <><div style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{selectedRow.latestActivity.title}</div><div style={{ fontSize: '12px', color: 'var(--cds-text-helper)', marginTop: '4px' }}>{formatDate(selectedRow.latestActivity.date)}</div></> : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có hoạt động gần đây.</p>}
+              <h3 style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Relationship Summary Brief</h3>
+              <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--cds-text-secondary)', lineHeight: '20px' }}>
+                {intelligence.whyItMatters || 'No relationship overview summary is recorded.'}
+              </p>
             </div>
           </div>
         );
 
-      case 'projects':
-        return <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {selectedRow.projects.length ? selectedRow.projects.map((project) => <div key={project.id} style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}><strong style={{ fontSize: '13px' }}>{cleanText(project.projectName) || 'Chưa có dữ liệu'}</strong><StatusBadge status={project.status} /></div><div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', marginTop: '5px' }}>Cập nhật: {formatDate(project.updatedAt || project.createdAt)}</div></div>) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có dự án đang hoạt động.</p>}
-        </div>;
+      case 'activity-and-news': {
+        const normalizedName = (v?: string | null) => (v || '').trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        const relatedNews = news.filter((item) => item.companyProfileId === selectedRow.id || item.relatedCompanyId === selectedRow.id || normalizedName(item.relatedCompanyName) === normalizedName(selectedRow.name));
+        
+        type UnifiedItem = {
+          id: string;
+          type: 'ACTIVITY' | 'NEWS';
+          title: string;
+          date: string | null;
+          categoryOrSentiment: string | null;
+          source: string | null;
+          url: string | null;
+          summary?: string | null;
+        };
 
-      case 'contacts':
-        return profileLoading ? <p style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang tải thông tin liên hệ...</p> : (
-          profile?.contact?.email || profile?.contact?.phone ? <div style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
-            {profile?.contact?.email && <InfoRow label="Email" value={cleanText(profile.contact.email)} />}
-            {profile?.contact?.email && profile?.contact?.phone && <Divider />}
-            {profile?.contact?.phone && <InfoRow label="Điện thoại" value={cleanText(profile.contact.phone)} />}
-          </div> : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có dữ liệu đã xác minh.</p>
+        const combinedList: UnifiedItem[] = [
+          // Bỏ relatedNews lên trước để ưu tiên giữ lại format NEWS (có summary và sentiment)
+          ...relatedNews.map(n => ({
+            id: `news-${n.id}`,
+            type: 'NEWS' as const,
+            title: cleanText(n.title),
+            date: n.publishedAt || n.updatedAt || null,
+            categoryOrSentiment: n.sentiment || 'NEUTRAL',
+            source: n.source || 'N/A',
+            url: n.url ?? null,
+            summary: cleanText(n.aiSummary || n.summary)
+          })),
+          ...intelligence.signals.map(s => ({
+            id: `act-${s.id}`,
+            type: s.category === 'NEWS' ? ('NEWS' as const) : ('ACTIVITY' as const),
+            title: s.title,
+            date: s.date,
+            categoryOrSentiment: s.category,
+            source: s.source,
+            url: s.sourceUrl
+          }))
+        ];
+
+        const seenUrls = new Set<string>();
+        const seenTitles = new Set<string>();
+
+        const unifiedList = combinedList.filter(item => {
+          if (item.url && item.url.trim() !== '') {
+            if (seenUrls.has(item.url)) return false;
+            seenUrls.add(item.url);
+          }
+          if (item.title) {
+            // Compare first 30 chars to catch cases where title and summary overlap
+            const normalizedTitle = item.title.trim().toLowerCase().substring(0, 30);
+            if (seenTitles.has(normalizedTitle)) return false;
+            seenTitles.add(normalizedTitle);
+          }
+          return true;
+        }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {unifiedList.length > 0 ? (
+              unifiedList.map((item) => (
+                <div key={item.id} style={{ padding: '12px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'flex-start', gap: '8px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{item.title}</strong>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)', whiteSpace: 'nowrap' }}>{formatDate(item.date)}</span>
+                  </div>
+                  
+                  {item.type === 'ACTIVITY' ? (
+                    <div style={{ display: 'inline-block', fontSize: '10px', fontWeight: 700, color: 'var(--cds-interactive)', background: 'var(--cds-support-info-bg)', padding: '2px 6px', borderRadius: '4px', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      {item.categoryOrSentiment}
+                    </div>
+                  ) : (
+                    <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: item.categoryOrSentiment === 'NEGATIVE' ? 'var(--cds-support-error-bg)' : 'var(--cds-layer-01)', color: item.categoryOrSentiment === 'NEGATIVE' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)', fontWeight: 700, marginBottom: '6px' }}>
+                      NEWS · {item.categoryOrSentiment}
+                    </span>
+                  )}
+                  
+                  {item.summary && (
+                    <p style={{ margin: '0 0 6px', fontSize: '12px', color: 'var(--cds-text-secondary)', lineHeight: '18px' }}>{item.summary}</p>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--cds-text-helper)', borderTop: '1px dashed var(--cds-border-subtle-00)', paddingTop: '6px', marginTop: '6px' }}>
+                    <span>Source: <strong>{item.source}</strong></span>
+                    {item.url && (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cds-interactive)', display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 600 }}>
+                        Xem nguồn <ExternalLink size={10} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)', textAlign: 'center', padding: '20px' }}>
+                Chưa có dữ liệu hoạt động hoặc tin tức.
+              </p>
+            )}
+          </div>
+        );
+      }
+
+      case 'active-projects':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {selectedRow.projects.length > 0 ? (
+              selectedRow.projects.map((project) => (
+                <div key={project.id} style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '13.5px', color: 'var(--cds-text-primary)' }}>{cleanText(project.projectName) || 'Chưa có tên'}</strong>
+                    <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                      {project.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
+                    <div>Role (APMS): <strong>{project.targetRelationshipType || 'PARTNER'}</strong></div>
+                    <div>Business Impact: <strong>{displayImpact(normalizeImpact(intelligence.businessImpact))}</strong></div>
+                    <div>Start Date: <strong>{formatDate(project.createdAt)}</strong></div>
+                    <div>End Date: <strong>{formatDate(project.plannedEndDate)}</strong></div>
+                  </div>
+                  {project.description && (
+                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--cds-text-secondary)', fontStyle: 'italic' }}>
+                      {project.description}
+                    </p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)', textAlign: 'center', padding: '20px' }}>
+                No active collaboration projects available.
+              </p>
+            )}
+          </div>
         );
 
-      case 'timeline':
-        return selectedRow.latestActivity ? (
-          <div style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{selectedRow.latestActivity.title}</div>
-            <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)', marginTop: '4px' }}>{formatDate(selectedRow.latestActivity.date)}</div>
+      case 'partner-opportunities': {
+        const opportunities = [];
+        if (selectedRow.projects.length > 0) {
+          opportunities.push({
+            opportunity: 'Joint product co-development',
+            potentialValue: 'High market impact',
+            strategicRelevance: 'HIGH',
+            evidence: `Active collaboration on project: ${selectedRow.projects[0].projectName}`,
+            nextAction: 'Propose expansion of scope at next strategic meeting.'
+          });
+        }
+        selectedRow.projects.forEach(p => {
+          if (p.status === 'COMPLETED') {
+            opportunities.push({
+              opportunity: 'Strategic partnership expansion',
+              potentialValue: 'High value retention',
+              strategicRelevance: 'MEDIUM',
+              evidence: `Successfully completed project: ${p.projectName}`,
+              nextAction: 'Initiate discussions for phase 2 follow-up contract.'
+            });
+          }
+        });
+        const expansionSignals = intelligence.signals.filter(s => s.category.toUpperCase().includes('EXPAN'));
+        if (expansionSignals.length > 0) {
+          opportunities.push({
+            opportunity: 'Market expansion alignment',
+            potentialValue: 'Entry to new regional market',
+            strategicRelevance: 'HIGH',
+            evidence: expansionSignals.map(s => `• ${s.title}`).join('\\n'),
+            nextAction: `Sync sales teams to evaluate shared opportunities in target market.`
+          });
+        }
+
+        const techSignals = intelligence.signals.filter(s => s.category.toUpperCase().includes('TECH'));
+        if (techSignals.length > 0) {
+          opportunities.push({
+            opportunity: 'New technology collaboration',
+            potentialValue: 'Enhanced tech stack alignment',
+            strategicRelevance: 'MEDIUM',
+            evidence: techSignals.map(s => `• ${s.title}`).join('\\n'),
+            nextAction: `Invite partner tech leads to a joint capability demo workshop.`
+          });
+        }
+
+        if (opportunities.length === 0) {
+          opportunities.push({
+            opportunity: 'Joint Go-To-Market Collaboration',
+            potentialValue: 'Increased market reach',
+            strategicRelevance: 'MEDIUM',
+            evidence: 'Established ecosystem relationship',
+            nextAction: 'Schedule an introductory partner alignment session.'
+          });
+        }
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {opportunities.map((opp, idx) => (
+              <div key={idx} style={{ padding: '12px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius)', border: '1px solid var(--cds-border-subtle-00)' }}>
+                <strong style={{ fontSize: '13.5px', color: 'var(--cds-text-primary)' }}>{opp.opportunity}</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px', marginTop: '6px', color: 'var(--cds-text-secondary)' }}>
+                  <div>Value: <strong>{opp.potentialValue}</strong></div>
+                  <div>Strategic: <strong>{opp.strategicRelevance}</strong></div>
+                </div>
+                <div style={{ fontSize: '12px', marginTop: '6px', color: 'var(--cds-text-secondary)', whiteSpace: 'pre-wrap' }}>
+                  <strong>Evidence:</strong>
+                  <div>{opp.evidence}</div>
+                </div>
+                <div style={{ fontSize: '12px', marginTop: '4px', color: 'var(--cds-interactive)' }}>
+                  <strong>Next Action:</strong> {opp.nextAction}
+                </div>
+              </div>
+            ))}
           </div>
-        ) : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có hoạt động đã xác minh.</p>;
-
-      case 'documents':
-        return <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có tài liệu đã xác minh.</p>;
-
-      case 'ai-summary':
-        return <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa có phân tích AI đã xác minh cho doanh nghiệp này.</p>;
+        );
+      }
 
       default:
         return null;
@@ -660,9 +923,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
       {/* Page Header */}
       <PageHeader
         title={t('header.title')}
-        eyebrow={t('header.eyebrow')}
-        description="Theo dõi các doanh nghiệp liên quan, quan hệ chiến lược và những thay đổi có thể ảnh hưởng đến hoạt động kinh doanh."
-        breadcrumb={[{ label: t('header.dashboard') }, { label: t('header.title') }]}
         actions={
           setActivePage ? (
             <SecondaryButton size="sm" onClick={() => setActivePage('company-detail')}>{t('header.companyDetail')}</SecondaryButton>
@@ -670,88 +930,221 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
         }
       />
 
-      {/* ── KPI Cards ────────────────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} style={{ height: '88px', background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', animation: 'cds-pulse 1.2s ease infinite' }} />
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '8px', marginBottom: '16px' }}>
-          <MetricCard label={t('sections.directory')} value={totalPartners} description={t('sections.connections')} />
-          <MetricCard label={t('sections.strategicRelevance')} value={strategicCount} description="HIGH" />
-          <MetricCard label={t('sections.attention')} value={ownerAttentionCount} description={t('sections.signals')} />
-          <MetricCard label={t('sections.connections')} value={activeProjectCount} description={t('sections.activeProject')} />
-        </div>
-      )}
+
 
       {loadError && <div role="alert" style={{ marginBottom: '16px', padding: '12px 16px', border: '1px solid var(--cds-support-error)', background: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', borderRadius: 'var(--cds-border-radius)', fontSize: '13px' }}>{loadError}</div>}
 
-      <section className="ecosystem-attention" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{t('sections.attention')}</h2>
-        {filteredRows.filter((row) => attentionPriority(row) !== 'LOW').slice(0, 5).map((row) => {
-          const intelligence = intelligenceFor(row);
-          const signal = latestSignalFor(row);
-          return <div className="ecosystem-attention-row" key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.2fr) repeat(3, minmax(110px, .65fr)) minmax(160px, 1fr) auto', gap: '12px', alignItems: 'center', padding: '12px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
-            <div><strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{row.name}</strong><div style={{ marginTop: '3px', fontSize: '12px', color: 'var(--cds-text-helper)' }}>{viRelationship(row.relationship)} · {row.projects.filter((project) => project.status === 'ACTIVE').length} project active</div></div>
-            <div><span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{t('sections.strategicRelevance')}</span><div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.strategicRelevance) }}>{displayImpact(intelligence.strategicRelevance)}</div></div>
-            <div><span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{t('sections.businessImpact')}</span><div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.businessImpact) }}>{displayImpact(intelligence.businessImpact)}</div></div>
-            <div><span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{t('sections.impactTrend')}</span><div style={{ fontSize: '12px', fontWeight: 700 }}>{displayTrend(intelligence.impactTrend)}</div></div>
-            <div style={{ minWidth: 0 }}><span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{t('sections.whyItMatters')}</span><div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{intelligence.whyItMatters || signal?.title || t('sections.notAvailable')}</div><div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '3px' }}>{t('sections.updated')}: {formatDate(intelligence.lastUpdated || signal?.date)}</div></div>
-            <SecondaryButton size="sm" onClick={() => openCompanyDetail(row)}>{t('sections.viewCompany')}</SecondaryButton>
-          </div>;
-        })}
-        {filteredRows.every((row) => attentionPriority(row) === 'LOW') && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
-      </section>
-
-      <section className="ecosystem-signals" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{t('sections.signals')}</h2>
-        {recentSignals.map((signal) => <div className="ecosystem-signal-row" key={`${signal.companyId}-${signal.id}`} style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px auto', gap: '12px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}><div><strong style={{ fontSize: '12px' }}>{signal.companyName}</strong><div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.category}</div></div><div style={{ minWidth: 0 }}><div style={{ fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{signal.title}</div><div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.source || 'N/A'}</div></div><span style={{ fontSize: '12px', fontWeight: 600, color: impactColor(signal.businessImpact) }}>{displayImpact(signal.businessImpact)}</span><span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{formatDate(signal.date)}</span>{signal.sourceUrl ? <a href={signal.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '12px', color: 'var(--cds-link-primary)' }}>Xem nguồn</a> : <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>N/A</span>}</div>)}
-        {recentSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
-      </section>
-
-      <section style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px', overflowX: 'auto' }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{t('sections.connections')}</h2>
-        {projects.filter((project) => project.targetCompanyName).length > 0 ? <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', fontSize: '12px' }}><thead><tr style={{ textAlign: 'left', color: 'var(--cds-text-secondary)', background: 'var(--cds-layer-01)' }}>{[t('sections.project'), t('sections.company'), t('sections.relationship'), t('sections.role'), t('sections.status'), t('sections.businessImpact')].map((label) => <th key={label} style={{ padding: '9px' }}>{label}</th>)}</tr></thead><tbody>{projects.filter((project) => project.targetCompanyName).map((project) => { const row = allRows.find((company) => company.id === project.targetCompanyProfileId || company.name === project.targetCompanyName); const intelligence = row ? intelligenceFor(row) : null; return <tr key={project.id} style={{ borderTop: '1px solid var(--cds-border-subtle-00)' }}><td style={{ padding: '9px', fontWeight: 600 }}>{cleanText(project.projectName) || t('sections.notAvailable')}</td><td style={{ padding: '9px' }}>{cleanText(project.targetCompanyName) || t('sections.notAvailable')}</td><td style={{ padding: '9px' }}>{row ? viRelationship(row.relationship) : t('sections.notAvailable')}</td><td style={{ padding: '9px' }}>{t('sections.notAvailable')}</td><td style={{ padding: '9px' }}>{project.status || t('sections.notAvailable')}</td><td style={{ padding: '9px', color: impactColor(intelligence?.businessImpact ?? null), fontWeight: 600 }}>{displayImpact(intelligence?.businessImpact ?? null)}</td></tr>; })}</tbody></table> : <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.connectionsEmpty')}</p>}
-      </section>
-
-      <FilterBar
-        searchValue={search}
-        searchPlaceholder={t('filters.searchPlaceholder')}
-        onSearchChange={setSearch}
-        filters={filters}
-      />
-
-      {/* ── Enterprise Table ──────────────────────────────────────────────── */}
-      <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            {t('sections.directory')}
-            <span style={{ marginLeft: '8px', fontSize: '12px', fontWeight: 400, color: 'var(--cds-text-helper)' }}>({t('sections.directoryCount', { count: filteredRows.length })})</span>
-          </h2>
-        </div>
-        <DataTable<PartnerRow>
-          columns={columns}
-          data={filteredRows}
-          rowKey={(row) => row.id}
-          onRowClick={openDrawer}
-          pageSize={10}
-          exportFilename="partner-ecosystem"
-          loading={loading}
-          emptyState={
-            <EmptyState
-              title={t('sections.noCompanies')}
-              body={t('sections.tryFilters')}
-              action={
-                <PrimaryButton size="sm" onClick={() => { setSearch(''); setFilterIndustry('All'); setFilterRel('All'); setFilterStatus('All'); setFilterImportance('All'); }}>
-                  {t('sections.resetFilters')}
-                </PrimaryButton>
-              }
-            />
-          }
+      <div style={{ marginBottom: '16px' }}>
+        <Tabs
+          items={[
+            { id: 'attention', label: 'Cần Owner quan tâm' },
+            { id: 'signals', label: 'Tín hiệu kinh doanh gần đây' },
+            { id: 'projects', label: 'Kết nối dự án và công ty' },
+            { id: 'directory', label: t('sections.directory') },
+          ]}
+          activeId={mainTab}
+          onChange={setMainTab}
+          contained={true}
         />
       </div>
+
+      {mainTab === 'attention' && (
+        <>
+          {/* ── KPI Cards ────────────────────────────────────────────────────── */}
+          {loading ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} style={{ height: '88px', background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', animation: 'cds-pulse 1.2s ease infinite' }} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))', gap: '8px', marginBottom: '16px' }}>
+              <MetricCard label="Doanh nghiệp liên quan" value={totalPartners} description="Tổng số doanh nghiệp" />
+              <MetricCard label="Đối tác chiến lược" value={strategicCount} description="Strategic Relevance HIGH" />
+              <MetricCard label="Cần Owner quan tâm" value={ownerAttentionCount} description="Cảnh báo & Tín hiệu" />
+              <MetricCard label="Business Impact HIGH" value={businessImpactHighCount} description="Business Impact HIGH" />
+            </div>
+          )}
+
+          <section className="ecosystem-attention" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
+            <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Doanh nghiệp cần Owner quan tâm</h2>
+          {attentionRows.slice(0, 5).map((row) => {
+            const intelligence = intelligenceFor(row);
+            const signal = latestSignalFor(row);
+            return (
+              <div className="ecosystem-attention-row" key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.2fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(200px, 1.2fr) minmax(110px, 0.6fr) auto', gap: '12px', alignItems: 'center', padding: '12px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
+                <div>
+                  <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{row.name}</strong>
+                  <div style={{ marginTop: '3px', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
+                    {row.industry} · {viRelationship(row.relationship)}
+                  </div>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Chiến lược</span>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.strategicRelevance) }}>{displayImpact(intelligence.strategicRelevance)}</div>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Business Impact</span>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.businessImpact) }}>{displayImpact(intelligence.businessImpact)}</div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Tín hiệu gần đây</span>
+                  <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {signal?.title || `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px' }}>
+                    {signal?.date ? formatDate(signal.date) : 'Chưa có tín hiệu tin tức được thu thập'}
+                  </div>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Cập nhật</span>
+                  <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
+                    {intelligence.lastUpdated || row.lastUpdated
+                      ? formatDate(intelligence.lastUpdated || row.lastUpdated)
+                      : 'Quan hệ đã xác minh'}
+                  </div>
+                </div>
+                <SecondaryButton size="sm" onClick={() => openCompanyDetail(row)}>Xem công ty</SecondaryButton>
+              </div>
+            );
+          })}
+          {!intelligenceLoading && attentionRows.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
+          {intelligenceLoading && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang xác minh tín hiệu doanh nghiệp...</p>}
+          </section>
+        </>
+      )}
+
+
+      {mainTab === 'signals' && (
+        <section className="ecosystem-signals" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Tín hiệu kinh doanh gần đây</h2>
+        {displayedSignals.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--cds-border-subtle-00)', fontWeight: 600, fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
+            <div>Doanh nghiệp / Phân loại</div>
+            <div>Tín hiệu / Tin tức</div>
+            <div>Business Impact</div>
+            <div>Ngày ghi nhận</div>
+            <div>Nguồn bằng chứng</div>
+          </div>
+        )}
+        {displayedSignals.map((signal) => (
+          <div className="ecosystem-signal-row" key={`${signal.companyId}-${signal.id}`} style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
+            <div>
+              <strong style={{ fontSize: '12px', color: 'var(--cds-text-primary)' }}>{signal.companyName}</strong>
+              <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.category}</div>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={signal.title}>
+                {signal.title}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: impactColor(signal.businessImpact) }}>
+                {displayImpact(signal.businessImpact)}
+              </span>
+            </div>
+            <div>
+              <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.date ? formatDate(signal.date) : 'Đã xác minh'}</span>
+            </div>
+            <div>
+              {signal.sourceUrl ? (
+                <a href={signal.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: 'var(--cds-link-primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  <span>Xem nguồn</span>
+                  <ExternalLink size={10} />
+                </a>
+              ) : (
+                <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.source || 'N/A'}</span>
+              )}
+            </div>
+          </div>
+        ))}
+        {displayedSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
+        </section>
+      )}
+
+      {mainTab === 'projects' && (
+        <section style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px', overflowX: 'auto' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Kết nối dự án và công ty</h2>
+        {projects.filter((project) => project.targetCompanyName).length > 0 ? (
+          <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: 'var(--cds-text-secondary)', background: 'var(--cds-layer-01)' }}>
+                <th style={{ padding: '9px' }}>Dự án</th>
+                <th style={{ padding: '9px' }}>Doanh nghiệp đích</th>
+                <th style={{ padding: '9px' }}>Mối quan hệ</th>
+                <th style={{ padding: '9px' }}>Vai trò dự án</th>
+                <th style={{ padding: '9px' }}>Trạng thái</th>
+                <th style={{ padding: '9px' }}>Business Impact</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.filter((project) => project.targetCompanyName).map((project) => {
+                const row = allRows.find((company) => company.id === project.targetCompanyProfileId || company.name === project.targetCompanyName);
+                const intelligence = row ? intelligenceFor(row) : null;
+                return (
+                  <tr key={project.id} style={{ borderTop: '1px solid var(--cds-border-subtle-00)' }}>
+                    <td style={{ padding: '9px', fontWeight: 600 }}>{cleanText(project.projectName) || 'N/A'}</td>
+                    <td style={{ padding: '9px' }}>{cleanText(project.targetCompanyName) || 'N/A'}</td>
+                    <td style={{ padding: '9px' }}>{row ? viRelationship(row.relationship) : 'N/A'}</td>
+                    <td style={{ padding: '9px' }}>{project.targetRelationshipType || 'N/A'}</td>
+                    <td style={{ padding: '9px' }}>
+                      <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        {project.status || 'N/A'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px', color: impactColor(intelligence?.businessImpact ?? null), fontWeight: 600 }}>
+                      {displayImpact(intelligence?.businessImpact ?? null)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa ghi nhận dự án liên kết với doanh nghiệp nào trong hệ sinh thái.</p>
+        )}
+        </section>
+      )}
+
+      {mainTab === 'directory' && (
+        <>
+          <FilterBar
+            searchValue={search}
+            searchPlaceholder={t('filters.searchPlaceholder')}
+            onSearchChange={setSearch}
+            filters={filters}
+          />
+
+          {/* ── Enterprise Table ──────────────────────────────────────────────── */}
+          <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+                {t('sections.directory')}
+              </h2>
+            </div>
+            <DataTable<PartnerRow>
+              columns={columns}
+              data={filteredRows}
+              rowKey={(row) => row.id}
+              onRowClick={openDrawer}
+              pageSize={10}
+              exportFilename="partner-ecosystem"
+              loading={loading}
+              emptyState={
+                <EmptyState
+                  title={t('sections.noCompanies')}
+                  body={t('sections.tryFilters')}
+                  action={
+                    <PrimaryButton size="sm" onClick={() => { setSearch(''); setFilterIndustry('All'); setFilterRel('All'); setFilterStatus('All'); setFilterImportance('All'); }}>
+                      {t('sections.resetFilters')}
+                    </PrimaryButton>
+                  }
+                />
+              }
+            />
+          </div>
+        </>
+      )}
 
       {/* ── Right-side Drawer ─────────────────────────────────────────────── */}
       <Drawer
@@ -778,25 +1171,53 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
           </>
         }
       >
-        {selectedRow && (
-          <>
-            {/* Metadata strip */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '12px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-              <StatusBadge status={viStatus(selectedRow.status)} />
-              <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>Mức độ quan trọng:</span>
-              <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{selectedRow.importance}</strong>
-              <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--cds-text-helper)' }}>Cập nhật: {formatDate(selectedRow.latestActivity?.date)}</span>
-            </div>
+        {selectedRow && (() => {
+          const intelligence = intelligenceFor(selectedRow);
+          return (
+            <>
+              {/* Partner Intelligence Header Strip */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingBottom: '12px', borderBottom: '1px solid var(--cds-border-subtle-00)', marginBottom: '12px' }}>
+                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--cds-interactive)', color: '#fff', fontWeight: 700 }}>PARTNER</span>
+                <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>{viRelationship(selectedRow.relationship)}</span>
+                <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>·</span>
+                <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>{selectedRow.industry}</span>
 
-            {/* Tabs */}
-            <Tabs items={DRAWER_TABS} activeId={drawerTab} onChange={setDrawerTab} />
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
+                    Cập nhật: {intelligence.lastUpdated ? formatDate(intelligence.lastUpdated) : 'Chưa có'}
+                  </span>
+                  <button
+                    onClick={() => void handleSyncPartner(selectedRow.id)}
+                    disabled={syncingPartnerId === selectedRow.id}
+                    style={{
+                      background: 'var(--cds-interactive)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    {syncingPartnerId === selectedRow.id ? 'Đang cập nhật...' : '↻ Cập nhật'}
+                  </button>
+                </div>
+              </div>
 
-            {/* Tab content */}
-            <div style={{ marginTop: '16px' }}>
-              {renderDrawerTab()}
-            </div>
-          </>
-        )}
+              {/* Tabs */}
+              <Tabs items={DRAWER_TABS} activeId={drawerTab} onChange={setDrawerTab} wrap={true} />
+
+              {/* Tab content */}
+              <div style={{ marginTop: '16px' }}>
+                {renderDrawerTab()}
+              </div>
+            </>
+          );
+        })()}
       </Drawer>
 
       <style>{`
@@ -814,3 +1235,4 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     </div>
   );
 };
+

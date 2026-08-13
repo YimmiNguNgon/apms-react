@@ -1,0 +1,81 @@
+{
+  "hero": {
+    "administration": "Administration",
+    "title": "System Administrator Workspace",
+    "subtitle": "Monitor platform health, security, users and system activity."
+  },
+  "buttons": {
+    "refresh": "Refresh",
+    "exportAudit": "Export Audit",
+    "createAccount": "Create Account"
+  },
+  "stats": {
+    "totalUsers": "Total users",
+    "activeUsers": "Active users",
+    "pendingInactive": "Pending / Inactive",
+    "securityAlerts": "Security alerts",
+    "nonDeleted": "Non-deleted accounts",
+    "enabledAccounts": "Enabled accounts",
+    "disabledPending": "Disabled or pending accounts",
+    "failedDenied": "Failed/denied events in recent logs"
+  },
+  "bento": {
+    "title": "System Health",
+    "subtitle": "Real-time database and service connectivity checks.",
+    "checking": "Checking…",
+    "notAvailable": "Not available",
+    "healthUnavailable": "Health check unavailable",
+    "noResponse": "Backend health endpoint did not respond",
+    "latency": "Latency: ",
+    "checked": "Checked: "
+  },
+  "audit": {
+    "title": "Security & Audit",
+    "subtitle": "Review security, authentication, access and configuration events.",
+    "viewAuditLog": "View audit log",
+    "securityAlerts": "Security alerts",
+    "failedLogins": "Failed login attempts",
+    "permissionChanges": "Permission changes",
+    "all": "All",
+    "security": "Security",
+    "authentication": "Authentication",
+    "usersRoles": "Users & Roles",
+    "systemConfig": "System Configuration",
+    "searchPlaceholder": "Search audit log",
+    "loadingRecords": "Loading audit records…",
+    "noRecords": "No audit records available."
+  },
+  "role": {
+    "title": "User & Role Overview",
+    "subtitle": "Account distribution by role.",
+    "manage": "Manage roles"
+  },
+  "activity": {
+    "title": "Recent Admin Activity",
+    "subtitle": "Latest recorded administrative and security events.",
+    "loading": "Loading recent activity…",
+    "table": {
+      "timestamp": "Timestamp",
+      "actor": "Actor",
+      "action": "Action",
+      "target": "Target",
+      "status": "Status"
+    }
+  },
+  "tabs": {
+    "audit": "Security & audit",
+    "activity": "Admin activity",
+    "system": "System & roles",
+    "quick": "Quick actions"
+  },
+  "quick": {
+    "title": "Quick Actions",
+    "subtitle": "Open administrative tools.",
+    "createUser": "Create User",
+    "manageUsers": "Manage Users",
+    "manageRoles": "Manage Roles",
+    "managePermissions": "Manage Permissions",
+    "viewAuditLog": "View Audit Log",
+    "systemSettings": "System Settings"
+  }
+}
