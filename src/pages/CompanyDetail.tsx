@@ -870,18 +870,19 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         return <div style={{ padding: '4px 0' }}><FinancialsTab companyId={resolvedId} /></div>;
       case 'news':
         return (
-          <div style={{ padding: '4px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ padding: '4px 0' }}>
             <NewsTab companyId={resolvedId} />
-            {currentUser?.role !== ROLES.STAFF && (
-              <div style={{ borderTop: '1px dashed #E2E8F0', paddingTop: '16px' }}>
-                <h4 style={{ margin: '0 0 10px', fontSize: '0.76rem', color: '#B91C1C', fontWeight: 800 }}>{t('detail.confidentialNews')}</h4>
-                <ConfidentialNewsTab companyId={resolvedId} userRole={currentUser?.role} />
-              </div>
-            )}
+          </div>
+        );
+      case 'internal-news':
+        if (currentUser?.role === ROLES.STAFF) return null;
+        return (
+          <div style={{ padding: '4px 0' }}>
+            <ConfidentialNewsTab companyId={resolvedId} userRole={currentUser?.role} />
           </div>
         );
       case 'documents':
-        return <div style={{ padding: '4px 0' }}><DocumentsTab companyProfileId={relationshipClosenessProfileId} /></div>;
+        return <div style={{ padding: '4px 0' }}><DocumentsTab companyProfileId={relationshipClosenessProfileId} userRole={currentUser?.role} /></div>;
       default:
         return null;
     }
@@ -1086,7 +1087,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         </div>
 
         {/* Tab Navigation */}
-        <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId={resolvedId} />
+        <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId={resolvedId} userRole={currentUser?.role} />
 
         {renderTabContent()}
       </div>

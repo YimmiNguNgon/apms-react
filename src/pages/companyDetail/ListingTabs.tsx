@@ -12,10 +12,17 @@ interface ListingTabsProps {
   userRole?: string | null;
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange }) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole }) => {
+  const tabs = LISTING_TABS.filter((tab) => {
+    if (tab.id === 'internal-news' && userRole === 'BUSINESS_DEVELOPMENT_STAFF') {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <div className={styles.tabBar} role="tablist">
-      {LISTING_TABS.map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"

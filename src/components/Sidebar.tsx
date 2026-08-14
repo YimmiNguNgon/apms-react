@@ -121,6 +121,18 @@ const MANAGER_MENU: MenuSection[] = [
       // { id: 'suggested-actions-approval',  label: 'Approvals',      badge: 5, badgeType: 'warning' },
     ],
   },
+    {
+    title: "menu.operations",
+    items: [
+      // { id: 'project-management',      label: 'menu.projectManagement' },
+      // { id: 'system-chat',             label: 'menu.chat' },
+      { id: "project-management", label: "Project" },
+      // { id: 'score-rules',             label: 'Score Workspace' },
+      { id: "system-chat", label: "Chat" },
+      // { id: 'competitor-intelligence', label: 'Competitor Intel' },
+      // { id: 'analysis-history',        label: 'Analysis History' },
+    ],
+  },
   // {
   //   title: 'Performance',
   //   items: [
@@ -149,17 +161,12 @@ const STAFF_MENU: MenuSection[] = [
     ],
   },
   {
-    title: 'menu.workQueue',
+    title: "menu.workQueue",
     items: [
-      // { id: 'my-tasks',            label: 'My Tasks' },
-      // { id: 'project-management',  label: 'menu.projectManagement' },
-      // { id: 'system-chat',         label: 'menu.chat' },
-      // { id: 'ai-extracted-data',   label: 'AI Extraction Queue', badge: 7, badgeType: 'warning' },
-      // { id: 'candidate-review',    label: 'Candidate Review' },
-      { id: 'company-profiles',    label: 'menu.companyProfiles' },
-      // { id: 'news',                label: 'menu.crawlerArticles' },
-      // { id: 'company-profiles',    label: 'Company Profiles' },
-      { id: 'news',                label: 'News' },
+      { id: "project-management", label: "Project" },
+      { id: "system-chat", label: "Chat" },
+      { id: "company-profiles", label: "menu.companyProfiles" },
+      { id: "news", label: "News" },
     ],
   },
   // {

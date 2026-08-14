@@ -407,9 +407,9 @@ export const News: React.FC<NewsProps> = () => {
       {/* ── Top Stories (Featured + Secondary) ────────────── */}
       {featuredArticle && (
         <>
-          <div className={styles.sectionHeader}>
+          {/* <div className={styles.sectionHeader}>
             <h2 className={styles.sectionTitle}>Top Stories</h2>
-          </div>
+          </div> */}
           <div className={styles.topStories}>
             
             {/* Featured Card - Clicking anywhere opens original article URL in new tab */}

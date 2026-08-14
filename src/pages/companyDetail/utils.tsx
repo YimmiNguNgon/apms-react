@@ -10,6 +10,7 @@ export type ListingTabId =
   | 'board'
   | 'financials'
   | 'news'
+  | 'internal-news'
   | 'documents';
 
 export interface ListingTabDef {
@@ -26,6 +27,7 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'board', label: 'Ban lãnh đạo', icon: <Shield size={14} /> },
   { id: 'financials', label: 'Tài chính', icon: <FileText size={14} /> },
   { id: 'news', label: 'Tin tức', icon: <Newspaper size={14} /> },
+  { id: 'internal-news', label: 'Tin tức nội bộ', icon: <Shield size={14} /> },
   { id: 'documents', label: 'Tài liệu', icon: <FileText size={14} /> },
 ];
 
