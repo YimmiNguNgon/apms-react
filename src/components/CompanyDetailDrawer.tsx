@@ -185,13 +185,31 @@ export const CompanyDetailDrawer: React.FC<CompanyDetailDrawerProps> = ({
                       letterSpacing: '0.03em',
                     }}
                   >
-                    {relationshipType.replace('_', ' ')}
+                    {(() => {
+                      const t = relationshipType.toLowerCase();
+                      if (t.includes('competitor')) return 'Competitor';
+                      if (t.includes('supplier')) return 'Supplier';
+                      if (t.includes('customer')) return 'Customer';
+                      if (t.includes('potential')) return 'Potential Partner';
+                      if (t.includes('partner')) return 'Partner';
+                      return relationshipType.replace(/_/g, ' ');
+                    })()}
                   </span>
                 )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-body)', color: '#94A3B8' }}>
-                <span>{relationshipType ? relationshipType.replace('_', ' ') : 'Doanh nghiệp'}</span>
+                <span>
+                  {relationshipType ? (() => {
+                    const t = relationshipType.toLowerCase();
+                    if (t.includes('competitor')) return 'Competitor';
+                    if (t.includes('supplier')) return 'Supplier';
+                    if (t.includes('customer')) return 'Customer';
+                    if (t.includes('potential')) return 'Potential Partner';
+                    if (t.includes('partner')) return 'Partner';
+                    return relationshipType.replace(/_/g, ' ');
+                  })() : 'Doanh nghiệp'}
+                </span>
               </div>
             </div>
           </div>

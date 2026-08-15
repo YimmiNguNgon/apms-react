@@ -339,11 +339,15 @@ export interface ComplianceInfo {
 export interface CandidateResponse {
   id: string;
   projectId: string;
-  importJobId: string;
-  rawDocumentId: string;
+  taskId?: number;
+  importJobId?: string;
+  rawDocumentId?: string;
+  sourceDocumentIds?: string[];
   candidateOrder?: number;
   revisionNumber?: number;
+  documentVersion?: number;
   status: CandidateStatus;
+  extractionSource?: { extractionMethod: string; providerName?: string };
   suggestedRelationshipType?: RelationshipType;
   relationshipConfidenceScore?: number;
   relationshipTypeOverride?: RelationshipType;

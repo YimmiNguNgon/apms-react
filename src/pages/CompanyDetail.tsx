@@ -1073,7 +1073,18 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     letterSpacing: '0.3px',
                   }}
                 >
-                  PARTNER ECOSYSTEM
+                  {(() => {
+                    const type = profile.relationshipType;
+                    if (!type) return 'ENTERPRISE';
+                    switch (type.toUpperCase()) {
+                      case 'PARTNER_WITH': return 'Partner';
+                      case 'COMPETITOR_OF': return 'Competitor';
+                      case 'SUPPLIER_OF': return 'Supplier';
+                      case 'CUSTOMER_OF': return 'Customer';
+                      case 'POTENTIAL_PARTNER_OF': return 'Potential Partner';
+                      default: return type.replace(/_/g, ' ');
+                    }
+                  })()}
                 </span>
               )}
               {profile.business?.industries?.[0] && (

@@ -133,11 +133,16 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
         {(() => {
           let parsedFileName = '';
           let parsedEvidenceText = fieldResult?.evidenceText || '';
+          let parsedPage: string | number | undefined = fieldResult?.pageNumber;
+
           if (parsedEvidenceText.trim()) {
-            const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^\]]+?)\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
+            const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^|\]]+?)(?:\s*\|\s*([^\]]+?))?\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
             if (rawMatch) {
               parsedFileName = rawMatch[1].trim();
-              parsedEvidenceText = rawMatch[3].trim();
+              if (rawMatch[3]) {
+                parsedPage = rawMatch[3].trim();
+              }
+              parsedEvidenceText = rawMatch[4].trim();
             }
           }
 
@@ -188,8 +193,12 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
                               📄 {parsedFileName || 'Source Document'}
                             </strong>
                             <span style={{ background: '#e0e7ff', color: '#3730a3', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>PDF</span>
-                            {fieldResult.pageNumber ? (
-                              <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page {fieldResult.pageNumber}</span>
+                            {parsedPage ? (
+                              <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                {String(parsedPage).toLowerCase().includes('page') || String(parsedPage).toLowerCase().includes('trang') 
+                                  ? parsedPage 
+                                  : `Page ${parsedPage}`}
+                              </span>
                             ) : (
                               <span style={{ background: '#f1f5f9', color: '#94a3b8', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page not identified</span>
                             )}
