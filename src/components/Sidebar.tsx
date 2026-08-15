@@ -168,7 +168,7 @@ const STAFF_MENU: MenuSection[] = [
       { id: "system-chat", label: "Chat" },
       { id: 'owner-profile', label: 'My Enterprise' },
       // { id: "company-profiles", label: "menu.companyProfiles" },
-      { id: "news", label: "News" },
+      // { id: "news", label: "News" },
     ],
   },
   // {
