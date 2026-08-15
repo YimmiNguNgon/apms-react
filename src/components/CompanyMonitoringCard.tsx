@@ -21,6 +21,9 @@ import type {
   MonitoringReviewResult
 } from '../types/domain';
 import { useUser, ROLES } from '../context/UserContext';
+import { CompanyRelationshipChangeModal } from './CompanyMonitoring/CompanyRelationshipChangeModal';
+import { PendingProposalsList } from './CompanyMonitoring/PendingProposalsList';
+import { CompanyRelationshipHistoryList } from './CompanyMonitoring/CompanyRelationshipHistoryList';
 import styles from './CompanyMonitoringCard.module.css';
 
 interface CompanyMonitoringCardProps {
@@ -42,6 +45,8 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<MonitoringReviewResult>('NO_CHANGE');
   const [reviewNote, setReviewNote] = useState('');
+
+  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
 
   const fetchAssignment = async () => {
     try {
@@ -109,6 +114,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
   const handleSubmitReview = async () => {
     if (!assignment) return;
+
     try {
       let finalProposalId = undefined;
       
@@ -280,9 +286,14 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
           </div>
 
           {canReview && assignment.assignmentStatus === 'ACTIVE' && !isReviewing && (
-            <button onClick={() => setIsReviewing(true)} className={styles.reviewButton}>
-              {t('submit_review', 'Submit Review')}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setIsReviewing(true)} className={styles.reviewButton}>
+                {t('submit_review', 'Submit Review')}
+              </button>
+              <button onClick={() => setIsRelationshipModalOpen(true)} className={styles.secondaryButton}>
+                Propose Relationship Change
+              </button>
+            </div>
           )}
 
           {isReviewing && (
@@ -326,6 +337,19 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
             </div>
           )}
         </div>
+      )}
+
+      {canManage && <PendingProposalsList companyProfileId={companyProfileId} />}
+
+      <CompanyRelationshipHistoryList companyProfileId={companyProfileId} />
+
+      {assignment && (
+        <CompanyRelationshipChangeModal
+          open={isRelationshipModalOpen}
+          onClose={() => setIsRelationshipModalOpen(false)}
+          assignmentId={assignment.id}
+          onSuccess={fetchAssignment}
+        />
       )}
     </div>
   );

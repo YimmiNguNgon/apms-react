@@ -1241,7 +1241,7 @@ export interface OwnerCompanyIntelligenceResponse {
 
 export type MonitoringFrequency = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUALLY';
 export type MonitoringStatus = 'ACTIVE' | 'PAUSED' | 'CANCELLED';
-export type MonitoringReviewResult = 'NO_CHANGE' | 'UPDATE_PROPOSED';
+export type MonitoringReviewResult = 'NO_CHANGE' | 'UPDATE_PROPOSED' | 'RELATIONSHIP_CHANGE_PROPOSED';
 
 export interface CompanyMonitoringAssignmentRequest {
   companyProfileId: string;
@@ -1289,3 +1289,44 @@ export interface CompanyMonitoringReviewResponse {
   note: string | null;
 }
 
+export interface RelationshipChangeProposalRequest {
+  newRelationshipType: string;
+  reason?: string;
+  effectiveAt?: string;
+}
+
+export interface RelationshipChangeReviewRequest {
+  rejectReason?: string;
+}
+
+export interface RelationshipChangeProposalResponse {
+  id: number;
+  companyProfileId: string;
+  monitoringAssignmentId: number;
+  oldRelationshipType: string;
+  newRelationshipType: string;
+  reason?: string;
+  effectiveAt?: string;
+  proposedByAccountId: number;
+  proposedByAccountName: string;
+  proposedAt: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedByAccountId?: number;
+  reviewedByAccountName?: string;
+  reviewedAt?: string;
+  rejectReason?: string;
+}
+
+export interface RelationshipHistoryResponse {
+  id: number;
+  companyProfileId: string;
+  oldRelationshipType: string;
+  newRelationshipType: string;
+  reason?: string;
+  effectiveAt?: string;
+  changedAt: string;
+  proposedByAccountId: number;
+  proposedByAccountName: string;
+  approvedByAccountId: number;
+  approvedByAccountName: string;
+}
