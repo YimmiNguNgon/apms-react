@@ -72,16 +72,7 @@ const safeApiGet = <T>(
 ): Promise<T | null> => api.get<T>(url, { params }).then((res) => res.data ?? null).catch(() => null);
 
 const fetchProfile = async (companyId: string): Promise<ProfileResponse | null> => {
-  const profile = await safeApiGet<ProfileResponse>(`/company-profiles/${companyId}`)
-    ?? await safeApiGet<ProfileResponse>(`/profiles/${companyId}`);
-
-  if (profile || companyId !== '6a31a0000000000000000001') return profile;
-  return safeApiGet<ProfileResponse>('/owner/company-profile');
-};
-
-const fetchOwnerSnapshot = async (companyId: string): Promise<OwnerProfileSnapshot | null> => {
-  if (!companyId || companyId.toLowerCase() !== OWNER_COMPANY_ID.toLowerCase()) return null;
-  return safeApiGet<OwnerProfileSnapshot>('/owner/company-profile/snapshot');
+  return safeApiGet<ProfileResponse>(`/profiles/${companyId}`);
 };
 
 const classifyBoardGroup = (position?: string, role?: string): number => {
@@ -115,22 +106,6 @@ export const listingDataApi = {
   },
 
   getBoardMembers: async (companyId: string): Promise<ListingTabResponse<CompanyBoardMember[]>> => {
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot) {
-      const members = (snapshot.boardMembers ?? []).map((member, index) => ({
-        id: index + 1,
-        companyId,
-        name: member.fullName ?? null,
-        position: member.position ?? null,
-        positionGroup: classifyBoardGroup(member.position),
-        imageUrl: member.imageUrl ?? null,
-        profileUrl: member.sourceUrl ?? null,
-        education: member.notes ?? null,
-        personType: member.role ?? member.notes ?? null,
-        crawledAt: member.researchedAt ?? snapshot.fetchedAt ?? null,
-      }));
-      return { hasData: members.length > 0, crawledAt: snapshot.fetchedAt ?? null, data: members };
-    }
     const profile = await fetchProfile(companyId);
     const members = (profile?.companyMembers ?? []).map((member, index) => ({
       id: index + 1,
@@ -153,25 +128,11 @@ export const listingDataApi = {
   },
 
   getOwnershipStructure: async (companyId: string): Promise<ListingTabResponse<CompanyOwnership[]>> => {
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    const ownership = (snapshot?.ownership ?? []).map((item, index) => ({
-      id: index + 1, companyId, holderName: item.holderName ?? null, representedBy: item.representedBy ?? null,
-      ownershipPercent: item.ownershipPercent ?? null, ownershipType: item.ownershipType ?? null,
-      sourceUrl: item.sourceUrl ?? null, crawledAt: snapshot?.fetchedAt ?? null,
-    }));
-    return { hasData: ownership.length > 0, crawledAt: snapshot?.fetchedAt ?? null, data: ownership };
+    const profile = await fetchProfile(companyId);
+    return { hasData: false, crawledAt: profile?.metadata?.updatedAt ?? null, data: [] };
   },
 
   getFinancials: async (companyId: string): Promise<ListingTabResponse<CompanyFinancial[]>> => {
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot) {
-      const reports = (snapshot.financialReports ?? []).map((report, index) => ({
-        id: index + 1, companyId, reportType: report.reportType ?? null, periodType: report.periodType ?? null,
-        reportYear: report.reportYear ?? null, reportPeriod: report.reportPeriod ?? null,
-        itemsJson: report.itemsJson ?? null, sourceUrl: report.sourceUrl ?? null, crawledAt: snapshot.fetchedAt ?? null,
-      }));
-      return { hasData: reports.length > 0, crawledAt: snapshot.fetchedAt ?? null, data: reports };
-    }
     const profile = await fetchProfile(companyId);
     if (!profile) return { hasData: false, crawledAt: null, data: [] };
 
@@ -182,7 +143,8 @@ export const listingDataApi = {
       { code: 'PROFIT_MARGIN', name: 'Profit margin (%)', value: financial?.profitMargin },
       { code: 'DEBT_RATIO', name: 'Debt ratio', value: financial?.debtRatio },
       { code: 'CHARTER_CAPITAL', name: 'Charter capital', value: financial?.charterCapital ?? profile.financials?.charterCapital },
-    ].filter((value): value is { code: string; name: string; value: number } => typeof value.value === 'number');
+    ].map(v => ({ ...v, value: typeof v.value === 'string' ? parseFloat(v.value) : v.value }))
+     .filter((value): value is { code: string; name: string; value: number } => typeof value.value === 'number' && !isNaN(value.value));
 
     if (values.length === 0) {
       return { hasData: false, crawledAt: profile.metadata?.updatedAt ?? null, data: [] };
@@ -218,15 +180,6 @@ export const listingDataApi = {
   },
 
   getNews: async (companyId: string): Promise<ListingTabResponse<CompanyNews[]>> => {
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot && snapshot.news && snapshot.news.length > 0) {
-      const news = (snapshot.news ?? []).map((item, index) => ({
-        id: index + 1, companyId, title: item.title ?? null, summary: item.summary ?? null,
-        category: item.category ?? null, sourceName: item.sourceName ?? null, sourceUrl: item.sourceUrl ?? null,
-        publishedAt: item.publishedAt ?? null, crawledAt: snapshot.fetchedAt ?? null,
-      }));
-      return { hasData: news.length > 0, crawledAt: snapshot.fetchedAt ?? null, data: news };
-    }
 
     const response = await externalDataApi.getNewsByCompanyId(companyId, 0, 100);
     const news = (response.content || []).map((article, index) => ({
@@ -252,15 +205,6 @@ export const listingDataApi = {
   getDocuments: async (companyId: string, query?: DocumentQuery): Promise<ListingPageResponse<CompanyDocument>> => {
     const page = query?.page ?? 0;
     const size = query?.size ?? 20;
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot) {
-      const content = (snapshot.documents ?? [])
-        .map((item, index) => ({ id: index + 1, companyId, docType: item.docType ?? null, docTitle: item.docTitle ?? null,
-          fileUrl: item.fileUrl ?? null, reportYear: item.reportYear ?? null, publishedAt: item.publishedAt ?? null, crawledAt: snapshot.fetchedAt ?? null }))
-        .filter((document) => !query?.year || document.reportYear === query.year)
-        .filter((document) => !query?.type || document.docType === query.type);
-      return { hasData: content.length > 0, crawledAt: snapshot.fetchedAt ?? null, content, pageNumber: page, pageSize: size, totalElements: content.length, totalPages: content.length ? 1 : 0 };
-    }
     const contracts = await safeApiGet<ContractPage>(`/company-profiles/${companyId}/partner-contracts`, { page, size });
     const profile = await fetchProfile(companyId);
     const listingDocument = profile?.stockTicker && profile?.stockExchange && profile.stockExchange !== 'NONE'
@@ -298,9 +242,14 @@ export const listingDataApi = {
     };
   },
 
-  getDocumentYears: async (companyId: string): Promise<number[]> => {
-    const snapshot = await fetchOwnerSnapshot(companyId);
-    if (snapshot) return [...new Set((snapshot.documents ?? []).map((item) => item.reportYear).filter((year): year is number => typeof year === 'number'))].sort((a, b) => b - a);
-    return [];
+  getReportYears: async (companyId: string): Promise<number[]> => {
+    const profile = await fetchProfile(companyId);
+    if (!profile) return [];
+    
+    const years = new Set<number>();
+    const updatedAtYear = Number(profile.metadata?.updatedAt?.slice(0, 4));
+    if (updatedAtYear && !isNaN(updatedAtYear)) years.add(updatedAtYear);
+    
+    return Array.from(years).sort((a, b) => b - a);
   },
 };

@@ -1,32 +1,32 @@
 {
   "header": {
-    "accountProfile": "Hồ sơ Tài khoản",
-    "title": "Hồ sơ Tài khoản - {{name}}",
-    "saved": "Đã lưu thay đổi",
-    "editProfile": "Chỉnh sửa hồ sơ",
-    "cancel": "Hủy",
-    "saving": "Đang lưu...",
-    "save": "Lưu thay đổi"
+    "accountProfile": "Account Profile",
+    "title": "Account Profile - {{name}}",
+    "saved": "Changes saved",
+    "editProfile": "Edit Profile",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "save": "Save Changes"
   },
   "summary": {
-    "permissionSummary": "Tóm tắt phân quyền",
-    "allowedPages": "Trang được phép truy cập",
-    "morePages": "+{{count}} trang khác"
+    "permissionSummary": "Permissions Summary",
+    "allowedPages": "Allowed Access Pages",
+    "morePages": "+{{count}} other pages"
   },
   "info": {
-    "personalInfo": "Thông tin cá nhân",
-    "fullName": "Họ và tên",
-    "email": "Email",
-    "phone": "Số điện thoại",
-    "dept": "Phòng ban",
-    "bio": "Mô tả / Tiểu sử"
+    "personalInfo": "Personal Information",
+    "fullName": "Full Name",
+    "email": "Email Address",
+    "phone": "Phone Number",
+    "dept": "Department",
+    "bio": "Bio / Overview"
   },
   "security": {
-    "securityAccount": "Bảo mật & Mật khẩu",
-    "currentPassword": "Mật khẩu hiện tại *",
-    "newPassword": "Mật khẩu mới *",
-    "confirmNewPassword": "Xác nhận mật khẩu mới *",
-    "changing": "Đang cập nhật...",
-    "changePassword": "Đổi mật khẩu"
+    "securityAccount": "Security & Password",
+    "currentPassword": "Current Password *",
+    "newPassword": "New Password *",
+    "confirmNewPassword": "Confirm New Password *",
+    "changing": "Updating...",
+    "changePassword": "Change Password"
   }
 }

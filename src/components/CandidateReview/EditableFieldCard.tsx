@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit3, Check, X, Undo2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Edit3, Check, X, Undo2, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import type { AiFieldResult } from '../../types/domain';
 import styles from './CandidateReview.module.css';
 
@@ -116,89 +116,147 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
           ) : (
             currentValueDisplay
           )}
-          
-          {!isEditing && (
-            <div className={styles.evidenceLine}>
-              {isManagerApproved && (
-                <>
-                  <span>Approved in Round {fieldResult?.previousReviewedRevision || fieldResult?.changedInRevision || ''}</span>
-                  <span>&middot;</span>
-                  <span>Locked</span>
-                </>
-              )}
-              {isValidationFail && (
-                <span className={`${styles.validationBadge} ${styles.validFail}`}>
-                  Validation Issue
-                </span>
-              )}
-              {fieldResult?.evidenceText && (
-                <>
-                  <button 
-                    type="button" 
-                    className={styles.evidenceViewBtn} 
-                    onClick={() => setExpandedEvidence(!expandedEvidence)}
-                  >
-                    {expandedEvidence ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    Evidence
-                  </button>
-                  <span>&middot;</span>
-                  <span>{expandedEvidence ? `"${fieldResult.evidenceText}"` : '1 source'}</span>
-                  {expandedEvidence && fieldResult.pageNumber && <span>(Page {fieldResult.pageNumber})</span>}
-                </>
-              )}
-            </div>
-          )}
-          {!isEditing && isReturned && (
-            <div className={styles.managerFeedbackInline}>
-              {previousSubmittedValue !== undefined && (
-                <div>
-                  <span>Previous submitted value</span>
-                  <strong>{typeof previousSubmittedValue === 'string' ? previousSubmittedValue : JSON.stringify(previousSubmittedValue)}</strong>
-                </div>
-              )}
-              <div>
-                <span>Manager feedback</span>
-                <strong>{managerFeedback || 'Manager requested a change.'}</strong>
-              </div>
-              {fieldResult?.previousManagerReviewStatus && (
-                <small>{fieldResult.previousManagerReviewStatus} in Round {fieldResult.previousReviewedRevision || 1}</small>
+
+          {isEditing && (
+            <div className={styles.editControls}>
+              <button className={`${styles.btnCompact} ${styles.btnSave}`} onClick={onSave} disabled={disabled}><Check size={14}/> Save</button>
+              <button className={styles.btnCompact} onClick={onCancel} disabled={disabled}><X size={14}/> Cancel</button>
+              {fieldResult?.staffReviewStatus === 'EDITED' && (
+                <button className={`${styles.btnCompact} ${styles.btnRestore}`} onClick={onRestore} disabled={disabled} title="Restore to extracted value">
+                  <Undo2 size={14}/> Restore
+                </button>
               )}
             </div>
           )}
         </div>
-        
-        {!isEditing && (
-          <div className={styles.fieldFooter}>
-            <div className={styles.fieldFooterLeft}>
-              {isEdited ? (
-                <span className={`${styles.reviewBadge} ${styles.reviewEdited}`}>
-                  {isAdded ? 'Added' : isRemoved ? 'Removed' : 'Edited'}
-                </span>
-              ) : null}
-            </div>
-            <div className={styles.fieldFooterRight}>
-              {disabled ? (
-                <span className={styles.textConfirmed} style={{ color: '#6b7280', fontSize: '12px' }}>🔒 Locked</span>
-              ) : (
-                <>
-                  <button className={styles.btnCompact} onClick={handleEditClick}>
-                    <Edit3 size={12}/> Edit
-                  </button>
-                  {!isConfirmed && hasCurrentValue && (
-                    <button className={`${styles.btnCompact} ${styles.btnConfirm}`} onClick={onConfirm}>
-                      <Check size={12}/> Confirm
-                    </button>
+
+        {(() => {
+          let parsedFileName = '';
+          let parsedEvidenceText = fieldResult?.evidenceText || '';
+          if (parsedEvidenceText.trim()) {
+            const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^\]]+?)\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
+            if (rawMatch) {
+              parsedFileName = rawMatch[1].trim();
+              parsedEvidenceText = rawMatch[3].trim();
+            }
+          }
+
+          return (
+            <>
+              {!isEditing && (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(isManagerApproved || isValidationFail) && (
+                    <div className={styles.evidenceLine}>
+                      {isManagerApproved && (
+                        <>
+                          <span>Approved in Round {fieldResult?.previousReviewedRevision || fieldResult?.changedInRevision || ''}</span>
+                          <span>&middot;</span>
+                          <span>Locked</span>
+                        </>
+                      )}
+                      {isValidationFail && (
+                        <span className={`${styles.validationBadge} ${styles.validFail}`}>
+                          Validation Issue
+                        </span>
+                      )}
+                    </div>
                   )}
-                  {isConfirmed && (
-                    <span className={styles.reviewConfirmed} style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Check size={12} /> Confirmed
-                    </span>
+
+                  {fieldResult?.evidenceText && (
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: '#ffffff' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => setExpandedEvidence(!expandedEvidence)}
+                        style={{ 
+                          width: '100%', display: 'flex', alignItems: 'center', gap: '6px', 
+                          padding: '10px 12px', background: '#f8fafc', border: 'none', 
+                          borderBottom: expandedEvidence ? '1px solid #e2e8f0' : 'none',
+                          cursor: 'pointer', color: '#475569', fontSize: '13px', fontWeight: 600 
+                        }}
+                      >
+                        <FileText size={14} color="#3b82f6" /> 
+                        Evidence
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                          {expandedEvidence ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </div>
+                      </button>
+                      
+                      {expandedEvidence && (
+                        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <strong style={{ color: '#0f172a', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              📄 {parsedFileName || 'Source Document'}
+                            </strong>
+                            <span style={{ background: '#e0e7ff', color: '#3730a3', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>PDF</span>
+                            {fieldResult.pageNumber ? (
+                              <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page {fieldResult.pageNumber}</span>
+                            ) : (
+                              <span style={{ background: '#f1f5f9', color: '#94a3b8', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page not identified</span>
+                            )}
+                          </div>
+                          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', fontSize: '13px', color: '#334155', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
+                            {parsedEvidenceText}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
-                </>
+
+                  {!isEditing && isReturned && (
+                    <div className={styles.managerFeedbackInline}>
+                      {previousSubmittedValue !== undefined && (
+                        <div>
+                          <span>Previous submitted value</span>
+                          <strong>{typeof previousSubmittedValue === 'string' ? previousSubmittedValue : JSON.stringify(previousSubmittedValue)}</strong>
+                        </div>
+                      )}
+                      <div>
+                        <span>Manager feedback</span>
+                        <strong>{managerFeedback || 'Manager requested a change.'}</strong>
+                      </div>
+                      {fieldResult?.previousManagerReviewStatus && (
+                        <small>{fieldResult.previousManagerReviewStatus} in Round {fieldResult.previousReviewedRevision || 1}</small>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
-          </div>
-        )}
+              
+              {!isEditing && (
+                <div className={styles.fieldFooter} style={{ marginTop: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
+                  <div className={styles.fieldFooterLeft}>
+                    {isEdited ? (
+                      <span className={`${styles.reviewBadge} ${styles.reviewEdited}`}>
+                        {isAdded ? 'Added' : isRemoved ? 'Removed' : 'Edited'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={styles.fieldFooterRight}>
+                    {disabled ? (
+                      <span className={styles.textConfirmed} style={{ color: '#6b7280', fontSize: '12px' }}>🔒 Locked</span>
+                    ) : (
+                      <>
+                        <button className={styles.btnCompact} onClick={handleEditClick} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600 }}>
+                          <Edit3 size={14}/> Edit
+                        </button>
+                        {!isConfirmed && hasCurrentValue && (
+                          <button className={`${styles.btnCompact} ${styles.btnConfirm}`} onClick={onConfirm} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontWeight: 600 }}>
+                            <Check size={14}/> Confirm
+                          </button>
+                        )}
+                        {isConfirmed && (
+                          <span className={styles.reviewConfirmed} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontWeight: 600 }}>
+                            <Check size={14} /> Confirmed
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

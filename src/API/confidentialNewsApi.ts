@@ -44,6 +44,39 @@ export const confidentialNewsApi = {
     return json.data as PageResponse<CompanyIntelligenceArticleResponse>;
   },
 
+  /** List all approved confidential articles globally (requires step-up token) */
+  getAllArticles: async (
+    stepUpToken: string,
+    companyProfileId?: string,
+    page: number = 0,
+    size: number = 20,
+  ): Promise<PageResponse<CompanyIntelligenceArticleResponse>> => {
+    const token = localStorage.getItem(STORAGE_KEYS.accessToken);
+    let url = `${API_BASE_URL}/owner/confidential-news?page=${page}&size=${size}`;
+    if (companyProfileId && companyProfileId !== 'ALL') {
+      url += `&companyProfileId=${encodeURIComponent(companyProfileId)}`;
+    }
+    const res = await fetch(
+      url,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Step-Up-Token': stepUpToken,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const error: any = new Error(body?.message || `Failed to fetch all confidential news (${res.status})`);
+      error.status = res.status;
+      error.code = body?.code || body?.message;
+      throw error;
+    }
+    const json = await res.json();
+    return json.data as PageResponse<CompanyIntelligenceArticleResponse>;
+  },
+
   /** Get single confidential article (requires step-up token) */
   getArticle: async (
     companyProfileId: string,

@@ -469,15 +469,22 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
             {(evidenceItems as EvidenceItem[]).map((item, index) => {
               const sourceName = stringField(item, ['documentName', 'fileName', 'source', 'rawDocumentId', 'documentId', 'sourceDocumentId']);
               const sourceUrl = stringField(item, ['sourceUrl', 'url']);
-              const page = numberField(item, ['pageNumber', 'page']);
+              const page = numberField(item, ['pageNumber', 'page']) ?? fieldResult?.pageNumber;
               const section = stringField(item, ['section']);
               const evidenceText = evidenceTextOf(item);
-              const sourceMeta = [page !== undefined ? `Page ${page}` : null, section].filter(Boolean).join(' · ');
               return (
                 <article className={styles.inlineEvidenceItem} key={`${sourceName || 'source'}-${page ?? 'na'}-${index}`}>
-                  <div className={styles.inlineEvidenceSourceLine}>
-                    <strong>{sourceName || `Source ${index + 1}`}</strong>
-                    {sourceMeta && <span>{sourceMeta}</span>}
+                  <div className={styles.inlineEvidenceSourceLine} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <strong style={{ color: '#0f172a', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      📄 {sourceName || 'Source Document'}
+                    </strong>
+                    <span style={{ background: '#e0e7ff', color: '#3730a3', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>PDF</span>
+                    {page ? (
+                      <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page {page}</span>
+                    ) : (
+                      <span style={{ background: '#f1f5f9', color: '#94a3b8', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page not identified</span>
+                    )}
+                    {section && <span style={{ background: '#fef3c7', color: '#92400e', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>{section}</span>}
                   </div>
                   <EvidenceText text={evidenceText} />
                   {sourceUrl && (

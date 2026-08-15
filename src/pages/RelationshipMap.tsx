@@ -17,6 +17,7 @@ import {
   Drawer,
   Tabs,
 } from '../components/ui';
+import { CompanyDetail } from './CompanyDetail';
 
 // ─── Types & Interfaces ────────────────────────────────────────────────────────
 export type GroupKey = 'ALL' | 'partner' | 'supplier' | 'competitor' | 'customer' | 'potential-partner';
@@ -644,7 +645,6 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   const handleNodeClick = (node: GraphNode) => {
     if (node.id === centerId) return;
     setSelectedNode(node);
-    setDrawerTab('overview'); // Set default tab to 'overview'
     setDrawerOpen(true);
 
     const level = node.id === centerId ? 0 : (l1NodeIds.has(node.id) ? 1 : 2);
@@ -1279,17 +1279,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       
       {/* 1. Page Header */}
       <PageHeader
-        title={t('title', 'Enterprise Ecosystem Relationship Map')}
-        actions={
-          <>
-            <SecondaryButton size="md" onClick={() => setLayoutMode(layoutMode === 'radial' ? 'grid' : 'radial')}>
-              {t('network.layout', 'Layout')}: {layoutMode === 'radial' ? t('network.radial', 'Radial Radar') : t('network.grid', 'Grid Topography')}
-            </SecondaryButton>
-            <PrimaryButton size="md" loading={refreshing} disabled={refreshing} onClick={() => setDataVersion((v) => v + 1)}>
-              {t('network.refreshTopology', 'Refresh Graph Topology')}
-            </PrimaryButton>
-          </>
-        }
+        title={t('title', 'Dashboard')}
       />
 
       {/* 2. Top KPI Cards and Owner Summary Banner */}
@@ -1854,14 +1844,6 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         title={selectedNode ? `${selectedNode.name}` : ''}
         subtitle={selectedNode ? `${selectedNode.industry} • ${getGroupLabel(selectedNode.group).toUpperCase()}` : ''}
         width={840}
-        footerActions={
-          <>
-            <SecondaryButton size="sm" onClick={exportNodeDossierCsv}>
-              {t('actions.exportDossier', 'Export Dossier')}
-            </SecondaryButton>
-
-          </>
-        }
       >
         {selectedNode && (
           <>
@@ -1877,22 +1859,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             </div>
 
             <div style={{ flexShrink: 0 }}>
-              <Tabs
-                items={DRAWER_TABS.filter(tab => !(['projects'].includes(tab.id) && selectedNode.group === 'competitor')).map((tab) => {
-                  let label = tab.label;
-                  if (tab.id === 'overview') label = t('drawer.overview', 'Overview');
-                  else if (tab.id === 'strength') label = t('drawer.strength', 'Relationship Strength');
-                  else if (tab.id === 'projects') label = t('drawer.projects', 'Shared Projects');
-                  else if (tab.id === 'contacts') label = t('drawer.contacts', 'Contacts');
-                  return { ...tab, label };
-                })}
-                activeId={drawerTab}
-                onChange={setDrawerTab}
-              />
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              {renderDrawerTab()}
+              <CompanyDetail companyId={selectedNode.id} isDrawerMode={true} setActivePage={setActivePage} />
             </div>
           </>
         )}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import i18n from '../i18n';
 import { formatDate as utilFormatDate } from '../utils/format';
-import type { PageResult, ProfileResponse, GraphCompanyDto } from '../types/domain';
+import type { PageResult, ProfileResponse, GraphCompanyDto, DashboardSummaryDto } from '../types/domain';
 import styles from './CompanyProfiles.module.css';
 
 const relationshipLabel = (rel?: string | null) => {
@@ -48,44 +48,33 @@ const profileRelationshipBadge = (profile: ProfileResponse) => {
               (profile as unknown as Record<string, unknown>).relationship ||
               (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
 
-  const relStr = String(rel || 'PARTNER_WITH');
+  const baseStyle = { color: '#475569', background: '#FFFFFF', border: '1px solid #CBD5E1' };
+
+  if (!rel) {
+    return { label: 'None', style: baseStyle };
+  }
+
+  const relStr = String(rel);
 
   switch (relStr) {
     case 'PARTNER_WITH':
     case 'PARTNER':
-      return {
-        label: 'Partner',
-        style: { color: '#1D4ED8', background: '#EFF6FF', border: '1px solid #DBEAFE' },
-      };
+      return { label: 'Partner', style: baseStyle };
     case 'COMPETITOR_OF':
     case 'COMPETITOR':
-      return {
-        label: 'COMPETITOR',
-        style: { color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA' },
-      };
+      return { label: 'Competitor', style: baseStyle };
     case 'SUPPLIER_OF':
     case 'SUPPLIER':
-      return {
-        label: 'SUPPLIER',
-        style: { color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0' },
-      };
+      return { label: 'Supplier', style: baseStyle };
     case 'CUSTOMER_OF':
     case 'CUSTOMER':
-      return {
-        label: 'CUSTOMER',
-        style: { color: '#6B21A8', background: '#F3E8FF', border: '1px solid #E9D5FF' },
-      };
+      return { label: 'Customer', style: baseStyle };
     case 'POTENTIAL_PARTNER_OF':
     case 'INVESTOR':
-      return {
-        label: 'POTENTIAL PARTNER',
-        style: { color: '#4338CA', background: '#EEF2FF', border: '1px solid #C7D2FE' },
-      };
+      return { label: 'Potential Partner', style: baseStyle };
     default:
-      return {
-        label: relStr,
-        style: { color: '#334155', background: '#F1F5F9', border: '1px solid #E2E8F0' },
-      };
+      const defaultLabel = relStr.charAt(0).toUpperCase() + relStr.slice(1).toLowerCase().replace(/_/g, ' ');
+      return { label: defaultLabel, style: baseStyle };
   }
 };
 
@@ -128,13 +117,13 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [relationshipFilter, setRelationshipFilter] = useState('');
 
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
   const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
   const [relationsMap, setRelationsMap] = useState<Record<string, string>>({});
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
 
   const fetchProfiles = async (page = 0) => {
     setLoading(true);
@@ -145,7 +134,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         api.get<PageResult<ProfileResponse>>('/profiles', {
           params: {
             keyword: searchQuery.trim() || undefined,
-            reviewStatus: statusFilter || undefined,
             relationshipType: relationshipFilter || undefined,
             excludeOwner: true,
             page,
@@ -179,7 +167,11 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   };
 
   useEffect(() => {
-    void fetchProfiles(0);
+    const timer = setTimeout(() => void fetchProfiles(0), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery, relationshipFilter]);
+
+  useEffect(() => {
     api.get<GraphCompanyDto[]>('/graph/network').then((res) => {
       if (res.data) {
         const map: Record<string, string> = {};
@@ -198,21 +190,19 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         setRelationsMap(map);
       }
     }).catch(err => console.error('Failed to load graph network', err));
+
+    api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
+      if (res.data) setSummary(res.data);
+    }).catch(err => console.error('Failed to load dashboard summary', err));
   }, []);
 
   const metrics = useMemo(() => {
-    const verified = profiles.filter((profile) => ['APPROVED', 'VERIFIED'].includes(profile.reviewStatus || '')).length;
-    const needsUpdate = profiles.filter((profile) => ['PENDING_REVIEW', 'NEEDS_UPDATE'].includes(profile.reviewStatus || '')).length;
-    const withWebsite = profiles.filter((profile) => Boolean(profile.contact?.website)).length;
-    const industries = new Set(profiles.flatMap((profile) => profile.business?.industries ?? []));
-
     return [
-      { label: t('stats.profiles.label'), value: totalElements || profiles.length, note: t('stats.profiles.note') },
-      { label: t('status.verified'), value: verified, note: t('stats.verified.note') },
-      { label: t('status.needsUpdate'), value: needsUpdate, note: t('stats.needsUpdate.note') },
-      { label: t('stats.industries.label'), value: industries.size, note: t('stats.industries.note', { count: withWebsite }) },
+      { label: t('stats.profiles.label'), value: summary?.totalCompanyProfiles || 0, note: t('stats.profiles.note') },
+      { label: t('status.verified'), value: summary?.verifiedCompanyCount || 0, note: t('stats.verified.note') },
+      { label: t('stats.industries.label'), value: summary?.totalIndustries || 0, note: t('stats.industries.note', { count: summary?.totalCompanyProfiles || 0 }) },
     ];
-  }, [profiles, totalElements, t]);
+  }, [summary, t]);
 
   const openProfile = (profile: ProfileResponse) => {
     const id = profile.companyId || profile.id;
@@ -231,51 +221,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
       </header>
 
       {error && <div className={styles.error}>{error}</div>}
-
-      {/* ── Owner Enterprise Banner (Doanh nghiệp Chủ quản) ── */}
-      {ownerProfile && (
-        <section style={{
-          background: 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(14,165,233,0.06))',
-          border: '1px solid rgba(37,99,235,0.2)',
-          borderRadius: '12px',
-          padding: '10px 16px',
-          marginBottom: '8px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '12px',
-        }}>
-          <div>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--brand-primary, #2563eb)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              🏢 Doanh nghiệp Chủ quản (Owner Reference Enterprise)
-            </div>
-            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-              {ownerProfile.identity?.tradeName || ownerProfile.identity?.legalName}
-              {ownerProfile.identity?.tradeName && ownerProfile.identity?.legalName && ownerProfile.identity.tradeName !== ownerProfile.identity.legalName
-                ? ` — ${ownerProfile.identity.legalName}`
-                : ''}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <span><strong>Mã số thuế:</strong> {ownerProfile.identity?.taxCode || 'Chưa có dữ liệu'}</span>
-              <span><strong>Mã CK:</strong> {ownerProfile.identity?.stockTicker || 'Chưa có dữ liệu'}{ownerProfile.identity?.stockExchange ? ` (${ownerProfile.identity.stockExchange})` : ''}</span>
-              <span><strong>Ngành:</strong> {ownerProfile.business?.industries?.slice(0, 3).join(', ') || 'Chưa có dữ liệu'}</span>
-              <span><strong>Quy mô:</strong> {ownerProfile.companySize?.employeeTier || 'Chưa có dữ liệu'}</span>
-            </div>
-          </div>
-          <button
-            className={styles.primaryButton}
-            type="button"
-            onClick={() => {
-              if (ownerProfile.companyId || ownerProfile.id) {
-                localStorage.setItem('apms-selected-company', ownerProfile.companyId || ownerProfile.id);
-              }
-              setActivePage('company-detail');
-            }}
-          >
-            Xem chi tiết hồ sơ chủ quản →
-          </button>
-        </section>
-      )}
 
       {/* ── KPI Row ── */}
       <section className={styles.metricGrid}>
@@ -302,12 +247,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
               }}
             />
           </div>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">{t('filters.allStatuses')}</option>
-            <option value="APPROVED">{t('status.verified')}</option>
-            <option value="NEEDS_UPDATE">{t('status.needsUpdate')}</option>
-            <option value="PENDING_REVIEW">{t('status.pendingReview')}</option>
-          </select>
           <select value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
             <option value="">{t('filters.allRelationships')}</option>
             <option value="PARTNER_WITH">{t('filters.partner')}</option>
@@ -316,9 +255,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             <option value="CUSTOMER_OF">{t('filters.customer')}</option>
             <option value="POTENTIAL_PARTNER_OF">{t('filters.investorShareholder')}</option>
           </select>
-          <button className={styles.primaryButton} type="button" onClick={() => void fetchProfiles(0)}>
-            {t('filters.searchButton')}
-          </button>
         </div>
 
         {/* Table */}

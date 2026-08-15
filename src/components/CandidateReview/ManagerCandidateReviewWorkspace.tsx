@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
 import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord } from '../../types/domain';
@@ -397,6 +397,39 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     }
   }, [projectId, candidateId, queryClient, addToast]);
 
+  const handleApproveAllInTab = useCallback(async () => {
+    if (isWorkspaceReadOnly || !serverCandidate) return;
+
+    const pendingFields = FIELD_DEFS[activeTab].filter(f => {
+      const field = effectiveFieldForKey(serverCandidate, f.key);
+      return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
+    });
+
+    if (pendingFields.length === 0) return;
+
+    const payload: Record<string, any> = {};
+    pendingFields.forEach(f => {
+      payload[f.key] = {
+        managerReviewStatus: 'ACCEPTED',
+        managerReviewComment: '',
+        isManager: true,
+        manager: true
+      };
+    });
+
+    try {
+      const res = await candidateApi.reviewCandidateFields(projectId, candidateId, payload);
+      if (res?.data) {
+        setServerCandidate(res.data);
+      }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate', candidateId] });
+      addToast('Batch Approved', `Approved ${pendingFields.length} fields in ${activeTab}`);
+    } catch (e) {
+      addToast('Error', 'Could not batch approve fields', 'error');
+    }
+  }, [isWorkspaceReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast]);
+
   // ── Complete Review ──
   const handleCompleteReview = useCallback(async () => {
     if (!stats.canComplete || completingReview) return;
@@ -647,14 +680,18 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
               <span>Review Fields</span>
               <small>{stats.reviewed} / {stats.total} reviewed</small>
             </div>
-            <label className={styles.fieldSearch}>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search fields..."
-              />
-            </label>
+            {!isWorkspaceReadOnly && (
+              <div className={styles.quickFilterActions}>
+                <button
+                  type="button"
+                  className={styles.approveAllBtn}
+                  onClick={handleApproveAllInTab}
+                  title={`Approve all pending fields in ${activeTab}`}
+                >
+                  <CheckCheck size={16} /> Approve All
+                </button>
+              </div>
+            )}
           </div>
           
           <div className={styles.tabContent}>

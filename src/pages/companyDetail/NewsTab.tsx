@@ -154,7 +154,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
   };
 
   return (
-    <ListingTabShell loading={loading} error={error} hasData={news.length > 0} crawledAt={data?.crawledAt} onRetry={reload} emptyHint="Chưa có tin tức đã được crawler thu thập cho doanh nghiệp này. Hãy bấm 'AI Crawler Thu Thập'.">
+    <ListingTabShell loading={loading} error={error} hasData={news.length > 0} crawledAt={data?.crawledAt} onRetry={reload} emptyHint="No news has been collected by the AI crawler for this company yet. Please click 'Run AI Crawler'.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Header Bar */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>

@@ -10,11 +10,19 @@ interface ListingTabsProps {
   activeTab: ListingTabId;
   onTabChange: (tab: ListingTabId) => void;
   userRole?: string | null;
+  isOwnerProfile?: boolean;
+  isDrawerMode?: boolean;
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole }) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode }) => {
   const tabs = LISTING_TABS.filter((tab) => {
+    if (isDrawerMode && (tab.id === 'internal-news' || tab.id === 'documents')) {
+      return false;
+    }
     if (tab.id === 'internal-news' && userRole === 'BUSINESS_DEVELOPMENT_STAFF') {
+      return false;
+    }
+    if (isOwnerProfile && (tab.id === 'internal-news' || tab.id === 'documents')) {
       return false;
     }
     return true;

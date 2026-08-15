@@ -107,8 +107,14 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     try {
       setAuthState('CHECKING');
       const storedSession = ownerSecureAccess.get();
-      const secureStatus = await totpApi.getStepUpStatus(INTERNAL_NEWS_SCOPE, companyId, storedSession?.token);
-      if (storedSession?.token && secureStatus.data.secureAccessActive) {
+      let secureStatus;
+      try {
+        secureStatus = await totpApi.getStepUpStatus(INTERNAL_NEWS_SCOPE, companyId, storedSession?.token);
+      } catch (err) {
+        console.warn('getStepUpStatus failed', err);
+      }
+
+      if (storedSession?.token && secureStatus?.data?.secureAccessActive) {
         setStepUpToken(storedSession.token);
         setTokenExpiry(resolveExpiresInSeconds(secureStatus.data.expiresAt, storedSession.expiresInSeconds));
         setAuthState('VERIFIED');
@@ -329,41 +335,12 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
 
   return (
     <div>
-      <div style={styles.header}>
-        <div style={styles.headerTitleWrap}>
-          <Shield size={20} color="#10b981" />
-          <div>
-            <h2 style={styles.headerTitle}>Tình báo Doanh nghiệp (Nội bộ)</h2>
-            <p style={styles.headerSubtitle}>{articles.length} bài viết đã được duyệt cho Owner.</p>
-          </div>
-        </div>
-        <div style={styles.headerActions}>
-          <button onClick={() => stepUpToken && void loadArticles(stepUpToken)} style={styles.refreshBtn}>
-            Làm mới
-          </button>
-          <div style={styles.sessionInfo}>
-            <Clock size={14} /> Step-up session expires by {expiresInLabel}
-          </div>
-        </div>
-      </div>
-
-      <section style={styles.newsHero}>
-        <div>
-          <p style={styles.heroEyebrow}>Confidential Intelligence</p>
-          <h3 style={styles.newsHeroTitle}>Tin tức nội bộ đã được Manager phê duyệt</h3>
-          <p style={styles.newsHeroText}>Mỗi bài viết hiển thị hình ảnh, nguồn gốc và trạng thái phê duyệt. Bấm vào bài hoặc nút xem để mở trang chi tiết riêng.</p>
-        </div>
-        <div style={styles.heroStat}>
-          <strong>{approvedCount}</strong>
-          <span>Approved articles</span>
-        </div>
-      </section>
 
       {articles.length === 0 ? (
         <div style={styles.emptyState}>
           <Newspaper size={40} color="#cbd5e1" />
-          <h3 style={styles.emptyTitle}>Chưa có tin tức nội bộ được phê duyệt</h3>
-          <p style={styles.emptyText}>Hiện chưa có bài báo nội bộ nào đã được Manager phê duyệt cho doanh nghiệp này.</p>
+          <h3 style={styles.emptyTitle}>No approved internal news yet.</h3>
+          <p style={styles.emptyText}>There are no approved internal news articles for this company yet.</p>
         </div>
       ) : (
         <div style={styles.newsGrid}>
@@ -382,17 +359,22 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
                 <div style={styles.cardMeta}>
                   <span><Newspaper size={13} /> {article.sourceName || getHostName(article.sourceUrl) || 'Internal News'}</span>
                   <span><Calendar size={13} /> {formatDate(article.publishedAt || article.createdAt)}</span>
-                  {article.approvedAt && <span style={styles.approvedInline}><CheckCircle2 size={13} /> Đã duyệt</span>}
+                  {article.approvedAt && (
+                    <span style={styles.approvedInline}>
+                      <CheckCircle2 size={13} /> 
+                      Approved{article.approvedBy ? ` by ${article.approvedBy}` : ''}
+                    </span>
+                  )}
                 </div>
                 <h3 style={styles.cardTitle}>{article.title}</h3>
-                <p style={styles.cardSummary}>{article.summary || 'Bấm để xem nội dung chi tiết của bài báo nội bộ này.'}</p>
+                <p style={styles.cardSummary}>{article.summary || 'Click to view the detailed content of this internal news article.'}</p>
                 <div style={styles.cardFooter}>
                   <div style={styles.tags}>
                     {article.tags?.slice(0, 3).map((tag) => (
                       <span key={tag} style={styles.tag}><Tag size={12} /> {tag}</span>
                     ))}
                   </div>
-                  <span style={styles.readMore}>Xem chi tiết</span>
+                  <span style={styles.readMore}>View Details</span>
                 </div>
               </div>
             </button>

@@ -32,9 +32,9 @@ export const ListingTabShell: React.FC<ListingTabShellProps> = ({
   if (error) {
     return (
       <div className={styles.stateBox}>
-        <h3 className={styles.stateTitle}>Khong the tai du lieu</h3>
+        <h3 className={styles.stateTitle}>Failed to load data</h3>
         <p className={styles.stateText}>{error}</p>
-        <button type="button" className={styles.retryButton} onClick={onRetry}>Thu lai</button>
+        <button type="button" className={styles.retryButton} onClick={onRetry}>Retry</button>
       </div>
     );
   }
@@ -42,11 +42,8 @@ export const ListingTabShell: React.FC<ListingTabShellProps> = ({
   if (!hasData) {
     return (
       <div className={styles.stateBox}>
-        <h3 className={styles.stateTitle}>Backend chua co du lieu cho muc nay</h3>
-        <p className={styles.stateText}>
-          {emptyHint ?? 'Chua co ban ghi da duoc xac minh trong ho so doanh nghiep. Du lieu se hien thi sau khi duoc them va phe duyet tren backend.'}
-        </p>
-        <button type="button" className={styles.retryButton} onClick={onRetry}>Lam moi</button>
+        <h3 className={styles.stateTitle}>No Data Available</h3>
+        <button type="button" className={styles.retryButton} onClick={onRetry}>Refresh</button>
       </div>
     );
   }
@@ -54,7 +51,7 @@ export const ListingTabShell: React.FC<ListingTabShellProps> = ({
   return (
     <div>
       {children}
-      {crawledAt && <div className={styles.lastCrawled}>Cap nhat lan cuoi: {formatDateTime(crawledAt)}</div>}
+      {crawledAt && <div className={styles.lastCrawled}>Last updated: {formatDateTime(crawledAt)}</div>}
     </div>
   );
 };

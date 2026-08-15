@@ -13,24 +13,30 @@ interface CompanyRelationshipClosenessPanelProps {
 }
 
 const LEVEL_LABELS: Record<string, string> = {
-  CONTACT_ONLY: 'Chỉ mới liên hệ',
-  WEAK: 'Quan hệ yếu',
-  ESTABLISHED: 'Đã thiết lập',
-  CLOSE: 'Thân thiết',
-  STRATEGIC: 'Chiến lược',
-  UNRATED: 'Chưa đánh giá',
+  CONTACT_ONLY: 'Contact only',
+  WEAK: 'Weak relationship',
+  ESTABLISHED: 'Established',
+  CLOSE: 'Close',
+  STRATEGIC: 'Strategic',
+  UNRATED: 'Unrated',
 };
 
-const describeStars = (stars: number | null | undefined) => {
-  if (!stars) return 'Chưa có mức độ thân thiết';
-  return `${stars}/5 sao`;
+const describeStars = (stars?: number | null) => {
+  switch (stars) {
+    case 1: return '1 - Disconnected';
+    case 2: return '2 - Low';
+    case 3: return '3 - Moderate';
+    case 4: return '4 - Strong';
+    case 5: return '5 - Strategic';
+    default: return 'Unrated';
+  }
 };
 
 const formatTime = (value?: string | null) => {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString('vi-VN', {
+  return date.toLocaleString('en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -151,7 +157,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     }
 
     if (draftNote.length > 1000) {
-      setMessage({ type: 'error', text: 'Ghi chú không được vượt quá 1000 ký tự.' });
+      setMessage({ type: 'error', text: 'Note cannot exceed 1000 characters.' });
       return;
     }
 
@@ -166,11 +172,11 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       setData(next);
       syncDraft(next);
       setEditing(false);
-      setMessage({ type: 'ok', text: 'Đã lưu đánh giá độ thân thiết.' });
+      setMessage({ type: 'ok', text: 'Relationship rating saved.' });
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Không thể lưu đánh giá quan hệ.',
+        text: error instanceof Error ? error.message : 'Could not save relationship rating.',
       });
     } finally {
       setSaving(false);
@@ -179,7 +185,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 
   const handleClear = async () => {
     if (!canClear || !data?.stars) return;
-    const confirmed = window.confirm('Xóa đánh giá độ thân thiết hiện tại?');
+    const confirmed = window.confirm('Delete the current relationship rating?');
     if (!confirmed) return;
 
     setSaving(true);
@@ -190,11 +196,11 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       setData(unrated);
       syncDraft(unrated);
       setEditing(false);
-      setMessage({ type: 'ok', text: 'Đã xóa đánh giá độ thân thiết.' });
+      setMessage({ type: 'ok', text: 'Relationship rating deleted.' });
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Không thể xóa đánh giá quan hệ.',
+        text: error instanceof Error ? error.message : 'Could not delete relationship rating.',
       });
     } finally {
       setSaving(false);
@@ -202,13 +208,13 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
   };
 
   const editButtonText = currentUserRole === ROLES.OWNER
-    ? (data?.ownerFinalized ? 'Cập nhật đánh giá cuối' : 'Đánh giá cuối')
-    : (data?.stars ? 'Cập nhật' : 'Đánh giá');
+    ? (data?.ownerFinalized ? 'Update final rating' : 'Final rating')
+    : (data?.stars ? 'Update' : 'Rate');
 
   if (!currentUserRole || isAdmin) {
     const lockedText = !currentUserRole
-      ? 'Đang xác định quyền người dùng trước khi tải dữ liệu relationship closeness.'
-      : 'System Admin không được truy cập dữ liệu relationship closeness theo rule backend.';
+      ? 'Determining user permissions before loading relationship closeness data.'
+      : 'System Admin cannot access relationship closeness data per backend rules.';
 
     return (
       <section className={styles.panel}>
@@ -218,8 +224,8 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               <Lock size={15} />
             </span>
             <div>
-              <h2 className={styles.title}>Độ thân thiết quan hệ</h2>
-              <p className={styles.subtitle}>Dữ liệu nội bộ giữa Owner Organization và công ty này</p>
+              <h2 className={styles.title}>Relationship Affinity</h2>
+              <p className={styles.subtitle}>Internal data between Owner Organization and this company</p>
             </div>
           </div>
         </div>
@@ -241,11 +247,11 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
             <Star size={15} />
           </span>
           <div>
-            <h2 className={styles.title}>Độ thân thiết quan hệ</h2>
-            <p className={styles.subtitle}>Manual 1-5 sao với Owner Organization</p>
+            <h2 className={styles.title}>Relationship Affinity</h2>
+            <p className={styles.subtitle}>Manual 1-5 stars with Owner Organization</p>
           </div>
         </div>
-        <span className={styles.badge}>{loading ? 'Đang tải' : displayLabel}</span>
+        <span className={styles.badge}>{loading ? 'Loading' : displayLabel}</span>
       </div>
 
       <div className={styles.body}>
@@ -279,7 +285,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               {describeStars(editing ? draftStars : data?.stars)} · {displayLabel}
             </div>
             <div className={styles.timestamp}>
-              {formatTime(effectiveTime) ? `Cập nhật: ${formatTime(effectiveTime)}` : 'Chưa có lịch sử cập nhật'}
+              {formatTime(effectiveTime) ? `Updated: ${formatTime(effectiveTime)}` : 'No update history'}
             </div>
           </div>
         </div>
@@ -287,7 +293,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
         {managerLockedByOwner ? (
           <div className={styles.finalNotice}>
             <Lock size={14} />
-            <span>Owner đã đánh giá cuối cùng. Manager chỉ có thể xem, không thể cập nhật đánh giá này nữa.</span>
+            <span>Owner has provided the final rating. Manager can only view, no further updates allowed.</span>
           </div>
         ) : null}
 
@@ -301,7 +307,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
             ) : null}
             {data?.ownerStars ? (
               <div className={styles.trailItem}>
-                <span className={styles.trailLabel}>Owner cuối cùng</span>
+                <span className={styles.trailLabel}>Final Owner</span>
                 <span>{describeStars(data.ownerStars)}{formatTime(data.ownerRatedAt) ? ` · ${formatTime(data.ownerRatedAt)}` : ''}</span>
               </div>
             ) : null}
@@ -315,14 +321,14 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               value={draftNote}
               maxLength={1000}
               onChange={(event) => setDraftNote(event.target.value)}
-              placeholder="Ghi chú lý do đánh giá, ví dụ: mức độ hợp tác, tần suất tương tác, kết quả làm việc..."
+              placeholder="Note reasons for rating, e.g.: level of cooperation, interaction frequency, work results..."
               disabled={saving}
             />
             <div className={styles.charCount}>{draftNote.length}/1000</div>
           </div>
         ) : (
           <div className={`${styles.noteBox} ${data?.note ? '' : styles.noteMuted}`}>
-            {data?.note || 'Chưa có ghi chú đánh giá quan hệ.'}
+            {data?.note || 'No relationship rating notes.'}
           </div>
         )}
 
@@ -338,17 +344,17 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
             className={styles.button}
             onClick={() => void loadCloseness()}
             disabled={loading || saving}
-            title="Tải lại"
+            title="Reload"
           >
             <RefreshCw size={13} />
-            Tải lại
+            Reload
           </button>
 
           {editing ? (
             <>
               <button type="button" className={styles.button} onClick={cancelEdit} disabled={saving}>
                 <X size={13} />
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
@@ -357,7 +363,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                 disabled={saving || draftStars < 1 || draftNote.length > 1000}
               >
                 <Save size={13} />
-                {saving ? 'Đang lưu' : 'Lưu'}
+                {saving ? 'Saving' : 'Save'}
               </button>
             </>
           ) : (
@@ -370,7 +376,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                   disabled={saving}
                 >
                   <Trash2 size={13} />
-                  Xóa
+                  Delete
                 </button>
               ) : null}
 
@@ -382,7 +388,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
               ) : (
                 <span className={styles.locked}>
                   <Lock size={14} />
-                  {managerLockedByOwner ? 'Owner đã đánh giá cuối cùng.' : 'Staff chỉ có quyền xem trong phạm vi project.'}
+                  {managerLockedByOwner ? 'Owner has made the final rating.' : 'Staff only has view access within project.'}
                 </span>
               )}
             </>

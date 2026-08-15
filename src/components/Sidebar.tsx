@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
+import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -86,8 +87,10 @@ const DIRECTOR_MENU: MenuSection[] = [
   {
     title: 'menu.ecosystemIntelligence',
     items: [
+      { id: 'owner-profile',           label: 'My Enterprise' },
       { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
       { id: 'competitor-intelligence', label: 'menu.competitorIntelligence' },
+      { id: 'owner-internal-news',     label: 'Internal News' },
     ],
   },
   {
@@ -143,7 +146,8 @@ const MANAGER_MENU: MenuSection[] = [
   {
     title: 'menu.data',
     items: [
-      { id: 'companies', label: 'menu.companies' },
+      { id: 'owner-profile', label: 'My Enterprise' },
+      { id: 'companies', label: 'menu.companyProfiles' },
       { id: 'news',      label: 'News' },
       // { id: 'companies', label: 'Companies' },
       // { id: 'news',      label: 'News' },
@@ -165,7 +169,8 @@ const STAFF_MENU: MenuSection[] = [
     items: [
       { id: "project-management", label: "Project" },
       { id: "system-chat", label: "Chat" },
-      { id: "company-profiles", label: "menu.companyProfiles" },
+      { id: 'owner-profile', label: 'My Enterprise' },
+      // { id: "company-profiles", label: "menu.companyProfiles" },
       { id: "news", label: "News" },
     ],
   },
@@ -202,14 +207,16 @@ const OWNER_MENU: MenuSection[] = [
   {
     title: 'menu.ecosystemProjects',
     items: [
-      { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
-      { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
+      // { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
+      // { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
       { id: 'news',                    label: 'menu.newsIntelligence' },
+      { id: 'owner-internal-news',     label: 'Internal News' },
     ],
   },
   {
     title: 'menu.governanceSettings',
     items: [
+      { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'company-profiles', label: 'menu.companyProfiles' },
     ],
   },
@@ -241,6 +248,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
     setShowLogout(false);
   };
 
+  const getIconForId = (id: string) => {
+    switch (id) {
+      case 'admin-dashboard':
+      case 'director-dashboard':
+      case 'manager-dashboard':
+      case 'staff-dashboard':
+      case 'relationship-map':
+        return <LayoutDashboard size={18} />;
+      case 'users': return <Users size={18} />;
+      case 'access-control': return <Shield size={18} />;
+      case 'activity-history': return <Clock size={18} />;
+      case 'audit-logs': return <FileText size={18} />;
+      case 'system-settings': return <Settings size={18} />;
+      case 'risk-monitoring': return <AlertTriangle size={18} />;
+      case 'owner-profile': return <Landmark size={18} />;
+      case 'partner-ecosystem': return <Briefcase size={18} />;
+      case 'competitor-intelligence': return <Target size={18} />;
+      case 'strategic-reports': return <PieChart size={18} />;
+      case 'companies':
+      case 'company-profiles':
+        return <Database size={18} />;
+      case 'news': return <Newspaper size={18} />;
+      case 'project-management': return <FolderKanban size={18} />;
+      case 'system-chat': return <MessageSquare size={18} />;
+      default: return <FileText size={18} />;
+    }
+  };
+
   const getBadgeValue = (item: MenuItem) => {
     if (item.id === 'system-chat') return totalUnread;
     return item.badge;
@@ -270,11 +305,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           </div>
         </div>
 
-        <div className={`sidebar-role-card ${roleContext?.accent || ''}`}>
-          <span className="sidebar-role-chip">{roleContext ? t(roleContext.label) : ''}</span>
-          <strong>{currentUser.roleName}</strong>
-        </div>
-
         {/* Navigation */}
         <nav className="sidebar-nav">
           {menuSections.map((section, si) => (
@@ -293,6 +323,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                       title={t(item.label)}
                       style={{ cursor: 'pointer' }}
                     >
+                      <span className="nav-icon" style={{ display: 'flex', alignItems: 'center' }}>{getIconForId(item.id)}</span>
                       <span className="nav-label">{t(item.label)}</span>
                       {badgeValue !== undefined && badgeValue > 0 && (
                         <span className={`nav-badge ${item.id === 'system-chat' ? 'chat-unread' : item.badgeType || ''}`}>

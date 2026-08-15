@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCheck } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
@@ -192,6 +192,30 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     setPendingUpdates((prev) => ({ ...prev, [key]: { reviewedValue: value, reviewStatus: status } }));
   };
 
+  const handleApproveAllInTab = () => {
+    const activeTabFields = TAB_FIELD_GROUPS[activeTab];
+    const newPendingUpdates = { ...pendingUpdates };
+    let hasChanges = false;
+
+    for (const { key } of activeTabFields) {
+      const field = fieldResults[key];
+      const isConfirmed = field?.staffReviewStatus === 'CONFIRMED';
+      
+      if (!isConfirmed && !isManagerAccepted(field)) {
+        newPendingUpdates[key] = {
+          ...newPendingUpdates[key],
+          reviewedValue: field?.reviewedValue !== undefined ? field.reviewedValue : (field?.staffReviewedValue !== undefined ? field.staffReviewedValue : field?.value),
+          reviewStatus: 'CONFIRMED'
+        };
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      setPendingUpdates(newPendingUpdates);
+    }
+  };
+
   const handleSave = () => {
     if (Object.keys(pendingUpdates).length === 0) return;
     const reviewUpdates: Record<string, any> = {};
@@ -233,27 +257,35 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     };
   });
 
-  const totalFields = Object.keys(FLAT_TO_DOT).length;
-  let confirmedFields = 0;
-  let editedFields = 0;
-  let pendingFields = 0;
-  let issueFields = 0;
-  let lowConfidenceFields = 0;
+  const activeTabFields = TAB_FIELD_GROUPS[activeTab];
 
-  for (const key of Object.values(FLAT_TO_DOT)) {
-    const staffStatus = fieldResults[key]?.staffReviewStatus;
-    const validationStatus = fieldResults[key]?.validationStatus;
-    const confidence = fieldResults[key]?.confidence;
+  let tabTotalFields = 0;
+  let tabConfirmedFields = 0;
+  let tabEditedFields = 0;
+  let tabPendingFields = 0;
+  let tabIssueFields = 0;
+  let tabLowConfidenceFields = 0;
+  let tabReturnedFields = 0;
+
+  for (const { key } of activeTabFields) {
+    tabTotalFields++;
+    const field = fieldResults[key];
+    const staffStatus = field?.staffReviewStatus;
+    const validationStatus = field?.validationStatus;
+    const confidence = field?.confidence;
     
-    if (staffStatus === 'CONFIRMED') confirmedFields++;
-    else if (staffStatus === 'EDITED' || staffStatus === 'ADDED' || staffStatus === 'REMOVED') editedFields++;
-    else pendingFields++;
+    if (staffStatus === 'CONFIRMED') tabConfirmedFields++;
+    else if (staffStatus === 'EDITED' || staffStatus === 'ADDED' || staffStatus === 'REMOVED') tabEditedFields++;
+    else tabPendingFields++;
     
-    if (validationStatus === 'FAIL') issueFields++;
-    if (typeof confidence === 'number' && confidence > 0 && confidence < 0.6) lowConfidenceFields++;
+    if (validationStatus === 'FAIL') tabIssueFields++;
+    if (typeof confidence === 'number' && confidence > 0 && confidence < 0.6) tabLowConfidenceFields++;
+    if (isReturnedByManager(field)) tabReturnedFields++;
   }
 
-  const resolvedFields = confirmedFields;
+  const resolvedFields = Object.values(FLAT_TO_DOT).filter(key => fieldResults[key]?.staffReviewStatus === 'CONFIRMED').length;
+  const totalFieldsGlobal = Object.keys(FLAT_TO_DOT).length;
+  const progressPercent = Math.round((resolvedFields / totalFieldsGlobal) * 100);
   const unsavedCount = Object.keys(pendingUpdates).length;
   const isRejected = serverCandidate.status === 'REJECTED';
   const isRevision = serverCandidate.status === 'REVISION_REQUIRED';
@@ -262,7 +294,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     .map((key) => ({ key, label: labelForField(key), field: fieldResults[key] }))
     .filter(({ field }) => isReturnedByManager(field));
   const hasChangesRequested = returnedFields.length > 0;
-  const progressPercent = Math.round((resolvedFields / totalFields) * 100);
   const isSubmitEnabled = allFieldKeys.every((key) => {
     const field = fieldResults[key];
     if (isManagerAccepted(field)) return true;
@@ -273,12 +304,12 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
   const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products', 'SWOT', 'Analysis'];
   const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = [
-    { id: 'ALL', label: 'All', count: totalFields },
-    { id: 'RETURNED', label: 'Changes', count: returnedFields.length },
-    { id: 'PENDING', label: 'Pending', count: pendingFields },
-    { id: 'EDITED', label: 'Edited', count: editedFields },
-    { id: 'ISSUES', label: 'Issues', count: issueFields },
-    { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: lowConfidenceFields },
+    { id: 'ALL', label: 'All', count: tabTotalFields },
+    { id: 'RETURNED', label: 'Changes', count: tabReturnedFields },
+    { id: 'PENDING', label: 'Pending', count: tabPendingFields },
+    { id: 'EDITED', label: 'Edited', count: tabEditedFields },
+    { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
+    { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: tabLowConfidenceFields },
   ];
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const getFieldValue = (key: string) => {
@@ -287,7 +318,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     if (field?.staffReviewedValue !== undefined) return field.staffReviewedValue;
     return field?.value;
   };
-  const matchesReviewFilter = (key: string) => {
+  const checkFilterMatch = (key: string, filterId: ReviewFilter) => {
     const field = fieldResults[key];
     const staffStatus = field?.staffReviewStatus;
     const isEdited = staffStatus === 'EDITED' || staffStatus === 'ADDED' || staffStatus === 'REMOVED';
@@ -295,19 +326,24 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     const isPending = !isConfirmed && !isEdited;
     const confidence = field?.confidence;
 
-    if (activeFilter === 'RETURNED') return isReturnedByManager(field);
-    if (activeFilter === 'PENDING') return isPending;
-    if (activeFilter === 'EDITED') return isEdited;
-    if (activeFilter === 'ISSUES') return field?.validationStatus === 'FAIL';
-    if (activeFilter === 'LOW_CONFIDENCE') return typeof confidence === 'number' && confidence > 0 && confidence < 0.6;
+    if (filterId === 'RETURNED') return isReturnedByManager(field);
+    if (filterId === 'PENDING') return isPending;
+    if (filterId === 'EDITED') return isEdited;
+    if (filterId === 'ISSUES') return field?.validationStatus === 'FAIL';
+    if (filterId === 'LOW_CONFIDENCE') return typeof confidence === 'number' && confidence > 0 && confidence < 0.6;
     return true;
+  };
+
+  const matchesReviewFilter = (key: string) => checkFilterMatch(key, activeFilter);
+
+  const handleFilterClick = (filterId: ReviewFilter) => {
+    setActiveFilter(filterId);
   };
   const matchesFieldSearch = (key: string, label: string) => {
     if (!normalizedSearch) return true;
     return `${label} ${fieldValueToText(getFieldValue(key))}`.toLowerCase().includes(normalizedSearch);
   };
   const shouldShowField = (key: string, label: string) => matchesReviewFilter(key) && matchesFieldSearch(key, label);
-  const activeTabFields = TAB_FIELD_GROUPS[activeTab];
   const visibleFieldCount = activeTabFields.filter((field) => shouldShowField(field.key, field.label)).length;
   const tabStats = tabs.reduce<Record<TabType, { total: number; issues: number }>>((map, tab) => {
     const fields = TAB_FIELD_GROUPS[tab];
@@ -333,7 +369,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
           <span className={styles.candidateEyebrow}>{isRevision ? 'CANDIDATE REVISION' : 'CANDIDATE DRAFT'}</span>
           <h2>{serverCandidate.identity?.legalName || 'Unknown Company'}</h2>
           <div className={styles.candidateSubline}>
-            ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''} &middot; {totalFields} fields extracted
+            ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''} &middot; {totalFieldsGlobal} fields extracted
           </div>
         </div>
         <div className={styles.candidateHeaderRight}>
@@ -391,25 +427,36 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               <span>Review fields</span>
               <small>{visibleFieldCount} visible in {activeTab}</small>
             </div>
-            <label className={styles.fieldSearch}>
+            {/* <label className={styles.fieldSearch}>
               <input
                 type="search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search fields..."
               />
-            </label>
+            </label> */}
             <div className={styles.quickFilterActions}>
               {reviewFilters.map(filter => (
                 <button
                   type="button"
                   key={filter.id}
                   className={`${styles.quickFilterButton} ${activeFilter === filter.id ? styles.quickFilterButtonActive : ''}`}
-                  onClick={() => setActiveFilter(filter.id)}
+                  onClick={() => handleFilterClick(filter.id)}
                 >
                   {filter.label} <strong>{filter.count}</strong>
                 </button>
               ))}
+
+              {!readOnly && (
+                <button
+                  type="button"
+                  className={styles.approveAllBtn}
+                  onClick={handleApproveAllInTab}
+                  title={`Approve all unconfirmed fields in ${activeTab}`}
+                >
+                  <CheckCheck size={16} /> Approve All
+                </button>
+              )}
             </div>
           </div>
 
@@ -560,7 +607,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
             
             <div className={styles.staffProgressBlock}>
               <div className={styles.staffProgressTopline}>
-                <span>{resolvedFields} / {totalFields} confirmed</span>
+                <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
                 <strong>{progressPercent}%</strong>
               </div>
               <div className={styles.progressBarTrack}>
@@ -577,7 +624,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                   <i className={styles.dotConfirmed}></i>
                   Confirmed
                 </span>
-                <strong>{confirmedFields}</strong>
+                <strong>{tabConfirmedFields}</strong>
               </div>
               
               <div className={styles.staffReviewStat}>
@@ -585,7 +632,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                   <i className={styles.dotEdited}></i>
                   Edited
                 </span>
-                <strong>{editedFields}</strong>
+                <strong>{tabEditedFields}</strong>
               </div>
               
               <div className={styles.staffReviewStat}>
@@ -593,26 +640,26 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                   <i className={styles.dotPending}></i>
                   Pending
                 </span>
-                <strong>{pendingFields}</strong>
+                <strong>{tabPendingFields}</strong>
               </div>
 
-              {issueFields > 0 && (
+              {tabIssueFields > 0 && (
                 <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
                   <span>
                     <AlertCircle size={14} />
                     Validation Issues
                   </span>
-                  <strong>{issueFields}</strong>
+                  <strong>{tabIssueFields}</strong>
                 </div>
               )}
 
-              {lowConfidenceFields > 0 && (
+              {tabLowConfidenceFields > 0 && (
                 <div className={`${styles.staffReviewStat} ${styles.staffReviewCaution}`}>
                   <span>
                     <AlertCircle size={14} />
                     Low Confidence
                   </span>
-                  <strong>{lowConfidenceFields}</strong>
+                  <strong>{tabLowConfidenceFields}</strong>
                 </div>
               )}
             </div>
@@ -624,7 +671,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               <p className={isSubmitEnabled ? styles.readyText : ''}>
                 {isSubmitEnabled 
                   ? '✓ Ready for Manager Review. All required fields have been reviewed.' 
-                  : `${pendingFields} field${pendingFields !== 1 ? 's' : ''} still need confirmation.`}
+                  : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still need confirmation.`}
               </p>
             </div>
 
@@ -644,7 +691,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
       <div className={styles.actionBar}>
         <div className={styles.actionBarLeft}>
           <span className={styles.progressTitle} style={{ fontWeight: '600', color: isSubmitEnabled ? '#16a34a' : '#0f172a' }}>
-            {isSubmitEnabled ? '✓ Ready to submit' : `${resolvedFields} / ${totalFields} resolved`}
+            {isSubmitEnabled ? '✓ Ready to submit' : `${resolvedFields} / ${totalFieldsGlobal} resolved`}
           </span>
           {unsavedCount > 0 && (
             <span className={styles.actionBarDirty}>
@@ -670,7 +717,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               className={styles.btnSubmit} 
               onClick={onSubmit} 
               disabled={!isSubmitEnabled || submitLoading}
-              title={isSubmitEnabled ? "Submit to Manager" : `${pendingFields} field${pendingFields !== 1 ? 's' : ''} still require confirmation`}
+              title={isSubmitEnabled ? "Submit to Manager" : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`}
             >
               {submitLoading ? 'Submitting...' : (serverCandidate.status === 'REVISION_REQUIRED' ? 'Resubmit for Review' : 'Submit for Review')}
             </button>

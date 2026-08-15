@@ -84,8 +84,13 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole 
     try {
       setAuthState('CHECKING');
       const storedSession = ownerSecureAccess.get();
-      const secureStatus = await totpApi.getStepUpStatus(DOCUMENTS_SCOPE, companyProfileId, storedSession?.token);
-      if (storedSession?.token && secureStatus.data.secureAccessActive) {
+      let secureStatus;
+      try {
+        secureStatus = await totpApi.getStepUpStatus(DOCUMENTS_SCOPE, companyProfileId, storedSession?.token);
+      } catch (err) {
+        console.warn('getStepUpStatus failed', err);
+      }
+      if (storedSession?.token && secureStatus?.data?.secureAccessActive) {
         setStepUpToken(storedSession.token);
         setTokenExpiry(resolveExpiresInSeconds(secureStatus.data.expiresAt, storedSession.expiresInSeconds));
         setAuthState('VERIFIED');

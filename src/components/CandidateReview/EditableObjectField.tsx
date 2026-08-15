@@ -76,15 +76,43 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
     onChange(fieldKey, aiOriginal, 'RESTORED');
   };
 
+  const formatDisplayValue = (val: any, label: string) => {
+    if (typeof val === 'number') {
+      const lowerLabel = label.toLowerCase();
+      if (lowerLabel.includes('%') || lowerLabel.includes('margin') || lowerLabel.includes('rate') || lowerLabel.includes('growth') || lowerLabel.includes('share') || lowerLabel.includes('ratio')) {
+        if (val > 0 && val <= 1) return (val * 100).toFixed(2) + '%';
+        return val.toLocaleString() + '%';
+      }
+      if (val >= 1e12) return (val / 1e12).toFixed(2) + ' Trillion';
+      if (val >= 1e9) return (val / 1e9).toFixed(2) + ' Billion';
+      if (val >= 1e6) return (val / 1e6).toFixed(2) + ' Million';
+      return val.toLocaleString();
+    }
+    if (Array.isArray(val)) {
+      return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+          {val.map((item, idx) => (
+            <span key={idx} style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>
+              {item}
+            </span>
+          ))}
+        </div>
+      );
+    }
+    return String(val);
+  };
+
   const displayValue = (Object.keys(currentValue).length > 0 && hasVisibleFields(currentValue)) ? (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '4px' }}>
       {schema.map(field => {
         const val = currentValue[field.key];
         if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) return null;
         return (
-          <div key={field.key} style={{ fontSize: '13px' }}>
-            <strong style={{ color: '#6b7280' }}>{field.label}:</strong>{' '}
-            <span>{Array.isArray(val) ? val.join(', ') : String(val)}</span>
+          <div key={field.key} style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>{field.label}</span>
+            <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: 600, wordBreak: 'break-word', lineHeight: '1.4' }}>
+              {formatDisplayValue(val, field.label)}
+            </div>
           </div>
         );
       })}

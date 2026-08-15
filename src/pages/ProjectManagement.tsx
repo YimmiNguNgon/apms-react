@@ -674,6 +674,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                         ...current,
                         targetCompanyProfileId: selectedId,
                         targetCompanyName: profile ? profileName(profile) : '',
+                        targetRelationshipType: profile?.relationshipType || current.targetRelationshipType,
                       }));
                     }}
                   >
@@ -692,7 +693,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                   className="search-input"
                   value={projectForm.targetRelationshipType}
                   onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}
-                  disabled={relationshipOptionsLoading}
+                  disabled={relationshipOptionsLoading || projectForm.projectType === 'UPDATE_EXISTING_COMPANY'}
                 >
                   <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
                   {relationshipOptions.map((option) => (

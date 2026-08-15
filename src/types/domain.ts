@@ -58,6 +58,8 @@ export interface DashboardSummaryDto {
   competitorCount: number;
   supplierCount: number;
   potentialPartnerCount: number;
+  verifiedCompanyCount: number;
+  totalIndustries: number;
   totalUsers?: number;
   systemHealth?: number;
   securityAlerts?: number;
@@ -664,6 +666,7 @@ export interface CompanyIntelligenceArticleResponse {
   capturedAt?: string | null;
   tags?: string[] | null;
   approvedAt?: string | null;
+  approvedBy?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }

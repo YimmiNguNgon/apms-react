@@ -23,12 +23,12 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutGrid size={14} /> },
   { id: 'swot', label: 'SWOT', icon: <TrendingUp size={14} /> },
   { id: 'business-fields', label: 'Business Fields', icon: <Building2 size={14} /> },
-  { id: 'relationship', label: 'Relationship', icon: <Users size={14} /> },
-  { id: 'board', label: 'Ban lãnh đạo', icon: <Shield size={14} /> },
-  { id: 'financials', label: 'Tài chính', icon: <FileText size={14} /> },
-  { id: 'news', label: 'Tin tức', icon: <Newspaper size={14} /> },
-  { id: 'internal-news', label: 'Tin tức nội bộ', icon: <Shield size={14} /> },
-  { id: 'documents', label: 'Tài liệu', icon: <FileText size={14} /> },
+  // { id: 'relationship', label: 'Relationship', icon: <Users size={14} /> },
+  { id: 'board', label: 'Leadership', icon: <Shield size={14} /> },
+  { id: 'financials', label: 'Financials', icon: <FileText size={14} /> },
+  { id: 'news', label: 'News', icon: <Newspaper size={14} /> },
+  { id: 'internal-news', label: 'Internal News', icon: <Shield size={14} /> },
+  { id: 'documents', label: 'Documents', icon: <FileText size={14} /> },
 ];
 
 const tabDataCache = new Map<string, unknown>();

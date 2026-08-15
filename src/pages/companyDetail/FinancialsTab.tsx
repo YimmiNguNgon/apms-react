@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, TrendingUp } from 'lucide-react';
+import { Download, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import type { CompanyFinancial } from '../../types/listingData';
 import { ListingTabShell } from './common';
@@ -68,19 +68,81 @@ const FinancialsTab: React.FC<{ companyId: string }> = ({ companyId }) => {
 
   return <ListingTabShell loading={loading} error={error} hasData={Boolean(report)} crawledAt={data?.crawledAt} onRetry={reload}>
     <section style={{ background: '#fff', border: '1px solid #dbe3ee', borderRadius: 6, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px 0', borderBottom: '1px solid #dbe3ee' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#163b68', marginBottom: 12 }}><TrendingUp size={18} /><strong>Thông tin tài chính</strong></div>
-        <div style={{ display: 'flex', gap: 18, overflowX: 'auto' }}>{REPORT_TABS.map((tab) => <button key={tab.type} type="button" onClick={() => setActiveReport(tab.type)} style={{ whiteSpace: 'nowrap', padding: '0 0 9px', border: 'none', borderBottom: activeReport === tab.type ? '2px solid #1677c8' : '2px solid transparent', background: 'none', color: activeReport === tab.type ? '#1264a3' : '#526579', fontWeight: activeReport === tab.type ? 700 : 500, cursor: 'pointer' }}>{tab.label}</button>)}</div>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid #dbe3ee' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#163b68' }}><TrendingUp size={18} /><strong>Financial Information</strong></div>
       </div>
       <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: '#f7f9fc' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={periodType} onChange={(event) => setPeriodType(event.target.value)}><option>Theo quý</option><option>Theo năm</option></select>
-          <select value={unit} onChange={(event) => setUnit(event.target.value)}><option>Tỷ đồng</option><option>Triệu đồng</option><option>Đồng</option></select>
-        </div>
-        <button type="button" onClick={exportExcel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 4, padding: '6px 10px', background: '#16803c', color: '#fff', fontWeight: 700, cursor: 'pointer' }}><Download size={14} />Xuất Excel</button>
       </div>
-      <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 13 }}><thead><tr style={{ background: '#e9f2fb', color: '#244b73' }}><th style={{ textAlign: 'left', padding: 10, minWidth: 280 }}>Chỉ tiêu</th>{periods.map((period) => <th key={period.time} style={{ padding: 10, textAlign: 'right' }}>{period.time}</th>)}<th style={{ padding: 10, minWidth: 110 }}>Tăng trưởng</th></tr></thead><tbody>{rows.map((row) => { const values = periods.map((period) => valueFor(period, row.code)); const max = Math.max(...values.map(Math.abs), 1); const growth = values.length > 1 && values[0] ? ((values.at(-1)! - values[0]) / Math.abs(values[0])) * 100 : null; return <tr key={row.code} style={{ borderTop: '1px solid #e6edf5' }}><td style={{ padding: 10, color: '#1f3449', fontWeight: 600 }}>{row.name}</td>{values.map((value, index) => <td key={index} style={{ padding: 10, textAlign: 'right', color: value < 0 ? '#bd3030' : '#253f59' }}>{formatValue(value, unit)}</td>)}<td style={{ padding: 8 }}><div style={{ display: 'flex', alignItems: 'end', gap: 2, height: 26 }}>{values.map((value, index) => <i key={index} style={{ width: 10, height: `${Math.max(3, Math.round(Math.abs(value) / max * 24))}px`, background: value >= 0 ? '#2781c7' : '#d85858', display: 'block' }} />)}</div><small style={{ color: growth != null && growth < 0 ? '#bd3030' : '#16803c' }}>{growth == null ? 'N/A' : `${growth.toFixed(1)}%`}</small></td></tr>; })}</tbody></table></div>
-      {!report && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Chưa có báo cáo tài chính đã được lưu cho doanh nghiệp này.</div>}
+      <div style={{ overflowX: 'auto', background: '#fff' }}>
+        <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+              <th style={{ textAlign: 'left', padding: '16px', color: '#b91c1c', fontSize: '18px', fontWeight: 600, minWidth: '300px', textTransform: 'uppercase' }}>
+                INCOME STATEMENT
+              </th>
+              <th style={{ width: '36px', textAlign: 'center', borderLeft: '1px solid #e2e8f0', padding: 0 }}>
+                <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ChevronLeft size={16} color="#0284c7" />
+                </button>
+              </th>
+              {periods.map(period => (
+                <th key={period.time} style={{ padding: '10px 16px', textAlign: 'right', minWidth: '120px', borderLeft: '1px solid #e2e8f0' }}>
+                  <div style={{ color: '#0284c7', fontSize: '14px', fontWeight: 600 }}>{period.time}</div>
+                  <div style={{ color: '#b91c1c', fontSize: '9px', fontWeight: 400, marginTop: '2px', textTransform: 'uppercase' }}>Audited</div>
+                </th>
+              ))}
+              <th style={{ width: '36px', textAlign: 'center', borderLeft: '1px solid #e2e8f0', background: '#f8fafc', padding: 0 }}>
+                <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ChevronRight size={16} color="#94a3b8" />
+                </button>
+              </th>
+              <th style={{ textAlign: 'center', padding: '10px', color: '#475569', fontSize: '13px', fontWeight: 500, minWidth: '100px', borderLeft: '1px solid #e2e8f0' }}>
+                GROWTH
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => {
+              const values = periods.map((period) => valueFor(period, row.code));
+              const max = Math.max(...values.map(Math.abs), 1);
+              // Simple heuristic to bold some rows like the screenshot
+              const isBold = row.name?.toLowerCase().includes('lợi nhuận') || row.name?.toLowerCase().includes('tổng');
+              
+              return (
+                <tr key={row.code} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '12px 16px', color: '#0f172a', fontSize: '13px', fontWeight: isBold ? 600 : 400 }}>
+                    {row.name}
+                  </td>
+                  <td style={{ borderLeft: '1px solid #f1f5f9', background: '#fafaf9' }}></td>
+                  {values.map((v, i) => (
+                    <td key={i} style={{ padding: '12px 16px', textAlign: 'right', color: '#0f172a', fontSize: '13px', fontWeight: isBold ? 600 : 400, borderLeft: '1px solid #f1f5f9' }}>
+                      {formatValue(v, unit)}
+                    </td>
+                  ))}
+                  <td style={{ borderLeft: '1px solid #f1f5f9', background: '#f8fafc' }}></td>
+                  <td style={{ padding: '12px', borderLeft: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '18px', justifyContent: 'center' }}>
+                      {values.map((v, i) => (
+                        <div 
+                          key={i} 
+                          title={`${periods[i].time}: ${formatValue(v, unit)}`}
+                          style={{ 
+                            width: '6px', 
+                            height: `${Math.max(3, Math.round((Math.abs(v) / max) * 18))}px`, 
+                            background: '#0284c7', 
+                            opacity: v < 0 ? 0.5 : 1
+                          }} 
+                        />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!report && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>No financial reports saved for this company yet.</div>}
     </section>
   </ListingTabShell>;
 };

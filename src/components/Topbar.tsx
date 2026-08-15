@@ -194,28 +194,11 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     <>
       <header className="topbar">
         <div className="topbar-left">
-          <div className="breadcrumb">
-            <span>APMS</span>
-            <span className="breadcrumb-sep">›</span>
-            <span className="breadcrumb-current">{t(pageLabelKey)}</span>
-          </div>
 
-          <div className="topbar-search">
-            <input
-              type="text"
-              placeholder={t('topbar.searchPlaceholder')}
-              value={searchVal}
-              onChange={(event) => setSearchVal(event.target.value)}
-            />
-          </div>
         </div>
 
         <div className="topbar-right">
-          <button className="topbar-btn" onClick={toggleTheme} title={theme === 'dark' ? t('topbar.theme.switchToLight') : t('topbar.theme.switchToDark')}>
-            {theme === 'dark' ? t('topbar.theme.light') : t('topbar.theme.dark')}
-          </button>
-
-          <LanguageSwitcher />
+        
 
           <div className="relative" ref={notifRef}>
             <button

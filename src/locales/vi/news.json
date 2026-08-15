@@ -1,84 +1,84 @@
 {
-  "header": { "title": "Trung tâm thông tin tin tức và truyền thông", "eyebrow": "Thông tin hệ sinh thái doanh nghiệp", "description": "Theo dõi truyền thông thời gian thực, cảm xúc NLP và tín hiệu báo chí đối thủ.", "dashboard": "Bảng điều khiển", "breadcrumb": "Thông tin tin tức", "exportDigest": "Xuất bản tóm tắt PDF", "refreshFeed": "Làm mới nguồn tin" },
-  "metrics": { "today": "hôm nay", "articles": { "label": "Bài viết", "description": "Mục tin đã thu thập" }, "companies": { "label": "Công ty", "description": "Đơn vị được đề cập" }, "sources": { "label": "Nguồn tin", "description": "Nhà xuất bản đang hoạt động" }, "positive": { "label": "Tin tích cực", "description": "Tín hiệu thuận lợi" }, "negative": { "label": "Tin tiêu cực", "description": "Tín hiệu bất lợi" } },
+  "header": { "title": "News & Media Intelligence Center", "eyebrow": "Business Ecosystem Intelligence", "description": "Real-time media monitoring, NLP sentiment tracking, and competitor press signals.", "dashboard": "Dashboard", "breadcrumb": "News Intelligence", "exportDigest": "Export Digest PDF", "refreshFeed": "Refresh News Feed" },
+  "metrics": { "today": "today", "articles": { "label": "Articles", "description": "Ingested media items" }, "companies": { "label": "Companies", "description": "Referenced entities" }, "sources": { "label": "Sources", "description": "Active publishers" }, "positive": { "label": "Positive News", "description": "Favorable signals" }, "negative": { "label": "Negative News", "description": "Adverse signals" } },
   "title": "Company Related Articles",
-  "subtitle": "Tin tức doanh nghiệp thu thập tự động",
-  "syncBadge": "Tự động cập nhật (30s)",
+  "subtitle": "Automatically collected company news",
+  "syncBadge": "Auto-refresh (30s)",
   "stats": {
-    "articles": "Bài viết tin tức",
-    "articlesNote": "Tổng bài thu thập bởi crawler",
-    "sources": "Nguồn tin",
-    "sourcesNote": "Kênh tin tức đang hoạt động",
-    "companiesNote": "Doanh nghiệp khớp trên trang này"
+    "articles": "News Articles",
+    "articlesNote": "Total articles collected by crawler",
+    "sources": "Sources",
+    "sourcesNote": "Active news channels",
+    "companiesNote": "Companies matched on this page"
   },
   "filters": {
-    "searchPlaceholder": "Tìm tiêu đề, tóm tắt, nguồn hoặc công ty...",
-    "allSources": "Tất cả nguồn tin",
-    "reset": "Đặt lại"
+    "searchPlaceholder": "Search title, summary, source, or company...",
+    "allSources": "All sources",
+    "reset": "Reset"
   },
   "table": {
-    "type": "Loại",
-    "title": "Tiêu đề & Tóm tắt",
-    "company": "Doanh nghiệp",
-    "sourceDate": "Nguồn & Ngày",
-    "rating": "Đánh giá",
-    "actions": "Thao tác"
+    "type": "Type",
+    "title": "Title & Summary",
+    "company": "Company",
+    "sourceDate": "Source & Date",
+    "rating": "Rating",
+    "actions": "Actions"
   },
   "level": {
     "risk": "Risk {{level}}",
     "opportunity": "Opp {{level}}",
-    "general": "Chung"
+    "general": "General"
   },
   "empty": {
-    "loading": "Đang tải bài viết...",
-    "noResults": "Không có bài viết nào phù hợp với bộ lọc."
+    "loading": "Loading articles...",
+    "noResults": "No articles match your filters."
   },
   "article": {
-    "noTitle": "Bài viết chưa có tiêu đề"
+    "noTitle": "Article has no title"
   },
   "summary": {
-    "empty": "Chưa có tóm tắt cho bài viết này."
+    "empty": "No summary available for this article."
   },
   "company": {
-    "noMatch": "Không khớp",
-    "related": "Doanh nghiệp liên quan"
+    "noMatch": "No match",
+    "related": "Related Companies"
   },
   "source": {
-    "unknown": "Không rõ"
+    "unknown": "Unknown"
   },
-  "duplicate": "Trùng",
+  "duplicate": "Duplicate",
   "actions": {
-    "details": "Chi tiết",
-    "original": "Gốc"
+    "details": "Details",
+    "original": "Original"
   },
   "pagination": {
-    "showing": "Hiển thị {{count}} / {{total}} bài viết",
-    "page": "Trang {{page}} / {{total}}",
-    "previous": "Trước",
-    "next": "Sau"
+    "showing": "Showing {{count}} / {{total}} articles",
+    "page": "Page {{page}} / {{total}}",
+    "previous": "Previous",
+    "next": "Next"
   },
   "modal": {
-    "close": "Đóng",
-    "sourceLabel": "Nguồn",
-    "dateLabel": "Ngày",
-    "openOriginal": "Mở bài viết gốc",
-    "aiSummaryTitle": "Tóm tắt AI",
-    "aiSummaryEmpty": "Chưa tạo tóm tắt AI.",
-    "assessmentTitle": "Đánh giá & Cảm xúc",
-    "riskReason": "Lý do: {{reason}}",
-    "topics": "Chủ đề",
-    "collectedContent": "Nội dung thu thập",
-    "noContent": "Không có nội dung."
+    "close": "Close",
+    "sourceLabel": "Source",
+    "dateLabel": "Date",
+    "openOriginal": "Open original article",
+    "aiSummaryTitle": "AI Summary",
+    "aiSummaryEmpty": "No AI summary generated yet.",
+    "assessmentTitle": "Assessment & Sentiment",
+    "riskReason": "Reason: {{reason}}",
+    "topics": "Topics",
+    "collectedContent": "Collected Content",
+    "noContent": "No content."
   },
   "aiState": {
-    "completed": "Đã phân tích AI",
-    "failed": "AI lỗi",
-    "inProgress": "Đang phân tích..."
+    "completed": "AI analyzed",
+    "failed": "AI failed",
+    "inProgress": "Analyzing..."
   },
   "date": {
-    "noDate": "Không có ngày"
+    "noDate": "No date"
   },
   "errors": {
-    "loadFailed": "Không thể tải danh sách bài viết."
+    "loadFailed": "Could not load the article list."
   }
 }

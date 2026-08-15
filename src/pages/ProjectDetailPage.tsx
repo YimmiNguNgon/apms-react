@@ -11,6 +11,8 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Copy,
   DollarSign,
@@ -623,20 +625,34 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
   if (!evidence) return null;
 
   const score = evidenceScoreLabel(evidence.confidenceScore);
-  const hasEvidence = Boolean(evidence.evidenceText?.trim());
   const messages = Array.isArray(evidence.validationMessages)
     ? evidence.validationMessages.join(', ')
     : evidence.validationMessages;
+
+  let parsedFileName = '';
+  let parsedDocId = '';
+  let parsedEvidenceText = evidence.evidenceText || '';
+  let hasEvidence = Boolean(parsedEvidenceText.trim());
+
+  if (hasEvidence) {
+    const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^\]]+?)\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
+    if (rawMatch) {
+      parsedFileName = rawMatch[1].trim();
+      parsedDocId = rawMatch[2].trim();
+      parsedEvidenceText = rawMatch[3].trim();
+    }
+  }
+
   const sources = evidence.sources?.length
     ? evidence.sources
-    : evidence.sourceFileName
+    : evidence.sourceFileName || parsedFileName
       ? [{
-          fileName: evidence.sourceFileName,
+          fileName: evidence.sourceFileName || parsedFileName,
           importJobId: evidence.sourceImportJobId,
-          rawDocumentId: evidence.sourceRawDocumentId,
+          rawDocumentId: evidence.sourceRawDocumentId || parsedDocId,
           extractionId: evidence.sourceExtractionId,
           confidenceScore: evidence.confidenceScore,
-          evidenceText: evidence.evidenceText,
+          evidenceText: parsedEvidenceText,
           pageNumber: evidence.pageNumber,
           validationStatus: evidence.validationStatus,
           validationMessages: evidence.validationMessages,
@@ -644,46 +660,104 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
         }]
       : [];
 
+  const evidenceCount = sources.length;
+
   return (
-    <div className={styles.itemEvidencePanel}>
-      <button type="button" onClick={() => setOpen((current) => !current)}>
+    <div style={{ marginTop: '8px' }}>
+      <button 
+        type="button" 
+        onClick={() => setOpen((current) => !current)}
+        style={{ 
+          color: '#475569', 
+          fontWeight: 600, 
+          fontSize: '13px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0
+        }}
+      >
         <FileText size={14} />
-        {open ? 'Hide evidence' : 'View evidence'}
+        Evidence{evidenceCount > 0 ? ` (${evidenceCount})` : ''}
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
+      
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            className={styles.itemEvidenceCard}
+            style={{ 
+              marginTop: '10px', 
+              background: '#f8fafc', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '8px', 
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              overflow: 'hidden'
+            }}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {sources.length > 0 && (
-              <div className={styles.itemEvidenceSources}>
-                <span>Used source documents</span>
+            {evidenceCount > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supporting Evidence</span>
+                  <strong style={{ fontSize: '12px', color: '#0f172a' }}>{evidenceCount} source{evidenceCount > 1 ? 's' : ''}</strong>
+                </div>
                 {sources.map((source, index) => (
-                  <article key={`${source.extractionId || source.importJobId || source.fileName}-${index}`}>
-                    <strong>{source.fileName}</strong>
-                    <footer>
-                      {source.pageNumber ? <small>Page {source.pageNumber}</small> : <small>Page unavailable</small>}
-                      {typeof source.confidenceScore === 'number' && <small>{source.confidenceScore}% confidence</small>}
-                      {source.importJobId && <small>Import job #{source.importJobId}</small>}
-                    </footer>
-                    {source.evidenceText && <p>{source.evidenceText}</p>}
+                  <article key={index} style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: index < sources.length - 1 ? '1px dashed #cbd5e1' : 'none', paddingBottom: index < sources.length - 1 ? '12px' : '0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong style={{ color: '#0f172a', fontSize: '13px', fontWeight: 600, wordBreak: 'break-word' }}>
+                        {source.fileName || `Source ${index + 1}`}
+                      </strong>
+                      {source.pageNumber && (
+                        <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          Page {source.pageNumber}
+                        </span>
+                      )}
+                      {typeof source.confidenceScore === 'number' && (
+                        <span style={{ color: '#059669', fontSize: '11px', fontWeight: 600 }}>
+                          {source.confidenceScore}% conf
+                        </span>
+                      )}
+                    </div>
+                    {source.evidenceText && (
+                      <p style={{ margin: 0, fontSize: '13px', color: '#334155', lineHeight: '1.55', background: '#ffffff', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', whiteSpace: 'pre-wrap' }}>
+                        {source.evidenceText}
+                      </p>
+                    )}
                   </article>
                 ))}
               </div>
+            ) : (
+              <div>
+                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source evidence</span>
+                </div>
+                <p style={{ margin: '0', fontSize: '13px', color: '#334155', lineHeight: '1.55', background: '#ffffff', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', whiteSpace: 'pre-wrap' }}>
+                  {hasEvidence ? parsedEvidenceText : 'No source quote returned for this field.'}
+                </p>
+                {evidence.pageNumber && (
+                  <div style={{ marginTop: '8px' }}>
+                    <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                      Page {evidence.pageNumber}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
-            <div>
-              <span>Source evidence</span>
-              <p>{hasEvidence ? evidence.evidenceText : 'No source quote returned for this field.'}</p>
-            </div>
-            <footer>
-              <small>{evidence.pageNumber ? `Page ${evidence.pageNumber}` : 'Page unavailable'}</small>
-              <small>Confidence: {score}</small>
-            </footer>
-            {messages && <strong>{messages}</strong>}
+            
+            {messages && (
+              <div style={{ marginTop: '4px', color: '#b91c1c', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', background: '#fee2e2', padding: '8px', borderRadius: '6px' }}>
+                <AlertTriangle size={14} /> {messages}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -3439,7 +3513,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   useEffect(() => {
     if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(null), 3200);
+    const timeout = window.setTimeout(() => setToast(null), 6000);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
@@ -4738,8 +4812,48 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       if (res.success && res.data && res.data.jobId) {
         setExtractionJobId(res.data.jobId);
       }
-    } catch (error) {
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot run AI extraction.');
+    } catch (error: unknown) {
+      const errAny = error as any;
+      const payload = errAny?.payload;
+      const errorCode = payload?.errorCode;
+      const isCompanyValidationError = errorCode === 'DOCUMENT_COMPANY_MISMATCH'
+        || errorCode === 'DOCUMENT_COMPANY_UNRESOLVED'
+        || errorCode === 'DOCUMENT_TARGET_COMPANY_MISMATCH';
+
+      if (isCompanyValidationError && payload) {
+        // Build detailed error message
+        const documents = payload.details?.documents as Array<{
+          rawDocumentId?: string;
+          fileName?: string;
+          legalName?: string;
+          tradeName?: string;
+          status?: string;
+        }> | undefined;
+
+        setWorkbenchError(payload.message || 'Tài liệu không đồng nhất.');
+
+        const toastContent = (
+          <>
+            <strong>
+              {errorCode === 'DOCUMENT_COMPANY_MISMATCH'
+                ? 'Lỗi dữ liệu đầu vào'
+                : errorCode === 'DOCUMENT_TARGET_COMPANY_MISMATCH'
+                  ? 'Sai doanh nghiệp'
+                  : 'Lỗi xác định doanh nghiệp'}
+            </strong>
+            <span style={{ display: 'block', marginTop: 4, fontWeight: 400 }}>
+              {payload.message}
+            </span>
+          </>
+        );
+
+        setToast({ kind: 'error', message: toastContent });
+      } else {
+        const message = error instanceof Error ? error.message : 'Cannot run AI extraction.';
+        setWorkbenchError(message);
+        setToast({ kind: 'error', message: (<><strong>AI Extraction failed</strong><span>{message}</span></>) });
+      }
+
       setExtractingSelectedDocuments(false);
       setExtractingImportJobId(null);
     }
@@ -7009,73 +7123,47 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <section className={styles.workbenchPanel}>
                       <h3>Candidate drafts</h3>
                       <div className={styles.draftList}>
-                        {(workbench?.candidateDrafts?.filter((draft) => draft.status === 'DRAFT').length ?? 0) === 0 && (
-                          <div className={styles.empty}>No active candidate draft yet.</div>
-                        )}
-                        {workbench?.candidateDrafts?.filter((draft) => draft.status === 'DRAFT').map((draft) => {
-                          const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
-                          const isDeleting = deletingCandidateDraftId === draft.candidateId;
+                        {(() => {
+                          const sortedDrafts = [...(workbench?.candidateDrafts || [])]
+                            .filter((draft) => draft.status === 'DRAFT')
+                            .sort((a, b) => {
+                              const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                              const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                              return dateB - dateA; // Descending: Newest first
+                            });
 
-                          return (
-                            <article
-                              className={`${styles.draftItem} ${styles.draftItemWithActions}`}
-                              key={draft.candidateId}
-                            >
-                              <button
-                                className={styles.draftItemMain}
-                                type="button"
-                                onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                disabled={!canUseStaffWorkbench || isDeleting}
-                              >
-                                <strong>{draftLabel}</strong>
-                                {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
-                                <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
-                                {draft.hasConflicts && <small>{draft.conflictCount || 0} conflict(s)</small>}
-                              </button>
-                              <button
-                                className={styles.draftDeleteButton}
-                                type="button"
-                                onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
-                                disabled={!canUseStaffWorkbench || isDeleting}
-                                aria-label={`Delete ${draftLabel}`}
-                                title="Delete draft"
-                              >
-                                <Trash2 size={15} />
-                                {isDeleting ? 'Deleting...' : 'Delete'}
-                              </button>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    </section>
-                    <section className={styles.workbenchPanel}>
-                      <h3>Rejected drafts</h3>
-                      <div className={styles.draftList}>
-                        {(workbench?.candidateDrafts?.filter((draft) => draft.status === 'REJECTED').length ?? 0) === 0 && (
-                          <div className={styles.empty}>No rejected draft history yet.</div>
-                        )}
-                        {workbench?.candidateDrafts?.filter((draft) => draft.status === 'REJECTED').map((draft) => {
-                          const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
-                          const isDeleting = deletingCandidateDraftId === draft.candidateId;
+                          if (sortedDrafts.length === 0) {
+                            return <div className={styles.empty}>No active candidate draft yet.</div>;
+                          }
 
-                          return (
-                            <article
-                              className={`${styles.draftItem} ${styles.draftItemWithActions}`}
-                              key={draft.candidateId}
-                            >
-                              <button
-                                className={styles.draftItemMain}
-                                type="button"
-                                onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                disabled={!canUseStaffWorkbench || isDeleting}
+                          return sortedDrafts.map((draft, index) => {
+                            const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
+                            const isDeleting = deletingCandidateDraftId === draft.candidateId;
+                            const isNewest = index === 0 && sortedDrafts.length > 1;
+
+                            return (
+                              <article
+                                className={`${styles.draftItem} ${styles.draftItemWithActions}`}
+                                key={draft.candidateId}
                               >
-                                <strong>{draftLabel}</strong>
-                                {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
-                                <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
-                                {draft.isUnderReview && <small>Under manager review</small>}
-                                {draft.hasConflicts && <small>{draft.conflictCount || 0} conflict(s)</small>}
-                              </button>
-                              {(draft.status === 'DRAFT' || draft.status === 'REJECTED') && (
+                                <button
+                                  className={styles.draftItemMain}
+                                  type="button"
+                                  onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                  disabled={!canUseStaffWorkbench || isDeleting}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                                    <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
+                                    {isNewest && <span style={{ display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '12px', fontWeight: 700, boxShadow: '0 2px 4px rgba(239,68,68,0.2)' }}>Newest</span>}
+                                  </div>
+                                  {draft.candidateIndustry && <small style={{ color: '#64748b', marginTop: '2px' }}>{draft.candidateIndustry}</small>}
+                                  
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ margin: 0 }} className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                    {draft.createdAt && <small style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '12px', fontWeight: 500 }}><Clock size={12} /> {formatOptionalDate(draft.createdAt)}</small>}
+                                  </div>
+                                  {draft.hasConflicts && <small style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontWeight: 600 }}><AlertTriangle size={12} /> {draft.conflictCount || 0} conflict(s)</small>}
+                                </button>
                                 <button
                                   className={styles.draftDeleteButton}
                                   type="button"
@@ -7087,10 +7175,74 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   <Trash2 size={15} />
                                   {isDeleting ? 'Deleting...' : 'Delete'}
                                 </button>
-                              )}
-                            </article>
-                          );
-                        })}
+                              </article>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </section>
+                    <section className={styles.workbenchPanel}>
+                      <h3>Rejected drafts</h3>
+                      <div className={styles.draftList}>
+                        {(() => {
+                          const sortedDrafts = [...(workbench?.candidateDrafts || [])]
+                            .filter((draft) => draft.status === 'REJECTED')
+                            .sort((a, b) => {
+                              const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                              const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                              return dateB - dateA;
+                            });
+
+                          if (sortedDrafts.length === 0) {
+                            return <div className={styles.empty}>No rejected draft history yet.</div>;
+                          }
+
+                          return sortedDrafts.map((draft, index) => {
+                            const draftLabel = draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`;
+                            const isDeleting = deletingCandidateDraftId === draft.candidateId;
+                            const isNewest = index === 0 && sortedDrafts.length > 1;
+
+                            return (
+                              <article
+                                className={`${styles.draftItem} ${styles.draftItemWithActions}`}
+                                key={draft.candidateId}
+                              >
+                                <button
+                                  className={styles.draftItemMain}
+                                  type="button"
+                                  onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                  disabled={!canUseStaffWorkbench || isDeleting}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                                    <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
+                                    {isNewest && <span style={{ display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '12px', fontWeight: 700, boxShadow: '0 2px 4px rgba(239,68,68,0.2)' }}>Newest</span>}
+                                  </div>
+                                  {draft.candidateIndustry && <small style={{ color: '#64748b', marginTop: '2px' }}>{draft.candidateIndustry}</small>}
+                                  
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ margin: 0 }} className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                    {draft.createdAt && <small style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '12px', fontWeight: 500 }}><Clock size={12} /> {formatOptionalDate(draft.createdAt)}</small>}
+                                    {draft.isUnderReview && <small style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600 }}>Under manager review</small>}
+                                  </div>
+                                  {draft.hasConflicts && <small style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontWeight: 600 }}><AlertTriangle size={12} /> {draft.conflictCount || 0} conflict(s)</small>}
+                                </button>
+                                {(draft.status === 'DRAFT' || draft.status === 'REJECTED') && (
+                                  <button
+                                    className={styles.draftDeleteButton}
+                                    type="button"
+                                    onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
+                                    disabled={!canUseStaffWorkbench || isDeleting}
+                                    aria-label={`Delete ${draftLabel}`}
+                                    title="Delete draft"
+                                  >
+                                    <Trash2 size={15} />
+                                    {isDeleting ? 'Deleting...' : 'Delete'}
+                                  </button>
+                                )}
+                              </article>
+                            );
+                          });
+                        })()}
                       </div>
                     </section>
                     </>
@@ -7491,7 +7643,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`}</strong>
                             {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
                             <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
-                            {draft.isUnderReview && <small>Submitted for review</small>}
+                            {draft.isUnderReview && <small>Submitted for review {draft.createdAt ? `on ${formatOptionalDate(draft.createdAt)}` : ''}</small>}
                           </button>
                         ))}
                       </div>

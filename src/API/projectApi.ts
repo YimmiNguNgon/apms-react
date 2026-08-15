@@ -216,7 +216,10 @@ export const projectApi = {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(payload?.message || "Failed to extract multiple documents");
+        const err = new Error(payload?.message || "Failed to extract multiple documents");
+        (err as any).payload = payload;
+        (err as any).status = response.status;
+        throw err;
       }
 
       return payload as ApiResponse<AiExtractionJobResponse>;

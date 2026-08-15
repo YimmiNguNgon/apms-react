@@ -1,63 +1,63 @@
 {
   "header": {
-    "activityEyebrow": "Xung nhịp người dùng",
-    "activityTitle": "Lịch sử hoạt động",
-    "activityDesc": "Theo dõi mức độ tham gia của người dùng, sự kiện bảo mật và các vận hành viên đang hoạt động.",
-    "activeUsersMeter": "người dùng hoạt động",
-    "auditEyebrow": "Dấu vết bất biến",
-    "auditTitle": "Nhật ký hệ thống (Audit Logs)",
-    "auditDesc": "Kiểm tra sự kiện bảo mật theo mốc thời gian, thay đổi quyền và vận hành hệ thống với bộ lọc thời gian thực.",
-    "recordedEventsMeter": "sự kiện ghi nhận"
+    "activityEyebrow": "User pulse",
+    "activityTitle": "Activity history",
+    "activityDesc": "Monitor user participation, security events, and active workspace operators.",
+    "activeUsersMeter": "active users",
+    "auditEyebrow": "Immutable trail",
+    "auditTitle": "Audit Logs",
+    "auditDesc": "Inspect timestamped security events, role modifications, and system operations with real-time filters.",
+    "recordedEventsMeter": "recorded events"
   },
   "stats": {
-    "activeUsers": "Người dùng hoạt động",
-    "mostActiveCount": "Số lượt HĐ cao nhất",
-    "totalLogItems": "Tổng số bản ghi log",
-    "streamState": "Trạng thái luồng",
-    "live": "Trực tiếp",
-    "totalAuditEvents": "Tổng số sự kiện audit",
-    "currentPage": "Trang {{page}} / {{totalPages}}",
-    "actionsFiltered": "Hành động đã lọc",
-    "exportFormat": "Định dạng xuất",
-    "all": "Tất cả"
+    "activeUsers": "Active users",
+    "mostActiveCount": "Most active count",
+    "totalLogItems": "Total log items",
+    "streamState": "Stream state",
+    "live": "Live",
+    "totalAuditEvents": "Total audit events",
+    "currentPage": "Page {{page}} of {{totalPages}}",
+    "actionsFiltered": "Actions filtered",
+    "exportFormat": "Export format",
+    "all": "All"
   },
   "tabs": {
-    "auditLogs": "Nhật ký hệ thống",
-    "userActivity": "Hoạt động người dùng"
+    "auditLogs": "Audit logs",
+    "userActivity": "User activity"
   },
   "filters": {
-    "allActions": "Tất cả hành động",
-    "allEntities": "Tất cả đối tượng",
-    "searchPlaceholder": "Tìm theo email, ID người dùng hoặc chi tiết...",
-    "fromDate": "Từ ngày",
-    "toDate": "Đến ngày",
-    "refresh": "Làm mới",
-    "exportCsv": "📥 Xuất CSV",
-    "exporting": "Đang xuất..."
+    "allActions": "All Actions",
+    "allEntities": "All Entities",
+    "searchPlaceholder": "Search user / details...",
+    "fromDate": "From Date",
+    "toDate": "To Date",
+    "refresh": "Refresh",
+    "exportCsv": "📥 Export CSV",
+    "exporting": "Exporting..."
   },
   "table": {
-    "timestamp": "Mốc thời gian",
-    "actor": "Người thực hiện",
-    "action": "Hành động",
-    "entity": "Đối tượng",
-    "details": "Chi tiết",
-    "noLogs": "Không có nhật ký hệ thống nào phù hợp với bộ lọc hiện tại.",
-    "systemActor": "Hệ thống",
-    "pagination": "Trang {{page}} / {{totalPages}} (Tổng {{totalElements}} bản ghi)",
-    "prev": "Trang trước",
-    "next": "Trang sau"
+    "timestamp": "Timestamp",
+    "actor": "User (Actor)",
+    "action": "Action",
+    "entity": "Entity",
+    "details": "Details",
+    "noLogs": "No audit logs match the current filters.",
+    "systemActor": "System",
+    "pagination": "Page {{page}} of {{totalPages}} ({{totalElements}} total entries)",
+    "prev": "Previous",
+    "next": "Next"
   },
   "focus": {
-    "eyebrow": "NGƯỜI DÙNG TÍCH CỰC NHẤT",
-    "noActivity": "Chưa có hoạt động",
-    "recordedCount_one": "{{count}} hành động audit được ghi nhận trong khoảng thời gian này.",
-    "recordedCount_other": "{{count}} hành động audit được ghi nhận trong khoảng thời gian này.",
-    "noActivityDesc": "Chưa có hoạt động nào được ghi nhận."
+    "eyebrow": "ACTIVITY FOCUS",
+    "noActivity": "No user activity",
+    "recordedCount_one": "{{count}} audit action recorded in this window.",
+    "recordedCount_other": "{{count}} audit actions recorded in this window.",
+    "noActivityDesc": "No activity recorded."
   },
   "timeline": {
-    "events_one": "{{count}} sự kiện audit đã ghi nhận",
-    "events_other": "{{count}} sự kiện audit đã ghi nhận",
-    "shareOfTotal": "{{percent}}% tổng số bản ghi log",
-    "lastSeen": "HĐ gần nhất: {{time}}"
+    "events_one": "{{count}} recorded audit event",
+    "events_other": "{{count}} recorded audit events",
+    "shareOfTotal": "{{percent}}% of total log items",
+    "lastSeen": "Last active: {{time}}"
   }
 }

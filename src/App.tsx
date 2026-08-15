@@ -38,6 +38,8 @@ const writeActivePageToLocation = (page: string) => {
 // ── Existing pages ──
 import { CompanyList }     from './pages/CompanyList';
 import { CompanyDetail }   from './pages/CompanyDetail';
+import { OwnerProfilePage } from './pages/OwnerProfilePage';
+import { OwnerInternalNewsView } from './pages/OwnerInternalNewsView';
 import { VerifyQueue }     from './pages/VerifyQueue';
 import { ValidationQueue } from './pages/ValidationQueue';
 import { AddCompany }      from './pages/AddCompany';
@@ -251,6 +253,8 @@ const MainApp: React.FC = () => {
       // ── Existing pages ──
       case 'companies':        return <CompanyList setActivePage={navigateToPage} />;
       case 'company-detail':   return <CompanyDetail setActivePage={navigateToPage} />;
+      case 'owner-profile':    return <OwnerProfilePage setActivePage={navigateToPage} />;
+      case 'owner-internal-news': return <OwnerInternalNewsView />;
       case 'company-profiles': return <CompanyList setActivePage={navigateToPage} />;
       case 'verify':           return <VerifyQueue />;
       case 'validate':         return <ValidationQueue />;

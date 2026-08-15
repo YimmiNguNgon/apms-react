@@ -17,8 +17,8 @@ interface SecureTotpAccessGateProps {
   lockedUntil?: string | null;
   setupOpen: boolean;
   verifyOpen: boolean;
-  scope: string;
-  resourceId: string;
+  scope?: string;
+  resourceId?: string;
   forbiddenText: string;
   requiredText: string;
   expiredText?: string;
@@ -65,8 +65,7 @@ export const SecureTotpAccessGate: React.FC<SecureTotpAccessGateProps> = ({
         <div style={styles.deniedIcon}>
           <Shield size={48} color="#ef4444" />
         </div>
-        <h3 style={styles.title}>{'Truy c\u1eadp b\u1ecb t\u1eeb ch\u1ed1i'}</h3>
-        <p style={styles.text}>{forbiddenText}</p>
+        <h3 style={styles.title}>Access Denied</h3>
       </div>
     );
   }
