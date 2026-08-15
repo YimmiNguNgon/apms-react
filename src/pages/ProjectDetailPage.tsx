@@ -3080,12 +3080,10 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
 };
 
 const createTaskTypeOptions: Array<{ value: TaskType; label: string }> = [
-  { value: 'GENERAL_TASK', label: 'General task' },
-  { value: 'COMPANY_DATA_PREPARATION', label: 'Company data preparation' },
-  { value: 'COMPANY_MEMBER_RESEARCH', label: 'Company member research' },
-  { value: 'COMPANY_NEWS_RESEARCH', label: 'Company news research' },
-  { value: 'ROLE_EVALUATION', label: 'Role evaluation' },
-  { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Partner contract collection' },
+  { value: 'COMPANY_DATA_PREPARATION', label: 'Extract Company Profile Data' },
+  { value: 'COMPANY_MEMBER_RESEARCH', label: 'Research Leadership Team' },
+  { value: 'COMPANY_NEWS_RESEARCH', label: 'Gather Market News' },
+  { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Collect Partner Contracts' },
 ];
 
 const emptyCompanyMemberForm: CompanyMemberResearchItem = {

@@ -57,6 +57,11 @@
     "previous": "Previous",
     "next": "Next"
   },
+  "sections": {
+    "topStories": "Tin tức nổi bật",
+    "latestNews": "Tin tức mới nhất",
+    "storiesCount": "{{count}} bài viết"
+  },
   "modal": {
     "close": "Close",
     "sourceLabel": "Source",

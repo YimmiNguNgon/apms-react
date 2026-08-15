@@ -25,7 +25,7 @@ export const AdminPanel: React.FC = () => {
 
         {activeTab === 'users' && <UserManagement defaultTab="users" />}
         {activeTab === 'logs' && <ActivityAudit defaultTab="audit" />}
-        {activeTab === 'settings' && <SystemSettingsPage defaultTab="system" />}
+        {activeTab === 'settings' && <SystemSettingsPage defaultTab="security" />}
       </div>
     </section>
   );

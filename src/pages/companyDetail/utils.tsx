@@ -117,11 +117,11 @@ export const initialsOf = (name?: string | null): string => {
 
 export const BOARD_GROUP_ORDER = [1, 2, 3, 4, 5];
 export const BOARD_GROUP_LABELS: Record<number, string> = {
-  1: 'Hội đồng quản trị',
-  2: 'Ban giám đốc / Kế toán trưởng',
-  3: 'Ban kiểm toán',
-  4: 'Ban kiểm toán',
-  5: 'Vị trí khác',
+  1: 'Board of Directors',
+  2: 'Executive Board / Chief Accountant',
+  3: 'Supervisory Board',
+  4: 'Supervisory Board',
+  5: 'Other Positions',
 };
 
 export const PERIOD_LABELS: Record<string, string> = {

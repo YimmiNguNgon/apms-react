@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { externalDataApi, type ExternalDataItem } from '../API/externalDataApi';
 import { SecondaryButton } from '../components/ui';
 import styles from './News.module.css';
@@ -86,19 +87,19 @@ const extractSource = (value?: string | null) => {
   };
 };
 
-const formatRelativeTime = (value?: string | null) => {
-  if (!value) return 'Unknown date';
+const formatRelativeTime = (value: string | null | undefined, t: any) => {
+  if (!value) return t('date.unknown', 'Unknown date');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  if (Number.isNaN(date.getTime())) return t('date.unknown', 'Unknown date');
 
   const diffMs = Date.now() - date.getTime();
   const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffHrs / 24);
 
-  if (diffHrs < 1) return 'Just now';
-  if (diffHrs < 24) return `${diffHrs}h ago`;
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays <= 7) return `${diffDays}d ago`;
+  if (diffHrs < 1) return t('date.justNow', 'Just now');
+  if (diffHrs < 24) return t('date.hoursAgo', { count: diffHrs, defaultValue: `${diffHrs}h ago` });
+  if (diffDays === 1) return t('date.yesterday', 'Yesterday');
+  if (diffDays <= 7) return t('date.daysAgo', { count: diffDays, defaultValue: `${diffDays}d ago` });
 
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 };
@@ -168,6 +169,7 @@ const SentimentBadge: React.FC<{ sentiment?: string | null }> = ({ sentiment }) 
 // ── Main Component ──────────────────────────────────────────
 
 export const News: React.FC<NewsProps> = () => {
+  const { t } = useTranslation('news');
   const [trackedCompanies, setTrackedCompanies] = useState<TrackedCompany[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
@@ -331,16 +333,16 @@ export const News: React.FC<NewsProps> = () => {
       <div className={styles.newsHeader}>
         <div className={styles.newsHeaderLeft}>
           <div className={styles.headerEyebrow}>
-            Business Intelligence
+            {t('header.eyebrow')}
           </div>
-          <h1 className={styles.newsTitle}>News & Media</h1>
+          <h1 className={styles.newsTitle}>{t('header.title')}</h1>
           <p className={styles.newsSub}>
-            Latest company-related articles collected from trusted news sources.
+            {t('header.description')}
           </p>
         </div>
         <div className={styles.newsHeaderRight}>
           <div className={styles.newsLastUpdated}>
-            {loading ? 'Updating...' : `Updated ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
+            {loading ? t('aiState.inProgress', 'Updating...') : `${t('drawer.synced', 'Updated')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
           </div>
         </div>
       </div>
@@ -351,7 +353,7 @@ export const News: React.FC<NewsProps> = () => {
           className={`${styles.companyChip} ${!selectedCompanyId ? styles.companyChipActive : ''}`}
           onClick={() => setSelectedCompanyId(null)}
         >
-          All Companies
+          {t('filters.allCompanies')}
         </div>
         {trackedCompanies.map(c => (
           <div 
@@ -369,7 +371,7 @@ export const News: React.FC<NewsProps> = () => {
         <div className={styles.searchBox}>
           <input 
             type="text" 
-            placeholder="Search headlines, companies..." 
+            placeholder={t('filters.searchPlaceholder')} 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -379,17 +381,17 @@ export const News: React.FC<NewsProps> = () => {
       {/* ── Empty & Loading States ────────────────────────── */}
       {loading && articles.length === 0 && (
         <div className={styles.emptyStateContainer}>
-          Loading latest news...
+          {t('empty.loading')}
         </div>
       )}
 
       {!loading && articles.length === 0 && (
         <div className={styles.emptyStateContainer}>
           <h3 className={styles.emptyStateTitle}>
-            {selectedCompanyName ? `No ${selectedCompanyName} articles found` : 'No articles found'}
+            {selectedCompanyName ? t('empty.noResultsWithCompany', { company: selectedCompanyName, defaultValue: `No ${selectedCompanyName} articles found` }) : t('empty.noResultsTitle')}
           </h3>
           <p className={styles.emptyStateText}>
-            There are currently no crawled articles matching your filters.
+            {t('empty.noResultsBody')}
           </p>
           {(search || sentimentFilter !== 'All' || importanceFilter !== 'All' || selectedCompanyId) && (
             <SecondaryButton size="sm" onClick={() => {
@@ -398,7 +400,7 @@ export const News: React.FC<NewsProps> = () => {
               setImportanceFilter('All');
               setSelectedCompanyId(null);
             }}>
-              View all news
+              {t('filters.viewAll')}
             </SecondaryButton>
           )}
         </div>
@@ -418,7 +420,7 @@ export const News: React.FC<NewsProps> = () => {
               <div className={styles.featuredMeta}>
                 <span className={styles.sourceNameText}>{featuredArticle.source.name}</span>
                 <span>•</span>
-                <span>{formatRelativeTime(featuredArticle.source.publishedAt)}</span>
+                <span>{formatRelativeTime(featuredArticle.source.publishedAt, t)}</span>
                 
                 {featuredArticle.relatedCompanies.slice(0, 2).map(c => (
                   <React.Fragment key={c.name}>
@@ -458,7 +460,7 @@ export const News: React.FC<NewsProps> = () => {
                       <div className={styles.secondaryMeta}>
                         <span className={styles.sourceNameText}>{article.source.name}</span>
                         <span>•</span>
-                        <span>{formatRelativeTime(article.source.publishedAt)}</span>
+                        <span>{formatRelativeTime(article.source.publishedAt, t)}</span>
                       </div>
                       <h4 className={styles.secondaryTitle}>{article.title}</h4>
                       <div className={styles.badgeGroup}>
@@ -483,8 +485,8 @@ export const News: React.FC<NewsProps> = () => {
       {latestArticles.length > 0 && (
         <>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Latest News</h2>
-            <div className={styles.sectionCount}>{totalCount} stories</div>
+            <h2 className={styles.sectionTitle}>{t('sections.latestNews')}</h2>
+            <div className={styles.sectionCount}>{t('sections.storiesCount', { count: totalCount })}</div>
           </div>
           
           <div className={styles.newsGrid}>
@@ -494,7 +496,7 @@ export const News: React.FC<NewsProps> = () => {
                 <div className={styles.gridMeta}>
                   <span className={styles.sourceNameText}>{article.source.name}</span>
                   <span>•</span>
-                  <span>{formatRelativeTime(article.source.publishedAt)}</span>
+                  <span>{formatRelativeTime(article.source.publishedAt, t)}</span>
                 </div>
                 <h4 className={styles.gridTitle}>{article.title}</h4>
                 <p className={styles.gridSummary}>{article.summary.text}</p>
@@ -521,7 +523,7 @@ export const News: React.FC<NewsProps> = () => {
       {totalCount > 0 && (
         <div className={styles.paginationContainer}>
           <div className={styles.paginationInfo}>
-            Showing {startItemIndex}–{endItemIndex} of {totalCount} articles
+            {t('pagination.showingRange', { start: startItemIndex, end: endItemIndex, total: totalCount })}
           </div>
 
           <div className={styles.paginationControls}>
@@ -530,7 +532,7 @@ export const News: React.FC<NewsProps> = () => {
               onClick={() => handlePageChange(page - 1)}
               disabled={page === 0 || loading}
             >
-              ‹ Previous
+              ‹ {t('pagination.previous')}
             </button>
 
             {renderPaginationButtons()}
@@ -540,7 +542,7 @@ export const News: React.FC<NewsProps> = () => {
               onClick={() => handlePageChange(page + 1)}
               disabled={page >= totalPages - 1 || loading}
             >
-              Next ›
+              {t('pagination.next')} ›
             </button>
           </div>
         </div>

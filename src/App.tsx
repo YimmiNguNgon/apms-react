@@ -54,6 +54,7 @@ import { CrawlerControl }  from './pages/CrawlerControl';
 import { UserManagement }    from './pages/UserManagement';
 import { ActivityAudit }     from './pages/ActivityAudit';
 import { SystemSettingsPage }from './pages/SystemSettings';
+import { OwnerCompanyProfilePage } from './pages/OwnerCompanyProfilePage';
 
 // ── Owner pages ──
 import { EcosystemOverview } from './pages/EcosystemOverview';
@@ -273,13 +274,12 @@ const MainApp: React.FC = () => {
       // ── Admin pages ──
       case 'users':            return <UserManagement defaultTab="users" />;
       case 'users-new':        return <UserManagement defaultTab="users" openCreate />;
-      case 'roles':            return <UserManagement defaultTab="roles" />;
+
       case 'permissions':      return <UserManagement defaultTab="permissions" />;
-      case 'activity-history': return <ActivityAudit defaultTab="activity" />;
       case 'audit-logs':       return <ActivityAudit defaultTab="audit" />;
-      case 'system-settings':  return <SystemSettingsPage defaultTab="system" />;
-      case 'security-settings':return <SystemSettingsPage defaultTab="security" />;
-      case 'access-control':   return <SystemSettingsPage defaultTab="access-control" />;
+
+
+      case 'owner-company-profile': return <OwnerCompanyProfilePage />;
 
       // ── Director & Owner pages ──
       case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;

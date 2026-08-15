@@ -1848,7 +1848,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         {selectedNode && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-              <RiskBadge level={selectedNode.riskLevel} showDot />
+
               <span style={{ fontSize: '12px', color: '#64748b' }}>{t('drawer.ecosystemStatus', 'Ecosystem Status:')}</span>
               <strong style={{ fontSize: '12px', color: '#0f172a', textTransform: 'uppercase' }}>
                 {l1NodeIds.has(selectedNode.id) ? t('drawer.directConnection', 'Direct Connection') : t('drawer.secondDegreeConnection', 'Second-Degree Connection')}

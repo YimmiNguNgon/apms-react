@@ -58,20 +58,61 @@
       "you": "(You)",
       "edit": "Edit",
       "changeRole": "Role",
-      "toggleStatus": "Toggle Status"
+      "toggleStatus": "Toggle Status",
+      "emailStatus": "Email",
+      "emailVerified": "Verified",
+      "emailUnverified": "Not verified",
+      "emailUnknown": "N/A"
     },
     "modal": {
       "createTitle": "Provision New Account",
+      "createDesc": "Create a new account for a system user.",
       "editTitle": "Edit Account Details",
       "roleTitle": "Update Assigned Role",
       "fullName": "Full Name *",
       "username": "Username *",
       "email": "Email Address *",
       "role": "Assigned Access Role *",
-      "password": "Initial Password *",
+      "password": "Password *",
+      "confirmPassword": "Confirm Password *",
+      "rolePlaceholder": "Select a role",
+      "roleLoading": "Loading roles...",
+      "roleLoadError": "Could not load the role list.",
       "save": "Save Changes",
       "create": "Create Account",
-      "cancel": "Cancel"
+      "creating": "Creating Account ...",
+      "cancel": "Cancel",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "passwordHint": "At least 8 characters."
+    },
+    "validation": {
+      "requiredFullName": "Full name is required",
+      "requiredEmail": "Email is required",
+      "invalidEmail": "Email address is invalid",
+      "requiredPassword": "Password is required",
+      "passwordMin": "Password must be at least 8 characters",
+      "passwordMax": "Password must be at most 72 characters",
+      "requiredConfirmPassword": "Please confirm the password",
+      "passwordMismatch": "Passwords do not match",
+      "requiredRole": "Please select a role",
+      "emailExists": "Email already exists"
+    },
+    "success": {
+      "title": "Account created successfully",
+      "body": "The account has been created successfully.",
+      "emailLabel": "Email:",
+      "roleLabel": "Role:",
+      "pendingVerification": "The account is pending the user's email verification via OTP.",
+      "close": "Close"
+    },
+    "errors": {
+      "unauthorized": "Your session has expired. Please sign in again.",
+      "forbidden": "You do not have permission to manage accounts.",
+      "badRequest": "Invalid data. Please check the information and try again.",
+      "serverError": "A system error occurred. Please try again later.",
+      "network": "Unable to reach the server. Please check your connection.",
+      "default": "Could not create the account."
     },
     "adminUi": {
       "loadingAccounts": "Loading account directory...",

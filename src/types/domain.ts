@@ -97,6 +97,15 @@ export interface ProfileFinancialsInfo {
   [key: string]: unknown;
 }
 
+export interface CompanyProfileFinancialReport {
+  reportType?: string;
+  periodType?: string;
+  reportYear?: number;
+  reportPeriod?: string;
+  itemsJson?: string;
+  sourceUrl?: string;
+}
+
 export interface ProfileResponse {
   id: string;
   companyId: string;
@@ -125,6 +134,7 @@ export interface ProfileResponse {
     researchedAt?: string | null;
     researchedBy?: number | null;
   }>;
+  financialReports?: CompanyProfileFinancialReport[];
   reviewStatus?: string;
   tags?: string[];
   stockTicker?: string;

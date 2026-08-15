@@ -78,8 +78,6 @@ const profileRelationshipBadge = (profile: ProfileResponse) => {
   }
 };
 
-
-
 const formatDate = (value?: string | null) => {
   if (!value) return i18n.t('company-list:table.notUpdated');
   const formatted = utilFormatDate(value);

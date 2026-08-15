@@ -2,22 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, API_BASE_URL } from '../services/api';
 import type { AuditLogDto, PageResult } from '../types/domain';
-import {
-  Activity,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  FileText,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Users,
-  Zap,
-} from 'lucide-react';
 import styles from './ActivityAudit.module.css';
 
-type Tab = 'activity' | 'audit';
+type Tab = 'audit';
 
 const getActionTypePill = (actionStr: string) => {
   const action = (actionStr || '').toUpperCase();
@@ -168,35 +155,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     });
   }, [auditLogs, searchUser]);
 
-  const userActivityPulse = useMemo(() => {
-    const map = new Map<string, { user: string; count: number; lastSeen: string }>();
-    auditLogs.forEach((log) => {
-      const user = log.actorEmail || `User #${log.actorAccountId || t('table.systemActor')}`;
-      const existing = map.get(user);
-      const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
-      map.set(user, {
-        user,
-        count: (existing?.count || 0) + 1,
-        lastSeen: existing?.lastSeen || timeStr,
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [auditLogs, t]);
-
   const pageMeta = {
-    activity: {
-      eyebrow: t('header.activityEyebrow'),
-      title: t('header.activityTitle'),
-      desc: t('header.activityDesc'),
-      meter: userActivityPulse.length,
-      meterLabel: t('header.activeUsersMeter'),
-      stats: [
-        { label: t('stats.activeUsers'), value: userActivityPulse.length, icon: Users, color: styles.statIconBlue },
-        { label: t('stats.mostActiveCount'), value: userActivityPulse[0]?.count || 0, icon: Zap, color: styles.statIconAmber },
-        { label: t('stats.totalLogItems'), value: totalElements, icon: FileText, color: styles.statIconPurple },
-        { label: t('stats.streamState'), value: t('stats.live'), icon: Activity, color: styles.statIconGreen },
-      ],
-    },
     audit: {
       eyebrow: t('header.auditEyebrow'),
       title: t('header.auditTitle'),
@@ -204,23 +163,19 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       meter: totalElements,
       meterLabel: t('header.recordedEventsMeter'),
       stats: [
-        { label: t('stats.totalAuditEvents'), value: totalElements, icon: FileText, color: styles.statIconBlue },
-        { label: t('stats.currentPage'), value: `${page + 1} / ${totalPages}`, icon: Calendar, color: styles.statIconGreen },
-        { label: t('stats.actionsFiltered'), value: filterAction === 'all' ? t('stats.all') : filterAction, icon: ShieldCheck, color: styles.statIconPurple },
-        { label: t('stats.exportFormat'), value: 'CSV', icon: Download, color: styles.statIconAmber },
+        { label: t('stats.totalAuditEvents'), value: totalElements, color: styles.statIconBlue },
+        { label: t('stats.currentPage'), value: `${page + 1} / ${totalPages}`, color: styles.statIconGreen },
+        { label: t('stats.actionsFiltered'), value: filterAction === 'all' ? t('stats.all') : filterAction, color: styles.statIconPurple },
+        { label: t('stats.exportFormat'), value: 'CSV', color: styles.statIconAmber },
       ],
     },
   }[tab];
-
-  const topUser = userActivityPulse[0];
-  const topUserInitials = (topUser?.user || 'U').slice(0, 2).toUpperCase();
 
   return (
     <div className={styles.container} id="page-activity-history">
       {/* Normalized Header */}
       <section className={styles.hero}>
         <div>
-          <span className={styles.heroEyebrow}>{pageMeta.eyebrow}</span>
           <h1 className={styles.heroTitle}>{pageMeta.title}</h1>
           <p className={styles.heroDesc}>{pageMeta.desc}</p>
         </div>
@@ -230,41 +185,6 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
         </div>
       </section>
 
-      {/* Standardized Stat Grid */}
-      <section className={styles.statGrid}>
-        {pageMeta.stats.map((item) => {
-          const IconComp = item.icon;
-          return (
-            <article key={item.label} className={styles.statCard}>
-              <div className={`${styles.statIcon} ${item.color}`}>
-                <IconComp size={20} />
-              </div>
-              <div className={styles.statMeta}>
-                <span className={styles.statLabel}>{item.label}</span>
-                <strong className={styles.statValue}>{item.value}</strong>
-              </div>
-            </article>
-          );
-        })}
-      </section>
-
-      {/* Navigation Tabs */}
-      <div className={styles.tabsBar}>
-        <button
-          className={`${styles.tabButton} ${tab === 'audit' ? styles.tabButtonActive : ''}`}
-          onClick={() => setTab('audit')}
-        >
-          <FileText size={16} />
-          <span>{t('tabs.auditLogs')}</span>
-        </button>
-        <button
-          className={`${styles.tabButton} ${tab === 'activity' ? styles.tabButtonActive : ''}`}
-          onClick={() => setTab('activity')}
-        >
-          <Activity size={16} />
-          <span>{t('tabs.userActivity')}</span>
-        </button>
-      </div>
 
       {error && (
         <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: '10px' }}>
@@ -289,10 +209,9 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
 
               {/* Search User/Detail */}
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
                 <input
                   className="admin-input"
-                  style={{ width: '220px', paddingLeft: '30px' }}
+                  style={{ width: '220px' }}
                   placeholder={t('filters.searchPlaceholder')}
                   value={searchUser}
                   onChange={(e) => setSearchUser(e.target.value)}
@@ -316,13 +235,9 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
               />
 
               <button className="btn btn-outline" onClick={fetchAuditLogs} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <RefreshCw size={14} />
                 <span>{t('filters.refresh')}</span>
               </button>
-              <button className="btn btn-primary" disabled={exporting} onClick={handleExportCsv} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Download size={14} />
-                <span>{exporting ? t('filters.exporting') : t('filters.exportCsv')}</span>
-              </button>
+
             </div>
 
             {loading ? (
@@ -387,12 +302,10 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                     </span>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <ChevronLeft size={14} />
                         <span>{t('table.prev')}</span>
                       </button>
                       <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <span>{t('table.next')}</span>
-                        <ChevronRight size={14} />
                       </button>
                     </div>
                   </div>
@@ -402,60 +315,6 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
           </div>
         )}
 
-        {tab === 'activity' && (
-          <div className={styles.activityLayout}>
-            {/* ACTIVITY FOCUS Card with Email Overflow Fix */}
-            <aside className={styles.focusCard}>
-              <span className={styles.focusEyebrow}>{t('focus.eyebrow')}</span>
-
-              <div className={styles.focusUserWrap}>
-                <div className={styles.focusAvatar}>{topUserInitials}</div>
-                <h3 className={styles.focusUserEmail} title={topUser?.user || ''}>
-                  {topUser?.user || t('focus.noActivity')}
-                </h3>
-              </div>
-
-              <p className={styles.focusDesc}>
-                {topUser
-                  ? t('focus.recordedCount', { count: topUser.count })
-                  : t('focus.noActivityDesc')}
-              </p>
-            </aside>
-
-            {/* Timeline List with Contribution Percentage */}
-            <div className={styles.timelineList}>
-              {userActivityPulse.map((item, index) => {
-                const percent = totalElements > 0 ? Math.min(100, Math.round((item.count / totalElements) * 100)) : Math.min(100, item.count * 15);
-                const eventsText = t(`timeline.events_${item.count === 1 ? 'one' : 'other'}`, { count: item.count });
-
-                return (
-                  <article key={item.user} className={styles.timelineItem}>
-                    <div className={styles.timelineRank}>{String(index + 1).padStart(2, '0')}</div>
-                    <div className={styles.timelineAvatar}>{item.user.slice(0, 2).toUpperCase()}</div>
-
-                    <div className={styles.timelineInfo}>
-                      <span className={styles.timelineUser} title={item.user}>
-                        {item.user}
-                      </span>
-                      <div className={styles.timelineStats}>
-                        <span>{eventsText}</span>
-                        <span>·</span>
-                        <span>{t('timeline.shareOfTotal', { percent })}</span>
-                      </div>
-                      <div className={styles.timelineBarTrack}>
-                        <div className={styles.timelineBarFill} style={{ width: `${percent}%` }} />
-                      </div>
-                    </div>
-
-                    <span className={styles.timelineTime}>
-                      {t('timeline.lastSeen', { time: item.lastSeen })}
-                    </span>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

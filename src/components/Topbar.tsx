@@ -55,13 +55,9 @@ const PAGE_LABEL_KEYS: Record<string, string> = {
   'manager-dashboard': 'page.managerDashboard',
   'staff-dashboard': 'page.staffDashboard',
   users: 'page.users',
-  roles: 'page.roles',
   permissions: 'page.permissions',
-  'access-control': 'page.accessControl',
-  'activity-history': 'page.activityHistory',
   'audit-logs': 'page.auditLogs',
-  'system-settings': 'page.systemSettings',
-  'security-settings': 'page.securitySettings',
+  'owner-company-profile': 'page.ownerCompanyProfile',
   'partner-ecosystem': 'page.partnerEcosystem',
   'competitor-intelligence': 'page.competitorIntelligence',
   'relationship-map': 'page.relationshipMap',
@@ -288,10 +284,8 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                   </span>
                 </div>
                 <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>{t('topbar.profile')}</div>
-                {currentUser.allowedPages.includes('system-settings') && (
-                  <div className="dropdown-item" onClick={() => { setActivePage('system-settings'); setShowProfile(false); }}>{t('topbar.settings')}</div>
-                )}
-                <div className="dropdown-item" onClick={toggleTheme}>{theme === 'dark' ? t('topbar.useLightMode') : t('topbar.useDarkMode')}</div>
+
+
                 <div className="dropdown-divider" />
                 <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>{t('topbar.signOut')}</div>
               </div>

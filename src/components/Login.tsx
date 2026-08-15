@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUser } from '../context/UserContext';
+import { loginApi, type VerificationPayload } from '../API/loginApi';
+import { EmailVerification } from './EmailVerification';
 
 const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
   ? {
@@ -16,7 +18,8 @@ const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
 
 export const Login: React.FC = () => {
   const { t } = useTranslation('login');
-  const { login } = useUser();
+  const { login, applyLoginPayload } = useUser();
+  const [verification, setVerification] = useState<VerificationPayload | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,7 +48,9 @@ export const Login: React.FC = () => {
 
     setLoading(true);
     try {
-      const ok = await login(normalizeIdentity(email), password);
+      const result = await loginApi.login(normalizeIdentity(email), password);
+      if ('requiresEmailVerification' in result) { setVerification(result); return; }
+      const ok = await applyLoginPayload(result);
       if (!ok) {
         setError(t('errorSignInFailed'));
       }
@@ -55,6 +60,8 @@ export const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (verification) return <EmailVerification ticket={verification.verificationTicket} email={verification.email} emailDelivered={verification.emailDelivered} emailDeliveryMessage={verification.emailDeliveryMessage} onVerified={() => setVerification(null)} />;
 
   const features = t('features', { returnObjects: true }) as string[];
 

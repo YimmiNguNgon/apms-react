@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ListingTabId } from './utils';
+import type { ListingTabDef, ListingTabId } from './utils';
 import { LISTING_TABS } from './utils';
 import styles from '../CompanyDetail.module.css';
 
@@ -12,10 +12,11 @@ interface ListingTabsProps {
   userRole?: string | null;
   isOwnerProfile?: boolean;
   isDrawerMode?: boolean;
+  tabs?: ListingTabDef[];
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode }) => {
-  const tabs = LISTING_TABS.filter((tab) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, tabs: customTabs }) => {
+  const tabs = customTabs || LISTING_TABS.filter((tab) => {
     if (isDrawerMode && (tab.id === 'internal-news' || tab.id === 'documents')) {
       return false;
     }

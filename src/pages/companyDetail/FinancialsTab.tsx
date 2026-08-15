@@ -8,7 +8,7 @@ import { useListingTabData } from './utils';
 interface FinancialValue { code?: string; value?: number | null; }
 interface FinancialPeriod { time?: string; data?: FinancialValue[]; }
 interface FinancialRow { code?: string; name?: string; }
-interface FinancialDocument { unit?: string | null; templace?: FinancialRow[]; data?: Array<{ data?: FinancialPeriod[] }>; }
+interface FinancialDocument { unit?: string | null; templace?: FinancialRow[]; data?: Array<{ code?: string; name?: string; data?: FinancialPeriod[] }>; }
 
 const REPORT_TABS = [
   { label: 'BCTC tóm tắt', type: 'SUMMARY' },
@@ -27,16 +27,31 @@ const formatValue = (value: number, unit: string, sourceSnapshot = false) => {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value / divisor);
 };
 
-const FinancialsTab: React.FC<{ companyId: string }> = ({ companyId }) => {
+const inputStyle: React.CSSProperties = {
+  width: '100%', minWidth: 92, boxSizing: 'border-box',
+  border: '1px solid #cbd5e1', borderRadius: 4, padding: '5px 6px', fontSize: 12, textAlign: 'right',
+  background: '#fff', color: '#1e293b',
+};
+
+const FinancialsTab: React.FC<{ companyId: string; editable?: boolean }> = ({ companyId, editable }) => {
   const { loading, error, data, reload } = useListingTabData<CompanyFinancial[]>(`financials:v2:${companyId}`, companyId, listingDataApi.getFinancials);
   const [activeReport, setActiveReport] = useState(REPORT_TABS[0].type);
   const [periodType, setPeriodType] = useState('Theo năm');
   const [unit, setUnit] = useState('Tỷ đồng');
+
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editMsg, setEditMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [draft, setDraft] = useState<Record<string, Record<string, string>>>({});
+  const [addedYears, setAddedYears] = useState<string[]>([]);
+  const [removedYears, setRemovedYears] = useState<string[]>([]);
+  const [newYear, setNewYear] = useState('');
+
   const report = useMemo(() => {
     const selected = (data?.data ?? []).find((item) => item.reportType === activeReport) ?? data?.data?.[0];
     return parseDocument(selected?.itemsJson) ?? null;
   }, [activeReport, data]);
-  const rawPeriods = report?.data?.[0]?.data ?? [];
+  const rawPeriods = useMemo(() => report?.data?.[0]?.data ?? [], [report]);
   const periods = useMemo(() => {
     if (periodType === 'Theo quý') return rawPeriods;
 
@@ -57,6 +72,136 @@ const FinancialsTab: React.FC<{ companyId: string }> = ({ companyId }) => {
     }));
   }, [periodType, rawPeriods]);
   const rows = report?.templace ?? [];
+
+  const draftYears = useMemo(
+    () => Object.keys(draft).sort((a, b) => Number(a) - Number(b)),
+    [draft],
+  );
+
+  const startEdit = () => {
+    const seed: Record<string, Record<string, string>> = {};
+    rawPeriods.forEach((period) => {
+      if (!period.time) return;
+      const values: Record<string, string> = {};
+      period.data?.forEach((item) => {
+        if (item.code) values[item.code] = item.value == null ? '' : String(item.value);
+      });
+      seed[period.time] = values;
+    });
+    setDraft(seed);
+    setAddedYears([]);
+    setRemovedYears([]);
+    setNewYear('');
+    setEditMsg(null);
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    setEditMode(false);
+    setDraft({});
+    setAddedYears([]);
+    setRemovedYears([]);
+    setNewYear('');
+    setEditMsg(null);
+  };
+
+  const updateValue = (year: string, code: string, value: string) => {
+    setDraft((prev) => ({ ...prev, [year]: { ...prev[year], [code]: value } }));
+  };
+
+  const addYear = () => {
+    const year = newYear.trim();
+    if (!/^\d{4}$/.test(year)) {
+      setEditMsg({ ok: false, text: 'Năm tài chính phải có 4 chữ số, ví dụ 2025.' });
+      return;
+    }
+    const numeric = Number(year);
+    if (numeric < 1900 || numeric > 2100) {
+      setEditMsg({ ok: false, text: 'Năm tài chính phải nằm trong khoảng 1900-2100.' });
+      return;
+    }
+    if (draft[year] || addedYears.includes(year)) {
+      setEditMsg({ ok: false, text: `Năm ${year} đã tồn tại trong báo cáo này.` });
+      return;
+    }
+    setDraft((prev) => ({ ...prev, [year]: {} }));
+    setAddedYears((prev) => [...prev, year]);
+    setRemovedYears((prev) => prev.filter((y) => y !== year));
+    setNewYear('');
+    setEditMsg(null);
+  };
+
+  const removeYear = (year: string) => {
+    setDraft((prev) => {
+      const next = { ...prev };
+      delete next[year];
+      return next;
+    });
+    if (addedYears.includes(year)) {
+      setAddedYears((prev) => prev.filter((y) => y !== year));
+    } else if (!removedYears.includes(year)) {
+      setRemovedYears((prev) => [...prev, year]);
+    }
+  };
+
+  const saveChanges = async () => {
+    setSaving(true);
+    setEditMsg(null);
+    try {
+      const years = Object.keys(draft);
+      years.forEach((year) => {
+        if (!/^\d{4}$/.test(year)) throw new Error(`Năm tài chính không hợp lệ: "${year}".`);
+        const numeric = Number(year);
+        if (numeric < 1900 || numeric > 2100) throw new Error(`Năm tài chính ${year} nằm ngoài khoảng 1900-2100.`);
+      });
+      years.forEach((year) => {
+        Object.entries(draft[year]).forEach(([code, raw]) => {
+          if (raw.trim() !== '' && !Number.isFinite(Number(raw))) {
+            const rowName = rows.find((row) => row.code === code)?.name ?? code;
+            throw new Error(`Giá trị "${raw}" của chỉ tiêu "${rowName}" năm ${year} không phải là số.`);
+          }
+        });
+      });
+
+      const templace = rows.filter((row): row is FinancialRow & { code: string } => Boolean(row.code));
+      const promises: Promise<unknown>[] = [];
+      years.sort((a, b) => Number(a) - Number(b)).forEach((year) => {
+        const values = templace.map((row) => ({ code: row.code, value: Number(draft[year][row.code] ?? 0) }));
+        const doc: FinancialDocument = {
+          unit: report?.unit ?? null,
+          templace: templace.map((row) => ({ code: row.code, name: row.name })),
+          data: [{
+            code: activeReport,
+            name: activeReport,
+            data: [{ time: year, data: values }],
+          }],
+        };
+        promises.push(listingDataApi.upsertOwnerFinancialReport({
+          reportType: activeReport,
+          reportYear: Number(year),
+          periodType: 'YEAR',
+          reportPeriod: year,
+          itemsJson: JSON.stringify(doc),
+        }));
+      });
+      removedYears.forEach((year) => {
+        promises.push(listingDataApi.deleteOwnerFinancialReport(activeReport, Number(year)));
+      });
+
+      await Promise.all(promises);
+      setEditMsg({ ok: true, text: 'Đã lưu thay đổi báo cáo tài chính.' });
+      setEditMode(false);
+      setDraft({});
+      setAddedYears([]);
+      setRemovedYears([]);
+      setNewYear('');
+      reload();
+    } catch (err) {
+      setEditMsg({ ok: false, text: err instanceof Error ? err.message : 'Không thể lưu thay đổi.' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const exportExcel = () => {
     const csvRows = rows.map((row) => [row.name || '', ...periods.map((period) => String(valueFor(period, row.code)))]);

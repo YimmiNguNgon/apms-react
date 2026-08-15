@@ -83,17 +83,21 @@
     "removeWatchlist": "Remove from Watchlist"
   },
   "filters": {
-    "search": "Search competitor name, industry, or activity...",
+    "search": "Search competitor name, industry, or key activity...",
     "industry": "Industry",
     "riskLevel": "Risk Level",
     "threatScore": "Threat Score",
-    "country": "Country / Region",
-    "watchlist": "Watchlist Status",
+    "country": "Country / region",
+    "watchlist": "Watchlist status",
     "all": "All",
-    "allEntities": "All Entities",
-    "watchlistOnly": "Watchlist Only",
-    "nonWatchlist": "Non-Watchlist",
-    "reset": "Reset Filters"
+    "allEntities": "All companies",
+    "allIndustries": "All industries",
+    "allImpacts": "All impacts",
+    "allRelationships": "All relationships",
+    "allSignals": "All signals",
+    "watchlistOnly": "Watchlist only",
+    "nonWatchlist": "Not watched",
+    "reset": "Reset filters"
   },
   "emptyState": {
     "title": "No competitors match your filter criteria",
@@ -116,6 +120,8 @@
     "patents": "Patents",
     "strengths": "Strengths",
     "weaknesses": "Weaknesses",
+    "strategicLevel": "Strategic Level",
+    "solutions": "solutions",
     "aiDigest": "AI Digest",
     "assigned": "Assigned",
     "unassigned": "Unassigned",

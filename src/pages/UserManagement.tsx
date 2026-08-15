@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, type PageResponse } from '../services/api';
+import { api, ApiError, type PageResponse } from '../services/api';
 import { useUser } from '../context/UserContext';
 import type { AccountAdminResponse, RoleDto, PermissionDto } from '../types/domain';
-import { ShieldCheck, Briefcase, Users, User, X } from 'lucide-react';
+import { ShieldCheck, Briefcase, Users, User, X, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 type PageOrData<T> = PageResponse<T> | T[];
 
@@ -12,6 +12,15 @@ interface UserRow extends AccountAdminResponse {
   isActive?: boolean;
   status?: string;
   enabled?: boolean;
+  emailVerified?: boolean;
+}
+
+interface CreateFormErrors {
+  fullName?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  role?: string;
 }
 
 interface EditUserForm {
@@ -36,9 +45,10 @@ interface RoleUserForm {
   selectedRole: string;
 }
 
-interface DeleteConfirm {
+interface StatusConfirm {
   id: number;
   email: string;
+  activate: boolean;
 }
 
 interface RoleDetail {
@@ -49,7 +59,7 @@ interface RoleDetail {
   permissionCount: number | null;
 }
 
-type Tab = 'users' | 'roles' | 'permissions' | 'assign';
+type Tab = 'users' | 'permissions';
 
 const ROLE_BADGE: Record<string, string> = {
   ROLE_ADMIN: 'badge-gray',
@@ -69,33 +79,33 @@ const ROLE_BADGE: Record<string, string> = {
   BUSINESS_DEVELOPMENT_STAFF: 'badge-blue',
 };
 
-const ALL_ROLE_OPTIONS = [
-  { value: 'SYSTEM_ADMIN', label: 'System Administrator' },
-  { value: 'BUSINESS_OWNER', label: 'Business Owner' },
-  { value: 'BUSINESS_DEVELOPMENT_MANAGER', label: 'BD Manager' },
-  { value: 'BUSINESS_DEVELOPMENT_STAFF', label: 'BD Staff' },
-];
-
 const ROLE_RANKS: Record<string, number> = {
   ROLE_SYSTEM_ADMIN: 6, SYSTEM_ADMIN: 6,
+  ROLE_ADMIN: 6,
   ROLE_BUSINESS_OWNER: 5, BUSINESS_OWNER: 5,
   ROLE_BUSINESS_DEVELOPMENT_MANAGER: 3, BUSINESS_DEVELOPMENT_MANAGER: 3,
   ROLE_BUSINESS_DEVELOPMENT_STAFF: 1, BUSINESS_DEVELOPMENT_STAFF: 1,
   ROLE_RESEARCH_STAFF: 1, RESEARCH_STAFF: 1,
 };
 
-const roleAccent = (role: string) => {
-  const v = role.toUpperCase();
-  if (v.includes('ADMIN') || v.includes('OWNER')) return 'slate';
-  if (v.includes('DIRECTOR')) return 'green';
-  if (v.includes('MANAGER')) return 'amber';
-  return 'blue';
-};
-
 const normalizeRole = (role: string | RoleDto): RoleDto => {
   if (typeof role !== 'string') return role;
   const label = role.replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
   return { id: role, key: role, name: role, displayName: label };
+};
+
+const ROLE_DISPLAY_NAMES: Record<string, string> = {
+  SYSTEM_ADMIN: 'System Admin',
+  BUSINESS_OWNER: 'Business Owner',
+  BUSINESS_DEVELOPMENT_MANAGER: 'Business Development Manager',
+  BUSINESS_DEVELOPMENT_STAFF: 'Business Development Staff',
+};
+
+const roleDisplayName = (role: string | undefined | null): string => {
+  const v = String(role || '').replace('ROLE_', '');
+  if (ROLE_DISPLAY_NAMES[v]) return ROLE_DISPLAY_NAMES[v];
+  if (!v) return 'Unknown';
+  return v.replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 };
 
 const shortRoleName = (role: string) => {
@@ -116,6 +126,39 @@ const passwordErrors = (pw: string, confirm: string): string[] => {
   return errors;
 };
 
+const FieldError: React.FC<{ msg?: string }> = ({ msg }) =>
+  msg ? <span className="admin-field-error">{msg}</span> : null;
+
+const PasswordInput: React.FC<{
+  value: string;
+  show: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  autoComplete?: string;
+}> = ({ value, show, onToggle, onChange, disabled, autoComplete }) => (
+  <span className="admin-password-field">
+    <input
+      className="admin-input"
+      type={show ? 'text' : 'password'}
+      autoComplete={autoComplete}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    />
+    <button
+      type="button"
+      className="admin-password-toggle"
+      onClick={onToggle}
+      disabled={disabled}
+      title={show ? 'Hide password' : 'Show password'}
+      aria-label={show ? 'Hide password' : 'Show password'}
+    >
+      {show ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  </span>
+);
+
 // ============================================================
 // USERS TAB
 // ============================================================
@@ -127,6 +170,7 @@ const UsersTab: React.FC<{
   const { currentUser } = useUser();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(0);
@@ -136,15 +180,22 @@ const UsersTab: React.FC<{
   const [editUser, setEditUser] = useState<EditUserForm | null>(null);
   const [passwordReset, setPasswordReset] = useState<PasswordResetForm | null>(null);
   const [roleUser, setRoleUser] = useState<RoleUserForm | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
+  const [statusConfirm, setStatusConfirm] = useState<StatusConfirm | null>(null);
 
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [roleOptions, setRoleOptions] = useState<RoleDto[]>([]);
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleError, setRoleError] = useState('');
 
   const [newUser, setNewUser] = useState({
-    name: '', email: '', password: '', role: 'BUSINESS_DEVELOPMENT_STAFF',
+    fullName: '', email: '', password: '', confirmPassword: '', role: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [createErrors, setCreateErrors] = useState<CreateFormErrors>({});
+  const [createdUser, setCreatedUser] = useState<{ email: string; role: string } | null>(null);
 
   const currentUserRank = useMemo(() => {
     if (!currentUser) return 1;
@@ -152,9 +203,20 @@ const UsersTab: React.FC<{
   }, [currentUser]);
 
   const availableRoleOptions = useMemo(() => {
-    if (currentUserRank >= 6) return ALL_ROLE_OPTIONS;
-    return ALL_ROLE_OPTIONS.filter((opt) => (ROLE_RANKS[opt.value] || 0) < currentUserRank);
-  }, [currentUserRank]);
+    const allowedKeys = [
+      'BUSINESS_OWNER',
+      'ROLE_BUSINESS_OWNER',
+      'BUSINESS_DEVELOPMENT_MANAGER',
+      'ROLE_BUSINESS_DEVELOPMENT_MANAGER',
+      'BUSINESS_DEVELOPMENT_STAFF',
+      'ROLE_BUSINESS_DEVELOPMENT_STAFF'
+    ];
+    const options = roleOptions
+      .map((role) => ({ value: role.key || role.name, label: roleDisplayName(role.key || role.name) }))
+      .filter((opt) => allowedKeys.includes(opt.value));
+    if (currentUserRank >= 6) return options;
+    return options.filter((opt) => (ROLE_RANKS[opt.value] || 0) < currentUserRank);
+  }, [currentUserRank, roleOptions]);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -164,16 +226,29 @@ const UsersTab: React.FC<{
           ? (res.data as PageResponse<UserRow>).content
           : res?.success && Array.isArray(res.data) ? res.data : [];
         setUsers(rows);
+        setLoadFailed(false);
         onStats({
           totalUsers: rows.length,
           activeUsers: rows.filter((u) => u.enabled ?? u.active ?? u.isActive ?? u.status === 'active').length,
         });
       })
-      .catch((err) => setError(err?.message || 'Could not load accounts directory.'))
+      .catch((err) => { setLoadFailed(true); setError(err?.message || 'Could not load accounts directory.'); })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  useEffect(() => {
+    setRoleLoading(true);
+    setRoleError('');
+    api.get<Array<RoleDto | string>>('/roles')
+      .then((response) => {
+        const roles = Array.isArray(response.data) ? response.data.map(normalizeRole).filter((role) => role.key !== 'RESEARCH_STAFF') : [];
+        setRoleOptions(roles);
+      })
+      .catch(() => setRoleError(t('users.modal.roleLoadError')))
+      .finally(() => setRoleLoading(false));
+  }, []);
 
   useEffect(() => {
     if (openCreate) {
@@ -184,30 +259,104 @@ const UsersTab: React.FC<{
   const showNotice = (msg: string) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
   const showError = (msg: string) => { setError(msg); setTimeout(() => setError(''), 6000); };
 
+  const resetCreateForm = () => {
+    setNewUser({ fullName: '', email: '', password: '', confirmPassword: '', role: '' });
+    setCreateErrors({});
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  const updateCreateField = (field: keyof CreateFormErrors, value: string) => {
+    setNewUser((prev) => ({ ...prev, [field]: value }));
+    setCreateErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  };
+
+  const openCreateForm = () => {
+    setError('');
+    setNotice('');
+    setCreateErrors({});
+    setShowCreateModal(true);
+  };
+
+  const validateCreateForm = (): CreateFormErrors => {
+    const errors: CreateFormErrors = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!newUser.fullName.trim()) errors.fullName = t('users.validation.requiredFullName');
+    if (!newUser.email.trim()) {
+      errors.email = t('users.validation.requiredEmail');
+    } else if (!emailRegex.test(newUser.email.trim())) {
+      errors.email = t('users.validation.invalidEmail');
+    }
+    if (!newUser.password) {
+      errors.password = t('users.validation.requiredPassword');
+    } else if (newUser.password.length < 8) {
+      errors.password = t('users.validation.passwordMin');
+    } else if (newUser.password.length > 72) {
+      errors.password = t('users.validation.passwordMax');
+    }
+    if (!newUser.confirmPassword) {
+      errors.confirmPassword = t('users.validation.requiredConfirmPassword');
+    } else if (newUser.confirmPassword !== newUser.password) {
+      errors.confirmPassword = t('users.validation.passwordMismatch');
+    }
+    if (!newUser.role) errors.role = t('users.validation.requiredRole');
+
+    return errors;
+  };
+
+  const createErrorMessage = (err: unknown): string => {
+    if (err instanceof ApiError) {
+      if (err.status === 401) return t('users.errors.unauthorized');
+      if (err.status === 403) return t('users.errors.forbidden');
+      if (err.status === 409) return t('users.validation.emailExists');
+      if (err.status === 400) {
+        const msg = String(err.message || '');
+        if (msg.toLowerCase().includes('already exists')) return t('users.validation.emailExists');
+        if (msg.toLowerCase().includes('match')) return t('users.validation.passwordMismatch');
+        return t('users.errors.badRequest');
+      }
+      if (err.status >= 500) return t('users.errors.serverError');
+      return err.message || t('users.errors.default');
+    }
+    return t('users.errors.network');
+  };
+
   const handleCreate = async () => {
     setError('');
-    if (!newUser.name || !newUser.email || !newUser.password) {
-      showError('Full name, email, and password are required.');
+    setNotice('');
+
+    const errors = validateCreateForm();
+    setCreateErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    if (roleLoading || roleError || availableRoleOptions.length === 0) {
+      showError(roleError || t('users.modal.roleLoadError'));
       return;
     }
-    const pwErrs = passwordErrors(newUser.password, newUser.password);
-    const lengthErr = pwErrs.find(e => e !== 'Passwords do not match');
-    if (lengthErr) { showError(lengthErr); return; }
 
     setActionLoading(true);
     try {
       await api.post('/users', {
-        email: newUser.email,
-        fullName: newUser.name,
+        email: newUser.email.trim(),
+        fullName: newUser.fullName.trim(),
         password: newUser.password,
+        confirmPassword: newUser.confirmPassword,
         roles: [newUser.role],
       });
+      setCreatedUser({ email: newUser.email.trim(), role: newUser.role });
+      resetCreateForm();
       setShowCreateModal(false);
-      setNewUser({ name: '', email: '', password: '', role: 'BUSINESS_DEVELOPMENT_STAFF' });
-      showNotice('Account created successfully.');
       fetchUsers();
     } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Could not create account.');
+      if (err instanceof ApiError) {
+        const msg = String(err.message || '');
+        if ((err.status === 400 || err.status === 409) && msg.toLowerCase().includes('already exists')) {
+          setCreateErrors((prev) => ({ ...prev, email: t('users.validation.emailExists') }));
+          return;
+        }
+      }
+      showError(createErrorMessage(err));
     } finally {
       setActionLoading(false);
     }
@@ -267,32 +416,16 @@ const UsersTab: React.FC<{
     }
   };
 
-  const handleToggleStatus = async (user: UserRow) => {
-    const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
-    if (isSelf) { showError('Cannot lock your own account'); return; }
+  const handleConfirmStatus = async () => {
+    if (!statusConfirm) return;
     setActionLoading(true);
     try {
-      const isActive = user.enabled ?? user.active ?? user.isActive ?? user.status === 'active';
-      await api.patch(`/users/${user.id}/status`, { enabled: !isActive });
-      showNotice(`Status updated for ${user.email}.`);
+      await api.patch(`/users/${statusConfirm.id}/status`, { enabled: statusConfirm.activate });
+      setStatusConfirm(null);
+      showNotice(statusConfirm.activate ? `Đã kích hoạt tài khoản ${statusConfirm.email}.` : `Đã vô hiệu hóa tài khoản ${statusConfirm.email}.`);
       fetchUsers();
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Could not change status.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteConfirm) return;
-    setActionLoading(true);
-    try {
-      await api.delete(`/users/${deleteConfirm.id}`);
-      setDeleteConfirm(null);
-      showNotice(`Account ${deleteConfirm.email} deleted.`);
-      fetchUsers();
-    } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Could not delete account.');
     } finally {
       setActionLoading(false);
     }
@@ -323,11 +456,14 @@ const UsersTab: React.FC<{
   const pwResetValid = passwordReset && passwordReset.newPassword.length >= 8 &&
     passwordReset.newPassword === passwordReset.confirmPassword;
 
+  const showEmailStatus = paginated.some((u) => u.emailVerified !== undefined);
+  const tableColSpan = showEmailStatus ? 7 : 6;
+
   return (
     <div className="admin-users-view">
       <div className="admin-users-header">
 
-        <button className="btn btn-primary" onClick={() => { setError(''); setNotice(''); setShowCreateModal(true); }}>
+        <button className="btn btn-primary" onClick={openCreateForm}>
           {t('users.createAccount')}
         </button>
       </div>
@@ -347,7 +483,6 @@ const UsersTab: React.FC<{
               <option value="inactive">{t('users.disabled')}</option>
             </select>
           </label>
-          <button className="btn btn-outline" onClick={fetchUsers}>{t('users.refresh')}</button>
 
         </aside>
 
@@ -361,7 +496,9 @@ const UsersTab: React.FC<{
               <table className="admin-table">
                 <thead>
                   <tr>
-                    {['#ID', 'User', 'Email', 'Role', 'Status', 'Actions'].map((h) => <th key={h}>{h}</th>)}
+                    {['#ID', 'User', 'Email', 'Role', 'Status'].map((h) => <th key={h}>{h}</th>)}
+                    {showEmailStatus && <th>{t('users.table.emailStatus')}</th>}
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -389,6 +526,17 @@ const UsersTab: React.FC<{
                             {isActive ? t('users.active') : t('users.disabled')}
                           </span>
                         </td>
+                        {showEmailStatus && (
+                          <td>
+                            {user.emailVerified === undefined ? (
+                              <span className="admin-status">{t('users.table.emailUnknown')}</span>
+                            ) : user.emailVerified ? (
+                              <span className="admin-status active">✓ {t('users.table.emailVerified')}</span>
+                            ) : (
+                              <span className="admin-status" style={{ background: 'rgba(245,158,11,0.14)', color: '#B45309' }}>⚠ {t('users.table.emailUnverified')}</span>
+                            )}
+                          </td>
+                        )}
                         <td>
                           <div className="admin-row-actions" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                             <button className="btn btn-sm btn-outline" onClick={() => {
@@ -403,17 +551,11 @@ const UsersTab: React.FC<{
                               setError('');
                               setRoleUser({ id: user.id, name: user.name || user.email, currentRole: roleKey, selectedRole: roleKey });
                             }}>Role</button>
-                            <button className="btn btn-sm btn-outline" disabled={!!isSelf || actionLoading}
-                              title={isSelf ? 'Cannot lock own account' : isActive ? 'Lock' : 'Unlock'}
-                              style={isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                              onClick={() => handleToggleStatus(user)}>
-                              {isActive ? 'Lock' : 'Unlock'}
-                            </button>
-                            <button className="btn btn-sm" disabled={!!isSelf || actionLoading}
-                              style={{ background: isSelf ? 'transparent' : 'rgba(239,68,68,0.12)', color: isSelf ? '#999' : '#EF4444', border: '1px solid rgba(239,68,68,0.3)', opacity: isSelf ? 0.5 : 1, cursor: isSelf ? 'not-allowed' : 'pointer' }}
-                              title={isSelf ? 'Cannot delete own account' : 'Delete account'}
-                              onClick={() => { setError(''); setDeleteConfirm({ id: user.id, email: user.email || '' }); }}>
-                              Delete
+                            <button className={`btn btn-sm ${isActive ? '' : 'btn-outline'}`} disabled={!!isSelf || actionLoading}
+                              title={isSelf ? 'Không thể vô hiệu hóa tài khoản của chính mình' : isActive ? 'Vô hiệu hóa tài khoản' : 'Kích hoạt tài khoản'}
+                              style={isActive ? { background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                              onClick={() => { setError(''); setStatusConfirm({ id: user.id, email: user.email || '', activate: !isActive }); }}>
+                              {isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
                             </button>
                           </div>
                         </td>
@@ -421,7 +563,7 @@ const UsersTab: React.FC<{
                     );
                   })}
                   {paginated.length === 0 && (
-                    <tr><td colSpan={6}><div className="workspace-empty">No accounts match the current filter.</div></td></tr>
+                    <tr><td colSpan={tableColSpan}><div className="workspace-empty">{loadFailed ? 'Could not load the account directory from the server. Check the connection and try again.' : 'No accounts match the current filter.'}</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -442,26 +584,114 @@ const UsersTab: React.FC<{
 
       {/* CREATE MODAL */}
       {showCreateModal && (
-        <div className="admin-modal-backdrop" onClick={() => setShowCreateModal(false)}>
+        <div className="admin-modal-backdrop" onClick={() => { if (!actionLoading) setShowCreateModal(false); }}>
           <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
             <div className="workspace-section-head">
-              <div><h3>Create Account</h3><p>Provision a new system user with a single role.</p></div>
+              <div><h3>{t('users.modal.createTitle')}</h3><p>{t('users.modal.createDesc')}</p></div>
             </div>
             <div className="admin-form-grid">
-              <label><span>Full name *</span><input className="admin-input" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} /></label>
-              <label><span>Email *</span><input className="admin-input" type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} /></label>
-              <label><span>Initial password *</span><input className="admin-input" type="password" autoComplete="new-password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></label>
-              <label className="admin-form-span"><span>Role</span>
-                <select className="admin-select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+              <label>
+                <span>{t('users.modal.fullName')}</span>
+                <input
+                  className="admin-input"
+                  value={newUser.fullName}
+                  disabled={actionLoading}
+                  onChange={(e) => updateCreateField('fullName', e.target.value)}
+                />
+                <FieldError msg={createErrors.fullName} />
+              </label>
+              <label>
+                <span>{t('users.modal.email')}</span>
+                <input
+                  className="admin-input"
+                  type="email"
+                  autoComplete="off"
+                  value={newUser.email}
+                  disabled={actionLoading}
+                  onChange={(e) => updateCreateField('email', e.target.value)}
+                />
+                <FieldError msg={createErrors.email} />
+              </label>
+              <label>
+                <span>{t('users.modal.password')}</span>
+                <PasswordInput
+                  value={newUser.password}
+                  show={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                  onChange={(value) => updateCreateField('password', value)}
+                  disabled={actionLoading}
+                  autoComplete="new-password"
+                />
+                {createErrors.password ? <FieldError msg={createErrors.password} /> : <small className="admin-field-hint">{t('users.modal.passwordHint')}</small>}
+              </label>
+              <label>
+                <span>{t('users.modal.confirmPassword')}</span>
+                <PasswordInput
+                  value={newUser.confirmPassword}
+                  show={showConfirmPassword}
+                  onToggle={() => setShowConfirmPassword((v) => !v)}
+                  onChange={(value) => updateCreateField('confirmPassword', value)}
+                  disabled={actionLoading}
+                  autoComplete="new-password"
+                />
+                <FieldError msg={createErrors.confirmPassword} />
+              </label>
+              <label className="admin-form-span">
+                <span>{t('users.modal.role')}</span>
+                <select
+                  className="admin-select"
+                  value={newUser.role}
+                  disabled={roleLoading || roleError !== '' || availableRoleOptions.length === 0 || actionLoading}
+                  onChange={(e) => updateCreateField('role', e.target.value)}
+                >
+                  <option value="">{roleLoading ? t('users.modal.roleLoading') : t('users.modal.rolePlaceholder')}</option>
                   {availableRoleOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
+                {roleError ? <FieldError msg={roleError} /> : <FieldError msg={createErrors.role} />}
               </label>
             </div>
             <div className="admin-modal-actions">
-              <button className="btn btn-outline" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="btn btn-primary" disabled={actionLoading} onClick={handleCreate}>
-                {actionLoading ? 'Creating...' : 'Create account'}
+              <button className="btn btn-outline" disabled={actionLoading} onClick={() => { setShowCreateModal(false); resetCreateForm(); }}>
+                {t('users.modal.cancel')}
               </button>
+              <button
+                className="btn btn-primary"
+                disabled={actionLoading || roleLoading || roleError !== '' || availableRoleOptions.length === 0}
+                onClick={handleCreate}
+              >
+                {actionLoading ? t('users.modal.creating') : t('users.modal.create')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE SUCCESS MODAL */}
+      {createdUser && (
+        <div className="admin-modal-backdrop" onClick={() => setCreatedUser(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+            <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16,185,129,0.12)', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <CheckCircle2 size={34} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('users.success.title')}</h3>
+              <p style={{ margin: '8px 0 0', fontSize: '14px', color: 'var(--text-secondary)' }}>{t('users.success.body')}</p>
+            </div>
+            <div style={{ marginTop: '18px', background: '#F9FAFB', border: '1px solid var(--workspace-muted-border)', borderRadius: '12px', padding: '14px 16px', fontSize: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>{t('users.success.emailLabel')}</span>
+                <strong style={{ color: 'var(--text-primary)', wordBreak: 'break-all', textAlign: 'right' }}>{createdUser.email}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ color: 'var(--text-muted)' }}>{t('users.success.roleLabel')}</span>
+                <strong style={{ color: 'var(--text-primary)', textAlign: 'right' }}>{roleDisplayName(createdUser.role)}</strong>
+              </div>
+            </div>
+            <div style={{ marginTop: '14px', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', color: '#B45309', lineHeight: '1.5' }}>
+              ⏳ {t('users.success.pendingVerification')}
+            </div>
+            <div className="admin-modal-actions" style={{ justifyContent: 'center' }}>
+              <button className="btn btn-primary" onClick={() => setCreatedUser(null)}>{t('users.success.close')}</button>
             </div>
           </div>
         </div>
@@ -666,32 +896,32 @@ const UsersTab: React.FC<{
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
-      {deleteConfirm && (
-        <div className="admin-modal-backdrop" onClick={() => setDeleteConfirm(null)}>
+      {/* STATUS CONFIRMATION MODAL */}
+      {statusConfirm && (
+        <div className="admin-modal-backdrop" onClick={() => { if (!actionLoading) setStatusConfirm(null); }}>
           <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div className="workspace-section-head">
-              <div><h3>Delete Account</h3></div>
+              <div><h3>{statusConfirm.activate ? 'Kích hoạt tài khoản' : 'Vô hiệu hóa tài khoản'}</h3></div>
             </div>
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
-                <strong style={{ color: '#EF4444' }}>⚠ This action cannot be undone.</strong>
+              <div style={{ background: statusConfirm.activate ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${statusConfirm.activate ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`, borderRadius: '8px', padding: '12px 14px', marginBottom: '16px' }}>
+                <strong style={{ color: statusConfirm.activate ? '#059669' : '#EF4444' }}>{statusConfirm.activate ? 'Khôi phục quyền đăng nhập' : 'Không thể đăng nhập trong thời gian vô hiệu hóa.'}</strong>
                 <p style={{ marginTop: '6px', fontSize: '13px', color: '#6B7280' }}>
-                  Account <strong>{deleteConfirm.email}</strong> will be deactivated and marked as deleted.
-                  All business data created by this user will be retained for audit purposes.
+                  Tài khoản <strong>{statusConfirm.email}</strong> sẽ được {statusConfirm.activate ? 'kích hoạt lại' : 'vô hiệu hóa'}.
+                  Không có dữ liệu nào bị xóa.
                 </p>
               </div>
-              <p style={{ fontSize: '14px', color: '#374151' }}>Are you sure you want to delete this account?</p>
+              <p style={{ fontSize: '14px', color: '#374151' }}>{statusConfirm.activate ? 'Bạn có chắc muốn kích hoạt tài khoản này không?' : 'Bạn có chắc muốn vô hiệu hóa tài khoản này không?'}</p>
             </div>
             <div className="admin-modal-actions">
-              <button className="btn btn-outline" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="btn btn-outline" disabled={actionLoading} onClick={() => setStatusConfirm(null)}>Hủy bỏ</button>
               <button
                 className="btn btn-primary"
-                style={{ background: '#EF4444', borderColor: '#EF4444' }}
+                style={statusConfirm.activate ? { background: '#059669', borderColor: '#059669' } : { background: '#EF4444', borderColor: '#EF4444' }}
                 disabled={actionLoading}
-                onClick={handleDelete}
+                onClick={handleConfirmStatus}
               >
-                {actionLoading ? 'Deleting...' : 'Yes, Delete Account'}
+                {actionLoading ? 'Đang xử lý...' : statusConfirm.activate ? 'Kích hoạt' : 'Vô hiệu hóa'}
               </button>
             </div>
           </div>
@@ -781,7 +1011,6 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
           <thead>
             <tr style={{ background: '#F9FAFB', borderBottom: '1px solid var(--border-color, #E5E7EB)' }}>
               <th style={{ padding: '16px', fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Vai trò</th>
-              <th style={{ padding: '16px', fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Mô tả</th>
               <th style={{ padding: '16px', fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Người dùng</th>
               <th style={{ padding: '16px', fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Quyền</th>
               <th style={{ padding: '16px', fontSize: '11px', fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Phạm vi</th>
@@ -829,9 +1058,6 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
                         <button style={{ background: '#EFF6FF', color: '#2563EB', border: 'none', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }} onClick={() => openReview(role)}>Review</button>
                       </div>
                     </div>
-                  </td>
-                  <td style={{ padding: '16px', fontSize: '13px', color: '#6B7280', maxWidth: '200px', lineHeight: '1.4' }}>
-                    {role.description || 'No description configured for this role.'}
                   </td>
                   <td style={{ padding: '16px' }}>
                     <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', padding: '10px 14px', display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: '80px', background: '#fff' }}>
@@ -886,8 +1112,6 @@ const RolesTab: React.FC<{ onCount: (count: number) => void }> = ({ onCount }) =
                 </div>
               ))}
             </div>
-
-            <p style={{ fontSize: '14px', color: '#4B5563', marginBottom: '20px' }}>{roleDetail.description}</p>
 
             <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px', color: '#111827' }}>
               Users ({roleDetailUsers.length})
@@ -984,7 +1208,6 @@ const PermissionsTab: React.FC = () => {
             <tr>
               <th>MODULE</th>
               <th>MÃ QUYỀN</th>
-              <th>MÔ TẢ</th>
               <th>VAI TRÒ ÁP DỤNG</th>
             </tr>
           </thead>
@@ -996,9 +1219,6 @@ const PermissionsTab: React.FC = () => {
                 </td>
                 <td style={{ padding: '16px', fontSize: '12px', fontFamily: 'monospace', color: '#4B5563', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                   {perm.name}
-                </td>
-                <td style={{ padding: '16px', fontSize: '13px', color: '#6B7280', verticalAlign: 'middle' }}>
-                  {perm.description || '—'}
                 </td>
                 <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1215,13 +1435,12 @@ const AssignPermissionsTab: React.FC = () => {
 export const UserManagement: React.FC<{ defaultTab?: Tab; openCreate?: boolean }> = ({ defaultTab = 'users', openCreate = false }) => {
   const { t } = useTranslation('user-management');
   const [tab, setTab] = useState<Tab>(defaultTab);
-  const [stats, setStats] = useState({ totalUsers: 0, activeUsers: 0, totalRoles: 0 });
+  const [, setStats] = useState({ totalUsers: 0, activeUsers: 0, totalRoles: 0 });
 
   useEffect(() => { setTab(defaultTab); }, [defaultTab]);
 
   const pageMeta = useMemo(() => ({
     users: { skin: 'users' },
-    roles: { skin: 'roles' },
     permissions: { skin: 'permissions' },
     assign: { skin: 'assign' }
   }), []);
@@ -1230,26 +1449,13 @@ export const UserManagement: React.FC<{ defaultTab?: Tab; openCreate?: boolean }
 
   return (
     <section className={`page active admin-console-page admin-user-management-page ${current.skin} role-dashboard role-dashboard-admin`}>
-      <div className="admin-tabs">
-        {(['users', 'roles', 'permissions', 'assign'] as Tab[]).map((key) => {
-          let label = t(`tabs.${key}`);
-          if (key === 'assign') label = 'Cấp Quyền';
-          return (
-            <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>
-              {label}
-            </button>
-          )
-        })}
-      </div>
+
 
       {tab === 'users' && (
         <div className="workspace-panel admin-console-panel users-panel">
           <UsersTab openCreate={openCreate} onStats={(next) => setStats((prev) => ({ ...prev, ...next }))} />
         </div>
       )}
-      {tab === 'roles' && <RolesTab onCount={(count) => setStats((prev) => ({ ...prev, totalRoles: count }))} />}
-      {tab === 'permissions' && <PermissionsTab />}
-      {tab === 'assign' && <AssignPermissionsTab />}
     </section>
   );
 };

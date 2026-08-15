@@ -146,9 +146,9 @@
   --cds-heading-07-line:     64px;
 
   /* ─── Carbon Shape / Radius ─── */
-  --cds-border-radius:       6px;
-  --cds-border-radius-sm:    4px;
-  --cds-border-radius-lg:    8px;
+  --cds-border-radius:       0px;
+  --cds-border-radius-sm:    0px;
+  --cds-border-radius-lg:    0px;
 
   /* ─── Carbon Shadow (minimal — no colorful shadows) ─── */
   --cds-shadow-sm:  0 1px 3px 0 rgba(0,0,0,0.10), 0 1px 2px -1px rgba(0,0,0,0.06);
@@ -8874,6 +8874,79 @@ body {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+.admin-password-field {
+  position: relative;
+  display: block;
+}
+
+.admin-password-field .admin-input {
+  padding-right: 44px;
+}
+
+.admin-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.admin-password-toggle:hover:not(:disabled) {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--text-primary);
+}
+
+.admin-password-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-field-error {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.admin-field-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.admin-form-grid label .admin-password-field {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+}
+
+.admin-form-grid label .admin-field-error {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.admin-form-grid label .admin-field-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .admin-roles-view {

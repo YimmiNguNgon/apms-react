@@ -14,7 +14,6 @@ import {
   FilterBar,
   DataTable,
   EmptyState,
-  StatusBadge,
   PrimaryButton,
   SecondaryButton,
   Drawer,
@@ -86,9 +85,6 @@ interface CompanyIntelligenceSummary {
   signals: EcosystemSignal[];
 }
 
-// ─── Mini donut chart (inline, no external dep) ──────────────────────────────
-// ─── Mini horizontal bar chart ────────────────────────────────────────────────
-// ─── Score ring ───────────────────────────────────────────────────────────────
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function cleanText(value?: string | null): string {
   if (!value) return '';
@@ -164,12 +160,10 @@ function canonicalRelationship(value?: string | null): string {
 }
 
 const viRelationship = (value: string) => ({ Partner: 'Đối tác', Supplier: 'Nhà cung cấp', Customer: 'Khách hàng', Competitor: 'Đối thủ', Custom: 'Tùy chỉnh' }[value] ?? 'Chưa xác định');
-const viStatus = (value: string) => ({ VERIFIED: 'Đã xác minh', PENDING_REVIEW: 'Chờ duyệt', 'Not available': 'Chưa cập nhật' }[value] ?? value);
 
 const DRAWER_TABS = [
   { id: 'relationship-overview',  label: 'Tổng quan quan hệ' },
   { id: 'activity-and-news',      label: 'Dòng thời gian & Tin tức' },
-  { id: 'active-projects',         label: 'Dự án hợp tác' },
   { id: 'partner-opportunities',  label: 'Cơ hội hợp tác' },
 ];
 
@@ -376,9 +370,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
     const verifiedRelationship = ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship);
 
-    // A confirmed graph relationship is valid operational evidence even when the
-    // optional intelligence profile has no enrichment yet. Do not synthesize
-    // news, trends, or timestamps without a backing record.
     const baselineStrategicRelevance: ImpactLevel = activeProject && ['Partner', 'Supplier'].includes(row.relationship)
       ? 'HIGH'
       : verifiedRelationship ? 'MEDIUM' : null;
@@ -400,9 +391,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     const activeProject = row.projects.some((project) => project.status === 'ACTIVE');
     if (intelligence.businessImpact === 'HIGH' || intelligence.businessImpact === 'CRITICAL' || (intelligence.strategicRelevance === 'HIGH' && recentSignal) || (activeProject && recentSignal)) return 'HIGH';
     if (intelligence.strategicRelevance === 'HIGH' || intelligence.strategicRelevance === 'MEDIUM' || intelligence.impactTrend === 'UP') return 'MEDIUM';
-    // Graph relationships and active projects are already verified APMS evidence.
-    // Use them as a fallback when the intelligence endpoint cannot resolve a
-    // profile/graph identifier to a relationship record.
     if (activeProject || ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship)) return 'MEDIUM';
     return 'LOW';
   }, [intelligenceFor]);
@@ -413,16 +401,13 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   }, [intelligenceFor]);
 
   const recentSignals = useMemo(() => Object.values(intelligenceById)
-    .flatMap((intelligence) => intelligence.signals)
-    .sort((left, right) => new Date(right.date || 0).getTime() - new Date(left.date || 0).getTime())
-    .slice(0, 8), [intelligenceById]);
+     .flatMap((intelligence) => intelligence.signals)
+     .sort((left, right) => new Date(right.date || 0).getTime() - new Date(left.date || 0).getTime())
+     .slice(0, 8), [intelligenceById]);
 
   const displayedSignals = useMemo((): EcosystemSignal[] => {
     if (recentSignals.length > 0) return recentSignals;
 
-    // When the crawler has not supplied news yet, graph relationships remain
-    // useful, verified APMS business signals. They are clearly identified as
-    // internal relationship evidence rather than presented as external news.
     return allRows
       .filter((row) => ['Partner', 'Supplier', 'Customer', 'Competitor'].includes(row.relationship))
       .slice(0, 8)
@@ -438,8 +423,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
         sourceUrl: null,
       }));
   }, [allRows, intelligenceFor, recentSignals]);
-
-  const activeProjectCount = useMemo(() => projects.filter((project) => project.status === 'ACTIVE' && Boolean(project.targetCompanyProfileId || project.targetCompanyName)).length, [projects]);
 
   // ── Filtered rows ─────────────────────────────────────────────────────────
   const filteredRows = useMemo(() => {
@@ -473,19 +456,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   const businessImpactHighCount = allRows.filter((row) => { const ib = intelligenceFor(row).businessImpact; return ib === 'HIGH' || ib === 'CRITICAL'; }).length;
   const supplierCount = allRows.filter((row) => row.relationship === 'Supplier').length;
   const customerCount = allRows.filter((row) => row.relationship === 'Customer').length;
-
-  // ── Distribution data ────────────────────────────────────────────────────
-  const distSegments = [
-    { value: totalPartners, color: 'var(--cds-interactive)', label: 'Đối tác' },
-    { value: supplierCount, color: 'var(--cds-support-success)', label: 'Nhà cung cấp' },
-    { value: customerCount, color: '#e67e22', label: 'Khách hàng' },
-  ];
-
-  const industryBars = useMemo(() => {
-    const map: Record<string, number> = {};
-    allRows.filter((row) => row.industry !== 'Chưa có dữ liệu').forEach(r => { map[r.industry] = (map[r.industry] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label: `${label} (${value} · ${Math.round((value / allRows.length) * 100)}%)`, value, max: allRows.length }));
-  }, [allRows]);
 
   // ── Unique industry options ───────────────────────────────────────────────
   const industryOptions = useMemo(() => {
@@ -637,15 +607,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     { key: 'status', header: 'Business Impact', width: '120px',
       render: (_, row) => <span style={{ fontSize: '12px', fontWeight: 600, color: impactColor(intelligenceFor(row).businessImpact) }}>{displayImpact(intelligenceFor(row).businessImpact)}</span>,
     },
-    { key: 'projects', header: 'Dự án', width: '70px', sortable: true, align: 'center',
-      render: (_, row) => <button type="button" onClick={(event) => { event.stopPropagation(); openDrawer(row); setDrawerTab('active-projects'); }} style={{ border: 0, background: 'transparent', color: 'var(--cds-interactive)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>{row.projects.length}</button>,
-    },
-    { key: 'latestActivity', header: 'Hoạt động gần đây', width: '180px',
-      render: (_, row) => {
-        const signal = latestSignalFor(row);
-        return <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{signal ? `${signal.title} · ${formatDate(signal.date)}` : 'Chưa ghi nhận tín hiệu mới.'}</span>;
-      },
-    },
     { key: 'lastUpdated', header: 'Cập nhật', width: '105px',
       render: (_, row) => <span style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{formatDate(intelligenceFor(row).lastUpdated || row.lastUpdated)}</span>,
     },
@@ -659,7 +620,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
   // ── Drawer Content ────────────────────────────────────────────────────────
   const renderDrawerTab = () => {
     if (!selectedRow) return null;
-    const profile = companyProfile as any;
 
     const intelligence = intelligenceFor(selectedRow);
     const activeProj = selectedRow.projects.filter(p => p.status === 'ACTIVE');
@@ -720,7 +680,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
         };
 
         const combinedList: UnifiedItem[] = [
-          // Bỏ relatedNews lên trước để ưu tiên giữ lại format NEWS (có summary và sentiment)
           ...relatedNews.map(n => ({
             id: `news-${n.id}`,
             type: 'NEWS' as const,
@@ -751,7 +710,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
             seenUrls.add(item.url);
           }
           if (item.title) {
-            // Compare first 30 chars to catch cases where title and summary overlap
             const normalizedTitle = item.title.trim().toLowerCase().substring(0, 30);
             if (seenTitles.has(normalizedTitle)) return false;
             seenTitles.add(normalizedTitle);
@@ -801,39 +759,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
           </div>
         );
       }
-
-      case 'active-projects':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {selectedRow.projects.length > 0 ? (
-              selectedRow.projects.map((project) => (
-                <div key={project.id} style={{ background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-00)', borderRadius: 'var(--cds-border-radius)', padding: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
-                    <strong style={{ fontSize: '13.5px', color: 'var(--cds-text-primary)' }}>{cleanText(project.projectName) || 'Chưa có tên'}</strong>
-                    <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                      {project.status}
-                    </span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
-                    <div>Role (APMS): <strong>{project.targetRelationshipType || 'PARTNER'}</strong></div>
-                    <div>Business Impact: <strong>{displayImpact(normalizeImpact(intelligence.businessImpact))}</strong></div>
-                    <div>Start Date: <strong>{formatDate(project.createdAt)}</strong></div>
-                    <div>End Date: <strong>{formatDate(project.plannedEndDate)}</strong></div>
-                  </div>
-                  {project.description && (
-                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--cds-text-secondary)', fontStyle: 'italic' }}>
-                      {project.description}
-                    </p>
-                  )}
-                </div>
-              ))
-            ) : (
-              <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)', textAlign: 'center', padding: '20px' }}>
-                No active collaboration projects available.
-              </p>
-            )}
-          </div>
-        );
 
       case 'partner-opportunities': {
         const opportunities = [];
@@ -930,8 +855,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
         }
       />
 
-
-
       {loadError && <div role="alert" style={{ marginBottom: '16px', padding: '12px 16px', border: '1px solid var(--cds-support-error)', background: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', borderRadius: 'var(--cds-border-radius)', fontSize: '13px' }}>{loadError}</div>}
 
       <div style={{ marginBottom: '16px' }}>
@@ -939,7 +862,6 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
           items={[
             { id: 'attention', label: 'Cần Owner quan tâm' },
             { id: 'signals', label: 'Tín hiệu kinh doanh gần đây' },
-            { id: 'projects', label: 'Kết nối dự án và công ty' },
             { id: 'directory', label: t('sections.directory') },
           ]}
           activeId={mainTab}
@@ -968,141 +890,96 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
 
           <section className="ecosystem-attention" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
             <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Doanh nghiệp cần Owner quan tâm</h2>
-          {attentionRows.slice(0, 5).map((row) => {
-            const intelligence = intelligenceFor(row);
-            const signal = latestSignalFor(row);
-            return (
-              <div className="ecosystem-attention-row" key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.2fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(200px, 1.2fr) minmax(110px, 0.6fr) auto', gap: '12px', alignItems: 'center', padding: '12px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
-                <div>
-                  <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{row.name}</strong>
-                  <div style={{ marginTop: '3px', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
-                    {row.industry} · {viRelationship(row.relationship)}
+            {attentionRows.slice(0, 5).map((row) => {
+              const intelligence = intelligenceFor(row);
+              const signal = latestSignalFor(row);
+              return (
+                <div className="ecosystem-attention-row" key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.2fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(200px, 1.2fr) minmax(110px, 0.6fr) auto', gap: '12px', alignItems: 'center', padding: '12px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
+                  <div>
+                    <strong style={{ fontSize: '13px', color: 'var(--cds-text-primary)' }}>{row.name}</strong>
+                    <div style={{ marginTop: '3px', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
+                      {row.industry} · {viRelationship(row.relationship)}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Chiến lược</span>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.strategicRelevance) }}>{displayImpact(intelligence.strategicRelevance)}</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Business Impact</span>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.businessImpact) }}>{displayImpact(intelligence.businessImpact)}</div>
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Tín hiệu gần đây</span>
-                  <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {signal?.title || `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`}
+                  <div>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Chiến lược</span>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.strategicRelevance) }}>{displayImpact(intelligence.strategicRelevance)}</div>
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px' }}>
-                    {signal?.date ? formatDate(signal.date) : 'Chưa có tín hiệu tin tức được thu thập'}
+                  <div>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Business Impact</span>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: impactColor(intelligence.businessImpact) }}>{displayImpact(intelligence.businessImpact)}</div>
                   </div>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Cập nhật</span>
-                  <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
-                    {intelligence.lastUpdated || row.lastUpdated
-                      ? formatDate(intelligence.lastUpdated || row.lastUpdated)
-                      : 'Quan hệ đã xác minh'}
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Tín hiệu gần đây</span>
+                    <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {signal?.title || `Quan hệ ${viRelationship(row.relationship).toLowerCase()} đã xác minh trong APMS`}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px' }}>
+                      {signal?.date ? formatDate(signal.date) : 'Chưa có tín hiệu tin tức được thu thập'}
+                    </div>
                   </div>
+                  <div>
+                    <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>Cập nhật</span>
+                    <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
+                      {intelligence.lastUpdated || row.lastUpdated
+                        ? formatDate(intelligence.lastUpdated || row.lastUpdated)
+                        : 'Quan hệ đã xác minh'}
+                    </div>
+                  </div>
+                  <SecondaryButton size="sm" onClick={() => openCompanyDetail(row)}>Xem công ty</SecondaryButton>
                 </div>
-                <SecondaryButton size="sm" onClick={() => openCompanyDetail(row)}>Xem công ty</SecondaryButton>
-              </div>
-            );
-          })}
-          {!intelligenceLoading && attentionRows.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
-          {intelligenceLoading && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang xác minh tín hiệu doanh nghiệp...</p>}
+              );
+            })}
+            {!intelligenceLoading && attentionRows.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.attentionEmpty')}</p>}
+            {intelligenceLoading && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Đang xác minh tín hiệu doanh nghiệp...</p>}
           </section>
         </>
       )}
 
-
       {mainTab === 'signals' && (
         <section className="ecosystem-signals" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px' }}>
           <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Tín hiệu kinh doanh gần đây</h2>
-        {displayedSignals.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--cds-border-subtle-00)', fontWeight: 600, fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
-            <div>Doanh nghiệp / Phân loại</div>
-            <div>Tín hiệu / Tin tức</div>
-            <div>Business Impact</div>
-            <div>Ngày ghi nhận</div>
-            <div>Nguồn bằng chứng</div>
-          </div>
-        )}
-        {displayedSignals.map((signal) => (
-          <div className="ecosystem-signal-row" key={`${signal.companyId}-${signal.id}`} style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
-            <div>
-              <strong style={{ fontSize: '12px', color: 'var(--cds-text-primary)' }}>{signal.companyName}</strong>
-              <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.category}</div>
+          {displayedSignals.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--cds-border-subtle-00)', fontWeight: 600, fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
+              <div>Doanh nghiệp / Phân loại</div>
+              <div>Tín hiệu / Tin tức</div>
+              <div>Business Impact</div>
+              <div>Ngày ghi nhận</div>
+              <div>Nguồn bằng chứng</div>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={signal.title}>
-                {signal.title}
+          )}
+          {displayedSignals.map((signal) => (
+            <div className="ecosystem-signal-row" key={`${signal.companyId}-${signal.id}`} style={{ display: 'grid', gridTemplateColumns: '150px minmax(240px, 1fr) 110px 100px 100px', gap: '12px', alignItems: 'center', padding: '10px 0', borderTop: '1px solid var(--cds-border-subtle-00)' }}>
+              <div>
+                <strong style={{ fontSize: '12px', color: 'var(--cds-text-primary)' }}>{signal.companyName}</strong>
+                <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.category}</div>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12px', color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={signal.title}>
+                  {signal.title}
+                </div>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: impactColor(signal.businessImpact) }}>
+                  {displayImpact(signal.businessImpact)}
+                </span>
+              </div>
+              <div>
+                <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.date ? formatDate(signal.date) : 'Đã xác minh'}</span>
+              </div>
+              <div>
+                {signal.sourceUrl ? (
+                  <a href={signal.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: 'var(--cds-link-primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                    <span>Xem nguồn</span>
+                    <ExternalLink size={10} />
+                  </a>
+                ) : (
+                  <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.source || 'N/A'}</span>
+                )}
               </div>
             </div>
-            <div>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: impactColor(signal.businessImpact) }}>
-                {displayImpact(signal.businessImpact)}
-              </span>
-            </div>
-            <div>
-              <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.date ? formatDate(signal.date) : 'Đã xác minh'}</span>
-            </div>
-            <div>
-              {signal.sourceUrl ? (
-                <a href={signal.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: 'var(--cds-link-primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                  <span>Xem nguồn</span>
-                  <ExternalLink size={10} />
-                </a>
-              ) : (
-                <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{signal.source || 'N/A'}</span>
-              )}
-            </div>
-          </div>
-        ))}
-        {displayedSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
-        </section>
-      )}
-
-      {mainTab === 'projects' && (
-        <section style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '16px', marginBottom: '16px', overflowX: 'auto' }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>Kết nối dự án và công ty</h2>
-        {projects.filter((project) => project.targetCompanyName).length > 0 ? (
-          <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--cds-text-secondary)', background: 'var(--cds-layer-01)' }}>
-                <th style={{ padding: '9px' }}>Dự án</th>
-                <th style={{ padding: '9px' }}>Doanh nghiệp đích</th>
-                <th style={{ padding: '9px' }}>Mối quan hệ</th>
-                <th style={{ padding: '9px' }}>Vai trò dự án</th>
-                <th style={{ padding: '9px' }}>Trạng thái</th>
-                <th style={{ padding: '9px' }}>Business Impact</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.filter((project) => project.targetCompanyName).map((project) => {
-                const row = allRows.find((company) => company.id === project.targetCompanyProfileId || company.name === project.targetCompanyName);
-                const intelligence = row ? intelligenceFor(row) : null;
-                return (
-                  <tr key={project.id} style={{ borderTop: '1px solid var(--cds-border-subtle-00)' }}>
-                    <td style={{ padding: '9px', fontWeight: 600 }}>{cleanText(project.projectName) || 'N/A'}</td>
-                    <td style={{ padding: '9px' }}>{cleanText(project.targetCompanyName) || 'N/A'}</td>
-                    <td style={{ padding: '9px' }}>{row ? viRelationship(row.relationship) : 'N/A'}</td>
-                    <td style={{ padding: '9px' }}>{project.targetRelationshipType || 'N/A'}</td>
-                    <td style={{ padding: '9px' }}>
-                      <span style={{ fontSize: '11px', background: project.status === 'ACTIVE' ? '#DCFCE7' : '#F1F5F9', color: project.status === 'ACTIVE' ? '#15803D' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        {project.status || 'N/A'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '9px', color: impactColor(intelligence?.businessImpact ?? null), fontWeight: 600 }}>
-                      {displayImpact(intelligence?.businessImpact ?? null)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>Chưa ghi nhận dự án liên kết với doanh nghiệp nào trong hệ sinh thái.</p>
-        )}
+          ))}
+          {displayedSignals.length === 0 && <p style={{ margin: 0, fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('sections.signalsEmpty')}</p>}
         </section>
       )}
 
@@ -1235,4 +1112,3 @@ export const PartnerEcosystemView: React.FC<PartnerEcosystemViewProps> = ({ setA
     </div>
   );
 };
-

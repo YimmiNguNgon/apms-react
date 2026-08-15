@@ -18,7 +18,6 @@ import type { ExternalDataItem } from '../../API/externalDataApi';
 import {
   PageHeader,
   MetricCard,
-  RiskBadge,
   PrimaryButton,
 } from '../../components/ui';
 
@@ -413,7 +412,6 @@ export const OwnerDashboard: React.FC = () => {
                           <ScoreRing score={Number(score)} size={32} />
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>{score ? `${score}` : t('notAvailable')}</div>
-                            <RiskBadge level={score >= 70 ? 'HIGH' : score >= 40 ? 'MEDIUM' : 'LOW'} />
                           </div>
                         </div>
                       </div>
@@ -454,140 +452,6 @@ export const OwnerDashboard: React.FC = () => {
               )}
             </div>
           </Card>
-
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-          {/* Risk Alerts -> GET /external-data/risks */}
-          <Card>
-            <SectionTitle
-              icon="!"
-              title={t('sections.risks.title')}
-              subtitle={t('sections.risks.subtitle')}
-              action={
-                <span style={{ fontSize: '11px', background: 'var(--cds-support-error-bg)', color: 'var(--cds-support-error)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                  {riskAlertsData.length} {t('fallback.items')}
-                </span>
-              }
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {riskAlertsData.length > 0 ? (
-                riskAlertsData.map((risk, i) => (
-                  <div key={i}>
-                    {i > 0 && <Divider />}
-                    <div style={{ display: 'flex', gap: '10px', padding: '6px 0', alignItems: 'flex-start' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--cds-support-error)', flexShrink: 0, marginTop: '5px' }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', lineHeight: '18px', marginBottom: '2px' }}>
-                          {risk.title || t('content.noTitle')}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
-                          {t('content.source')}: {risk.source || t('content.notUpdated')} {risk.publishedAt ? `· ${risk.publishedAt}` : ''}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: '8px 0', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
-                  {t('content.noAlerts')}
-                </p>
-              )}
-            </div>
-          </Card>
-
-          {/* Partner Directory -> GET /graph/partners */}
-          <Card>
-            <SectionTitle icon="🤝" title={t('sections.partners.title')} subtitle={t('sections.partners.subtitle')} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {partners.length > 0 ? (
-                partners.slice(0, 5).map((p, i) => {
-                  const snap = recentScores.find((s) => s.companyId === p.companyId);
-                  const score = snap?.partnerFitScore ?? snap?.totalScore ?? 0;
-                  return (
-                    <div key={p.companyId || i}>
-                      {i > 0 && <Divider />}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0' }}>
-                        <div style={{ width: '26px', height: '26px', borderRadius: '4px', background: 'var(--cds-layer-01)', border: '1px solid var(--cds-border-subtle-01)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: 'var(--cds-text-primary)', flexShrink: 0 }}>
-                          {(p.name || '?').substring(0, 2).toUpperCase()}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {p.name}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
-                            {p.industry || t('content.notUpdated')}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--cds-text-primary)' }}>{score ? `${score}` : t('notAvailable')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p style={{ margin: '8px 0', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
-                  {t('content.noPartners')}
-                </p>
-              )}
-            </div>
-          </Card>
-
-          {/* Relationship Network -> GET /graph/network */}
-          <Card>
-            <SectionTitle icon="◎" title={t('sections.network.title')} subtitle={t('sections.network.subtitle')} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-              {ownerRelationshipRows.length > 0 ? (
-                ownerRelationshipRows.slice(0, 8).map((node, i) => (
-                  <div key={node.companyId || i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'var(--cds-layer-01)', borderRadius: 'var(--cds-border-radius-sm)', border: '1px solid var(--cds-border-subtle-00)' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--cds-interactive)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '12px', color: 'var(--cds-text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {node.name}
-                    </span>
-                    <span style={{ fontSize: '10px', color: node.relationship === 'PARTNER_WITH' ? 'var(--cds-support-success)' : node.relationship === 'COMPETITOR_OF' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)', fontWeight: 700, marginLeft: 'auto' }}>
-                      {node.relationship.replace(/_OF$|_WITH$/g, '').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p style={{ gridColumn: 'span 2', fontSize: '12px', color: 'var(--cds-text-helper)', textAlign: 'center', padding: '12px 0' }}>
-                  {t('content.networkEmpty')}
-                </p>
-              )}
-            </div>
-          </Card>
-
-          {/* Market News -> GET /external-data/news */}
-          <Card>
-            <SectionTitle icon="N" title={t('sections.news.title')} subtitle={t('sections.news.subtitle')} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {newsData.length > 0 ? (
-                newsData.slice(0, 4).map((item, i) => (
-                  <div key={i}>
-                    {i > 0 && <Divider />}
-                    <div style={{ padding: '6px 0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', lineHeight: '18px', flex: 1 }}>
-                          {item.title || t('content.noTitle')}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>
-                        {t('content.source')}: {item.source || t('content.notUpdated')} {item.publishedAt ? `· ${item.publishedAt}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: '8px 0', fontSize: '12px', color: 'var(--cds-text-helper)' }}>
-                  {t('content.noNews')}
-                </p>
-              )}
-            </div>
-          </Card>
-
         </div>
       </div>
     </div>
