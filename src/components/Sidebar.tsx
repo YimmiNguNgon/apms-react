@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
-import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -115,11 +115,9 @@ const MANAGER_MENU: MenuSection[] = [
   },
 
   {
-    // title: 'Monitoring',
+    title: 'Monitoring',
     items: [
-      // { id: 'risk-monitoring',             label: 'Risk Monitoring', badge: 4, badgeType: 'danger' },
-      // { id: 'partner-status',              label: 'Partner Status' },
-      // { id: 'suggested-actions-approval',  label: 'Approvals',      badge: 5, badgeType: 'warning' },
+      { id: 'company-monitoring', label: 'Monitoring' },
     ],
   },
     {
@@ -166,6 +164,7 @@ const STAFF_MENU: MenuSection[] = [
     title: "menu.workQueue",
     items: [
       { id: "project-management", label: "Project" },
+      { id: "company-monitoring", label: "Monitoring" },
       { id: "system-chat", label: "Chat" },
       { id: 'owner-profile', label: 'My Enterprise' },
       // { id: "company-profiles", label: "menu.companyProfiles" },
@@ -267,6 +266,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
       case 'companies':
       case 'company-profiles':
         return <Database size={18} />;
+      case 'company-monitoring': return <Bell size={18} />;
       case 'news': return <Newspaper size={18} />;
       case 'project-management': return <FolderKanban size={18} />;
       case 'system-chat': return <MessageSquare size={18} />;

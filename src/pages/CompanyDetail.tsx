@@ -5,6 +5,7 @@ import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse } from '../types/domain';
 import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
+import { CompanyMonitoringCard } from '../components/CompanyMonitoringCard';
 import {
   ListingTabBar,
   type ListingTabId,
@@ -508,6 +509,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               currentUserRole={currentUser?.role}
             />
           )}
+
+          <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
 
           {/* Quick Info Summary */}
           {!isDrawerMode && (
