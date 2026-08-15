@@ -5,6 +5,7 @@ import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse } from '../types/domain';
 import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
+import { CompanyMonitoringCard } from '../components/CompanyMonitoringCard';
 import {
   ListingTabBar,
   type ListingTabId,
@@ -508,6 +509,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               currentUserRole={currentUser?.role}
             />
           )}
+
+          <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
 
           {/* Quick Info Summary */}
           {!isDrawerMode && (
@@ -1070,7 +1073,18 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     letterSpacing: '0.3px',
                   }}
                 >
-                  PARTNER ECOSYSTEM
+                  {(() => {
+                    const type = profile.relationshipType;
+                    if (!type) return 'ENTERPRISE';
+                    switch (type.toUpperCase()) {
+                      case 'PARTNER_WITH': return 'Partner';
+                      case 'COMPETITOR_OF': return 'Competitor';
+                      case 'SUPPLIER_OF': return 'Supplier';
+                      case 'CUSTOMER_OF': return 'Customer';
+                      case 'POTENTIAL_PARTNER_OF': return 'Potential Partner';
+                      default: return type.replace(/_/g, ' ');
+                    }
+                  })()}
                 </span>
               )}
               {profile.business?.industries?.[0] && (

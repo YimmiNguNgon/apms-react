@@ -98,6 +98,7 @@ import {
 } from './pages/StaffPages';
 import { CompetitorWatchlist } from './pages/CompetitorWatchlist';
 import { CompetitorIntelligenceView } from './pages/CompetitorIntelligenceView';
+import { CompanyMonitoringPage } from './pages/CompanyMonitoringPage';
 import { MyTasksWorkspace } from './pages/MyTasksWorkspace';
 
 // ── Shared pages ──
@@ -260,6 +261,7 @@ const MainApp: React.FC = () => {
       case 'verify':           return <VerifyQueue />;
       case 'validate':         return <ValidationQueue />;
       case 'add-company':      return <AddCompany />;
+      case 'company-monitoring': return <CompanyMonitoringPage setActivePage={navigateToPage} />;
       case 'admin-panel':      return <AdminPanel />;
       case 'ai-agent':
       case 'personal-ai-agent':return renderDashboard();

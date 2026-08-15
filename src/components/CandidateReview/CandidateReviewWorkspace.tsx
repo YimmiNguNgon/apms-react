@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { AlertCircle, CheckCheck } from 'lucide-react';
+import { AlertCircle, CheckCheck, Edit2 } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
@@ -151,6 +151,8 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const [activeFilter, setActiveFilter] = useState<ReviewFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleInputValue, setTitleInputValue] = useState('');
   const queryClient = useQueryClient();
 
   const saveMutation = useMutation({
@@ -362,14 +364,67 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     );
   };
 
+  const isManual = serverCandidate.extractionSource?.extractionMethod === 'MANUAL';
+
   return (
     <div className={styles.workspace}>
       <div className={styles.candidateHeader}>
         <div className={styles.candidateHeaderLeft}>
-          <span className={styles.candidateEyebrow}>{isRevision ? 'CANDIDATE REVISION' : 'CANDIDATE DRAFT'}</span>
-          <h2>{serverCandidate.identity?.legalName || 'Unknown Company'}</h2>
+          <span className={styles.candidateEyebrow}>{isRevision ? 'CANDIDATE REVISION' : (isManual ? 'MANUAL CANDIDATE DRAFT' : 'CANDIDATE DRAFT')}</span>
+          {isEditingTitle ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                autoFocus
+                style={{ fontSize: '1.5rem', fontWeight: 'bold', padding: '4px 8px', margin: '-4px -8px', border: '1px solid #ccc', borderRadius: '4px', width: '300px' }}
+                value={titleInputValue}
+                onChange={(e) => setTitleInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setPendingUpdates(prev => ({
+                      ...prev,
+                      'identity.legalName': {
+                        reviewedValue: titleInputValue,
+                        reviewStatus: 'DRAFT'
+                      }
+                    }));
+                    setIsEditingTitle(false);
+                  } else if (e.key === 'Escape') {
+                    setIsEditingTitle(false);
+                  }
+                }}
+                onBlur={() => {
+                  setPendingUpdates(prev => ({
+                    ...prev,
+                    'identity.legalName': {
+                      reviewedValue: titleInputValue,
+                      reviewStatus: 'DRAFT'
+                    }
+                  }));
+                  setIsEditingTitle(false);
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2>{(pendingUpdates['identity.legalName']?.reviewedValue !== undefined ? pendingUpdates['identity.legalName']?.reviewedValue : serverCandidate.identity?.legalName) || (isManual ? 'New Company' : 'Unknown Company')}</h2>
+              {isManual && (
+                <button 
+                  type="button"
+                  title="Edit Company Name"
+                  onClick={() => {
+                    const currentVal = pendingUpdates['identity.legalName']?.reviewedValue !== undefined ? pendingUpdates['identity.legalName']?.reviewedValue : serverCandidate.identity?.legalName;
+                    setTitleInputValue(currentVal || '');
+                    setIsEditingTitle(true);
+                  }}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}
+                >
+                  <Edit2 size={18} />
+                </button>
+              )}
+            </div>
+          )}
           <div className={styles.candidateSubline}>
-            ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''} &middot; {totalFieldsGlobal} fields extracted
+            ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''}{!isManual && ` \u00B7 ${totalFieldsGlobal} fields extracted`}
           </div>
         </div>
         <div className={styles.candidateHeaderRight}>
@@ -399,12 +454,14 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
         </div>
       )}
 
-      <div className={styles.qualityBar}>
-        <CandidateQualitySummary 
-          metrics={serverCandidate.qualityMetrics || {}} 
-          status={serverCandidate.qualityStatus || 'UNKNOWN'} 
-        />
-      </div>
+      {!isManual && (
+        <div className={styles.qualityBar}>
+          <CandidateQualitySummary 
+            metrics={serverCandidate.qualityMetrics || {}} 
+            status={serverCandidate.qualityStatus || 'UNKNOWN'} 
+          />
+        </div>
+      )}
 
       <div className={styles.layoutContainer}>
         <div className={styles.mainContent}>

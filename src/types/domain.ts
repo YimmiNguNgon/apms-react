@@ -141,6 +141,7 @@ export interface ProfileResponse {
   stockExchange?: string;
   metadata?: CompanyProfileMetadata;
   version?: number;
+  responsibleManagerId?: number;
 }
 
 export interface CompanyProfileMember {
@@ -338,11 +339,15 @@ export interface ComplianceInfo {
 export interface CandidateResponse {
   id: string;
   projectId: string;
-  importJobId: string;
-  rawDocumentId: string;
+  taskId?: number;
+  importJobId?: string;
+  rawDocumentId?: string;
+  sourceDocumentIds?: string[];
   candidateOrder?: number;
   revisionNumber?: number;
+  documentVersion?: number;
   status: CandidateStatus;
+  extractionSource?: { extractionMethod: string; providerName?: string };
   suggestedRelationshipType?: RelationshipType;
   relationshipConfidenceScore?: number;
   relationshipTypeOverride?: RelationshipType;
@@ -1233,3 +1238,54 @@ export interface OwnerCompanyIntelligenceResponse {
     dataQuality: string | null;
   };
 }
+
+export type MonitoringFrequency = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUALLY';
+export type MonitoringStatus = 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+export type MonitoringReviewResult = 'NO_CHANGE' | 'UPDATE_PROPOSED';
+
+export interface CompanyMonitoringAssignmentRequest {
+  companyProfileId: string;
+  assignedStaffId: number;
+  frequency: MonitoringFrequency;
+}
+
+export interface CompanyMonitoringUpdateRequest {
+  assignedStaffId: number;
+  frequency: MonitoringFrequency;
+}
+
+export interface CompanyMonitoringReviewRequest {
+  result: MonitoringReviewResult;
+  updateProposalId?: string;
+  note?: string;
+}
+
+export interface CompanyMonitoringAssignmentResponse {
+  id: number;
+  companyProfileId: string;
+  companyName: string;
+  assignedStaffId: number;
+  assignedStaffName: string;
+  assignedStaffEmail: string;
+  assignedByManagerId: number;
+  frequency: MonitoringFrequency;
+  assignmentStatus: MonitoringStatus;
+  displayStatus: 'UP_TO_DATE' | 'DUE' | 'OVERDUE' | 'PAUSED';
+  lastReviewedAt: string | null;
+  nextReviewAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyMonitoringReviewResponse {
+  id: number;
+  monitoringAssignmentId: number;
+  companyProfileId: string;
+  reviewedById: number;
+  reviewedByName: string;
+  reviewedAt: string;
+  result: MonitoringReviewResult;
+  updateProposalId: string | null;
+  note: string | null;
+}
+

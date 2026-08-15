@@ -11,8 +11,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Clock,
   Copy,
   DollarSign,
@@ -625,34 +623,20 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
   if (!evidence) return null;
 
   const score = evidenceScoreLabel(evidence.confidenceScore);
+  const hasEvidence = Boolean(evidence.evidenceText?.trim());
   const messages = Array.isArray(evidence.validationMessages)
     ? evidence.validationMessages.join(', ')
     : evidence.validationMessages;
-
-  let parsedFileName = '';
-  let parsedDocId = '';
-  let parsedEvidenceText = evidence.evidenceText || '';
-  let hasEvidence = Boolean(parsedEvidenceText.trim());
-
-  if (hasEvidence) {
-    const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^\]]+?)\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
-    if (rawMatch) {
-      parsedFileName = rawMatch[1].trim();
-      parsedDocId = rawMatch[2].trim();
-      parsedEvidenceText = rawMatch[3].trim();
-    }
-  }
-
   const sources = evidence.sources?.length
     ? evidence.sources
-    : evidence.sourceFileName || parsedFileName
+    : evidence.sourceFileName
       ? [{
-          fileName: evidence.sourceFileName || parsedFileName,
+          fileName: evidence.sourceFileName,
           importJobId: evidence.sourceImportJobId,
-          rawDocumentId: evidence.sourceRawDocumentId || parsedDocId,
+          rawDocumentId: evidence.sourceRawDocumentId,
           extractionId: evidence.sourceExtractionId,
           confidenceScore: evidence.confidenceScore,
-          evidenceText: parsedEvidenceText,
+          evidenceText: evidence.evidenceText,
           pageNumber: evidence.pageNumber,
           validationStatus: evidence.validationStatus,
           validationMessages: evidence.validationMessages,
@@ -660,104 +644,46 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
         }]
       : [];
 
-  const evidenceCount = sources.length;
-
   return (
-    <div style={{ marginTop: '8px' }}>
-      <button 
-        type="button" 
-        onClick={() => setOpen((current) => !current)}
-        style={{ 
-          color: '#475569', 
-          fontWeight: 600, 
-          fontSize: '13px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '6px',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 0
-        }}
-      >
+    <div className={styles.itemEvidencePanel}>
+      <button type="button" onClick={() => setOpen((current) => !current)}>
         <FileText size={14} />
-        Evidence{evidenceCount > 0 ? ` (${evidenceCount})` : ''}
-        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        {open ? 'Hide evidence' : 'View evidence'}
       </button>
-      
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            style={{ 
-              marginTop: '10px', 
-              background: '#f8fafc', 
-              border: '1px solid #e2e8f0', 
-              borderRadius: '8px', 
-              padding: '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              overflow: 'hidden'
-            }}
+            className={styles.itemEvidenceCard}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18 }}
           >
-            {evidenceCount > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supporting Evidence</span>
-                  <strong style={{ fontSize: '12px', color: '#0f172a' }}>{evidenceCount} source{evidenceCount > 1 ? 's' : ''}</strong>
-                </div>
+            {sources.length > 0 && (
+              <div className={styles.itemEvidenceSources}>
+                <span>Used source documents</span>
                 {sources.map((source, index) => (
-                  <article key={index} style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: index < sources.length - 1 ? '1px dashed #cbd5e1' : 'none', paddingBottom: index < sources.length - 1 ? '12px' : '0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <strong style={{ color: '#0f172a', fontSize: '13px', fontWeight: 600, wordBreak: 'break-word' }}>
-                        {source.fileName || `Source ${index + 1}`}
-                      </strong>
-                      {source.pageNumber && (
-                        <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                          Page {source.pageNumber}
-                        </span>
-                      )}
-                      {typeof source.confidenceScore === 'number' && (
-                        <span style={{ color: '#059669', fontSize: '11px', fontWeight: 600 }}>
-                          {source.confidenceScore}% conf
-                        </span>
-                      )}
-                    </div>
-                    {source.evidenceText && (
-                      <p style={{ margin: 0, fontSize: '13px', color: '#334155', lineHeight: '1.55', background: '#ffffff', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', whiteSpace: 'pre-wrap' }}>
-                        {source.evidenceText}
-                      </p>
-                    )}
+                  <article key={`${source.extractionId || source.importJobId || source.fileName}-${index}`}>
+                    <strong>{source.fileName}</strong>
+                    <footer>
+                      {source.pageNumber ? <small>Page {source.pageNumber}</small> : <small>Page unavailable</small>}
+                      {typeof source.confidenceScore === 'number' && <small>{source.confidenceScore}% confidence</small>}
+                      {source.importJobId && <small>Import job #{source.importJobId}</small>}
+                    </footer>
+                    {source.evidenceText && <p>{source.evidenceText}</p>}
                   </article>
                 ))}
               </div>
-            ) : (
-              <div>
-                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Source evidence</span>
-                </div>
-                <p style={{ margin: '0', fontSize: '13px', color: '#334155', lineHeight: '1.55', background: '#ffffff', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', whiteSpace: 'pre-wrap' }}>
-                  {hasEvidence ? parsedEvidenceText : 'No source quote returned for this field.'}
-                </p>
-                {evidence.pageNumber && (
-                  <div style={{ marginTop: '8px' }}>
-                    <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                      Page {evidence.pageNumber}
-                    </span>
-                  </div>
-                )}
-              </div>
             )}
-            
-            {messages && (
-              <div style={{ marginTop: '4px', color: '#b91c1c', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', background: '#fee2e2', padding: '8px', borderRadius: '6px' }}>
-                <AlertTriangle size={14} /> {messages}
-              </div>
-            )}
+            <div>
+              <span>Source evidence</span>
+              <p>{hasEvidence ? evidence.evidenceText : 'No source quote returned for this field.'}</p>
+            </div>
+            <footer>
+              <small>{evidence.pageNumber ? `Page ${evidence.pageNumber}` : 'Page unavailable'}</small>
+              <small>Confidence: {score}</small>
+            </footer>
+            {messages && <strong>{messages}</strong>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -3080,10 +3006,12 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
 };
 
 const createTaskTypeOptions: Array<{ value: TaskType; label: string }> = [
-  { value: 'COMPANY_DATA_PREPARATION', label: 'Extract Company Profile Data' },
-  { value: 'COMPANY_MEMBER_RESEARCH', label: 'Research Leadership Team' },
-  { value: 'COMPANY_NEWS_RESEARCH', label: 'Gather Market News' },
-  { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Collect Partner Contracts' },
+  { value: 'GENERAL_TASK', label: 'General task' },
+  { value: 'COMPANY_DATA_PREPARATION', label: 'Company data preparation' },
+  { value: 'COMPANY_MEMBER_RESEARCH', label: 'Company member research' },
+  { value: 'COMPANY_NEWS_RESEARCH', label: 'Company news research' },
+  { value: 'ROLE_EVALUATION', label: 'Role evaluation' },
+  { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Partner contract collection' },
 ];
 
 const emptyCompanyMemberForm: CompanyMemberResearchItem = {
@@ -5037,6 +4965,34 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     await extractProjectDocumentsForReview(projectDocuments.filter((document) => selectedProjectDocumentIds.includes(document.id)));
   };
 
+  const handleCreateManualCandidate = async () => {
+    if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) {
+      setWorkbenchError('You are not assigned to this task or do not have permission.');
+      return;
+    }
+
+    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
+    if (returnedCandidate) {
+      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
+      await handleOpenStaffCandidate(returnedCandidate.candidateId);
+      return;
+    }
+
+    setStaffCandidateLoading(true);
+    setWorkbenchError(null);
+    try {
+      const payload = await candidateApi.createManualCandidate(currentProjectId!, selectedStaffTask.id);
+      setStaffCandidate(payload.data);
+      setWorkbenchMessage('Draft manual candidate created. Enter fields and submit.');
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    } catch (error: any) {
+      setWorkbenchError('Failed to create manual candidate: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setStaffCandidateLoading(false);
+    }
+  };
+
   const handleCreateStaffCandidate = async (extractionId: string) => {
     if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
@@ -6414,15 +6370,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <h3>Project document library</h3>
                         <p>Select one or more existing project documents, run AI extraction, then review the extracted fields before creating a candidate.</p>
                       </div>
-                      <button
-                        className={`${styles.button} ${styles.primaryButton}`}
-                        type="button"
-                        onClick={() => void handleExtractSelectedProjectDocuments()}
-                        disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
-                      >
-                        <Sparkles size={16} />
-                        {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          className={styles.button}
+                          type="button"
+                          onClick={() => void handleCreateManualCandidate()}
+                          disabled={!canUseStaffWorkbench || staffCandidateLoading}
+                        >
+                          {staffCandidateLoading ? 'Creating...' : 'Enter Manually'}
+                        </button>
+                        <button
+                          className={`${styles.button} ${styles.primaryButton}`}
+                          type="button"
+                          onClick={() => void handleExtractSelectedProjectDocuments()}
+                          disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
+                        >
+                          <Sparkles size={16} />
+                          {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
+                        </button>
+                      </div>
                     </div>
 
                     <label className={styles.workbenchUploadBox} style={{ marginTop: '16px', marginBottom: '16px' }}>
@@ -7152,7 +7118,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
                                     <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
-                                    {isNewest && <span style={{ display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '12px', fontWeight: 700, boxShadow: '0 2px 4px rgba(239,68,68,0.2)' }}>Newest</span>}
+                                    {isNewest && <span style={{ display: 'inline-flex', alignItems: 'center', background: 'linear-gradient(135deg, #66ef44, #dc2626)', color: '#fff', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '12px', fontWeight: 700, boxShadow: '0 2px 4px rgba(239,68,68,0.2)' }}>Newest</span>}
                                   </div>
                                   {draft.candidateIndustry && <small style={{ color: '#64748b', marginTop: '2px' }}>{draft.candidateIndustry}</small>}
                                   
@@ -7641,7 +7607,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{draft.candidateName || `Candidate ${draft.candidateId.slice(-8)}`}</strong>
                             {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
                             <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
-                            {draft.isUnderReview && <small>Submitted for review {draft.createdAt ? `on ${formatOptionalDate(draft.createdAt)}` : ''}</small>}
+                            {draft.isUnderReview && <small>Submitted for review</small>}
                           </button>
                         ))}
                       </div>

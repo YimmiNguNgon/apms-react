@@ -19,6 +19,12 @@ export const candidateApi = {
     );
   },
 
+  createManualCandidate: async (projectId: number, taskId: number) => {
+    return api.post<CandidateResponse>(
+      `/projects/${projectId}/tasks/${taskId}/candidates/manual`
+    );
+  },
+
   updateCandidate: async (candidateId: string, data: UpdateCandidateRequest) => {
     return api.patch<CandidateResponse>(
       `/candidates/${candidateId}`,

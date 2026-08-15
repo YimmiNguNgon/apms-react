@@ -76,7 +76,6 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 }) => {
   const [data, setData] = useState<RelationshipClosenessResponse | null>(null);
   const [draftStars, setDraftStars] = useState(0);
-  const [draftNote, setDraftNote] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,8 +97,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
   }, [data?.label]);
 
   const syncDraft = (next: RelationshipClosenessResponse | null) => {
-    setDraftStars(next?.stars ?? 0);
-    setDraftNote(next?.note ?? '');
+    setDraftStars(next?.stars || 0);
   };
 
   const loadCloseness = async () => {
@@ -156,17 +154,12 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       return;
     }
 
-    if (draftNote.length > 1000) {
-      setMessage({ type: 'error', text: 'Note cannot exceed 1000 characters.' });
-      return;
-    }
-
     setSaving(true);
     setMessage(null);
     try {
       const response = await companyRelationshipClosenessApi.update(companyProfileId, {
         stars: draftStars,
-        note: draftNote.trim() || null,
+        note: null,
       });
       const next = response.data;
       setData(next);
@@ -271,8 +264,8 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                   ].filter(Boolean).join(' ')}
                   onClick={() => editing && canEdit && setDraftStars(value)}
                   disabled={!editing || !canEdit || saving}
-                  title={`${value}/5`}
-                  aria-label={`${value}/5 sao`}
+                  title={describeStars(value)}
+                  aria-label={describeStars(value)}
                 >
                   <Star size={16} fill={filled ? 'currentColor' : 'none'} />
                 </button>
@@ -314,23 +307,6 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
           </div>
         ) : null}
 
-        {editing ? (
-          <div className={styles.editor}>
-            <textarea
-              className={styles.textarea}
-              value={draftNote}
-              maxLength={1000}
-              onChange={(event) => setDraftNote(event.target.value)}
-              placeholder="Note reasons for rating, e.g.: level of cooperation, interaction frequency, work results..."
-              disabled={saving}
-            />
-            <div className={styles.charCount}>{draftNote.length}/1000</div>
-          </div>
-        ) : (
-          <div className={`${styles.noteBox} ${data?.note ? '' : styles.noteMuted}`}>
-            {data?.note || 'No relationship rating notes.'}
-          </div>
-        )}
 
         {message && (
           <div className={`${styles.message} ${message.type === 'ok' ? styles.messageOk : styles.messageError}`}>
@@ -360,7 +336,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                 type="button"
                 className={`${styles.button} ${styles.primaryButton}`}
                 onClick={() => void handleSave()}
-                disabled={saving || draftStars < 1 || draftNote.length > 1000}
+                disabled={saving || draftStars < 1}
               >
                 <Save size={13} />
                 {saving ? 'Saving' : 'Save'}
