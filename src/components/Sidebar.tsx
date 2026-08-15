@@ -62,15 +62,13 @@ const ADMIN_MENU: MenuSection[] = [
   {
     title: 'menu.security',
     items: [
-      { id: 'access-control',   label: 'menu.accessControl' },
-      { id: 'activity-history', label: 'menu.activityHistory' },
       { id: 'audit-logs',       label: 'menu.auditLogs' },
     ],
   },
   {
     title: 'menu.system',
     items: [
-      { id: 'system-settings',   label: 'menu.systemSettings' },
+      { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
     ],
   },
 ];

@@ -14,6 +14,8 @@
   "filters": {
     "searchPlaceholder": "Tìm tiêu đề, tóm tắt, nguồn hoặc công ty...",
     "allSources": "Tất cả nguồn tin",
+    "allCompanies": "Tất cả doanh nghiệp",
+    "viewAll": "Xem tất cả tin tức",
     "reset": "Đặt lại"
   },
   "table": {
@@ -31,7 +33,9 @@
   },
   "empty": {
     "loading": "Đang tải bài viết...",
-    "noResults": "Không có bài viết nào phù hợp với bộ lọc."
+    "noResults": "Không có bài viết nào phù hợp với bộ lọc.",
+    "noResultsTitle": "Không tìm thấy bài viết",
+    "noResultsBody": "Hiện tại không có bài viết thu thập nào phù hợp với bộ lọc của bạn."
   },
   "article": {
     "noTitle": "Bài viết chưa có tiêu đề"
@@ -53,9 +57,15 @@
   },
   "pagination": {
     "showing": "Hiển thị {{count}} / {{total}} bài viết",
+    "showingRange": "Hiển thị {{start}}–{{end}} trong số {{total}} bài viết",
     "page": "Trang {{page}} / {{total}}",
     "previous": "Trước",
     "next": "Sau"
+  },
+  "sections": {
+    "topStories": "Tin tức nổi bật",
+    "latestNews": "Tin tức mới nhất",
+    "storiesCount": "{{count}} bài viết"
   },
   "modal": {
     "close": "Đóng",
@@ -76,7 +86,12 @@
     "inProgress": "Đang phân tích..."
   },
   "date": {
-    "noDate": "Không có ngày"
+    "noDate": "Không có ngày",
+    "unknown": "Không rõ ngày",
+    "justNow": "Vừa xong",
+    "hoursAgo": "{{count}} giờ trước",
+    "yesterday": "Hôm qua",
+    "daysAgo": "{{count}} ngày trước"
   },
   "errors": {
     "loadFailed": "Không thể tải danh sách bài viết."

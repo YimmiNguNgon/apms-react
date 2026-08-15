@@ -58,20 +58,61 @@
       "you": "(Bạn)",
       "edit": "Sửa",
       "changeRole": "Đổi Role",
-      "toggleStatus": "Khóa/Mở"
+      "toggleStatus": "Khóa/Mở",
+      "emailStatus": "Email",
+      "emailVerified": "Đã xác nhận",
+      "emailUnverified": "Chưa xác nhận",
+      "emailUnknown": "Chưa có dữ liệu"
     },
     "modal": {
       "createTitle": "Tạo tài khoản mới",
+      "createDesc": "Cấp tài khoản mới cho người dùng trong hệ thống.",
       "editTitle": "Chỉnh sửa tài khoản",
       "roleTitle": "Cập nhật vai trò",
       "fullName": "Họ và tên *",
       "username": "Tên đăng nhập *",
       "email": "Địa chỉ Email *",
       "role": "Vai trò truy cập *",
-      "password": "Mật khẩu ban đầu *",
+      "password": "Mật khẩu *",
+      "confirmPassword": "Xác nhận mật khẩu *",
+      "rolePlaceholder": "Chọn vai trò",
+      "roleLoading": "Đang tải vai trò...",
+      "roleLoadError": "Không thể tải danh sách vai trò.",
       "save": "Lưu thay đổi",
       "create": "Tạo tài khoản",
-      "cancel": "Hủy"
+      "creating": "Tạo tài khoản ...",
+      "cancel": "Hủy",
+      "showPassword": "Hiện mật khẩu",
+      "hidePassword": "Ẩn mật khẩu",
+      "passwordHint": "Ít nhất 8 ký tự."
+    },
+    "validation": {
+      "requiredFullName": "Họ và tên không được để trống",
+      "requiredEmail": "Email không được để trống",
+      "invalidEmail": "Email không hợp lệ",
+      "requiredPassword": "Mật khẩu không được để trống",
+      "passwordMin": "Mật khẩu phải có ít nhất 8 ký tự",
+      "passwordMax": "Mật khẩu tối đa 72 ký tự",
+      "requiredConfirmPassword": "Vui lòng xác nhận mật khẩu",
+      "passwordMismatch": "Mật khẩu xác nhận không khớp",
+      "requiredRole": "Vui lòng chọn vai trò",
+      "emailExists": "Email đã tồn tại"
+    },
+    "success": {
+      "title": "Tạo tài khoản thành công",
+      "body": "Tài khoản đã được tạo thành công.",
+      "emailLabel": "Email:",
+      "roleLabel": "Vai trò:",
+      "pendingVerification": "Tài khoản đang chờ người dùng xác nhận email bằng mã OTP.",
+      "close": "Đóng"
+    },
+    "errors": {
+      "unauthorized": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+      "forbidden": "Bạn không có quyền quản trị tài khoản.",
+      "badRequest": "Dữ liệu không hợp lệ. Vui lòng kiểm tra lại thông tin.",
+      "serverError": "Có lỗi hệ thống. Vui lòng thử lại sau.",
+      "network": "Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.",
+      "default": "Không thể tạo tài khoản."
     },
     "adminUi": {
       "loadingAccounts": "Đang tải danh sách tài khoản...",

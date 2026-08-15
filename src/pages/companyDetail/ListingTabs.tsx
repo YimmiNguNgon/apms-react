@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ListingTabId } from './utils';
+import type { ListingTabDef, ListingTabId } from './utils';
 import { LISTING_TABS } from './utils';
 import styles from '../CompanyDetail.module.css';
 
@@ -10,12 +10,14 @@ interface ListingTabsProps {
   activeTab: ListingTabId;
   onTabChange: (tab: ListingTabId) => void;
   userRole?: string | null;
+  tabs?: ListingTabDef[];
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange }) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, tabs }) => {
+  const defs = tabs ?? LISTING_TABS;
   return (
     <div className={styles.tabBar} role="tablist">
-      {LISTING_TABS.map((tab) => (
+      {defs.map((tab) => (
         <button
           key={tab.id}
           type="button"

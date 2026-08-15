@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../services/api';
 import type { PageResponse } from '../services/api';
-import { loginApi } from '../API/loginApi';
+import { loginApi, type VerificationPayload } from '../API/loginApi';
 import { queryClient } from '../main';
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -16,7 +16,7 @@ export type Role = typeof ROLES[keyof typeof ROLES];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_PAGES: Record<Role, string[]> = {
-  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat', 'news', 'article-detail', 'company-profiles', 'companies', 'company-detail', 'partner-ecosystem'],
+  [ROLES.ADMIN]: ['admin-dashboard', 'users', 'permissions', 'access-control', 'audit-logs', 'crawler-control', 'owner-company-profile', 'profile', 'system-chat', 'news', 'article-detail', 'company-profiles', 'companies', 'company-detail', 'partner-ecosystem'],
   [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'project-detail', 'company-profiles', 'companies', 'company-detail', 'news', 'article-detail', 'profile', 'system-chat'],
   [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'company-profiles', 'company-detail', 'partner-ecosystem', 'verify', 'news', 'article-detail', 'profile', 'project-management', 'project-detail', 'system-chat'],
   [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'partner-ecosystem', 'add-company', 'ai-agent', 'news', 'article-detail', 'profile', 'system-chat'],
@@ -111,6 +111,7 @@ const mapBackendRoles = (id: number, email: string, backendRoles: string[]): Use
 interface UserContextType {
   currentUser: User | null;
   login: (email: string, password?: string) => Promise<boolean>;
+  applyLoginPayload: (payload: LoginPayload) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
 }
@@ -160,26 +161,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   }, []);
 
+  const applyLoginPayload = async (payload: LoginPayload): Promise<boolean> => {
+    if (!payload?.accessToken) return false;
+    storeAuthSession({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
+    try {
+      const projRes = await api.get<PageResponse<{ id: number }>>('/projects', { params: { page: 0, size: 1 } });
+      if (projRes?.success && projRes.data?.content?.length > 0) localStorage.setItem('apms-active-project', String(projRes.data.content[0].id));
+    } catch { /* non-critical */ }
+    const user = mapBackendRoles(payload.id, payload.email, Array.isArray(payload.roles) ? payload.roles : []);
+    setCurrentUser(user); localStorage.setItem('apms-user', JSON.stringify(user)); queryClient.clear(); return true;
+  };
+
   const login = async (email: string, password?: string): Promise<boolean> => {
     try {
-      const payload: LoginPayload | null = await loginApi.login(email, password || '');
-
-      if (!payload || !payload.accessToken) return false;
-
-      storeAuthSession({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
-
-      try {
-        const projRes = await api.get<PageResponse<{ id: number }>>('/projects', { params: { page: 0, size: 1 } });
-        if (projRes?.success && projRes.data?.content?.length > 0) {
-          localStorage.setItem('apms-active-project', String(projRes.data.content[0].id));
-        }
-      } catch { /* non-critical */ }
-
-      const user = mapBackendRoles(payload.id, payload.email || email, Array.isArray(payload.roles) ? payload.roles : []);
-      setCurrentUser(user);
-      localStorage.setItem('apms-user', JSON.stringify(user));
-      queryClient.clear();
-      return true;
+      const payload = await loginApi.login(email, password || '');
+      if ('requiresEmailVerification' in payload) return false;
+      return applyLoginPayload(payload);
     } catch (err: unknown) {
       throw new Error(err instanceof Error ? err.message : 'Cannot connect to the server.', { cause: err });
     }
@@ -194,7 +191,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <UserContext.Provider value={{ currentUser, login, logout, loading }}>
+    <UserContext.Provider value={{ currentUser, login, applyLoginPayload, logout, loading }}>
       {children}
     </UserContext.Provider>
   );

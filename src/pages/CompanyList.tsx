@@ -89,8 +89,6 @@ const profileRelationshipBadge = (profile: ProfileResponse) => {
   }
 };
 
-
-
 const formatDate = (value?: string | null) => {
   if (!value) return i18n.t('company-list:table.notUpdated');
   const formatted = utilFormatDate(value);
@@ -247,7 +245,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         }}>
           <div>
             <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--brand-primary, #2563eb)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              🏢 Doanh nghiệp Chủ quản (Owner Reference Enterprise)
+              Doanh nghiệp Chủ quản (Owner Reference Enterprise)
             </div>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
               {ownerProfile.identity?.tradeName || ownerProfile.identity?.legalName}

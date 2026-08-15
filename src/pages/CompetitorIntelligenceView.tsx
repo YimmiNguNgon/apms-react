@@ -498,7 +498,19 @@ export const CompetitorIntelligenceView: React.FC = () => {
           ]).filter(([name]) => Boolean(name)),
         );
 
-        const filteredComps = rawComps.filter((c) => c.companyId && c.companyId !== ownerCompanyId);
+        // A graph projection can contain legacy IDs for the same business.
+        // Resolve each graph row to its canonical profile identity before
+        // rendering the competitor directory.
+        const competitorKeys = new Set<string>();
+        const filteredComps = rawComps.filter((c) => {
+          if (!c.companyId || c.companyId === ownerCompanyId) return false;
+          const profile = profileMap.get(c.companyId) || profileByName.get(normalizeCompanyName(c.name));
+          const key = profile?.companyId || normalizeCompanyName(profile?.identity?.legalName)
+            || normalizeCompanyName(profile?.identity?.tradeName) || normalizeCompanyName(c.name);
+          if (!key || competitorKeys.has(key)) return false;
+          competitorKeys.add(key);
+          return true;
+        });
         
         // Prefetch intelligence data for all competitors in parallel
         const competitorIntelResponses = await Promise.all(
@@ -716,7 +728,10 @@ export const CompetitorIntelligenceView: React.FC = () => {
           }
           throw new Error(reason instanceof Error ? reason.message : 'Unable to load competitors from the backend.');
         }
-        setCompetitors(mapped);
+        // Do not present an orphaned graph row as competitor intelligence.
+        // A company must resolve to either an intelligence overview or a
+        // canonical company profile to remain in this operational view.
+        setCompetitors(mapped.filter((company) => Boolean(company.overview)));
         setProjects(ownerProjects);
 
         if (syncStatus === 'updating') {
@@ -1057,7 +1072,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
     return feed.slice(0, 5);
   }, [competitors]);
 
-  // â”€â”€ Table Column Definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Table Column Definitions
   // Column Definitions for Comparison Matrix
   const columns: ColumnDef<EnterpriseCompetitor>[] = [
     {
@@ -1093,23 +1108,23 @@ export const CompetitorIntelligenceView: React.FC = () => {
     },
     {
       key: 'industry',
-      header: 'Ngành',
+      header: t('table.industry'),
       width: '150px',
       sortable: true,
     },
     {
       key: 'businessImpactOrder',
-      header: 'Tác động kinh doanh',
+      header: t('drawer.businessImpact'),
       width: '150px',
       sortable: true,
-      render: (_, row) => <RiskBadge level={row.businessImpact || ''} label={row.businessImpact || 'Chưa có dữ liệu xác minh'} />,
+      render: (_, row) => <RiskBadge level={row.businessImpact || ''} label={row.businessImpact || t('drawer.notAvailable')} />,
     },
     {
       key: 'strategicRelevanceOrder',
-      header: 'Mức độ chiến lược',
+      header: t('drawer.strategicLevel'),
       width: '150px',
       sortable: true,
-      render: (_, row) => <RiskBadge level={row.strategicRelevance || ''} label={row.strategicRelevance || 'Chưa có dữ liệu xác minh'} />,
+      render: (_, row) => <RiskBadge level={row.strategicRelevance || ''} label={row.strategicRelevance || t('drawer.notAvailable')} />,
     },
 
     {
@@ -1129,24 +1144,24 @@ export const CompetitorIntelligenceView: React.FC = () => {
             color: row.hiringCount > 0 ? 'var(--cds-interactive)' : 'var(--cds-text-helper)',
           }}
         >
-          {row.hiringCount > 0 ? `${row.hiringCount} vị trí` : 'Chưa có dữ liệu xác minh'}
+          {row.hiringCount > 0 ? `${row.hiringCount} ${t('drawer.positions').toLowerCase()}` : t('drawer.notAvailable')}
         </span>
       ),
     },
     {
       key: 'techInvestmentsCount',
-      header: 'Hoạt động công nghệ',
+      header: t('tabs.tech'),
       width: '150px',
       sortable: true,
       render: (_, row) => (
         <span style={{ fontSize: '12px', color: 'var(--cds-text-secondary)' }}>
-          {row.techInvestmentsCount > 0 ? `${row.techInvestmentsCount} giải pháp` : 'Chưa có dữ liệu xác minh'}
+          {row.techInvestmentsCount > 0 ? `${row.techInvestmentsCount} ${t('drawer.solutions')}` : t('drawer.notAvailable')}
         </span>
       ),
     },
     {
       key: 'lastUpdated',
-      header: 'Cập nhật gần nhất',
+      header: t('overview.lastUpdated'),
       width: '130px',
       sortable: true,
       render: (_, row) => <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{row.lastUpdated}</span>,
@@ -1158,7 +1173,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
       align: 'right',
       render: (_, row) => (
         <SecondaryButton size="sm" onClick={() => openDrawer(row)}>
-          Xem thông tin
+          {t('overview.viewIntelligence')}
         </SecondaryButton>
       ),
     },
@@ -1175,22 +1190,22 @@ export const CompetitorIntelligenceView: React.FC = () => {
     {
       id: 'industry',
       type: 'select',
-      label: 'Ngành',
+      label: t('table.industry'),
       value: industry,
       onChange: (v) => setIndustry(v as string),
       options: [
-        { value: 'All', label: 'Tất cả ngành' },
+        { value: 'All', label: t('filters.allIndustries', 'Tất cả ngành') },
         ...uniqueIndustries.map((ind) => ({ value: ind, label: ind })),
       ],
     },
     {
       id: 'riskLevel',
       type: 'select',
-      label: 'Tác động',
+      label: t('drawer.businessImpact'),
       value: riskLevel,
       onChange: (v) => setRiskLevel(v as string),
       options: [
-        { value: 'All', label: 'Tất cả tác động' },
+        { value: 'All', label: t('filters.allImpacts', 'Tất cả tác động') },
         { value: 'CRITICAL', label: 'CRITICAL' },
         { value: 'HIGH', label: 'HIGH' },
         { value: 'MEDIUM', label: 'MEDIUM' },
@@ -1200,11 +1215,11 @@ export const CompetitorIntelligenceView: React.FC = () => {
     {
       id: 'relationshipFilter',
       type: 'select',
-      label: 'Quan hệ',
+      label: t('overview.relationship'),
       value: relationshipFilter,
       onChange: (v) => setRelationshipFilter(v as string),
       options: [
-        { value: 'All', label: 'Tất cả quan hệ' },
+        { value: 'All', label: t('filters.allRelationships', 'Tất cả quan hệ') },
         { value: 'COMPETITOR', label: 'COMPETITOR' },
         { value: 'PARTNER', label: 'PARTNER' },
         { value: 'SUPPLIER', label: 'SUPPLIER' },
@@ -1214,11 +1229,11 @@ export const CompetitorIntelligenceView: React.FC = () => {
     {
       id: 'signalTypeFilter',
       type: 'select',
-      label: 'Loại tín hiệu',
+      label: t('drawer.signalType'),
       value: signalTypeFilter,
       onChange: (v) => setSignalTypeFilter(v as string),
       options: [
-        { value: 'All', label: 'Tất cả tín hiệu' },
+        { value: 'All', label: t('filters.allSignals', 'Tất cả tín hiệu') },
         { value: 'NEWS', label: 'NEWS' },
         { value: 'MARKET_EXPANSION', label: 'MARKET_EXPANSION' },
         { value: 'PARTNERSHIP', label: 'PARTNERSHIP' },
@@ -1773,13 +1788,11 @@ export const CompetitorIntelligenceView: React.FC = () => {
           <SecondaryButton size="sm" onClick={() => setDataVersion((version) => version + 1)}>Retry</SecondaryButton>
         </div>
       )}
-
       <div style={{ marginBottom: '16px' }}>
         <Tabs
           items={[
             { id: 'watchlist', label: t('overview.attention') },
             { id: 'signals', label: t('overview.recentSignals') },
-            { id: 'matrix', label: t('overview.list') },
           ]}
           activeId={mainTab}
           onChange={setMainTab}
@@ -1991,7 +2004,8 @@ export const CompetitorIntelligenceView: React.FC = () => {
       </section>
       )}
 
-      {/* 6. Competitor Comparison Matrix */}
+      {/* 6. Competitor Comparison Matrix (Temporarily hidden by request) */}
+      {/*
       {mainTab === 'matrix' && (
       <section style={{ marginBottom: '24px' }}>
         <div style={{ marginBottom: '12px' }}>
@@ -2045,6 +2059,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
         })()}
       </section>
       )}
+      */}
 
       {/* 7. Right Side Intelligence Drawer (Zero Popups) */}
       <Drawer

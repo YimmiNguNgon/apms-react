@@ -1,6 +1,6 @@
 import { api } from '../services/api';
 import { externalDataApi } from './externalDataApi';
-import type { ProfileResponse } from '../types/domain';
+import type { CompanyProfileFinancialReport, ProfileResponse } from '../types/domain';
 import type {
   CompanyBoardMember,
   CompanyDocument,
@@ -18,17 +18,6 @@ export interface DocumentQuery {
   type?: string | number | null;
   page?: number;
   size?: number;
-}
-
-interface ConfidentialNewsRecord {
-  id?: string;
-  title?: string;
-  summary?: string;
-  content?: string;
-  sourceUrl?: string;
-  externalImageUrl?: string;
-  publishedAt?: string;
-  createdAt?: string;
 }
 
 interface ContractRecord {
@@ -49,10 +38,6 @@ interface ContractPage {
   totalPages?: number;
 }
 
-interface ConfidentialNewsPage {
-  content?: ConfidentialNewsRecord[];
-}
-
 interface OwnerProfileSnapshot {
   companyProfileId: string;
   summary?: string | null;
@@ -64,7 +49,7 @@ interface OwnerProfileSnapshot {
   documents?: Array<{ docType?: string; docTitle?: string; fileUrl?: string; reportYear?: number; reportPeriod?: string; publishedAt?: string }>;
 }
 
-const OWNER_COMPANY_ID = '6a31a0000000000000000001';
+export const OWNER_COMPANY_ID = '6a31a0000000000000000001';
 
 const safeApiGet = <T>(
   url: string,
@@ -82,6 +67,76 @@ const fetchProfile = async (companyId: string): Promise<ProfileResponse | null> 
 const fetchOwnerSnapshot = async (companyId: string): Promise<OwnerProfileSnapshot | null> => {
   if (!companyId || companyId.toLowerCase() !== OWNER_COMPANY_ID.toLowerCase()) return null;
   return safeApiGet<OwnerProfileSnapshot>('/owner/company-profile/snapshot');
+};
+
+interface FinancialValue { code?: string; value?: number | null; }
+interface FinancialPeriod { time?: string; data?: FinancialValue[]; }
+interface FinancialRow { code?: string; name?: string; }
+interface FinancialDocument { unit?: string | null; templace?: FinancialRow[]; data?: Array<{ data?: FinancialPeriod[] }>; }
+
+const parseFinancialDocument = (itemsJson?: string | null): FinancialDocument | null => {
+  try { return itemsJson ? JSON.parse(itemsJson) as FinancialDocument : null; } catch { return null; }
+};
+
+/**
+ * Merges the Owner's per-year financial reports (embedded on the CompanyProfile)
+ * into one CompanyFinancial per report type, with periods sorted ascending by year.
+ * This keeps the shared FinancialsTab view/table unchanged while the Owner and
+ * SYSTEM_ADMIN both read from the same data source.
+ */
+const buildFinancialReportsFromProfile = (profile: ProfileResponse, companyId: string): CompanyFinancial[] => {
+  const reports = profile.financialReports ?? [];
+  if (reports.length === 0) return [];
+
+  const byType = new Map<string, CompanyProfileFinancialReport[]>();
+  reports.forEach((report) => {
+    const key = (report.reportType ?? 'OTHER').toUpperCase();
+    byType.set(key, [...(byType.get(key) ?? []), report]);
+  });
+
+  let index = 0;
+  const merged: CompanyFinancial[] = [];
+  for (const [reportType, group] of byType.entries()) {
+    group.sort((a, b) => (a.reportYear ?? 0) - (b.reportYear ?? 0));
+    const docs = group
+      .map((report) => parseFinancialDocument(report.itemsJson))
+      .filter((doc): doc is FinancialDocument => doc !== null);
+
+    const templace = new Map<string, FinancialRow>();
+    const periods = new Map<string, FinancialPeriod>();
+    docs.forEach((doc) => {
+      doc.templace?.forEach((row) => { if (row.code) templace.set(row.code, row); });
+      doc.data?.[0]?.data?.forEach((period) => {
+        if (period.time && !periods.has(period.time)) periods.set(period.time, period);
+      });
+    });
+
+    if (templace.size === 0 || periods.size === 0) continue;
+
+    const latest = group[group.length - 1];
+    const itemsJson = JSON.stringify({
+      unit: latest ? (parseFinancialDocument(latest.itemsJson)?.unit ?? null) : null,
+      templace: [...templace.values()],
+      data: [{
+        code: reportType,
+        name: reportType,
+        data: [...periods.values()].sort((a, b) => (a.time ?? '').localeCompare(b.time ?? '')),
+      }],
+    });
+
+    merged.push({
+      id: ++index,
+      companyId,
+      reportType,
+      periodType: latest?.periodType ?? 'YEAR',
+      reportYear: latest?.reportYear ?? null,
+      reportPeriod: latest?.reportPeriod ?? null,
+      itemsJson,
+      sourceUrl: latest?.sourceUrl ?? null,
+      crawledAt: profile.metadata?.updatedAt ?? null,
+    });
+  }
+  return merged;
 };
 
 const classifyBoardGroup = (position?: string, role?: string): number => {
@@ -174,6 +229,11 @@ export const listingDataApi = {
     }
     const profile = await fetchProfile(companyId);
     if (!profile) return { hasData: false, crawledAt: null, data: [] };
+
+    const perYearReports = buildFinancialReportsFromProfile(profile, companyId);
+    if (perYearReports.length > 0) {
+      return { hasData: true, crawledAt: profile.metadata?.updatedAt ?? null, data: perYearReports };
+    }
 
     const financial = profile.financial;
     const values = [
@@ -302,5 +362,32 @@ export const listingDataApi = {
     const snapshot = await fetchOwnerSnapshot(companyId);
     if (snapshot) return [...new Set((snapshot.documents ?? []).map((item) => item.reportYear).filter((year): year is number => typeof year === 'number'))].sort((a, b) => b - a);
     return [];
+  },
+
+  /**
+   * SYSTEM_ADMIN upserts one financial statement (reportType + reportYear) of the
+   * Owner Organization. The backend resolves the Owner Company itself (anti-IDOR).
+   */
+  upsertOwnerFinancialReport: async (payload: {
+    reportType: string;
+    reportYear: number;
+    periodType?: string;
+    reportPeriod?: string;
+    itemsJson: string;
+    sourceUrl?: string;
+  }): Promise<ProfileResponse> => {
+    const res = await api.put<ProfileResponse>('/admin/owner-company-profile/financials', payload);
+    if (res?.success && res.data) return res.data;
+    throw new Error('Không thể lưu báo cáo tài chính.');
+  },
+
+  /**
+   * SYSTEM_ADMIN deletes one financial statement (reportType + reportYear) of the
+   * Owner Organization. The backend resolves the Owner Company itself (anti-IDOR).
+   */
+  deleteOwnerFinancialReport: async (reportType: string, reportYear: number): Promise<ProfileResponse> => {
+    const res = await api.delete<ProfileResponse>(`/admin/owner-company-profile/financials/${encodeURIComponent(reportType)}/${reportYear}`);
+    if (res?.success && res.data) return res.data;
+    throw new Error('Không thể xóa báo cáo tài chính.');
   },
 };
