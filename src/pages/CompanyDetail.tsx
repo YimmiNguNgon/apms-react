@@ -109,7 +109,31 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     !!currentUser &&
     ([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER] as Role[]).includes(currentUser.role);
 
-  const resolvedId = companyId ?? localStorage.getItem('apms-selected-company') ?? '';
+  const [localStorageId, setLocalStorageId] = useState(() => localStorage.getItem('apms-selected-company') ?? '');
+  const resolvedId = companyId ?? localStorageId;
+
+  useEffect(() => {
+    const handleCompanyChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ companyProfileId: string }>;
+      if (customEvent.detail?.companyProfileId) {
+        setLocalStorageId(customEvent.detail.companyProfileId);
+      }
+    };
+    
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'apms-selected-company' && event.newValue) {
+        setLocalStorageId(event.newValue);
+      }
+    };
+
+    window.addEventListener('apms-company-selection-changed', handleCompanyChange);
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('apms-company-selection-changed', handleCompanyChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!resolvedId) {

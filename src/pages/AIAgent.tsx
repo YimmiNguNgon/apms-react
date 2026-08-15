@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   Bot,
   FileSearch,
@@ -13,10 +14,21 @@ import type { PageResult, ProjectResponse } from '../types/domain';
 import styles from './AIAgent.module.css';
 
 export interface AiSourceReference {
-  documentId: string;
-  documentTitle: string;
-  snippet: string;
-  relevanceScore: number;
+  documentId?: string;
+  documentTitle?: string;
+  snippet?: string;
+  relevanceScore?: number;
+  id?: string;
+  title?: string;
+  type?: string;
+}
+
+export interface AiNavigationAction {
+  type: string;
+  label: string;
+  companyProfileId: string;
+  companyId: string;
+  companyName: string;
 }
 
 export interface AiChatResponse {
@@ -24,6 +36,7 @@ export interface AiChatResponse {
   answer: string;
   sources: AiSourceReference[];
   suggestedActions: string[];
+  navigationActions?: AiNavigationAction[];
 }
 
 interface Message {
@@ -31,6 +44,7 @@ interface Message {
   content: string;
   sources?: AiSourceReference[];
   suggestedActions?: string[];
+  navigationActions?: AiNavigationAction[];
   isLoading?: boolean;
 }
 
@@ -49,10 +63,49 @@ export const AIAgent: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.OWNER;
+  const isManagerMode = currentUser?.role === ROLES.MANAGER;
+  const isStaffMode = currentUser?.role === ROLES.STAFF;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const sessionEndpoint = isOwnerMode ? '/owner/ai-assistant/sessions' : '/ai-assistant/sessions';
+        const sessionsRes = await api.get<any[]>(sessionEndpoint);
+        const sessions = sessionsRes?.data || [];
+        
+        if (sessions.length > 0) {
+          sessions.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+          const latestSessionId = sessions[0].sessionId;
+          
+          setSessionId(latestSessionId);
+          const messagesEndpoint = isOwnerMode ? `/owner/ai-assistant/sessions/${latestSessionId}/messages` : `/ai-assistant/sessions/${latestSessionId}/messages`;
+          const messagesRes = await api.get<any[]>(messagesEndpoint);
+          const msgs = messagesRes?.data || [];
+          
+          const loadedMessages: Message[] = [];
+          msgs.forEach((m: any) => {
+            loadedMessages.push({ role: 'user', content: m.question });
+            loadedMessages.push({
+              role: 'ai',
+              content: m.answer,
+              sources: m.sources,
+              suggestedActions: m.suggestedActions,
+              navigationActions: m.navigationActions ?? []
+            });
+          });
+          setMessages(loadedMessages);
+        }
+      } catch (error) {
+        console.error('Failed to load AI history', error);
+      }
+    };
+    
+    void fetchHistory();
+  }, [isOwnerMode]);
 
   useEffect(() => {
     if (isOwnerMode) return;
@@ -93,11 +146,19 @@ export const AIAgent: React.FC = () => {
         return;
       }
 
-      const payload: { question: string; sessionId?: string; projectId?: number } = { question: msg };
+      const payload: { question: string; sessionId?: string; projectId?: number; companyProfileId?: string } = { question: msg };
       if (sessionId) payload.sessionId = sessionId;
       if (!isOwnerMode && projectId) payload.projectId = Number(projectId);
+      
+      if (isOwnerMode) {
+        const isCompanyDetailPage = window.location.hash.startsWith('#company-detail');
+        const storedCompanyId = isCompanyDetailPage ? localStorage.getItem('apms-selected-company') : undefined;
+        if (storedCompanyId) {
+          payload.companyProfileId = storedCompanyId;
+        }
+      }
 
-      const res = await api.post<AiChatResponse>(endpoint, payload);
+      const res = await api.post<AiChatResponse>(endpoint, payload, { timeoutMs: 60000 });
       setSessionId(res?.data?.sessionId || null);
       setMessages((prev) => {
         const next = [...prev];
@@ -106,15 +167,20 @@ export const AIAgent: React.FC = () => {
           content: res?.data?.answer || 'The assistant did not return an answer.',
           sources: res?.data?.sources || [],
           suggestedActions: res?.data?.suggestedActions || [],
+          navigationActions: res?.data?.navigationActions || [],
         };
         return next;
       });
-    } catch (error: unknown) {
+    } catch (error: any) {
       setMessages((prev) => {
         const next = [...prev];
+        let errorMsg = error instanceof Error ? error.message : 'Cannot connect to the AI service.';
+        if (error?.status === 408) {
+          errorMsg = 'The AI service is taking too long to respond. Please try again.';
+        }
         next[next.length - 1] = {
           role: 'ai',
-          content: `Error: ${error instanceof Error ? error.message : 'Cannot connect to the AI service.'}`,
+          content: `Error: ${errorMsg}`,
         };
         return next;
       });
@@ -130,6 +196,20 @@ export const AIAgent: React.FC = () => {
     setInput('');
   };
 
+  const handleNavigationAction = (action: AiNavigationAction) => {
+    if (action.type === 'COMPANY_PROFILE') {
+      localStorage.setItem('apms-selected-company', action.companyProfileId);
+      window.dispatchEvent(
+        new CustomEvent('apms-company-selection-changed', {
+          detail: {
+            companyProfileId: action.companyProfileId
+          }
+        })
+      );
+      window.location.hash = '#company-detail';
+    }
+  };
+
   return (
     <section className={styles.widget} id="page-ai-agent" aria-live="polite">
       {isOpen && (
@@ -139,7 +219,7 @@ export const AIAgent: React.FC = () => {
               <span><Bot size={18} /></span>
               <div>
                 <h1>APMS AI</h1>
-                <p>{isSending ? 'Đang trả lời...' : 'Sẵn sàng hỗ trợ'}</p>
+                <p>{isSending ? 'Replying...' : 'Ready to assist'}</p>
               </div>
             </div>
             <div className={styles.headerActions}>
@@ -155,8 +235,8 @@ export const AIAgent: React.FC = () => {
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
               <Bot size={30} />
-              <h2>Xin chào</h2>
-              <p>Bạn có thể hỏi về project, candidate, company profile hoặc task.</p>
+              <h2>Hello</h2>
+              <p>You can ask about projects, candidates, company profiles, or tasks.</p>
             </div>
           ) : messages.map((message, index) => (
             <article key={index} className={`${styles.messageRow} ${message.role === 'user' ? styles.userRow : styles.aiRow}`}>
@@ -169,22 +249,19 @@ export const AIAgent: React.FC = () => {
                 <div className={`${styles.bubble} ${message.role === 'user' ? styles.userBubble : styles.aiBubble}`}>
                   {message.isLoading ? (
                     <div className={styles.loadingDots}><i /><i /><i /></div>
+                  ) : message.role === 'ai' ? (
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
                   ) : (
                     <p>{message.content}</p>
                   )}
                 </div>
 
-                {message.sources && message.sources.length > 0 && (
-                  <div className={styles.sources}>
-                    <strong><FileSearch size={15} /> Sources</strong>
-                    {message.sources.map((source, sourceIndex) => (
-                      <article key={`${source.documentId}-${sourceIndex}`}>
-                        <span>{sourceIndex + 1}</span>
-                        <div>
-                          <strong>{source.documentTitle}</strong>
-                          <p>{source.snippet || `${Math.round(source.relevanceScore * 100)}% relevance`}</p>
-                        </div>
-                      </article>
+                {message.navigationActions && message.navigationActions.length > 0 && (
+                  <div className={styles.actions}>
+                    {message.navigationActions.map((action, actionIndex) => (
+                      <button key={`nav-${actionIndex}`} type="button" onClick={() => handleNavigationAction(action)}>
+                        {action.label}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -192,7 +269,9 @@ export const AIAgent: React.FC = () => {
                 {message.suggestedActions && message.suggestedActions.length > 0 && (
                   <div className={styles.actions}>
                     {message.suggestedActions.map((action, actionIndex) => (
-                      <button key={actionIndex} type="button" onClick={() => setInput(action)}>{action}</button>
+                      <button key={`sug-${actionIndex}`} type="button" onClick={() => setInput(action)}>
+                        {action}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -212,7 +291,11 @@ export const AIAgent: React.FC = () => {
           <textarea
             ref={textareaRef}
             value={input}
-            placeholder="Ask about candidate approval, company profile quality, project risks..."
+            placeholder={
+              isStaffMode ? "Ask about your projects, tasks, deadlines, or next actions..." :
+              isManagerMode ? "Ask about your team progress, pending reviews, or company profiles..." :
+              "Ask about your business ecosystem, relationships, risks, opportunities, or company intelligence..."
+            }
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
