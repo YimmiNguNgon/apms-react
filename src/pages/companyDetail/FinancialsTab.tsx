@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Pencil, Plus, Save, Trash2, TrendingUp, X } from 'lucide-react';
+import { Pencil, Plus, Save, Trash2, TrendingUp, X } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import type { CompanyFinancial } from '../../types/listingData';
 import { ListingTabShell } from './common';
@@ -250,14 +250,6 @@ const FinancialsTab: React.FC<{ companyId: string; editable?: boolean }> = ({ co
     }
   };
 
-  const exportExcel = () => {
-    const csvRows = rows.map((row) => [row.name || '', ...periods.map((period) => String(valueFor(period, row.code)))]);
-    const csv = [['Chỉ tiêu', ...periods.map((period) => period.time || '')], ...csvRows]
-      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
-    const href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a'); anchor.href = href; anchor.download = `${companyId}-financials.csv`; anchor.click(); URL.revokeObjectURL(href);
-  };
-
   return <ListingTabShell loading={loading} error={error} hasData={Boolean(report) || Boolean(editable)} crawledAt={data?.crawledAt} onRetry={reload}>
     <section style={{ background: '#fff', border: '1px solid #dbe3ee', borderRadius: 6, overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px 0', borderBottom: '1px solid #dbe3ee' }}>
@@ -270,7 +262,6 @@ const FinancialsTab: React.FC<{ companyId: string; editable?: boolean }> = ({ co
           <select value={unit} onChange={(event) => setUnit(event.target.value)}><option>Tỷ đồng</option><option>Triệu đồng</option><option>Đồng</option></select>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={exportExcel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 4, padding: '6px 10px', background: '#16803c', color: '#fff', fontWeight: 700, cursor: 'pointer' }}><Download size={14} />Xuất Excel</button>
           {editable && !editMode && (
             <button type="button" onClick={startEdit} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 4, padding: '6px 10px', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}><Pencil size={14} />Chỉnh sửa</button>
           )}

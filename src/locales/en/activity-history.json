@@ -4,9 +4,8 @@
     "activityTitle": "Activity history",
     "activityDesc": "Monitor user participation, security events, and active workspace operators.",
     "activeUsersMeter": "active users",
-    "auditEyebrow": "Immutable trail",
     "auditTitle": "Audit Logs",
-    "auditDesc": "Inspect timestamped security events, role modifications, and system operations with real-time filters.",
+    "auditDesc": "Review security, authentication, user and system activity with real-time filters.",
     "recordedEventsMeter": "recorded events"
   },
   "stats": {
@@ -28,14 +27,6 @@
   "filters": {
     "allActions": "All Actions",
     "actionLabel": "Action",
-    "allCategories": "All Categories",
-    "categoryLabel": "Event Category",
-    "categoryAuthentication": "Authentication",
-    "categoryUserManagement": "User Management",
-    "categoryCompanyManagement": "Company Management",
-    "categoryRolePermission": "Role & Permission",
-    "categorySecurity": "Security",
-    "categorySystem": "System",
     "searchLabel": "Search",
     "searchPlaceholder": "Search user, action, or details...",
     "fromDate": "From date",

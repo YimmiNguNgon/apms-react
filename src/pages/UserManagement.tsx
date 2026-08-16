@@ -696,7 +696,7 @@ const UsersTab: React.FC<{
               </div>
             </div>
             <div style={{ marginTop: '14px', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', color: '#B45309', lineHeight: '1.5' }}>
-              ⏳ {t('users.success.pendingVerification')}
+              {t('users.success.pendingVerification')}
             </div>
             <div className="admin-modal-actions" style={{ justifyContent: 'center' }}>
               <button className="btn btn-primary" onClick={() => setCreatedUser(null)}>{t('users.success.close')}</button>

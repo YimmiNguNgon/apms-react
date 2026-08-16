@@ -342,7 +342,7 @@ const MainApp: React.FC = () => {
             {renderPage()}
           </div>
         </div>
-        {activePage !== 'system-chat' && <AIAgent />}
+        {activePage !== 'system-chat' && currentUser.role !== ROLES.ADMIN && <AIAgent />}
         {notificationToast && (
           <div className="apms-toast success">
             <strong>{notificationToast.title}</strong>

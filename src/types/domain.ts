@@ -1098,12 +1098,17 @@ export interface CandidateAnalysisDto {
 
 export interface AuditLogDto {
   id: number;
-  createdAt: string;
-  actorUserId?: number | null;
+  actorAccountId?: number | null;
   actorEmail?: string;
   action: string;
+  actionLabel?: string;
   entityType: string;
   entityId?: string | null;
+  entityName?: string | null;
+  detail?: string | null;
+  timestamp?: string;
+  createdAt?: string;
+  actorUserId?: number | null;
   details?: string | null;
 }
 

@@ -28,7 +28,7 @@ export const LogoutModal: React.FC<LogoutModalProps> = ({ onConfirm, onCancel })
             {t('logout.cancel')}
           </button>
           <button className="btn btn-danger" onClick={onConfirm}>
-            🚪 {t('logout.confirm')}
+            {t('logout.confirm')}
           </button>
         </div>
       </div>

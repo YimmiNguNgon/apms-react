@@ -4,9 +4,8 @@
     "activityTitle": "Lịch sử hoạt động",
     "activityDesc": "Theo dõi mức độ tham gia của người dùng, sự kiện bảo mật và các vận hành viên đang hoạt động.",
     "activeUsersMeter": "người dùng hoạt động",
-    "auditEyebrow": "Dấu vết bất biến",
     "auditTitle": "Nhật ký hệ thống (Audit Logs)",
-    "auditDesc": "Kiểm tra sự kiện bảo mật theo mốc thời gian, thay đổi quyền và vận hành hệ thống với bộ lọc thời gian thực.",
+    "auditDesc": "Xem lại hoạt động bảo mật, xác thực, người dùng và hệ thống với bộ lọc thời gian thực.",
     "recordedEventsMeter": "sự kiện ghi nhận"
   },
   "stats": {
@@ -28,14 +27,6 @@
   "filters": {
     "allActions": "Tất cả hành động",
     "actionLabel": "Hành động",
-    "allCategories": "Tất cả danh mục",
-    "categoryLabel": "Danh mục sự kiện",
-    "categoryAuthentication": "Xác thực",
-    "categoryUserManagement": "Quản lý người dùng",
-    "categoryCompanyManagement": "Quản lý doanh nghiệp",
-    "categoryRolePermission": "Vai trò & Quyền",
-    "categorySecurity": "Bảo mật",
-    "categorySystem": "Hệ thống",
     "searchLabel": "Tìm kiếm",
     "searchPlaceholder": "Tìm theo người dùng, hành động hoặc chi tiết...",
     "fromDate": "Từ ngày",

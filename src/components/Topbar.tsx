@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../hooks/useTheme';
-import { LogoutModal } from './LogoutModal';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { api, type PageResponse } from '../services/api';
 
@@ -107,7 +106,6 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
   const { theme, toggleTheme } = useTheme();
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showLogout, setShowLogout] = useState(false);
   const [searchVal, setSearchVal] = useState('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -286,19 +284,11 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                   </span>
                 </div>
                 <div className="dropdown-item" onClick={() => { setActivePage('profile'); setShowProfile(false); }}>{t('topbar.profile')}</div>
-
-
-                <div className="dropdown-divider" />
-                <div className="dropdown-item danger" onClick={() => { setShowProfile(false); setShowLogout(true); }}>{t('topbar.signOut')}</div>
               </div>
             )}
           </div>
         </div>
       </header>
-
-      {showLogout && (
-        <LogoutModal onConfirm={() => { logout(); setShowLogout(false); }} onCancel={() => setShowLogout(false)} />
-      )}
     </>
   );
 };

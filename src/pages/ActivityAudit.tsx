@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import { formatAuditActionLabel, formatAuditLogTimestamp } from '../utils/format';
@@ -7,11 +7,8 @@ import styles from './ActivityAudit.module.css';
 
 type Tab = 'audit';
 
-type AuditCategory = 'authentication' | 'user-management' | 'company-management' | 'role-permission' | 'security' | 'system';
-
 interface AuditFilterState {
   action: string;
-  category: string;
   keyword: string;
   fromDate: string;
   toDate: string;
@@ -20,37 +17,6 @@ interface AuditFilterState {
 
 const ALL = 'all';
 const PAGE_SIZE = 15;
-
-const actionCategory = (action: string): AuditCategory => {
-  const value = (action || '').toUpperCase();
-  if (
-    value === 'LOGIN' || value === 'LOGOUT' || value === 'REFRESH_TOKEN' ||
-    value.startsWith('TOTP_') || value.startsWith('CONFIDENTIAL_NEWS_OTP_') ||
-    value === 'COMPANY_DOCUMENT_ACCESS_VERIFIED' || value === 'CONFIDENTIAL_NEWS_ACCESS_REQUESTED'
-  ) return 'authentication';
-  if (value.startsWith('USER_') || value === 'ACTIVATE_USER' || value === 'DEACTIVATE_USER') return 'user-management';
-  if (value === 'USER_ROLES_UPDATED') return 'role-permission';
-  if (
-    value.startsWith('IP_WHITELIST_') || value.startsWith('COMPANY_DOCUMENT_ACCESS_') ||
-    value === 'SYSTEM_SETTINGS_UPDATED' || value === 'CONFIDENTIAL_NEWS_ACCESS_DENIED' ||
-    value === 'INTERNAL_NEWS_ACCESS_DENIED' || value === 'INTERNAL_NEWS_PUBLICATION_FAILED'
-  ) return 'security';
-  if (
-    value.startsWith('COMPANY_') || value.startsWith('DOCUMENT_') || value.startsWith('EXTRACTION_') ||
-    value.startsWith('RELATIONSHIP_CLOSENESS_') || value.startsWith('COMPANY_MEMBER_') ||
-    value.startsWith('COMPANY_NEWS_') || value.startsWith('CONFIDENTIAL_NEWS_') ||
-    value.startsWith('INTERNAL_NEWS_') || value.startsWith('PARTNER_CONTRACT_') ||
-    value.startsWith('PARTNER_EVALUATION_') || value.startsWith('PROFILE_UPDATE_PROPOSAL_') ||
-    value.startsWith('FIELD_') || value === 'DRAFT_RESUBMITTED'
-  ) return 'company-management';
-  return 'system';
-};
-
-const resolveActionValues = (filters: AuditFilterState, knownActions: string[]): string[] => {
-  if (filters.action !== ALL) return [filters.action];
-  if (filters.category !== ALL) return knownActions.filter((item) => actionCategory(item) === filters.category);
-  return [];
-};
 
 export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'audit' }) => {
   const { t } = useTranslation('activity-history');
@@ -64,14 +30,12 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
   const [totalElements, setTotalElements] = useState(0);
 
   const [action, setAction] = useState(ALL);
-  const [category, setCategory] = useState(ALL);
   const [keyword, setKeyword] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
   const [applied, setApplied] = useState<AuditFilterState>({
     action: ALL,
-    category: ALL,
     keyword: '',
     fromDate: '',
     toDate: '',
@@ -95,8 +59,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     setError('');
     try {
       const params: Record<string, string | number> = { page: filters.page, size: PAGE_SIZE };
-      const actionValues = resolveActionValues(filters, actionOptions);
-      if (actionValues.length > 0) params.actions = actionValues.join(',');
+      if (filters.action !== ALL) params.action = filters.action;
       if (filters.keyword.trim()) params.keyword = filters.keyword.trim();
       if (filters.fromDate) params.fromDate = `${filters.fromDate}T00:00:00`;
       if (filters.toDate) params.toDate = `${filters.toDate}T23:59:59`;
@@ -120,7 +83,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
     } finally {
       setLoading(false);
     }
-  }, [actionOptions]);
+  }, []);
 
   useEffect(() => {
     fetchAuditLogs(applied);
@@ -128,7 +91,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
 
   const applyFilters = () => {
     setPage(0);
-    setApplied({ action, category, keyword, fromDate, toDate, page: 0 });
+    setApplied({ action, keyword, fromDate, toDate, page: 0 });
   };
 
   const goToPage = (next: number) => {
@@ -145,24 +108,10 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       .catch(() => undefined);
   };
 
-  const categoryOptions = useMemo(
-    () => [
-      { value: ALL, label: t('filters.allCategories') },
-      { value: 'authentication', label: t('filters.categoryAuthentication') },
-      { value: 'user-management', label: t('filters.categoryUserManagement') },
-      { value: 'company-management', label: t('filters.categoryCompanyManagement') },
-      { value: 'role-permission', label: t('filters.categoryRolePermission') },
-      { value: 'security', label: t('filters.categorySecurity') },
-      { value: 'system', label: t('filters.categorySystem') },
-    ],
-    [t],
-  );
-
   return (
     <div className={styles.container} id="page-activity-history">
       <section className={styles.hero}>
         <div>
-          <span className={styles.heroEyebrow}>{t('header.auditEyebrow')}</span>
           <h1 className={styles.heroTitle}>{t('header.auditTitle')}</h1>
           <p className={styles.heroDesc}>{t('header.auditDesc')}</p>
         </div>
@@ -188,15 +137,6 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                   <option value={ALL}>{t('filters.allActions')}</option>
                   {actionOptions.map((item) => (
                     <option key={item} value={item}>{formatAuditActionLabel(item)}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>{t('filters.categoryLabel')}</span>
-                <select className="admin-select" value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: '170px' }}>
-                  {categoryOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>
@@ -248,21 +188,23 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                   <tbody>
                     {auditLogs.map((log, index) => (
                       <tr key={log.id || index}>
-                        <td className="admin-mono" style={{ whiteSpace: 'nowrap' }}>{formatAuditLogTimestamp(log.createdAt)}</td>
+                        <td className="admin-mono" style={{ whiteSpace: 'nowrap' }}>{formatAuditLogTimestamp(log.timestamp)}</td>
                         <td>
-                          <strong>{log.actorEmail || `${t('table.actor')} #${log.actorUserId || t('table.systemActor')}`}</strong>
-                          {log.actorUserId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorUserId}</small>}
+                          <strong>{log.actorEmail || t('table.systemActor')}</strong>
                         </td>
                         <td>
-                          <strong>{formatAuditActionLabel(log.action)}</strong>
-                          {log.action && <small style={{ display: 'block', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.action}</small>}
+                          <strong>{log.actionLabel || formatAuditActionLabel(log.action)}</strong>
                         </td>
                         <td>
                           <span className="badge badge-gray">{log.entityType || 'General'}</span>
-                          {log.entityId && <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>#{log.entityId}</span>}
+                          {log.entityName && (
+                            <span style={{ display: 'block', marginTop: '4px', fontSize: '12px', color: 'var(--text-color)' }}>
+                              {log.entityName}
+                            </span>
+                          )}
                         </td>
                         <td style={{ fontSize: '13px', color: 'var(--text-color)' }}>
-                          {log.details || '-'}
+                          {log.detail || '-'}
                         </td>
                       </tr>
                     ))}

@@ -135,7 +135,6 @@ export const ProfilePage: React.FC = () => {
               {[
                 { label: t('info.fullName'), key: 'name' },
                 { label: t('info.email'), key: 'email' },
-                { label: t('info.phone'), key: 'phone' },
                 { label: t('info.dept'), key: 'dept' },
               ].map((field) => (
                 <div key={field.key} style={{ background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>

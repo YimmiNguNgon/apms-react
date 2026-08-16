@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
-import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -246,35 +245,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
     setShowLogout(false);
   };
 
-  const getIconForId = (id: string) => {
-    switch (id) {
-      case 'admin-dashboard':
-      case 'director-dashboard':
-      case 'manager-dashboard':
-      case 'staff-dashboard':
-      case 'relationship-map':
-        return <LayoutDashboard size={18} />;
-      case 'users': return <Users size={18} />;
-      case 'access-control': return <Shield size={18} />;
-      case 'activity-history': return <Clock size={18} />;
-      case 'audit-logs': return <FileText size={18} />;
-      case 'system-settings': return <Settings size={18} />;
-      case 'risk-monitoring': return <AlertTriangle size={18} />;
-      case 'owner-profile': return <Landmark size={18} />;
-      case 'partner-ecosystem': return <Briefcase size={18} />;
-      case 'competitor-intelligence': return <Target size={18} />;
-      case 'strategic-reports': return <PieChart size={18} />;
-      case 'companies':
-      case 'company-profiles':
-        return <Database size={18} />;
-      case 'company-monitoring': return <Bell size={18} />;
-      case 'news': return <Newspaper size={18} />;
-      case 'project-management': return <FolderKanban size={18} />;
-      case 'system-chat': return <MessageSquare size={18} />;
-      default: return <FileText size={18} />;
-    }
-  };
-
   const getBadgeValue = (item: MenuItem) => {
     if (item.id === 'system-chat') return totalUnread;
     return item.badge;
@@ -322,7 +292,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                       title={t(item.label)}
                       style={{ cursor: 'pointer' }}
                     >
-                      <span className="nav-icon" style={{ display: 'flex', alignItems: 'center' }}>{getIconForId(item.id)}</span>
                       <span className="nav-label">{t(item.label)}</span>
                       {badgeValue !== undefined && badgeValue > 0 && (
                         <span className={`nav-badge ${item.id === 'system-chat' ? 'chat-unread' : item.badgeType || ''}`}>
