@@ -496,7 +496,7 @@ const UsersTab: React.FC<{
               <table className="admin-table">
                 <thead>
                   <tr>
-                    {['#ID', 'User', 'Email', 'Role', 'Status'].map((h) => <th key={h}>{h}</th>)}
+                    {['ID', 'User', 'Email', 'Role', 'Status'].map((h) => <th key={h}>{h}</th>)}
                     {showEmailStatus && <th>{t('users.table.emailStatus')}</th>}
                     <th>Actions</th>
                   </tr>
@@ -506,11 +506,19 @@ const UsersTab: React.FC<{
                     const isActive = user.enabled ?? user.active ?? user.isActive ?? (user.status === 'active');
                     const roleRaw = user.role || user.roleName || (user.roles && user.roles[0]) || 'BUSINESS_DEVELOPMENT_STAFF';
                     const roleKey = String(roleRaw).replace('ROLE_', '');
+                    const formatRole = (key: string) => {
+                      if (key === 'SYSTEM_ADMIN') return 'admin';
+                      if (key === 'BUSINESS_OWNER') return 'owner';
+                      if (key === 'BUSINESS_DEVELOPMENT_MANAGER') return 'manager';
+                      if (key === 'BUSINESS_DEVELOPMENT_STAFF') return 'staff';
+                      return key.toLowerCase();
+                    };
+                    const displayRole = formatRole(roleKey);
                     const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
 
                     return (
                       <tr key={user.id || user.email}>
-                        <td className="admin-mono">#{user.id ?? '-'}</td>
+                        <td className="admin-mono">{user.id ?? '-'}</td>
                         <td>
                           <strong>{user.name || user.fullName || user.username || 'Unnamed'}{isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(you)</span>}</strong>
                           <small>{user.username || ''}</small>
@@ -518,7 +526,7 @@ const UsersTab: React.FC<{
                         <td>{user.email || '-'}</td>
                         <td>
                           <span className={`badge ${ROLE_BADGE[roleRaw] || ROLE_BADGE[roleKey] || 'badge-blue'}`}>
-                            {roleKey}
+                            {displayRole}
                           </span>
                         </td>
                         <td>

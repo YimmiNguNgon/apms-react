@@ -218,7 +218,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setListingMsg(null);
     try {
       const res = await api.patch<ProfileResponse>(
-        `/company-profiles/${resolvedId}/listing-info`,
+        `/company-profiles/${resolvedId}`,
         {
           stockTicker: tickerDraft.trim().toUpperCase(),
           stockExchange: exchangeDraft,

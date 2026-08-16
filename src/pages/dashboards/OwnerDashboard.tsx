@@ -437,10 +437,10 @@ export const OwnerDashboard: React.FC = () => {
                     <div style={{ padding: '6px 0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                         <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>{act.action}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.timestamp ? new Date(act.timestamp).toLocaleTimeString(i18n.language?.startsWith('vi') ? 'vi-VN' : 'en-US') : t('content.notUpdated')}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{act.createdAt ? new Date(act.createdAt).toLocaleTimeString(i18n.language?.startsWith('vi') ? 'vi-VN' : 'en-US') : t('content.notUpdated')}</span>
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)' }}>
-                        {act.detail || `${t('fallback.actor')}: ${act.actorEmail || t('fallback.system')}`}
+                        {act.details || `${t('fallback.actor')}: ${act.actorEmail || t('fallback.system')}`}
                       </div>
                     </div>
                   </div>

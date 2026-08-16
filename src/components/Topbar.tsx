@@ -58,6 +58,8 @@ const PAGE_LABEL_KEYS: Record<string, string> = {
   permissions: 'page.permissions',
   'audit-logs': 'page.auditLogs',
   'owner-company-profile': 'page.ownerCompanyProfile',
+  'admin-company-profiles': 'page.adminCompanyProfiles',
+  'admin-company-profile-detail': 'page.adminCompanyProfileDetail',
   'partner-ecosystem': 'page.partnerEcosystem',
   'competitor-intelligence': 'page.competitorIntelligence',
   'relationship-map': 'page.relationshipMap',

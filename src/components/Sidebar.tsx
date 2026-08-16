@@ -70,6 +70,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'menu.system',
     items: [
       { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
+      { id: 'admin-company-profiles', label: 'menu.adminCompanyProfiles' },
     ],
   },
 ];

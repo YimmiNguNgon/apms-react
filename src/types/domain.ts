@@ -136,6 +136,7 @@ export interface ProfileResponse {
   }>;
   financialReports?: CompanyProfileFinancialReport[];
   reviewStatus?: string;
+  isHidden?: boolean;
   tags?: string[];
   stockTicker?: string;
   stockExchange?: string;
@@ -1097,13 +1098,13 @@ export interface CandidateAnalysisDto {
 
 export interface AuditLogDto {
   id: number;
-  timestamp: string;
-  actorAccountId?: number | null;
+  createdAt: string;
+  actorUserId?: number | null;
   actorEmail?: string;
   action: string;
   entityType: string;
   entityId?: string | null;
-  detail?: string | null;
+  details?: string | null;
 }
 
 export type PageResult<T> = PageResponse<T>;

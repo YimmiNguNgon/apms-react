@@ -1,190 +1,176 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, API_BASE_URL } from '../services/api';
+import { api } from '../services/api';
+import { formatAuditActionLabel, formatAuditLogTimestamp } from '../utils/format';
 import type { AuditLogDto, PageResult } from '../types/domain';
 import styles from './ActivityAudit.module.css';
 
 type Tab = 'audit';
 
-const getActionTypePill = (actionStr: string) => {
-  const action = (actionStr || '').toUpperCase();
-  if (action.includes('CREATE') || action.includes('APPROVE')) return { className: 'success', label: 'CREATE' };
-  if (action.includes('STATUS') || action.includes('ROLE') || action.includes('UPDATE')) return { className: 'warning', label: 'UPDATE' };
-  if (action.includes('DELETE') || action.includes('REJECT') || action.includes('LOCK')) return { className: 'danger', label: 'RISK' };
-  return { className: 'info', label: 'INFO' };
+type AuditCategory = 'authentication' | 'user-management' | 'company-management' | 'role-permission' | 'security' | 'system';
+
+interface AuditFilterState {
+  action: string;
+  category: string;
+  keyword: string;
+  fromDate: string;
+  toDate: string;
+  page: number;
+}
+
+const ALL = 'all';
+const PAGE_SIZE = 15;
+
+const actionCategory = (action: string): AuditCategory => {
+  const value = (action || '').toUpperCase();
+  if (
+    value === 'LOGIN' || value === 'LOGOUT' || value === 'REFRESH_TOKEN' ||
+    value.startsWith('TOTP_') || value.startsWith('CONFIDENTIAL_NEWS_OTP_') ||
+    value === 'COMPANY_DOCUMENT_ACCESS_VERIFIED' || value === 'CONFIDENTIAL_NEWS_ACCESS_REQUESTED'
+  ) return 'authentication';
+  if (value.startsWith('USER_') || value === 'ACTIVATE_USER' || value === 'DEACTIVATE_USER') return 'user-management';
+  if (value === 'USER_ROLES_UPDATED') return 'role-permission';
+  if (
+    value.startsWith('IP_WHITELIST_') || value.startsWith('COMPANY_DOCUMENT_ACCESS_') ||
+    value === 'SYSTEM_SETTINGS_UPDATED' || value === 'CONFIDENTIAL_NEWS_ACCESS_DENIED' ||
+    value === 'INTERNAL_NEWS_ACCESS_DENIED' || value === 'INTERNAL_NEWS_PUBLICATION_FAILED'
+  ) return 'security';
+  if (
+    value.startsWith('COMPANY_') || value.startsWith('DOCUMENT_') || value.startsWith('EXTRACTION_') ||
+    value.startsWith('RELATIONSHIP_CLOSENESS_') || value.startsWith('COMPANY_MEMBER_') ||
+    value.startsWith('COMPANY_NEWS_') || value.startsWith('CONFIDENTIAL_NEWS_') ||
+    value.startsWith('INTERNAL_NEWS_') || value.startsWith('PARTNER_CONTRACT_') ||
+    value.startsWith('PARTNER_EVALUATION_') || value.startsWith('PROFILE_UPDATE_PROPOSAL_') ||
+    value.startsWith('FIELD_') || value === 'DRAFT_RESUBMITTED'
+  ) return 'company-management';
+  return 'system';
+};
+
+const resolveActionValues = (filters: AuditFilterState, knownActions: string[]): string[] => {
+  if (filters.action !== ALL) return [filters.action];
+  if (filters.category !== ALL) return knownActions.filter((item) => actionCategory(item) === filters.category);
+  return [];
 };
 
 export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'audit' }) => {
   const { t } = useTranslation('activity-history');
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([]);
+  const [actionOptions, setActionOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
 
-  // Filters
-  const [filterAction, setFilterAction] = useState('all');
-  const [filterEntityType, setFilterEntityType] = useState('all');
-  const [searchUser, setSearchUser] = useState('');
+  const [action, setAction] = useState(ALL);
+  const [category, setCategory] = useState(ALL);
+  const [keyword, setKeyword] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
-  // Pagination
-  const [page, setPage] = useState(0);
-  const [pageSize] = useState(15);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
+  const [applied, setApplied] = useState<AuditFilterState>({
+    action: ALL,
+    category: ALL,
+    keyword: '',
+    fromDate: '',
+    toDate: '',
+    page: 0,
+  });
 
   useEffect(() => {
     setTab(defaultTab);
   }, [defaultTab]);
 
-  const actionOptions = useMemo(
-    () => [
-      { value: 'all', label: t('filters.allActions') },
-      { value: 'USER_CREATED', label: 'USER_CREATED' },
-      { value: 'USER_UPDATED', label: 'USER_UPDATED' },
-      { value: 'USER_STATUS_CHANGED', label: 'USER_STATUS_CHANGED' },
-      { value: 'USER_ROLES_UPDATED', label: 'USER_ROLES_UPDATED' },
-      { value: 'LOGIN', label: 'LOGIN' },
-      { value: 'LOGOUT', label: 'LOGOUT' },
-      { value: 'COMPANY_PROFILE_UPDATED', label: 'COMPANY_PROFILE_UPDATED' },
-    ],
-    [t]
-  );
+  useEffect(() => {
+    api.get<string[]>('/audit-logs/actions')
+      .then((res) => {
+        if (res?.success && Array.isArray(res.data)) setActionOptions(res.data);
+      })
+      .catch(() => setActionOptions([]));
+  }, []);
 
-  const entityOptions = useMemo(
-    () => [
-      { value: 'all', label: t('filters.allEntities') },
-      { value: 'Account', label: 'Account' },
-      { value: 'UserProfile', label: 'UserProfile' },
-      { value: 'Project', label: 'Project' },
-      { value: 'System', label: 'System' },
-    ],
-    [t]
-  );
-
-  const fetchAuditLogs = () => {
+  const fetchAuditLogs = useCallback(async (filters: AuditFilterState) => {
     setLoading(true);
     setError('');
+    try {
+      const params: Record<string, string | number> = { page: filters.page, size: PAGE_SIZE };
+      const actionValues = resolveActionValues(filters, actionOptions);
+      if (actionValues.length > 0) params.actions = actionValues.join(',');
+      if (filters.keyword.trim()) params.keyword = filters.keyword.trim();
+      if (filters.fromDate) params.fromDate = `${filters.fromDate}T00:00:00`;
+      if (filters.toDate) params.toDate = `${filters.toDate}T23:59:59`;
 
-    const params: Record<string, string | number> = {
-      page,
-      size: pageSize,
-    };
-    if (filterAction && filterAction !== 'all') params.action = filterAction;
-    if (filterEntityType && filterEntityType !== 'all') params.entityType = filterEntityType;
-    if (fromDate) params.fromDate = new Date(fromDate).toISOString();
-    if (toDate) params.toDate = new Date(toDate).toISOString();
-
-    api.get<PageResult<AuditLogDto>>('/audit-logs', { params })
-      .then((res) => {
-        if (res?.success && res.data) {
-          const content = res.data.content || (Array.isArray(res.data) ? res.data : []);
-          setAuditLogs(content);
-          setTotalPages(res.data.totalPages || 1);
-          setTotalElements(res.data.totalElements || content.length);
-        } else {
-          setAuditLogs([]);
-        }
-      })
-      .catch((err) => {
-        // Fallback to /admin/audit-logs
-        api.get<PageResult<AuditLogDto>>(`/admin/audit-logs?page=${page}&size=${pageSize}`)
-          .then((fallbackRes) => {
-            if (fallbackRes?.success && fallbackRes.data) {
-              const content = fallbackRes.data.content || [];
-              setAuditLogs(content);
-              setTotalPages(fallbackRes.data.totalPages || 1);
-              setTotalElements(fallbackRes.data.totalElements || content.length);
-            }
-          })
-          .catch(() => setError(err?.message || 'Could not fetch audit logs.'));
-      })
-      .finally(() => setLoading(false));
-  };
+      const res = await api.get<PageResult<AuditLogDto>>('/audit-logs', { params });
+      if (res?.success && res.data) {
+        const content = res.data.content || [];
+        setAuditLogs(content);
+        setTotalPages(res.data.totalPages || 1);
+        setTotalElements(res.data.totalElements || content.length);
+      } else {
+        setAuditLogs([]);
+        setTotalPages(1);
+        setTotalElements(0);
+      }
+    } catch (err) {
+      setAuditLogs([]);
+      setTotalPages(1);
+      setTotalElements(0);
+      setError((err as Error)?.message || 'Could not fetch audit logs.');
+    } finally {
+      setLoading(false);
+    }
+  }, [actionOptions]);
 
   useEffect(() => {
-    fetchAuditLogs();
-  }, [page, filterAction, filterEntityType, fromDate, toDate]);
+    fetchAuditLogs(applied);
+  }, [applied, fetchAuditLogs]);
 
-  const handleExportCsv = async () => {
-    setExporting(true);
-    setError('');
-    try {
-      const token = localStorage.getItem('accessToken') || localStorage.getItem('apms-token');
-      const queryParams = new URLSearchParams();
-      if (filterAction && filterAction !== 'all') queryParams.set('action', filterAction);
-      if (filterEntityType && filterEntityType !== 'all') queryParams.set('entityType', filterEntityType);
-      if (fromDate) queryParams.set('fromDate', new Date(fromDate).toISOString());
-      if (toDate) queryParams.set('toDate', new Date(toDate).toISOString());
-
-      const url = `${API_BASE_URL}/audit-logs/export?${queryParams.toString()}`;
-      const response = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to export audit log CSV');
-      }
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'CSV export failed.');
-    } finally {
-      setExporting(false);
-    }
+  const applyFilters = () => {
+    setPage(0);
+    setApplied({ action, category, keyword, fromDate, toDate, page: 0 });
   };
 
-  const filteredLogs = useMemo(() => {
-    if (!searchUser.trim()) return auditLogs;
-    const query = searchUser.toLowerCase();
-    return auditLogs.filter((log) => {
-      const email = String(log.actorEmail || '').toLowerCase();
-      const userId = String(log.actorAccountId || '').toLowerCase();
-      const details = String(log.detail || '').toLowerCase();
-      return email.includes(query) || userId.includes(query) || details.includes(query);
-    });
-  }, [auditLogs, searchUser]);
+  const goToPage = (next: number) => {
+    setPage(next);
+    setApplied((prev) => ({ ...prev, page: next }));
+  };
 
-  const pageMeta = {
-    audit: {
-      eyebrow: t('header.auditEyebrow'),
-      title: t('header.auditTitle'),
-      desc: t('header.auditDesc'),
-      meter: totalElements,
-      meterLabel: t('header.recordedEventsMeter'),
-      stats: [
-        { label: t('stats.totalAuditEvents'), value: totalElements, color: styles.statIconBlue },
-        { label: t('stats.currentPage'), value: `${page + 1} / ${totalPages}`, color: styles.statIconGreen },
-        { label: t('stats.actionsFiltered'), value: filterAction === 'all' ? t('stats.all') : filterAction, color: styles.statIconPurple },
-        { label: t('stats.exportFormat'), value: 'CSV', color: styles.statIconAmber },
-      ],
-    },
-  }[tab];
+  const reload = () => {
+    fetchAuditLogs(applied);
+    api.get<string[]>('/audit-logs/actions')
+      .then((res) => {
+        if (res?.success && Array.isArray(res.data)) setActionOptions(res.data);
+      })
+      .catch(() => undefined);
+  };
+
+  const categoryOptions = useMemo(
+    () => [
+      { value: ALL, label: t('filters.allCategories') },
+      { value: 'authentication', label: t('filters.categoryAuthentication') },
+      { value: 'user-management', label: t('filters.categoryUserManagement') },
+      { value: 'company-management', label: t('filters.categoryCompanyManagement') },
+      { value: 'role-permission', label: t('filters.categoryRolePermission') },
+      { value: 'security', label: t('filters.categorySecurity') },
+      { value: 'system', label: t('filters.categorySystem') },
+    ],
+    [t],
+  );
 
   return (
     <div className={styles.container} id="page-activity-history">
-      {/* Normalized Header */}
       <section className={styles.hero}>
         <div>
-          <h1 className={styles.heroTitle}>{pageMeta.title}</h1>
-          <p className={styles.heroDesc}>{pageMeta.desc}</p>
+          <span className={styles.heroEyebrow}>{t('header.auditEyebrow')}</span>
+          <h1 className={styles.heroTitle}>{t('header.auditTitle')}</h1>
+          <p className={styles.heroDesc}>{t('header.auditDesc')}</p>
         </div>
         <div className={styles.heroMeter}>
-          <span className={styles.heroMeterCount}>{pageMeta.meter}</span>
-          <span className={styles.heroMeterLabel}>{pageMeta.meterLabel}</span>
+          <span className={styles.heroMeterCount}>{totalElements}</span>
+          <span className={styles.heroMeterLabel}>{t('header.recordedEventsMeter')}</span>
         </div>
       </section>
-
 
       {error && (
         <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: '10px' }}>
@@ -192,52 +178,57 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
         </div>
       )}
 
-      {/* Main Content Area */}
       <div>
         {tab === 'audit' && (
           <div className="admin-audit-console">
-            <div className="admin-toolbar" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
-              {/* Action filter */}
-              <select className="admin-select" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(0); }}>
-                {actionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+            <div className="admin-toolbar" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '16px' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{t('filters.actionLabel')}</span>
+                <select className="admin-select" value={action} onChange={(e) => setAction(e.target.value)} style={{ minWidth: '180px' }}>
+                  <option value={ALL}>{t('filters.allActions')}</option>
+                  {actionOptions.map((item) => (
+                    <option key={item} value={item}>{formatAuditActionLabel(item)}</option>
+                  ))}
+                </select>
+              </label>
 
-              {/* Entity filter */}
-              <select className="admin-select" value={filterEntityType} onChange={(e) => { setFilterEntityType(e.target.value); setPage(0); }}>
-                {entityOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{t('filters.categoryLabel')}</span>
+                <select className="admin-select" value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: '170px' }}>
+                  {categoryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
 
-              {/* Search User/Detail */}
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)', flex: 1, minWidth: '220px' }}>
+                <span>{t('filters.searchLabel')}</span>
                 <input
                   className="admin-input"
-                  style={{ width: '220px' }}
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
                   placeholder={t('filters.searchPlaceholder')}
-                  value={searchUser}
-                  onChange={(e) => setSearchUser(e.target.value)}
                 />
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{t('filters.fromDate')}</span>
+                <input className="admin-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{t('filters.toDate')}</span>
+                <input className="admin-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </label>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-primary" onClick={applyFilters} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{t('filters.applyFilters')}</span>
+                </button>
+                <button className="btn btn-outline" onClick={reload} title={t('filters.reload')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span>⟳</span>
+                </button>
               </div>
-
-              {/* Date Filters */}
-              <input
-                className="admin-input"
-                type="date"
-                title={t('filters.fromDate')}
-                value={fromDate}
-                onChange={(e) => { setFromDate(e.target.value); setPage(0); }}
-              />
-              <input
-                className="admin-input"
-                type="date"
-                title={t('filters.toDate')}
-                value={toDate}
-                onChange={(e) => { setToDate(e.target.value); setPage(0); }}
-              />
-
-              <button className="btn btn-outline" onClick={fetchAuditLogs} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span>{t('filters.refresh')}</span>
-              </button>
-
             </div>
 
             {loading ? (
@@ -255,36 +246,27 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredLogs.map((log, index) => {
-                      const pill = getActionTypePill(log.action);
-                      const timeStr = log.timestamp
-                        ? new Date(log.timestamp).toLocaleString('vi-VN')
-                        : '-';
-
-                      return (
-                        <tr key={log.id || index}>
-                          <td className="admin-mono" style={{ whiteSpace: 'nowrap' }}>
-                            {timeStr}
-                          </td>
-                          <td>
-                            <strong>{log.actorEmail || `${t('table.actor')} #${log.actorAccountId || t('table.systemActor')}`}</strong>
-                            {log.actorAccountId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorAccountId}</small>}
-                          </td>
-                          <td>
-                            <span className={`admin-event-pill ${pill.className}`} style={{ marginRight: '6px' }}>{pill.label}</span>
-                            <strong>{log.action}</strong>
-                          </td>
-                          <td>
-                            <span className="badge badge-gray">{log.entityType || 'General'}</span>
-                            {log.entityId && <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>#{log.entityId}</span>}
-                          </td>
-                          <td style={{ fontSize: '13px', color: 'var(--text-color)' }}>
-                            {log.detail || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredLogs.length === 0 && (
+                    {auditLogs.map((log, index) => (
+                      <tr key={log.id || index}>
+                        <td className="admin-mono" style={{ whiteSpace: 'nowrap' }}>{formatAuditLogTimestamp(log.createdAt)}</td>
+                        <td>
+                          <strong>{log.actorEmail || `${t('table.actor')} #${log.actorUserId || t('table.systemActor')}`}</strong>
+                          {log.actorUserId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorUserId}</small>}
+                        </td>
+                        <td>
+                          <strong>{formatAuditActionLabel(log.action)}</strong>
+                          {log.action && <small style={{ display: 'block', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{log.action}</small>}
+                        </td>
+                        <td>
+                          <span className="badge badge-gray">{log.entityType || 'General'}</span>
+                          {log.entityId && <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>#{log.entityId}</span>}
+                        </td>
+                        <td style={{ fontSize: '13px', color: 'var(--text-color)' }}>
+                          {log.details || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                    {auditLogs.length === 0 && (
                       <tr>
                         <td colSpan={5}>
                           <div className="workspace-empty">{t('table.noLogs')}</div>
@@ -294,17 +276,16 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                   </tbody>
                 </table>
 
-                {/* Pagination Controls */}
                 {totalPages > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
                     <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                       {t('table.pagination', { page: page + 1, totalPages, totalElements })}
                     </span>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => goToPage(Math.max(0, page - 1))} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <span>{t('table.prev')}</span>
                       </button>
-                      <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => goToPage(page + 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <span>{t('table.next')}</span>
                       </button>
                     </div>
@@ -314,7 +295,6 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
             )}
           </div>
         )}
-
       </div>
     </div>
   );

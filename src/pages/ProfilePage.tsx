@@ -24,6 +24,7 @@ export const ProfilePage: React.FC = () => {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdMessage, setPwdMessage] = useState('');
   const [pwdError, setPwdError] = useState('');
+  const [showAdminAlert, setShowAdminAlert] = useState(false);
 
   if (!currentUser) return null;
 
@@ -78,15 +79,6 @@ export const ProfilePage: React.FC = () => {
     }
   };
 
-  const stats = [
-    { label: 'Trang truy cập', value: currentUser.allowedPages.length },
-    { label: 'Trạng thái', value: 'Hoạt động' },
-    { label: 'Loại phiên', value: 'JWT' },
-    { label: 'Phạm vi Admin', value: currentUser.role.includes('ADMIN') ? 'Toàn quyền' : 'Theo vai trò' },
-  ];
-
-  const accessItems = currentUser.allowedPages.slice(0, 10);
-
   return (
     <section style={{ background: '#F8FAFC', minHeight: '100vh', padding: '10px 16px 16px', color: '#0F172A', fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
@@ -131,35 +123,7 @@ export const ProfilePage: React.FC = () => {
             </span>
           </div>
 
-          {/* Access Stats Grid */}
-          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '0.78rem', fontWeight: 800, color: '#0F172A', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>{t('summary.permissionSummary')}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {stats.map((item) => (
-                <div key={item.label} style={{ background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                  <strong style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>{item.value}</strong>
-                  <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 500 }}>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Allowed Pages Chips */}
-          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '0.78rem', fontWeight: 800, color: '#0F172A', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>{t('summary.allowedPages')}</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {accessItems.map((page) => (
-                <span key={page} style={{ fontSize: '0.62rem', padding: '2px 6px', background: '#F1F5F9', color: '#334155', borderRadius: '3px', fontWeight: 600 }}>
-                  {page.replace(/-/g, ' ')}
-                </span>
-              ))}
-              {currentUser.allowedPages.length > accessItems.length && (
-                <span style={{ fontSize: '0.62rem', padding: '2px 6px', background: '#E2E8F0', color: '#475569', borderRadius: '3px', fontWeight: 700 }}>
-                  {t('summary.morePages', { count: currentUser.allowedPages.length - accessItems.length })}
-                </span>
-              )}
-            </div>
-          </div>
         </aside>
 
         {/* Right Main Column */}
@@ -176,7 +140,17 @@ export const ProfilePage: React.FC = () => {
               ].map((field) => (
                 <div key={field.key} style={{ background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
                   <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{field.label}</span>
-                  {editMode ? (
+                  {field.key === 'email' && !currentUser.role.includes('ADMIN') ? (
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', marginBottom: '4px' }}>{form.email}</div>
+                      <div 
+                        onClick={() => setShowAdminAlert(true)}
+                        style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                      >
+                        <span>🔒</span> Được quản lý bởi Admin
+                      </div>
+                    </div>
+                  ) : editMode ? (
                     <input
                       style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
                       value={form[field.key as keyof typeof form]}
@@ -187,74 +161,110 @@ export const ProfilePage: React.FC = () => {
                   )}
                 </div>
               ))}
-
-              <div style={{ gridColumn: '1 / -1', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('info.bio')}</span>
-                {editMode ? (
-                  <textarea
-                    style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none', resize: 'vertical' }}
-                    value={form.bio}
-                    onChange={(event) => setForm((prev) => ({ ...prev, bio: event.target.value }))}
-                    rows={2}
-                  />
-                ) : (
-                  <div style={{ fontSize: '0.75rem', fontWeight: 500, color: '#334155', lineHeight: 1.4 }}>{form.bio}</div>
-                )}
-              </div>
             </div>
           </div>
 
           {/* Password Security Panel */}
-          <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 12px' }}>
-            <h3 style={{ margin: '0 0 8px', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>{t('security.securityAccount')}</h3>
-            {pwdMessage && <div style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#15803D', padding: '4px 8px', borderRadius: '4px', marginBottom: '6px', fontWeight: 600 }}>{pwdMessage}</div>}
-            {pwdError && <div style={{ fontSize: '0.72rem', background: '#FEF2F2', color: '#B91C1C', padding: '4px 8px', borderRadius: '4px', marginBottom: '6px', fontWeight: 600 }}>{pwdError}</div>}
+          {currentUser.role.includes('ADMIN') ? (
+            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 12px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>{t('security.securityAccount')}</h3>
+              {pwdMessage && <div style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#15803D', padding: '4px 8px', borderRadius: '4px', marginBottom: '6px', fontWeight: 600 }}>{pwdMessage}</div>}
+              {pwdError && <div style={{ fontSize: '0.72rem', background: '#FEF2F2', color: '#B91C1C', padding: '4px 8px', borderRadius: '4px', marginBottom: '6px', fontWeight: 600 }}>{pwdError}</div>}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-              <div>
-                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.currentPassword')}</span>
-                <input
-                  type="password"
-                  style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  disabled={pwdLoading}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.currentPassword')}</span>
+                  <input
+                    type="password"
+                    style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    disabled={pwdLoading}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.newPassword')}</span>
+                  <input
+                    type="password"
+                    style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    disabled={pwdLoading}
+                  />
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.confirmNewPassword')}</span>
+                  <input
+                    type="password"
+                    style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    disabled={pwdLoading}
+                  />
+                </div>
               </div>
-              <div>
-                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.newPassword')}</span>
-                <input
-                  type="password"
-                  style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  disabled={pwdLoading}
-                />
-              </div>
-              <div>
-                <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>{t('security.confirmNewPassword')}</span>
-                <input
-                  type="password"
-                  style={{ width: '100%', padding: '4px 8px', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #CBD5E1', outline: 'none' }}
-                  value={confirmNewPassword}
-                  onChange={(event) => setConfirmNewPassword(event.target.value)}
-                  disabled={pwdLoading}
-                />
+
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={handleChangePassword}
+                disabled={pwdLoading}
+                style={{ fontSize: '0.72rem', padding: '4px 10px', height: '26px', fontWeight: 700 }}
+              >
+                {pwdLoading ? t('security.changing') : t('security.changePassword')}
+              </button>
+            </div>
+          ) : (
+            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 12px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>Bảo mật tài khoản</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '0.75rem', color: '#334155', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🔒</span> Email và mật khẩu được quản lý bởi Admin.
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                  Nếu bạn cần thay đổi Email hoặc Password, vui lòng liên hệ Admin để được hỗ trợ.
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setShowAdminAlert(true)}
+                    style={{ fontSize: '0.72rem', padding: '4px 10px', height: '26px', fontWeight: 700, marginTop: '4px' }}
+                  >
+                    Liên hệ Admin
+                  </button>
+                </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handleChangePassword}
-              disabled={pwdLoading}
-              style={{ fontSize: '0.72rem', padding: '4px 10px', height: '26px', fontWeight: 700 }}
-            >
-              {pwdLoading ? t('security.changing') : t('security.changePassword')}
-            </button>
-          </div>
+          )}
         </main>
       </div>
+
+      {/* Admin Alert Modal */}
+      {showAdminAlert && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(15, 23, 42, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '20px', width: '340px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', border: '1px solid #E2E8F0' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '0.9rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🔒</span> Thông tin tài khoản được quản lý bởi Admin
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px' }}>
+              Email và mật khẩu của tài khoản được quản lý bởi System Administrator.
+              <br /><br />
+              Vui lòng liên hệ Admin nếu bạn cần thay đổi Email hoặc Password.
+            </p>
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowAdminAlert(false)}
+                style={{ fontSize: '0.75rem', padding: '6px 12px', fontWeight: 700, border: 'none', background: '#2563EB', color: '#FFF', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

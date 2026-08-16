@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_BASE_URL, api } from '../../services/api';
+import { formatAuditTimestamp } from '../../utils/format';
 import type { AuditLogDto, PageResult } from '../../types/domain';
 
 import {
@@ -11,7 +12,7 @@ import {
 } from '../../components/ui';
 import styles from './AdminDashboard.module.css';
 
-// ─── Section header helper ──────────────────────────────────────────────────
+// â”€â”€â”€ Section header helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SectionTitle: React.FC<{ icon?: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode }> = ({ icon, title, subtitle, action }) => (
   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
     <div>
@@ -25,12 +26,12 @@ const SectionTitle: React.FC<{ icon?: React.ReactNode; title: string; subtitle?:
   </div>
 );
 
-// ─── Divider ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Divider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Divider: React.FC = () => (
   <hr style={{ border: 'none', borderTop: '1px solid var(--cds-border-subtle-00)', margin: '8px 0' }} />
 );
 
-// ─── Card wrapper ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Card wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties; onClick?: () => void }> = ({ children, style, onClick }) => (
   <section className="admin-dashboard-card" onClick={onClick} style={{
     background: 'var(--cds-background)',
@@ -74,25 +75,19 @@ const ROLE_OVERVIEW = [
 const containsAny = (value: string, words: string[]) => words.some((word) => value.includes(word));
 
 const isSecurityLog = (log: AuditLogDto) =>
-  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['SECURITY', 'DENIED', 'LOCK', 'OTP', 'JWT', 'WHITELIST']);
+  containsAny(`${log.action} ${log.entityType} ${log.details || ''}`.toUpperCase(), ['SECURITY', 'DENIED', 'LOCK', 'OTP', 'JWT', 'WHITELIST']);
 
 const isAuthenticationLog = (log: AuditLogDto) =>
-  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['LOGIN', 'LOGOUT', 'AUTH', 'PASSWORD', 'OTP']);
+  containsAny(`${log.action} ${log.entityType} ${log.details || ''}`.toUpperCase(), ['LOGIN', 'LOGOUT', 'AUTH', 'PASSWORD', 'OTP']);
 
 const isUserRoleLog = (log: AuditLogDto) =>
-  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['USER', 'ACCOUNT', 'ROLE', 'PERMISSION']);
+  containsAny(`${log.action} ${log.entityType} ${log.details || ''}`.toUpperCase(), ['USER', 'ACCOUNT', 'ROLE', 'PERMISSION']);
 
 const isSystemConfigLog = (log: AuditLogDto) =>
-  containsAny(`${log.action} ${log.entityType} ${log.detail || ''}`.toUpperCase(), ['SYSTEM', 'CONFIG', 'SETTING']);
+  containsAny(`${log.action} ${log.entityType} ${log.details || ''}`.toUpperCase(), ['SYSTEM', 'CONFIG', 'SETTING']);
 
 const isAdminActivity = (log: AuditLogDto) =>
   isSecurityLog(log) || isAuthenticationLog(log) || isUserRoleLog(log) || isSystemConfigLog(log);
-
-const formatTimestamp = (timestamp?: string) => {
-  if (!timestamp) return 'Not available';
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleString('vi-VN');
-};
 
 const statusLabel = (action: string) => {
   const value = action.toUpperCase();
@@ -165,7 +160,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
         || (filter === 'AUTHENTICATION' && isAuthenticationLog(log))
         || (filter === 'USERS_ROLES' && isUserRoleLog(log))
         || (filter === 'SYSTEM_CONFIGURATION' && isSystemConfigLog(log));
-      const searchable = `${log.actorEmail || ''} ${log.action || ''} ${log.entityType || ''} ${log.detail || ''}`.toLowerCase();
+      const searchable = `${log.actorEmail || ''} ${log.action || ''} ${log.entityType || ''} ${log.details || ''}`.toLowerCase();
       return matchesFilter && (!query || searchable.includes(query));
     });
   }, [auditLogs, filter, searchQuery]);
@@ -188,7 +183,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
 
   const pendingAccounts = users?.filter((u) => !(u.enabled ?? u.active ?? u.isActive ?? u.status === 'active')).length;
   const securityAlerts = auditAvailable
-    ? auditLogs.filter((log) => containsAny(`${log.action} ${log.detail || ''}`.toUpperCase(), ['FAILED', 'DENIED', 'LOCKED', 'BLOCKED', 'REJECTED'])).length
+    ? auditLogs.filter((log) => containsAny(`${log.action} ${log.details || ''}`.toUpperCase(), ['FAILED', 'DENIED', 'LOCKED', 'BLOCKED', 'REJECTED'])).length
     : null;
 
   const kpis = [
@@ -208,7 +203,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
           <MetricCard
             key={label}
             label={label}
-            value={loading ? 'Loading…' : (value !== undefined && value !== null ? String(value) : t('bento.notAvailable', 'Not available'))}
+            value={loading ? 'Loadingâ€¦' : (value !== undefined && value !== null ? String(value) : t('bento.notAvailable', 'Not available'))}
             description={detail}
           />
         ))}
@@ -216,7 +211,6 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
 
       <div className="admin-tabs" style={{ marginBottom: '16px' }}>
         <button className={dashboardTab === 'audit' ? 'active' : ''} onClick={() => setDashboardTab('audit')}>{t('tabs.audit')}</button>
-        <button className={dashboardTab === 'activity' ? 'active' : ''} onClick={() => setDashboardTab('activity')}>{t('tabs.activity')}</button>
 
       </div>
 
@@ -244,18 +238,19 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '500px', overflowY: 'auto' }}>
-              {loading ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.loadingRecords', 'Loading audit records…')}</div> : !auditAvailable ? <div style={{ fontSize: '12px', color: 'var(--cds-support-error)' }}>{t('audit.loadError', 'Could not load audit logs from the server.')}</div> : filteredAuditLogs.length === 0 ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.noRecords', 'No audit records available.')}</div> : (
+              {loading ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.loadingRecords', 'Loading audit recordsâ€¦')}</div> : !auditAvailable ? <div style={{ fontSize: '12px', color: 'var(--cds-support-error)' }}>{t('audit.loadError', 'Could not load audit logs from the server.')}</div> : filteredAuditLogs.length === 0 ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.noRecords', 'No audit records available.')}</div> : (
                 filteredAuditLogs.slice(0, 15).map((log, i) => (
                   <div key={log.id || i}>
                     {i > 0 && <Divider />}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', gap: '12px' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '2px', wordBreak: 'break-word' }}>{log.action || t('bento.notAvailable', 'Not available')}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', wordBreak: 'break-word' }}>{log.detail || log.entityType || 'No detail available'}</div>
+                        <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--cds-text-secondary)', wordBreak: 'break-word' }}>{log.entityType || 'General'}</div>
+                        {log.details && <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', marginTop: '2px', wordBreak: 'break-word' }}>{log.details}</div>}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--cds-text-primary)' }}>{log.actorEmail || 'System'}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{formatTimestamp(log.timestamp)}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>{formatAuditTimestamp(log.createdAt)}</div>
                       </div>
                     </div>
                   </div>
@@ -265,36 +260,7 @@ export const AdminDashboard: React.FC<{ setActivePage: (page: string) => void }>
           </Card>
         )}
 
-        {dashboardTab === 'activity' && (
-          <Card>
-            <SectionTitle title={t('activity.title', 'Recent Admin Activity')} subtitle={t('activity.subtitle', 'Latest recorded administrative events.')} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {loading ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('activity.loading', 'Loading recent activity…')}</div> : !auditAvailable ? <div style={{ fontSize: '12px', color: 'var(--cds-support-error)' }}>{t('activity.loadError', 'Could not load recent activity from the server.')}</div> : recentAdminActivities.length === 0 ? <div style={{ fontSize: '12px', color: 'var(--cds-text-helper)' }}>{t('audit.noRecords', 'No audit records available.')}</div> : (
-                recentAdminActivities.map((log, i) => (
-                  <div key={log.id || i}>
-                    {i > 0 && <Divider />}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {log.action || t('bento.notAvailable', 'Not available')}
-                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '12px', fontWeight: 600, background: statusLabel(log.action || '') === 'Attention' ? 'var(--cds-support-error-bg)' : 'var(--cds-layer-01)', color: statusLabel(log.action || '') === 'Attention' ? 'var(--cds-support-error)' : 'var(--cds-text-secondary)' }}>
-                            {statusLabel(log.action || '')}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary)', marginTop: '2px' }}>
-                          Target: {log.entityType || log.entityId || 'N/A'} · By: {log.actorEmail || 'System'}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '11px', color: 'var(--cds-text-helper)', textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
-                        {formatTimestamp(log.timestamp)}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        )}
+
 
 
       </div>

@@ -6,8 +6,6 @@ import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
-import { ForgotPassword } from './components/ForgotPassword';
-import { ResetPassword } from './components/ResetPassword';
 import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
 
 // ── Role dashboards ──
@@ -55,6 +53,8 @@ import { UserManagement }    from './pages/UserManagement';
 import { ActivityAudit }     from './pages/ActivityAudit';
 import { SystemSettingsPage }from './pages/SystemSettings';
 import { OwnerCompanyProfilePage } from './pages/OwnerCompanyProfilePage';
+import { AdminCompanyProfiles } from './pages/dashboards/AdminCompanyProfiles';
+import { AdminCompanyProfileDetail } from './pages/AdminCompanyProfileDetail';
 
 // ── Owner pages ──
 import { EcosystemOverview } from './pages/EcosystemOverview';
@@ -214,9 +214,6 @@ const MainApp: React.FC = () => {
   }
 
   if (!currentUser) {
-    const path = window.location.pathname;
-    if (path === '/forgot-password') return <ForgotPassword onBackToLogin={() => window.location.href = '/'} />;
-    if (path === '/reset-password') return <ResetPassword onBackToLogin={() => window.location.href = '/'} />;
     return <Login />;
   }
 
@@ -282,6 +279,8 @@ const MainApp: React.FC = () => {
 
 
       case 'owner-company-profile': return <OwnerCompanyProfilePage />;
+      case 'admin-company-profiles': return <AdminCompanyProfiles setActivePage={navigateToPage} />;
+      case 'admin-company-profile-detail': return <AdminCompanyProfileDetail setActivePage={navigateToPage} />;
 
       // ── Director & Owner pages ──
       case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;

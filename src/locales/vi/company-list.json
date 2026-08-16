@@ -1,95 +1,95 @@
 {
-  "title": "Company Profiles",
-  "subtitle": "Database of partner & competitor company information",
+  "title": "Hồ sơ Doanh nghiệp (Company Profiles)",
+  "subtitle": "Cơ sở dữ liệu thông tin đối tác & đối thủ",
   "errors": {
-    "loadFailed": "Unable to load company profiles."
+    "loadFailed": "Không thể tải hồ sơ công ty."
   },
   "profile": {
-    "nameFallback": "No company name",
-    "industryFallback": "Unclassified"
+    "nameFallback": "Chưa có tên công ty",
+    "industryFallback": "Chưa phân loại"
   },
   "status": {
-    "verified": "Verified",
-    "pendingReview": "Pending review",
-    "needsUpdate": "Needs update",
-    "notVerified": "Unverified"
+    "verified": "Đã xác minh",
+    "pendingReview": "Chờ duyệt",
+    "needsUpdate": "Cần cập nhật",
+    "notVerified": "Chưa xác minh"
   },
   "stats": {
     "profiles": {
-      "label": "Company Profiles",
-      "note": "Official business records"
+      "label": "Hồ sơ công ty",
+      "note": "Hồ sơ doanh nghiệp chính thức"
     },
     "verified": {
-      "note": "Approved and ready to use"
+      "note": "Đã phê duyệt và sẵn sàng sử dụng"
     },
     "needsUpdate": {
-      "note": "Awaiting review or additional news"
+      "note": "Chờ xem xét hoặc bổ sung tin tức"
     },
     "industries": {
-      "label": "Industries",
-      "note": "{{count}} companies with website"
+      "label": "Ngành nghề",
+      "note": "{{count}} công ty có website"
     }
   },
   "filters": {
-    "searchPlaceholder": "Search by company name, tax code, website...",
-    "allStatuses": "All statuses",
-    "allRelationships": "All relationships",
-    "partner": "Partner",
-    "competitor": "Competitor",
-    "supplier": "Supplier",
-    "customer": "Customer",
-    "investorShareholder": "Investor – Shareholder",
-    "searchButton": "Search"
+    "searchPlaceholder": "Tìm theo tên công ty, mã số thuế, website...",
+    "allStatuses": "Tất cả trạng thái",
+    "allRelationships": "Tất cả quan hệ",
+    "partner": "Đối tác",
+    "competitor": "Đối thủ",
+    "supplier": "Nhà cung cấp",
+    "customer": "Khách hàng",
+    "investorShareholder": "Đối tác tiềm năng",
+    "searchButton": "Tìm kiếm"
   },
   "table": {
-    "company": "Company",
-    "relationship": "Relationship",
-    "ticker": "Ticker",
-    "industry": "Industry",
-    "status": "Status",
-    "updated": "Updated",
-    "actions": "Actions",
-    "loading": "Loading company profiles...",
-    "empty": "No company profiles found.",
-    "notUpdated": "Not updated",
-    "viewTitle": "View company profile details",
-    "viewButton": "View"
+    "company": "Doanh nghiệp",
+    "relationship": "Mối quan hệ",
+    "ticker": "Mã CK",
+    "industry": "Ngành nghề",
+    "status": "Trạng thái",
+    "updated": "Cập nhật",
+    "actions": "Thao tác",
+    "loading": "Đang tải hồ sơ doanh nghiệp...",
+    "empty": "Không tìm thấy hồ sơ doanh nghiệp nào.",
+    "notUpdated": "Chưa cập nhật",
+    "viewTitle": "Xem hồ sơ chi tiết",
+    "viewButton": "Xem"
   },
   "pagination": {
-    "showing": "Showing {{shown}} / {{total}} profiles",
-    "prev": "Previous",
-    "page": "Page {{current}} / {{total}}",
-    "next": "Next"
+    "showing": "Hiển thị {{shown}} / {{total}} hồ sơ",
+    "prev": "Trước",
+    "page": "Trang {{current}} / {{total}}",
+    "next": "Sau"
   },
   "swot": {
-    "headerTitle": "AI SWOT Analysis",
-    "headerDesc": "Strengths, weaknesses, opportunities, and threats analyzed automatically by AI.",
-    "strengths": "Strengths",
-    "weaknesses": "Weaknesses",
-    "opportunities": "Opportunities",
-    "threats": "Threats",
-    "noData": "No SWOT analysis data is available yet for this company.",
-    "noStrengths": "No strengths identified.",
-    "noWeaknesses": "No weaknesses identified.",
-    "noOpportunities": "No opportunities identified.",
-    "noThreats": "No threats identified."
+    "headerTitle": "Phân tích SWOT từ AI",
+    "headerDesc": "Các phân tích điểm mạnh, điểm yếu, cơ hội và thách thức của doanh nghiệp được xử lý tự động bởi AI.",
+    "strengths": "Điểm mạnh",
+    "weaknesses": "Điểm yếu",
+    "opportunities": "Cơ hội",
+    "threats": "Thách thức",
+    "noData": "Chưa có dữ liệu SWOT",
+    "noStrengths": "Chưa ghi nhận điểm mạnh.",
+    "noWeaknesses": "Chưa ghi nhận điểm yếu.",
+    "noOpportunities": "Chưa ghi nhận cơ hội.",
+    "noThreats": "Chưa ghi nhận thách thức."
   },
   "tabs": {
-    "overview": "Overview",
+    "overview": "Tổng quan",
     "swot": "SWOT",
-    "businessFields": "Business Fields",
-    "relationship": "Relationship",
-    "board": "Board & Ownership",
-    "financials": "Financials",
-    "news": "News",
-    "documents": "Documents"
+    "businessFields": "Lĩnh vực kinh doanh",
+    "relationship": "Mối quan hệ",
+    "board": "Ban lãnh đạo",
+    "financials": "Tài chính",
+    "news": "Tin tức",
+    "documents": "Tài liệu"
   },
   "detail": {
-    "additionalInfo": "Additional Information & Evidence",
-    "boardMembers": "Board Members & Ownership Structure",
-    "financialReport": "Financial Reports",
-    "newsMedia": "News & Media",
-    "confidentialNews": "Confidential Internal News",
-    "documents": "Documents & Raw Records"
+    "additionalInfo": "Thông tin bổ sung & Bằng chứng",
+    "boardMembers": "Ban lãnh đạo & Cơ cấu sở hữu",
+    "financialReport": "Báo cáo Tài chính",
+    "newsMedia": "Tin tức & Truyền thông",
+    "confidentialNews": "Tin tức nội bộ (Confidential News)",
+    "documents": "Tài liệu & Hồ sơ thô"
   }
 }

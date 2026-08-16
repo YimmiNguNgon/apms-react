@@ -143,12 +143,6 @@ export const Login: React.FC = () => {
               disabled={loading}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <span
-              style={{ fontSize: 'var(--text-caption)', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
-              onClick={() => { window.location.href = '/forgot-password'; }}
-            >
-              {t('forgotPassword')}
-            </span>
           </div>
 
           {error && <div className="form-error">{t('warning')}: {error}</div>}
