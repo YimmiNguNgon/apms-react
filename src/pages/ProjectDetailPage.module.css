@@ -456,6 +456,32 @@
   padding: 0 8px;
 }
 
+.taskCardCancelled {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.taskCardCancelled .taskTitle {
+  color: #64748b;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #ef4444;
+}
+
+.taskCardCancelled .taskKey::after {
+  content: "Cancelled";
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  margin-left: 8px;
+  padding: 0 8px;
+}
+
 .columnCreateButton {
   display: inline-flex;
   align-items: center;
@@ -834,33 +860,28 @@
 
 .candidateReviewTable th:nth-child(1),
 .candidateReviewTable td:nth-child(1) {
-  width: 7%;
+  width: 6%;
   text-align: center;
 }
 
 .candidateReviewTable th:nth-child(2),
 .candidateReviewTable td:nth-child(2) {
-  width: 29%;
+  width: 34%;
 }
 
 .candidateReviewTable th:nth-child(3),
 .candidateReviewTable td:nth-child(3) {
-  width: 24%;
+  width: 30%;
 }
 
 .candidateReviewTable th:nth-child(4),
 .candidateReviewTable td:nth-child(4) {
-  width: 14%;
+  width: 15%;
 }
 
 .candidateReviewTable th:nth-child(5),
 .candidateReviewTable td:nth-child(5) {
-  width: 14%;
-}
-
-.candidateReviewTable th:nth-child(6),
-.candidateReviewTable td:nth-child(6) {
-  width: 12%;
+  width: 15%;
   text-align: right;
 }
 
@@ -1907,7 +1928,7 @@
   justify-content: center;
   overflow-y: auto;
   background: rgba(15, 23, 42, 0.38);
-  padding: 56px 20px 32px;
+  padding: 100px 20px 32px;
 }
 
 .taskWorkbenchOverlay {
@@ -2414,6 +2435,9 @@
   width: min(1680px, calc(100% - 16px));
   max-height: calc(100dvh - var(--topbar-height) - 56px);
   padding: 28px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .deleteConfirmModal {
@@ -2561,6 +2585,9 @@
   gap: 16px;
   align-items: start;
   min-width: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .companyMemberWorkbenchGrid {
@@ -2799,7 +2826,7 @@
 
 .documentItem {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
   border: 1px solid #e2e8f0;
@@ -2833,6 +2860,19 @@
   background: #f1f5f9;
   color: #2563eb;
   flex-shrink: 0;
+}
+
+.documentInfo {
+  min-width: 0;
+}
+
+.documentInfo strong,
+.documentInfo span,
+.documentInfo small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .documentInfo {

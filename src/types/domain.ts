@@ -162,6 +162,7 @@ export interface CompanyProfileIdentity {
   registrationNumber?: string;
   stockTicker?: string;
   stockExchange?: string;
+  foundedDate?: string;
 }
 
 export interface CompanyProfileBusiness {
@@ -1271,6 +1272,8 @@ export interface CompanyMonitoringAssignmentResponse {
   frequency: MonitoringFrequency;
   assignmentStatus: MonitoringStatus;
   displayStatus: 'UP_TO_DATE' | 'DUE' | 'OVERDUE' | 'PAUSED';
+  latestProposalStatus?: 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
+  latestProposalId?: string;
   lastReviewedAt: string | null;
   nextReviewAt: string;
   createdAt: string;

@@ -28,7 +28,7 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'financials', label: 'Financials', icon: <FileText size={14} /> },
   { id: 'news', label: 'News', icon: <Newspaper size={14} /> },
   { id: 'internal-news', label: 'Internal News', icon: <Shield size={14} /> },
-  { id: 'documents', label: 'Documents', icon: <FileText size={14} /> },
+  { id: 'documents', label: 'Contract', icon: <FileText size={14} /> },
 ];
 
 const tabDataCache = new Map<string, unknown>();
@@ -115,13 +115,11 @@ export const initialsOf = (name?: string | null): string => {
   return clean.substring(0, 2).toUpperCase();
 };
 
-export const BOARD_GROUP_ORDER = [1, 2, 3, 4, 5];
+export const BOARD_GROUP_ORDER = [1, 2, 3,];
 export const BOARD_GROUP_LABELS: Record<number, string> = {
-  1: 'Board of Directors',
-  2: 'Executive Board / Chief Accountant',
-  3: 'Supervisory Board',
-  4: 'Supervisory Board',
-  5: 'Other Positions',
+  1: 'President',
+  2: 'CEO',
+  3: 'Other Positions',
 };
 
 export const PERIOD_LABELS: Record<string, string> = {

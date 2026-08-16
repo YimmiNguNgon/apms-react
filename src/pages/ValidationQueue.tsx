@@ -16,6 +16,12 @@ const confidence = (candidate: QueueCandidate) =>
     ? Math.round(candidate.relationshipConfidenceScore)
     : null;
 
+const getCreatedAtFromMongoId = (id: string) => {
+  if (!id || id.length !== 24) return null;
+  const timestamp = parseInt(id.substring(0, 8), 16) * 1000;
+  return new Date(timestamp);
+};
+
 export const ValidationQueue: React.FC = () => {
   const { t } = useTranslation('common');
   const [records, setRecords] = useState<QueueCandidate[]>([]);
@@ -44,7 +50,14 @@ export const ValidationQueue: React.FC = () => {
         );
 
         if (!cancelled) {
-          setRecords(responses.flatMap((response) => response?.data.content ?? []));
+          const allRecords = responses.flatMap((response) => response?.data.content ?? []);
+          // Sắp xếp candidate theo thời gian tạo mới nhất
+          allRecords.sort((a, b) => {
+            const dateA = getCreatedAtFromMongoId(a.id)?.getTime() || 0;
+            const dateB = getCreatedAtFromMongoId(b.id)?.getTime() || 0;
+            return dateB - dateA;
+          });
+          setRecords(allRecords);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -80,12 +93,21 @@ export const ValidationQueue: React.FC = () => {
         {records.map((record) => {
           const score = confidence(record);
           const errors = record.validation?.errors ?? [];
+          const createdAt = getCreatedAtFromMongoId(record.id);
+          const isNew = createdAt && (Date.now() - createdAt.getTime() < 24 * 60 * 60 * 1000);
+
           return (
             <div key={record.id} className="company-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{candidateName(record)}</h3>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('queues.status')}: <strong>{record.status}</strong></p>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {candidateName(record)}
+                    {isNew && <span style={{ fontSize: '10px', backgroundColor: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>New</span>}
+                  </h3>
+                  <div style={{ display: 'flex', gap: '16px', fontSize: 12, color: 'var(--text-muted)' }}>
+                    <p>{t('queues.status')}: <strong style={{ color: 'var(--text)' }}>{record.status}</strong></p>
+                    <p>Created: <strong>{createdAt ? createdAt.toLocaleString() : 'Unknown'}</strong></p>
+                  </div>
                 </div>
                 {score !== null && <span className={`confidence ${score >= 85 ? 'high' : score >= 70 ? 'medium' : 'low'}`}>AI: {score}%</span>}
               </div>

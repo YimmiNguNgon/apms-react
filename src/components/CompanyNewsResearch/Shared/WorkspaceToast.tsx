@@ -24,19 +24,19 @@ export const WorkspaceToast: React.FC<WorkspaceToastProps> = ({ toast, onClose }
 
   return (
     <div style={{
-      position: 'absolute', top: '24px', left: '50%', transform: 'translateX(-50%)',
+      position: 'fixed', top: '24px', right: '24px',
       zIndex: 50, display: 'flex', alignItems: 'center', gap: '12px',
       backgroundColor: isSuccess ? '#ecfdf5' : '#fef2f2',
       border: `1px solid ${isSuccess ? '#10b981' : '#ef4444'}`,
       padding: '12px 16px', borderRadius: '8px',
       boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
       minWidth: '300px',
-      animation: 'toast-slide-down 0.3s ease-out forwards'
+      animation: 'toast-slide-left 0.3s ease-out forwards'
     }}>
       <style>{`
-        @keyframes toast-slide-down {
-          from { opacity: 0; transform: translate(-50%, -20px); }
-          to { opacity: 1; transform: translate(-50%, 0); }
+        @keyframes toast-slide-left {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
         }
       `}</style>
       <div style={{ color: isSuccess ? '#10b981' : '#ef4444', display: 'flex' }}>

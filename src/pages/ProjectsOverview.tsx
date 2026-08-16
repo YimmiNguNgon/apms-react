@@ -136,6 +136,7 @@ export const ProjectsOverview: React.FC = () => {
     projectName: '',
     projectType: 'RESEARCH_NEW_COMPANY' as ProjectType,
     targetCompanyProfileId: '',
+    targetCompanyTaxCode: '',
     targetRelationshipType: '',
     description: '',
     plannedEndDate: '',
@@ -234,6 +235,7 @@ export const ProjectsOverview: React.FC = () => {
       projectName: '',
       projectType: 'RESEARCH_NEW_COMPANY',
       targetCompanyProfileId: '',
+      targetCompanyTaxCode: '',
       targetRelationshipType: '',
       description: '',
       plannedEndDate: '',
@@ -278,6 +280,19 @@ export const ProjectsOverview: React.FC = () => {
     setCreateError(null);
 
     if (createForm.projectType === 'RESEARCH_NEW_COMPANY') {
+      if (createForm.targetCompanyTaxCode) {
+        try {
+          const res = await api.get<boolean>(`/profiles/exists`, { params: { taxCode: createForm.targetCompanyTaxCode } });
+          if (res.data === true) {
+            setCreateError('A company with this tax ID already exists. Please select the "Update existing company" project type.');
+            setCreateLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to check tax code", error);
+        }
+      }
+      
       try {
         const res = await projectApi.checkDuplicateCompanyName(projectName);
         if (res?.data?.duplicate) {
@@ -522,6 +537,12 @@ export const ProjectsOverview: React.FC = () => {
                   <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
                 </select>
               </label>
+              {createForm.projectType === 'RESEARCH_NEW_COMPANY' && (
+                <label>
+                  <span>Mã số thuế (Để kiểm tra trùng lặp)</span>
+                  <input className="search-input" placeholder="Nhập mã số thuế..." value={createForm.targetCompanyTaxCode} onChange={(event) => setCreateForm((current) => ({ ...current, targetCompanyTaxCode: event.target.value.replace(/[^0-9-]/g, '') }))} />
+                </label>
+              )}
               {createForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
                 <label>
                   <span>{t('create.existingCompanyLabel')}</span>

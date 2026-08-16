@@ -63,7 +63,7 @@ export const ResetPassword: React.FC<{ onBackToLogin: () => void }> = ({ onBackT
             Business Ecosystem Intelligence
           </div>
           <h1 className="login-hero-title">
-            Alliance<br />
+            AI<br />
             <span>Partner</span><br />
             Management
           </h1>

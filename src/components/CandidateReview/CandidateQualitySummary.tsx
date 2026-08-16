@@ -28,10 +28,10 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
   return (
     <div className={styles.qualitySummaryRow}>
       <div className={styles.metricTile}>
-        <span className={styles.metricLabel}>AI Confidence</span>
+        <span className={styles.metricLabel}>AI Accurate</span>
         <span className={styles.metricValue}>{confidenceScore}{averageConfidence !== null ? '%' : ''}</span>
         <span className={styles.metricSubtext}>
-          {averageConfidence === null ? 'No score' : averageConfidence >= 0.85 ? 'High confidence' : averageConfidence >= 0.6 ? 'Medium confidence' : 'Low confidence'}
+          {averageConfidence === null ? 'No score' : averageConfidence >= 0.85 ? 'High accurate' : averageConfidence >= 0.6 ? 'Medium confidence' : 'Low confidence'}
         </span>
         {averageConfidence !== null && (
           <div className={styles.metricProgress}>

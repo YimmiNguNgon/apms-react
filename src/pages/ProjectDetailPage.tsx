@@ -1383,6 +1383,7 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
     title: task.title,
     description: task.description || 'No description provided.',
     status: statusToColumn[task.status] ?? 'todo',
+    originalStatus: task.status,
     priority: priorityToCard[task.priority ?? 'MEDIUM'],
     assignee: fallbackMember,
     reporter: members[0],
@@ -1414,7 +1415,7 @@ const TaskCard: React.FC<{
 }) => (
   <motion.article
     layout
-    className={`${styles.taskCard} ${task.status === 'done' ? styles.taskCardDone : ''}`}
+    className={`${styles.taskCard} ${task.status === 'done' ? (task.originalStatus === 'CANCELLED' ? styles.taskCardCancelled : styles.taskCardDone) : ''}`}
     onClick={() => onOpen(task)}
     whileHover={{ y: -3 }}
     transition={{ type: 'spring', stiffness: 420, damping: 30 }}
@@ -1426,21 +1427,6 @@ const TaskCard: React.FC<{
           <span className={styles.aiDot} title="AI generated task">
             <Bot size={15} />
           </span>
-        )}
-        {onDelete && (
-          <button
-            className={styles.taskDeleteButton}
-            type="button"
-            title="Delete task"
-            aria-label={`Delete ${task.id}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete(task);
-            }}
-            disabled={deleting}
-          >
-            <Trash2 size={14} />
-          </button>
         )}
       </div>
     </div>
@@ -2991,7 +2977,7 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
   COMPANY_MEMBER_RESEARCH: {
     title: 'Company member research',
     description: 'Research leadership and key company members, record sources, save a draft, then submit it for manager review.',
-    steps: ['Start work', 'Review target', 'Add members', 'Submit review'],
+    steps: ['Start work', 'Add members', 'Submit review'],
   },
   COMPANY_NEWS_RESEARCH: {
     title: 'Company news research',
@@ -3006,11 +2992,9 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
 };
 
 const createTaskTypeOptions: Array<{ value: TaskType; label: string }> = [
-  { value: 'GENERAL_TASK', label: 'General task' },
   { value: 'COMPANY_DATA_PREPARATION', label: 'Company data preparation' },
   { value: 'COMPANY_MEMBER_RESEARCH', label: 'Company member research' },
   { value: 'COMPANY_NEWS_RESEARCH', label: 'Company news research' },
-  { value: 'ROLE_EVALUATION', label: 'Role evaluation' },
   { value: 'PARTNER_CONTRACT_COLLECTION', label: 'Partner contract collection' },
 ];
 
@@ -3022,23 +3006,23 @@ const emptyCompanyMemberForm: CompanyMemberResearchItem = {
   notes: '',
 };
 
-type CompanyMemberLayerId = 'board' | 'executive' | 'management' | 'other';
+type CompanyMemberLayerId = 'president' | 'ceo' | 'accountant' | 'other';
 
 const companyMemberLayerMeta: Record<CompanyMemberLayerId, { title: string; description: string }> = {
-  board: {
-    title: 'Corporate Board',
+  president: {
+    title: 'President',
     description: '',
   },
-  executive: {
-    title: 'Executive & Financial Leadership',
+  ceo: {
+    title: 'CEO',
     description: '',
   },
-  management: {
-    title: 'Audit & Oversight Committee',
+  accountant: {
+    title: 'Accountant',
     description: '',
   },
   other: {
-    title: 'Other Leadership Roles',
+    title: 'Other Members',
     description: '',
   },
 };
@@ -3059,18 +3043,17 @@ const normalizeCompanyMemberPosition = (position: string) =>
 
 const companyMemberLayerId = (position: string): CompanyMemberLayerId => {
   const normalized = normalizeCompanyMemberPosition(position);
-  if (/(bks|ban kiem soat|kiem soat|kiem toan|audit|oversight|supervisory|control board)/i.test(normalized)) return 'management';
-  if (/(hđqt|hdqt|hội đồng|hoi dong|board|chairman|chairwoman|chairperson)/i.test(normalized)) return 'board';
-  if (/(ceo|cfo|coo|cto|chief|tổng giám|tong giam|phó tổng|pho tong|general director|giám đốc|giam doc|president|kế toán trưởng|ke toan truong)/i.test(normalized)) return 'executive';
-  if (/(founder|co-founder|manager|head|leader|trưởng|truong|phó|pho|director|representative|đại diện|dai dien)/i.test(normalized)) return 'management';
+  if (/(president|chủ tịch|chu tich)/i.test(normalized)) return 'president';
+  if (/(ceo|tổng giám đốc|tong giam doc|giám đốc|giam doc|director)/i.test(normalized)) return 'ceo';
+  if (/(accountant|kế toán|ke toan|cfo)/i.test(normalized)) return 'accountant';
   return 'other';
 };
 
 const groupCompanyMemberLayers = (members: CompanyMemberResearchItem[]) => {
   const buckets: Record<CompanyMemberLayerId, CompanyMemberResearchItem[]> = {
-    board: [],
-    executive: [],
-    management: [],
+    president: [],
+    ceo: [],
+    accountant: [],
     other: [],
   };
   members.forEach((member) => buckets[companyMemberLayerId(member.position || '')].push(member));
@@ -3359,7 +3342,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     assignedToUserId: '',
     priority: 'MEDIUM' as ApiTaskPriority,
     dueDate: '',
-    taskType: 'GENERAL_TASK' as TaskType,
+    taskType: 'COMPANY_MEMBER_RESEARCH' as TaskType,
     targetCompanyProfileId: '',
   });
   const projectEndDateInput = toInputDate(apiProject?.plannedEndDate || null);
@@ -3409,7 +3392,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     if (selectedStaffTask?.taskType === 'COMPANY_MEMBER_RESEARCH') {
       if (step === 'Start work') return staffTaskStatus !== 'TODO';
-      if (step === 'Review target') return Boolean(workbench?.targetCompanyName || displayedProject.targetCompanyName || workbench?.targetCompanyProfileId);
       if (step === 'Add members') return companyMemberItems.length > 0;
       if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
       return false;
@@ -4031,7 +4013,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         assignedToUserId: '',
         priority: 'MEDIUM',
         dueDate: '',
-        taskType: 'GENERAL_TASK',
+        taskType: 'COMPANY_MEMBER_RESEARCH',
         targetCompanyProfileId: '',
       });
       setShowCreateTaskModal(false);
@@ -4234,7 +4216,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     } catch (error) {
       setCompanyMemberDraft(null);
       setCompanyMemberItems([]);
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot load company member research draft.');
+      const errMsg = error instanceof Error ? error.message : '';
+      if (!errMsg.toLowerCase().includes('not found')) {
+        setWorkbenchError(errMsg || 'Cannot load company member research draft.');
+      }
     } finally {
       setCompanyMemberLoading(false);
     }
@@ -4247,7 +4232,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setManagerCompanyMemberDraft(payload.data);
     } catch (error) {
       setManagerCompanyMemberDraft(null);
-      setWorkbenchError(error instanceof Error ? error.message : 'Cannot load company member research submission.');
+      const errMsg = error instanceof Error ? error.message : '';
+      if (!errMsg.toLowerCase().includes('not found')) {
+        setWorkbenchError(errMsg || 'Cannot load company member research submission.');
+      }
     } finally {
       setManagerCompanyMemberLoading(false);
     }
@@ -4473,7 +4461,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       updateTaskInState(payload.data);
       setWorkbench((current) => current ? { ...current, taskStatus: 'CANCELLED' } : current);
       setCancelTaskConfirmOpen(false);
-      setWorkbenchMessage('Task has been cancelled.');
+      setSelectedStaffTask(null);
+      setSelectedTask(null);
+      setToast({ kind: 'success', message: 'Task has been cancelled.' });
     } catch (error) {
       setCancelTaskError(error instanceof Error ? error.message : 'Unable to cancel task. Please try again.');
     } finally {
@@ -5545,8 +5535,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <div><span>Need review</span><strong>{candidateStats.pending}</strong></div>
                 <div><span>Approved</span><strong>{candidateStats.approved}</strong></div>
                 <div><span>Rejected</span><strong>{candidateStats.rejected}</strong></div>
-                <div><span>Missing data</span><strong>{candidateStats.incomplete}</strong></div>
-                <div><span>Avg confidence</span><strong>{candidateStats.averageConfidence === null ? 'N/A' : `${candidateStats.averageConfidence}%`}</strong></div>
               </div>
 
               <div className={styles.candidateToolbar}>
@@ -5567,14 +5555,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <option value="REJECTED">Rejected</option>
                   </select>
                 </label>
-                <label className={styles.candidateFilter}>
-                  <select value={candidateRelationshipFilter} onChange={(event) => setCandidateRelationshipFilter(event.target.value)}>
-                    <option value="ALL">All relationships</option>
-                    {candidateRelationshipOptions.map((relationship) => (
-                      <option key={relationship} value={relationship}>{relationship}</option>
-                    ))}
-                  </select>
-                </label>
+
               </div>
 
               <div className={styles.candidateReviewTableWrap}>
@@ -5584,7 +5565,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <th>No.</th>
                       <th>Candidate</th>
                       <th>Project relationship</th>
-                      <th>Confidence</th>
                       <th>Status</th>
                       <th>Decision</th>
                     </tr>
@@ -5592,12 +5572,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <tbody>
                     {candidatesLoading && (
                       <tr>
-                        <td colSpan={6}><div className={styles.empty}>Loading candidates...</div></td>
+                        <td colSpan={5}><div className={styles.empty}>Loading candidates...</div></td>
                       </tr>
                     )}
                     {!candidatesLoading && filteredCandidates.length === 0 && (
                       <tr>
-                        <td colSpan={6}><div className={styles.empty}>No candidate matches your review filters.</div></td>
+                        <td colSpan={5}><div className={styles.empty}>No candidate matches your review filters.</div></td>
                       </tr>
                     )}
                     {!candidatesLoading && filteredCandidates.map((candidate, index) => (
@@ -5617,11 +5597,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{candidate.suggestedRelationshipType || candidate.relationshipTypeOverride || 'Project default'}</strong>
                             <small>{displayedProject.type}</small>
                           </div>
-                        </td>
-                        <td>
-                          <span className={`${styles.candidateConfidenceBadge} ${candidateConfidenceClass(candidate)}`}>
-                            {candidateConfidenceLabel(candidate)}
-                          </span>
                         </td>
                         <td>
                           <span className={`${styles.candidateStatus} ${candidateStatusClass[candidate.status]}`}>
@@ -6482,7 +6457,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             />
                           </label>
                           <div className={styles.documentIcon}><FileText size={18} /></div>
-                          <div>
+                          <div className={styles.documentInfo}>
                             <strong>{document.fileName || `Import job #${document.id}`}</strong>
                             <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
                             <small>
@@ -6628,6 +6603,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     onSubmitSuccess={() => {
                       void loadStaffWorkbench(selectedStaffTask);
                       setTaskRefreshTick((current) => current + 1);
+                      setSelectedStaffTask(null);
                     }}
                     onClose={() => setSelectedStaffTask(null)}
                   />
@@ -6876,7 +6852,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         {workbench?.documents?.map((document) => (
                           <article className={styles.documentItem} key={document.id}>
                             <div className={styles.documentIcon}><FileText size={18} /></div>
-                            <div>
+                            <div className={styles.documentInfo}>
                               <strong>{document.fileName || `Import job #${document.id}`}</strong>
                               <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
                               <small>
@@ -7462,9 +7438,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
                   onClose={() => setSelectedManagerReviewTask(null)}
-                  onReviewed={() => {
+                  onReviewed={(message, isSuccess) => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
                     setTaskRefreshTick((current) => current + 1);
+                    setSelectedManagerReviewTask(null);
+                    setToast({ kind: isSuccess ? 'success' : 'error', message });
                   }}
                 />
               ) : (
@@ -7520,7 +7498,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       {managerReviewDocuments.map((document) => (
                         <article className={styles.documentItem} key={document.id}>
                           <div className={styles.documentIcon}><FileText size={18} /></div>
-                          <div>
+                          <div className={styles.documentInfo}>
                             <strong>{document.fileName || `Import job #${document.id}`}</strong>
                             <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
                             <small>
@@ -7804,13 +7782,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <span>Suggested relationship</span>
                     <strong>{selectedCandidate.suggestedRelationshipType || 'Not suggested'}</strong>
                   </div> */}
-                  <div>
-                    <span>Confidence score</span>
-                    <strong>{candidateConfidenceLabel(selectedCandidate)}</strong>
-                    <div className={styles.candidateConfidenceTrack} aria-hidden="true">
-                      <i style={{ width: `${detailConfidenceScore ?? 0}%` }} />
-                    </div>
-                  </div>
+
                   {/* <div>
                     <span>Data quality</span>
                     <strong>{candidateCompleteness(selectedCandidate)}</strong>

@@ -26,6 +26,7 @@ interface ConfidentialNewsTabProps {
 type AuthState = SecureTotpGateState | 'VERIFIED';
 
 const INTERNAL_NEWS_SCOPE = 'COMPANY_INTERNAL_NEWS';
+const PAGE_SIZE = 8;
 
 const resolveExpiresInSeconds = (expiresAt?: string, fallback?: number) => {
   if (!expiresAt) return fallback ?? 0;
@@ -90,6 +91,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [lockedUntil, setLockedUntil] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const expiresInLabel = tokenExpiry ? `${Math.max(1, Math.ceil(tokenExpiry / 60))} min` : 'security policy';
 
@@ -333,6 +335,55 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     );
   }
 
+  const totalPages = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
+  const shown = articles.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const startItem = articles.length > 0 ? currentPage * PAGE_SIZE + 1 : 0;
+  const endItem = Math.min((currentPage + 1) * PAGE_SIZE, articles.length);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 0 || newPage >= totalPages || newPage === currentPage) return;
+    setCurrentPage(newPage);
+  };
+
+  const renderPageButtons = () => {
+    return Array.from({ length: totalPages }).map((_, pageNum) => {
+      if (
+        pageNum === 0 ||
+        pageNum === totalPages - 1 ||
+        (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+      ) {
+        return (
+          <button
+            key={pageNum}
+            type="button"
+            onClick={() => handlePageChange(pageNum)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: '1px solid',
+              borderColor: currentPage === pageNum ? '#2563EB' : '#CBD5E1',
+              background: currentPage === pageNum ? '#EFF6FF' : '#FFFFFF',
+              color: currentPage === pageNum ? '#1D4ED8' : '#334155',
+              fontSize: '0.72rem',
+              fontWeight: currentPage === pageNum ? 800 : 600,
+              cursor: 'pointer',
+            }}
+          >
+            {pageNum + 1}
+          </button>
+        );
+      }
+      if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+        return (
+          <span key={`ellipsis-${pageNum}`} style={{ padding: '0 4px', color: '#94A3B8' }}>
+            ...
+          </span>
+        );
+      }
+      return null;
+    });
+  };
+
   return (
     <div>
 
@@ -343,42 +394,103 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
           <p style={styles.emptyText}>There are no approved internal news articles for this company yet.</p>
         </div>
       ) : (
-        <div style={styles.newsGrid}>
-          {articles.map((article) => (
-            <button
-              key={article.id}
-              type="button"
-              style={styles.newsCard}
-              onClick={() => void openArticleDetail(article)}
-              disabled={detailLoading}
-            >
-              <div style={styles.cardImageWrap}>
-                <NewsImage article={article} />
-              </div>
-              <div style={styles.cardContent}>
-                <div style={styles.cardMeta}>
-                  <span><Newspaper size={13} /> {article.sourceName || getHostName(article.sourceUrl) || 'Internal News'}</span>
-                  <span><Calendar size={13} /> {formatDate(article.publishedAt || article.createdAt)}</span>
-                  {article.approvedAt && (
-                    <span style={styles.approvedInline}>
-                      <CheckCircle2 size={13} /> 
-                      Approved{article.approvedBy ? ` by ${article.approvedBy}` : ''}
-                    </span>
-                  )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={styles.newsGrid}>
+            {shown.map((article) => (
+              <button
+                key={article.id}
+                type="button"
+                style={styles.newsCard}
+                onClick={() => void openArticleDetail(article)}
+                disabled={detailLoading}
+              >
+                <div style={styles.cardImageWrap}>
+                  <NewsImage article={article} />
                 </div>
-                <h3 style={styles.cardTitle}>{article.title}</h3>
-                <p style={styles.cardSummary}>{article.summary || 'Click to view the detailed content of this internal news article.'}</p>
-                <div style={styles.cardFooter}>
-                  <div style={styles.tags}>
-                    {article.tags?.slice(0, 3).map((tag) => (
-                      <span key={tag} style={styles.tag}><Tag size={12} /> {tag}</span>
-                    ))}
+                <div style={styles.cardContent}>
+                  <div style={styles.cardMeta}>
+                    <span><Newspaper size={13} /> {article.sourceName || getHostName(article.sourceUrl) || 'Internal News'}</span>
+                    <span><Calendar size={13} /> {formatDate(article.publishedAt || article.createdAt)}</span>
+                    {article.approvedAt && (
+                      <span style={styles.approvedInline}>
+                        <CheckCircle2 size={13} /> 
+                        Approved{article.approvedBy ? ` by ${article.approvedBy}` : ''}
+                      </span>
+                    )}
                   </div>
-                  <span style={styles.readMore}>View Details</span>
+                  <h3 style={styles.cardTitle}>{article.title}</h3>
+                  <p style={styles.cardSummary}>{article.summary || 'Click to view the detailed content of this internal news article.'}</p>
+                  <div style={styles.cardFooter}>
+                    <div style={styles.tags}>
+                      {article.tags?.slice(0, 3).map((tag) => (
+                        <span key={tag} style={styles.tag}><Tag size={12} /> {tag}</span>
+                      ))}
+                    </div>
+                    <span style={styles.readMore}>View Details</span>
+                  </div>
                 </div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            background: '#FFFFFF',
+            border: '1px solid #E2E8F0',
+            borderRadius: '10px',
+            padding: '10px 16px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+              Hiển thị {startItem}–{endItem} trong tổng số {articles.length} bài báo (Trang {currentPage + 1}/{totalPages})
+            </div>
+
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 0}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #CBD5E1',
+                    background: currentPage === 0 ? '#F1F5F9' : '#FFFFFF',
+                    color: currentPage === 0 ? '#94A3B8' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: currentPage === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ‹ Trước
+                </button>
+
+                {renderPageButtons()}
+
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages - 1}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #CBD5E1',
+                    background: currentPage >= totalPages - 1 ? '#F1F5F9' : '#FFFFFF',
+                    color: currentPage >= totalPages - 1 ? '#94A3B8' : '#334155',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: currentPage >= totalPages - 1 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Sau ›
+                </button>
               </div>
-            </button>
-          ))}
+            )}
+          </div>
         </div>
       )}
     </div>

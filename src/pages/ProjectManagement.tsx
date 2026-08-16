@@ -26,6 +26,7 @@ type ProjectFormState = {
   projectName: string;
   projectType: ProjectType;
   targetCompanyProfileId: string;
+  targetCompanyTaxCode?: string;
   targetCompanyName: string;
   targetRelationshipType: string;
   description: string;
@@ -116,6 +117,7 @@ const initialProjectForm = (): ProjectFormState => ({
   projectName: '',
   projectType: 'RESEARCH_NEW_COMPANY',
   targetCompanyProfileId: '',
+  targetCompanyTaxCode: '',
   targetCompanyName: '',
   targetRelationshipType: 'PARTNER_WITH',
   description: '',
@@ -492,6 +494,19 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     setFeedback(null);
 
     if (projectForm.projectType === 'RESEARCH_NEW_COMPANY') {
+      if (projectForm.targetCompanyTaxCode) {
+        try {
+          const res = await api.get<boolean>(`/profiles/exists`, { params: { taxCode: projectForm.targetCompanyTaxCode } });
+          if (res.data === true) {
+            setFeedback({ kind: 'error', message: 'A company with this tax ID already exists. Please select the "Update existing company" project type.' });
+            setCreateLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to check tax code", error);
+        }
+      }
+
       try {
         const res = await projectApi.checkDuplicateCompanyName(projectName);
         if (res?.data?.duplicate) {
@@ -661,6 +676,17 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                   <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
                 </select>
               </label>
+              {projectForm.projectType === 'RESEARCH_NEW_COMPANY' && (
+                <div className="workspace-form-group">
+                  <label>Tax ID (for duplicate checks)</label>
+                  <input
+                    type="text"
+                    value={projectForm.targetCompanyTaxCode || ''}
+                    onChange={(e) => setProjectForm({ ...projectForm, targetCompanyTaxCode: e.target.value.replace(/[^0-9-]/g, '') })}
+                    placeholder="Nhập mã số thuế..."
+                  />
+                </div>
+              )}
               {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
                 <label>
                   <span>{t('create.existingCompanyLabel')}</span>

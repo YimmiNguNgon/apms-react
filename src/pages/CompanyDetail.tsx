@@ -127,14 +127,24 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       }
     };
 
+    const handleProfileUpdated = () => {
+      // Force re-fetch by triggering some state change, or we can just fetch it here.
+      // But we can also just toggle a reload trigger state. Let's create one.
+      setReloadTrigger(prev => prev + 1);
+    };
+
     window.addEventListener('apms-company-selection-changed', handleCompanyChange);
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('apms-profile-updated', handleProfileUpdated);
     
     return () => {
       window.removeEventListener('apms-company-selection-changed', handleCompanyChange);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('apms-profile-updated', handleProfileUpdated);
     };
   }, []);
+
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {
     if (!resolvedId) {
@@ -189,8 +199,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       }
     })();
 
-    return () => controller.abort();
-  }, [resolvedId, currentUser?.role]);
+    return () => {
+      controller.abort();
+    };
+  }, [resolvedId, currentUser, reloadTrigger]);
 
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
@@ -281,10 +293,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Tax Code</span>
                 <strong style={{ ...(taxCode !== 'Not updated' ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Registration No</span>
-                <strong style={{ ...(regNo !== 'Not updated' ? C.value : C.muted), fontFamily: 'monospace' }}>{regNo}</strong>
               </div>
             </div>
             
@@ -454,10 +462,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 <span style={C.fieldLabel}>Head Office Address</span>
                 <strong style={address !== 'Not updated' ? C.value : C.muted}>{address}</strong>
               </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Founded Date</span>
-                <strong style={C.muted}>N/A</strong>
-              </div>
             </div>
           </section>
 
@@ -503,14 +507,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         {/* Right Column */}
         {!isDrawerMode && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {!isOwnerProfile && (
+            {!isOwnerProfile && profile?.relationshipType?.toUpperCase() === 'PARTNER' && (
             <CompanyRelationshipClosenessPanel
               companyProfileId={relationshipClosenessProfileId}
               currentUserRole={currentUser?.role}
             />
           )}
 
-          <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
+          {!isOwnerProfile && (
+            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
+          )}
 
           {/* Quick Info Summary */}
           {!isDrawerMode && (

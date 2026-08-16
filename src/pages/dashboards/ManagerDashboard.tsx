@@ -50,6 +50,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalProjects, setTotalProjects] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,12 +92,14 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
         setSummary(summaryRes.data);
         setProjects(projectSignals);
         setProfiles(profilesRes?.data?.content ?? []);
+        setTotalProjects(projectsRes.data?.totalElements ?? 0);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Cannot load manager dashboard.');
           setSummary(null);
           setProjects([]);
           setProfiles([]);
+          setTotalProjects(0);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -122,10 +125,10 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
   const activeProjects = projects.filter(({ project }) => project.status === 'ACTIVE' || project.status === 'DRAFT');
 
   const topStats = [
-    { label: 'Projects', value: summary?.totalProjects ?? activeProjects.length, note: 'Available to manage.' },
-    { label: 'Pending candidates', value: summary?.pendingReviewCandidates ?? pendingCandidates.length, note: 'Candidates waiting for review.' },
-    { label: 'Approved', value: summary?.approvedCandidates ?? approvedCandidates.length, note: 'Cleared into profile pipeline.' },
-    { label: 'Company profiles', value: summary?.totalCompanyProfiles ?? profiles.length, note: 'Official company records.' },
+    { label: 'Projects', value: totalProjects, note: 'Available to manage.' },
+    { label: 'Pending candidates', value: pendingCandidates.length, note: 'Candidates waiting for review.' },
+    { label: 'Approved', value: approvedCandidates.length, note: 'Cleared into profile pipeline.' },
+    { label: 'Company profiles', value: profiles.length, note: 'Official company records.' },
   ];
 
   const taskMix = useMemo(() => {

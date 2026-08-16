@@ -81,19 +81,6 @@ export const Login: React.FC = () => {
           <p className="login-hero-sub">
             {t('heroSub')}
           </p>
-          {/* <div className="login-hero-features">
-            {[
-              'Relationship map and company profiles',
-              'Competitive and partnership intelligence',
-              'Role-based workspaces for review and approvals',
-              'Backend-connected research and scoring flows',
-            ].map((feature) => (
-              <div key={feature} className="hero-feature">
-                <div className="hero-feature-dot" />
-                {feature}
-              </div>
-            ))}
-          </div> */}
         </div>
 
         <form className="login-card" onSubmit={handleSubmit}>

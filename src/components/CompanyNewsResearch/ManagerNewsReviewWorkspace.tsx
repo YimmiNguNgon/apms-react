@@ -19,7 +19,7 @@ interface ManagerNewsReviewWorkspaceProps {
   targetCompanyName?: string | null;
   assignedToName?: string | null;
   onClose: () => void;
-  onReviewed?: () => void;
+  onReviewed?: (message: string, isSuccess: boolean) => void;
   workbenchSubmissions?: ProjectTaskSubmissionResponse[];
 }
 
@@ -77,8 +77,11 @@ export const ManagerNewsReviewWorkspace: React.FC<ManagerNewsReviewWorkspaceProp
         decision: 'APPROVE',
         comment: comment || 'Approved by manager.'
       });
-      setToast({ kind: 'success', message: 'Submission approved. Approved news articles were published to confidential Internal News.' });
-      onReviewed?.();
+      if (onReviewed) {
+        onReviewed('Submission approved. Approved news articles were published to confidential Internal News.', true);
+      } else {
+        setToast({ kind: 'success', message: 'Submission approved. Approved news articles were published to confidential Internal News.' });
+      }
       await fetchData();
       return true;
     } catch (err: unknown) {
@@ -99,8 +102,11 @@ export const ManagerNewsReviewWorkspace: React.FC<ManagerNewsReviewWorkspaceProp
         decision: 'REJECT',
         comment
       });
-      setToast({ kind: 'success', message: 'Returned for changes. Staff can edit the drafts and submit again.' });
-      onReviewed?.();
+      if (onReviewed) {
+        onReviewed('Returned for changes. Staff can edit the drafts and submit again.', true);
+      } else {
+        setToast({ kind: 'success', message: 'Returned for changes. Staff can edit the drafts and submit again.' });
+      }
       await fetchData();
       return true;
     } catch (err: unknown) {

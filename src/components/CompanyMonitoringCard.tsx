@@ -23,7 +23,9 @@ import type {
 import { useUser, ROLES } from '../context/UserContext';
 import { CompanyRelationshipChangeModal } from './CompanyMonitoring/CompanyRelationshipChangeModal';
 import { PendingProposalsList } from './CompanyMonitoring/PendingProposalsList';
+import { PendingProfileUpdatesList } from './CompanyMonitoring/PendingProfileUpdatesList';
 import { CompanyRelationshipHistoryList } from './CompanyMonitoring/CompanyRelationshipHistoryList';
+import { CompanyProfileEditModal } from './Monitoring/CompanyProfileEditModal';
 import styles from './CompanyMonitoringCard.module.css';
 
 interface CompanyMonitoringCardProps {
@@ -40,7 +42,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
   const [isEditing, setIsEditing] = useState(false);
   const [editFrequency, setEditFrequency] = useState<MonitoringFrequency>('MONTHLY');
-  const [editStaffId, setEditStaffId] = useState<number | ''>('');
+  const [editStaffEmail, setEditStaffEmail] = useState<string>('');
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<MonitoringReviewResult>('NO_CHANGE');
@@ -55,7 +57,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
       const data = await companyMonitoringApi.getAssignmentByCompany(companyProfileId);
       setAssignment(data);
     } catch (err: any) {
-      if (err.response?.status === 404 || err.response?.status === 400) {
+      if (err.status === 404 || err.status === 400) {
         setAssignment(null);
       } else {
         setError(t('error_fetching_assignment', 'Failed to load monitoring assignment.'));
@@ -71,30 +73,69 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
     }
   }, [companyProfileId]);
 
-  const canManage = currentUser?.role === ROLES.ADMIN || 
-                   (currentUser?.role === ROLES.MANAGER && currentUser?.id === responsibleManagerId);
+  const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  const [isSearchingStaff, setIsSearchingStaff] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const timeoutId = setTimeout(async () => {
+      setIsSearchingStaff(true);
+      try {
+        const users = await companyMonitoringApi.getStaffUsers(editStaffEmail);
+        setStaffUsers(users);
+      } catch (err) {
+        console.error('Failed to load staff users', err);
+      } finally {
+        setIsSearchingStaff(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [editStaffEmail, isEditing]);
+
+  const canManage = currentUser?.role === ROLES.ADMIN || (currentUser?.role === ROLES.MANAGER && currentUser?.id === responsibleManagerId);
   const canReview = currentUser?.role === ROLES.ADMIN || 
                    (currentUser?.role === ROLES.STAFF && assignment?.assignedStaffId === currentUser.id);
 
   const handleAssignOrUpdate = async () => {
-    if (!editStaffId) return;
+    if (!editStaffEmail) return;
     try {
+      // The user might have typed a full email or picked from datalist.
+      // We can search locally in staffUsers if we loaded them all.
+      let targetUser = staffUsers.find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
+      
+      // If not found locally, try to query backend just in case
+      if (!targetUser) {
+        const users = await companyMonitoringApi.getStaffUsers(editStaffEmail);
+        targetUser = users.find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
+      }
+
+      if (!targetUser) {
+        setError(t('error_staff_not_found', 'No STAFF found with this email.'));
+        return;
+      }
+      
+      const finalStaffId = targetUser.id;
+
       if (assignment) {
         await companyMonitoringApi.updateAssignment(assignment.id, {
-          assignedStaffId: Number(editStaffId),
+          assignedStaffId: finalStaffId,
           frequency: editFrequency
         });
       } else {
         await companyMonitoringApi.assignMonitor({
           companyProfileId,
-          assignedStaffId: Number(editStaffId),
+          assignedStaffId: finalStaffId,
           frequency: editFrequency
         });
       }
       setIsEditing(false);
       fetchAssignment();
-    } catch (err) {
-      setError(t('error_saving_assignment', 'Failed to save assignment.'));
+    } catch (err: any) {
+      console.error(err);
+      const errorMessage = err?.message || 'Failed to save assignment.';
+      setError(t('error_saving_assignment', errorMessage));
     }
   };
 
@@ -179,7 +220,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
             <button onClick={() => {
               setIsEditing(true);
               setEditFrequency(assignment.frequency);
-              setEditStaffId(assignment.assignedStaffId);
+              setEditStaffEmail(assignment.assignedStaffEmail || '');
             }} className={styles.iconButton} title="Edit">
               <Edit2 size={16} />
             </button>
@@ -202,15 +243,48 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
       {isEditing && (
         <div className={styles.editForm}>
-          <div className={styles.formGroup}>
-            <label>{t('staff_id', 'Staff ID')}</label>
+          <div className={styles.formGroup} style={{ position: 'relative' }}>
+            <label>{t('staff_email', 'Staff Email')}</label>
             <input 
-              type="number" 
-              value={editStaffId} 
-              onChange={e => setEditStaffId(Number(e.target.value))}
-              placeholder="e.g. 2"
+              type="email"
+              value={editStaffEmail} 
+              onChange={e => setEditStaffEmail(e.target.value)}
+              onFocus={() => {
+                if (staffUsers.length > 0) {
+                  // Only show if there's something to suggest
+                  // We'll manage visibility via css
+                }
+              }}
+              placeholder="e.g. staff@apms.com"
               className={styles.input}
             />
+            {isEditing && editStaffEmail.trim().length > 0 && staffUsers.filter(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase()).length === 0 && (
+              <div className={styles.suggestionPanel}>
+                <div className={styles.suggestionHead}>
+                  <span>Suggestions</span>
+                  {isSearchingStaff && <small>Loading...</small>}
+                </div>
+                {!isSearchingStaff && staffUsers.filter(u => u.email.toLowerCase().includes(editStaffEmail.toLowerCase()) || (u.fullName && u.fullName.toLowerCase().includes(editStaffEmail.toLowerCase()))).length === 0 && (
+                  <div className={styles.suggestionEmpty}>No account found for this email.</div>
+                )}
+                {staffUsers
+                  .filter(u => u.email.toLowerCase().includes(editStaffEmail.toLowerCase()) || (u.fullName && u.fullName.toLowerCase().includes(editStaffEmail.toLowerCase())))
+                  .map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={styles.suggestionItem}
+                      onMouseDown={() => setEditStaffEmail(account.email)}
+                    >
+                      <span className={styles.suggestionAvatar}>{(account.fullName || 'No').slice(0, 2).toUpperCase()}</span>
+                      <span>
+                        <strong>{account.fullName || 'No Name'}</strong>
+                        <small>{account.email} - {account.roles?.[0] || 'BUSINESS_DEVELOPMENT_STAFF'}</small>
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            )}
           </div>
           <div className={styles.formGroup}>
             <label>{t('frequency', 'Frequency')}</label>
@@ -225,7 +299,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
             </select>
           </div>
           <div className={styles.formActions}>
-            <button onClick={handleAssignOrUpdate} className={styles.primaryButton} disabled={!editStaffId}>
+            <button onClick={handleAssignOrUpdate} className={styles.primaryButton} disabled={!editStaffEmail}>
               <Save size={14} /> {t('save', 'Save')}
             </button>
             <button onClick={() => setIsEditing(false)} className={styles.secondaryButton}>
@@ -295,51 +369,15 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
               </button>
             </div>
           )}
-
-          {isReviewing && (
-            <div className={styles.reviewForm}>
-              <h4 className={styles.reviewTitle}>{t('submit_review', 'Submit Review')}</h4>
-              
-              <div className={styles.formGroup}>
-                <label>{t('result', 'Result')}</label>
-                <select 
-                  value={reviewResult} 
-                  onChange={e => setReviewResult(e.target.value as MonitoringReviewResult)}
-                  className={styles.input}
-                >
-                  <option value="NO_CHANGE">{t('no_change', 'No Change (Up to date)')}</option>
-                  <option value="UPDATE_PROPOSED">{t('update_proposed', 'Update Proposed')}</option>
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>{t('note', 'Note (Optional)')}</label>
-                <textarea 
-                  value={reviewNote} 
-                  onChange={e => setReviewNote(e.target.value)}
-                  placeholder={reviewResult === 'UPDATE_PROPOSED' ? t('note_placeholder_required', 'Required: Describe the updates...') : t('note_placeholder', 'Add any findings...')}
-                  className={styles.textarea}
-                  rows={3}
-                />
-              </div>
-
-              <div className={styles.formActions}>
-                <button 
-                  onClick={handleSubmitReview} 
-                  className={styles.primaryButton} 
-                >
-                  <Save size={14} /> {t('submit', 'Submit')}
-                </button>
-                <button onClick={() => setIsReviewing(false)} className={styles.secondaryButton}>
-                  <X size={14} /> {t('cancel', 'Cancel')}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {canManage && <PendingProposalsList companyProfileId={companyProfileId} />}
+      {canManage && (
+        <div style={{ marginTop: '32px' }}>
+          <PendingProposalsList companyProfileId={companyProfileId} />
+          <PendingProfileUpdatesList companyProfileId={companyProfileId} />
+        </div>
+      )}
 
       <CompanyRelationshipHistoryList companyProfileId={companyProfileId} />
 
@@ -349,6 +387,18 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
           onClose={() => setIsRelationshipModalOpen(false)}
           assignmentId={assignment.id}
           onSuccess={fetchAssignment}
+        />
+      )}
+
+      {isReviewing && assignment && (
+        <CompanyProfileEditModal
+          assignmentId={assignment.id}
+          companyProfileId={assignment.companyProfileId}
+          onClose={() => setIsReviewing(false)}
+          onSuccess={() => {
+            setIsReviewing(false);
+            fetchAssignment();
+          }}
         />
       )}
     </div>

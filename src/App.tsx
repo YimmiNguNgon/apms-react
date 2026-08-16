@@ -98,6 +98,7 @@ import {
 } from './pages/StaffPages';
 import { CompetitorWatchlist } from './pages/CompetitorWatchlist';
 import { CompetitorIntelligenceView } from './pages/CompetitorIntelligenceView';
+import { StaffMonitoringDashboard } from './pages/StaffMonitoringDashboard';
 import { CompanyMonitoringPage } from './pages/CompanyMonitoringPage';
 import { MyTasksWorkspace } from './pages/MyTasksWorkspace';
 
@@ -314,6 +315,7 @@ const MainApp: React.FC = () => {
       case 'search-companies':    return <SearchCompanies setActivePage={navigateToPage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;
+      case 'staff-monitoring':    return <StaffMonitoringDashboard />;
 
       default:
         return (

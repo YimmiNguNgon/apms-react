@@ -141,14 +141,6 @@ export const CompanyNewsResearchWorkspace: React.FC<CompanyNewsResearchWorkspace
     }
   };
 
-  const handleUploadImage = async (file: File) => {
-    const response = await companyNewsResearchApi.uploadImage(projectId, taskId, file);
-    if (!response.data?.storageKey) {
-      throw new Error('Image upload did not return a storage key.');
-    }
-    return response.data.storageKey;
-  };
-
   const handleDelete = (draft: CompanyNewsResearchDraft) => {
     setConfirmConfig({
       isOpen: true,
@@ -294,7 +286,6 @@ export const CompanyNewsResearchWorkspace: React.FC<CompanyNewsResearchWorkspace
             initialData={editingDraft ? toDraftForm(editingDraft) : null}
             onSave={handleSave}
             onCancel={handleCancelEditor}
-            onUploadImage={handleUploadImage}
             saving={saving}
             canEdit={canEdit}
           />

@@ -43,7 +43,7 @@
     "description": "Set up a research workspace and assign the target company context.",
     "closeAria": "Close create project modal",
     "projectNameLabel": "Project name",
-    "projectNamePlaceholder": "E.g., CMC cloud partnership review Q3",
+    "projectNamePlaceholder": "e.g CMC cloud partner",
     "projectTypeLabel": "Project type",
     "typeNewCompany": "New company research",
     "typeUpdateCompany": "Update existing company",

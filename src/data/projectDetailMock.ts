@@ -39,6 +39,7 @@ export type ProjectTask = {
   title: string;
   description: string;
   status: TaskStatus;
+  originalStatus?: string;
   priority: TaskPriority;
   assignee: ProjectMember;
   reporter: ProjectMember;

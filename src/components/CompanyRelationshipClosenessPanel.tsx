@@ -23,11 +23,11 @@ const LEVEL_LABELS: Record<string, string> = {
 
 const describeStars = (stars?: number | null) => {
   switch (stars) {
-    case 1: return '1 - Disconnected';
-    case 2: return '2 - Low';
-    case 3: return '3 - Moderate';
-    case 4: return '4 - Strong';
-    case 5: return '5 - Strategic';
+    case 1: return 'Contact Only';
+    case 2: return 'Weak';
+    case 3: return 'Established';
+    case 4: return 'Close';
+    case 5: return 'Strategic';
     default: return 'Unrated';
   }
 };
@@ -244,7 +244,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
             <p className={styles.subtitle}>Manual 1-5 stars with Owner Organization</p>
           </div>
         </div>
-        <span className={styles.badge}>{loading ? 'Loading' : displayLabel}</span>
+        <span className={styles.badge}>{loading ? 'Loading' : describeStars(data?.stars)}</span>
       </div>
 
       <div className={styles.body}>
@@ -275,7 +275,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 
           <div className={styles.scoreMeta}>
             <div className={styles.levelText}>
-              {describeStars(editing ? draftStars : data?.stars)} · {displayLabel}
+              {describeStars(editing ? draftStars : data?.stars)}
             </div>
             <div className={styles.timestamp}>
               {formatTime(effectiveTime) ? `Updated: ${formatTime(effectiveTime)}` : 'No update history'}

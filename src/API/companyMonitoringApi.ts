@@ -13,6 +13,13 @@ import type {
 } from '../types/domain';
 
 export const companyMonitoringApi = {
+  getStaffUsers: async (email?: string): Promise<any[]> => {
+    const response = await api.get<any[]>('/users/search', { params: email ? { email } : undefined });
+    const users = response.data;
+    // Filter out users that have BUSINESS_DEVELOPMENT_STAFF role
+    return users?.filter(u => u.roles?.includes('BUSINESS_DEVELOPMENT_STAFF')) || [];
+  },
+
   assignMonitor: async (
     data: CompanyMonitoringAssignmentRequest
   ): Promise<CompanyMonitoringAssignmentResponse> => {
