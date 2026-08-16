@@ -53,7 +53,6 @@ import { candidateApi } from '../API/candidateApi';
 import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
-import { RoleEvaluationWorkspace } from '../components/RoleEvaluationWorkspace';
 import type {
   AiExtractionResult,
   CandidateResponse,
@@ -6814,106 +6813,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <span className={styles.taskTypeBadge}>{taskTypeText[selectedStaffTask.taskType].title}</span>
                     </div>
 
-                    {selectedStaffTask.taskType === 'ROLE_EVALUATION' && (
-                      <RoleEvaluationWorkspace
-                        mode="staff"
-                        project={apiProject}
-                        task={selectedStaffTask}
-                        documents={projectDocuments}
-                        documentsLoading={projectDocumentsLoading}
-                        canEdit={canUseStaffWorkbench}
-                        uploadingEvidence={uploadingEvidence}
-                        onUploadEvidence={handleUploadEvidence}
-                        onSubmitted={async () => {
-                          const updatedTask = await taskApi.getTaskWorkbench(selectedStaffTask.projectId, selectedStaffTask.id);
-                          setWorkbench(updatedTask.data);
-                          const nextTask: ProjectTaskResponse = {
-                            ...selectedStaffTask,
-                            status: updatedTask.data.taskStatus,
-                          };
-                          updateTaskInState(nextTask);
-                          setSelectedStaffTask(null);
-                          setTaskRefreshTick((current) => current + 1);
-                          setToast({ kind: 'success', message: 'Role evaluation submitted to manager review.' });
-                        }}
-                      />
-                    )}
-
-                    {selectedStaffTask.taskType !== 'ROLE_EVALUATION' && (
-                      <label className={styles.workbenchUploadBox}>
-                        <input
-                          type="file"
-                          onChange={(event) => {
-                            void handleUploadEvidence(event.target.files?.[0] ?? null);
-                            event.currentTarget.value = '';
-                          }}
-                          disabled={!canUseStaffWorkbench || uploadingEvidence}
-                        />
-                        <FileText size={24} />
-                        <strong>
-                          {uploadingEvidence
-                            ? (selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Uploading contract...' : 'Uploading evidence...')
-                            : (selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Upload contract' : 'Upload evidence')}
-                        </strong>
-                        <span>
-                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                            ? 'Attach partner contract files for manager approval.'
-                            : 'Attach files that support this task before submitting them to the project.'}
-                        </span>
-                      </label>
-                    )}
-
-                    {selectedStaffTask.taskType !== 'ROLE_EVALUATION' && (
-                      <div className={styles.documentList}>
-                        {workbenchLoading && <div className={styles.empty}>Loading workbench...</div>}
-                        {!workbenchLoading && (workbench?.documents?.length ?? 0) === 0 && (
-                          <div className={styles.empty}>
-                            {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                              ? 'No contracts uploaded yet. Upload the agreement, MoU, NDA or other contract documents associated with this partner.'
-                              : 'No evidence uploaded yet.'}
-                          </div>
-                        )}
-                        {workbench?.documents?.map((document) => (
-                          <article className={styles.documentItem} key={document.id}>
-                            <div className={styles.documentIcon}><FileText size={18} /></div>
-                            <div>
-                              <strong>{document.fileName || `Import job #${document.id}`}</strong>
-                              <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
-                              <small>
-                                {document.errorMessage || `Import job: ${document.id} | Raw document: ${document.rawDocumentId || 'N/A'}`}
-                              </small>
-                            </div>
-                            <div className={styles.documentActions}>
-                              <button
-                                className={styles.button}
-                                type="button"
-                                onClick={() => void handleDocumentFileAction(document, 'open')}
-                                disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                              >
-                                <ExternalLink size={16} />Open
-                              </button>
-                              <button
-                                className={styles.button}
-                                type="button"
-                                onClick={() => void handleDocumentFileAction(document, 'download')}
-                                disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                              >
-                                <Download size={16} />Download
-                              </button>
-                              <button
-                                className={`${styles.button} ${styles.dangerButton}`}
-                                type="button"
-                                onClick={() => selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? setContractPendingDelete(document) : setDocumentPendingDelete(document)}
-                                disabled={!canUseStaffWorkbench || !document.rawDocumentId || staffTaskStatus !== 'IN_PROGRESS'}
-                              >
-                                <Trash2 size={16} />Delete
-                              </button>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-
                     {selectedStaffTask.taskType === 'GENERAL_TASK' && (
                       <div className={styles.taskSpecificPanel}>
                         <div className={styles.taskSpecificHead}>
@@ -7614,23 +7513,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-                  {selectedManagerReviewTask.taskType === 'ROLE_EVALUATION' && (
-                    <section className={styles.workbenchPanel}>
-                      <RoleEvaluationWorkspace
-                        mode={currentUser?.role === ROLES.OWNER ? 'owner' : 'manager'}
-                        project={apiProject}
-                        task={selectedManagerReviewTask}
-                        documents={projectDocuments.length > 0 ? projectDocuments : workbench?.documents || []}
-                        documentsLoading={projectDocumentsLoading}
-                        managerComment={managerReviewComment}
-                        onManagerCommentChange={setManagerReviewComment}
-                        onReviewed={async () => {
-                          await loadManagerWorkbench(selectedManagerReviewTask);
-                          setTaskRefreshTick((current) => current + 1);
-                        }}
-                      />
-                    </section>
-                  )}
+
 
                   {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
                   <section className={styles.workbenchPanel}>
