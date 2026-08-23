@@ -1,6 +1,6 @@
 export type ProjectStatus = 'Active' | 'Planning' | 'Blocked' | 'Completed';
 export type ProjectType = 'Partner Research' | 'Company Update';
-export type TaskStatus = 'todo' | 'progress' | 'review' | 'done';
+export type TaskStatus = 'todo' | 'progress' | 'review' | 'done' | 'AVAILABLE' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | string;
 export type TaskPriority = 'Highest' | 'High' | 'Medium' | 'Low';
 
 export type ProjectMember = {
@@ -36,6 +36,7 @@ export type ProjectActivity = {
 
 export type ProjectTask = {
   id: string;
+  projectId?: number;
   title: string;
   description: string;
   status: TaskStatus;
@@ -45,6 +46,9 @@ export type ProjectTask = {
   reporter: ProjectMember;
   dueDate: string;
   labels: string[];
+  availableActions?: string[];
+  taskType?: string;
+  keyResultType?: string;
   attachments: ProjectAttachment[];
   comments: ProjectComment[];
   activity: ProjectActivity[];
@@ -53,6 +57,12 @@ export type ProjectTask = {
   aiSuggestions: string[];
   aiRiskAnalysis: string;
   aiNextSteps: string[];
+  keyResult?: {
+    id: number;
+    type: string;
+    name: string;
+    weight?: number;
+  } | null;
 };
 
 export const columns: Array<{ id: TaskStatus; title: string; hint: string }> = [

@@ -6,6 +6,7 @@ interface CompanyProfileHeaderProps {
   initials: string;
   industry?: string;
   reviewStatus?: string;
+  version?: string;
   topRow?: React.ReactNode;
 }
 
@@ -18,6 +19,7 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
   initials,
   industry,
   reviewStatus,
+  version,
   topRow,
 }) => {
   return (
@@ -107,6 +109,7 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
             )}
             <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto' }}>
               Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{reviewStatus || 'VERIFIED'}</strong>
+              {version && <span style={{ marginLeft: '6px', color: '#6366F1' }}>• v{version}</span>}
             </span>
           </div>
         </div>

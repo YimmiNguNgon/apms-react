@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react';
 import { companyMonitoringApi } from '../API/companyMonitoringApi';
+import { accountApi } from '../API/accountApi';
 import type {
   CompanyMonitoringAssignmentResponse,
   MonitoringFrequency,
@@ -25,7 +26,7 @@ import { CompanyRelationshipChangeModal } from './CompanyMonitoring/CompanyRelat
 import { PendingProposalsList } from './CompanyMonitoring/PendingProposalsList';
 import { PendingProfileUpdatesList } from './CompanyMonitoring/PendingProfileUpdatesList';
 import { CompanyRelationshipHistoryList } from './CompanyMonitoring/CompanyRelationshipHistoryList';
-import { CompanyProfileEditModal } from './Monitoring/CompanyProfileEditModal';
+import { StaffMonitoringReviewPage } from '../pages/StaffMonitoringReviewPage';
 import styles from './CompanyMonitoringCard.module.css';
 
 interface CompanyMonitoringCardProps {
@@ -80,11 +81,11 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
     if (!isEditing) return;
 
     const timeoutId = setTimeout(async () => {
-      setIsSearchingStaff(true);
-      try {
-        const users = await companyMonitoringApi.getStaffUsers(editStaffEmail);
-        setStaffUsers(users);
-      } catch (err) {
+        setIsSearchingStaff(true);
+        try {
+          const res = await accountApi.searchAccountsByEmail(editStaffEmail);
+          setStaffUsers(res.data || []);
+        } catch (err) {
         console.error('Failed to load staff users', err);
       } finally {
         setIsSearchingStaff(false);
@@ -107,8 +108,8 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
       
       // If not found locally, try to query backend just in case
       if (!targetUser) {
-        const users = await companyMonitoringApi.getStaffUsers(editStaffEmail);
-        targetUser = users.find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
+        const res = await accountApi.searchAccountsByEmail(editStaffEmail);
+        targetUser = (res.data || []).find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
       }
 
       if (!targetUser) {
@@ -135,7 +136,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
     } catch (err: any) {
       console.error(err);
       const errorMessage = err?.message || 'Failed to save assignment.';
-      setError(t('error_saving_assignment', errorMessage));
+      setError(t('error_saving_assignment', { defaultValue: errorMessage }) as string);
     }
   };
 
@@ -391,7 +392,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
       )}
 
       {isReviewing && assignment && (
-        <CompanyProfileEditModal
+        <StaffMonitoringReviewPage
           assignmentId={assignment.id}
           companyProfileId={assignment.companyProfileId}
           onClose={() => setIsReviewing(false)}

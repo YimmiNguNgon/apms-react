@@ -162,6 +162,7 @@ const STAFF_MENU: MenuSection[] = [
       { id: 'owner-profile', label: 'My Enterprise' },
       // { id: "company-profiles", label: "menu.companyProfiles" },
       // { id: "news", label: "News" },
+      // { id: "news", label: "News" },
     ],
   },
   // {
@@ -259,7 +260,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
       case 'companies':
       case 'company-profiles':
         return <Database size={18} />;
-      case 'company-monitoring': return <Activity size={18} />;
+      case 'company-monitoring':
+      case 'staff-monitoring': return <Activity size={18} />;
       case 'news': return <Newspaper size={18} />;
       case 'project-management': return <FolderKanban size={18} />;
       case 'system-chat': return <MessageSquare size={18} />;

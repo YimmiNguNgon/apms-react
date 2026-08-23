@@ -60,6 +60,7 @@ interface CandidateReviewWorkspaceProps {
   onSubmit?: () => void;
   submitLoading?: boolean;
   readOnly?: boolean;
+  isResearchNewCompany?: boolean;
 }
 
 type TabType = 'Identity' | 'Business' | 'Markets' | 'Products' | 'SWOT' | 'Analysis';
@@ -143,7 +144,8 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   onCancel,
   onSubmit,
   submitLoading,
-  readOnly
+  readOnly,
+  isResearchNewCompany
 }) => {
   const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
   const [pendingUpdates, setPendingUpdates] = useState<Record<string, { reviewedValue: any, reviewStatus: string }>>({});
@@ -520,9 +522,9 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
           <div className={styles.tabContent}>
             {activeTab === 'Identity' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('identity.legalName', 'Legal Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.legalName'])} label="Legal Name" fieldKey="identity.legalName" fieldResult={fieldResults['identity.legalName']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.legalName', 'Legal Name', <EditableScalarField disabled={readOnly || isResearchNewCompany || isManagerAccepted(fieldResults['identity.legalName'])} label="Legal Name" fieldKey="identity.legalName" fieldResult={fieldResults['identity.legalName']} onChange={handleFieldChange} />)}
                 {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
-                {renderReviewField('identity.taxCode', 'Tax Code', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.taxCode'])} label="Tax Code" fieldKey="identity.taxCode" fieldResult={fieldResults['identity.taxCode']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.taxCode', 'Tax Code', <EditableScalarField disabled={readOnly || isResearchNewCompany || isManagerAccepted(fieldResults['identity.taxCode'])} label="Tax Code" fieldKey="identity.taxCode" fieldResult={fieldResults['identity.taxCode']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
                 {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}

@@ -1,232 +1,255 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, XCircle } from 'lucide-react';
-import styles from './CompanyRelationship.module.css';
-import type { CompanyProfileUpdateProposalResponse, ProfileResponse } from '../../types/domain';
+import React, { useEffect, useState } from 'react';
+import { X, CheckCircle, XCircle, AlertCircle, ArrowRight, Save, Trash2, Edit3, PlusCircle } from 'lucide-react';
 import { api } from '../../services/api';
+import type { CompanyProfileUpdateProposalResponse, ProfileResponse } from '../../types/domain';
+import styles from './ProfileUpdateApprovalModal.module.css';
 
 interface ProfileUpdateApprovalModalProps {
   proposal: CompanyProfileUpdateProposalResponse;
   onClose: () => void;
-  onApprove: (id: string) => Promise<void>;
-  onReject: (id: string) => Promise<void>;
+  onSuccess: () => void;
 }
 
-export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProps> = ({
-  proposal,
-  onClose,
-  onApprove,
-  onReject
-}) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProps> = ({ proposal, onClose, onSuccess }) => {
   const [currentProfile, setCurrentProfile] = useState<ProfileResponse | null>(null);
-  
-  // Custom confirmation modal state
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
-
-  // Custom toast state
-  const [toast, setToast] = useState<{ show: boolean, message: string, type: 'success' | 'error' } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3000);
-  };
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    const fetchCurrentProfile = async () => {
+    const fetchProfile = async () => {
       try {
-        const res = await api.get<ProfileResponse>(`/company-profiles/${proposal.companyProfileId}`);
-        setCurrentProfile(res.data);
+        const res = await api.get<ProfileResponse>('/company-profiles/' + proposal.companyProfileId);
+        if (res.data) {
+          setCurrentProfile(res.data);
+        }
       } catch (err) {
-        console.error('Failed to fetch current profile for comparison', err);
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchCurrentProfile();
+    fetchProfile();
   }, [proposal.companyProfileId]);
 
   const executeAction = async () => {
     if (!confirmAction) return;
-    
     setIsSubmitting(true);
     try {
       if (confirmAction === 'approve') {
-        await onApprove(proposal.id);
-        showToast('Profile update approved successfully', 'success');
+        await api.patch('/profile-update-proposals/' + proposal.id + '/approve', { note: 'Approved via Monitoring Dashboard' });
       } else {
-        await onReject(proposal.id);
-        showToast('Profile update rejected successfully', 'success');
+        await api.patch('/profile-update-proposals/' + proposal.id + '/reject', { note: 'Rejected via Monitoring Dashboard' });
       }
-      // Delay closing to show toast
+      setToast({ show: true, message: 'Proposal successfully ' + confirmAction + 'd.', type: 'success' });
       setTimeout(() => {
-        onClose();
+        onSuccess();
       }, 1500);
     } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Action failed';
-      showToast(msg, 'error');
-    } finally {
+      console.error(err);
+      setToast({ show: true, message: err?.message || 'Failed to ' + confirmAction + ' proposal.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
       setIsSubmitting(false);
       setConfirmAction(null);
     }
   };
 
-  const formatValue = (value: any) => {
+  const formatValue = (value: any): string => {
     if (value === null || value === undefined || value === '') return 'N/A';
     if (Array.isArray(value)) {
       if (value.length === 0) return 'N/A';
-      return value.map(v => typeof v === 'object' ? v.fullAddress || JSON.stringify(v) : v).join(', ');
+      return value.map(v => typeof v === 'object' ? (v.name || v.fullName || v.title || v.fullAddress || JSON.stringify(v)) : v).join(', ');
     }
-    if (typeof value === 'object') return value.fullAddress || JSON.stringify(value, null, 2);
+    if (typeof value === 'object') return value.fullAddress || value.name || value.employeeTier || JSON.stringify(value);
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     return String(value);
   };
 
-  const renderField = (label: string, originalValue: any, proposedValue: any, isFullWidth: boolean = false) => {
-    const origStr = formatValue(originalValue);
-    const propStr = formatValue(proposedValue);
-    const isChanged = origStr !== propStr && propStr !== 'N/A' && proposedValue !== undefined;
+  const renderDiffField = (label: string, original: any, proposed: any, isFullWidth = false) => {
+    const origStr = formatValue(original);
+    const propStr = formatValue(proposed);
+    if (origStr === propStr || (origStr === 'N/A' && proposed === undefined)) return null;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', gridColumn: isFullWidth ? '1 / -1' : 'auto' }}>
-        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {label}
-          {isChanged && <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6' }} title="Modified"></span>}
-        </label>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <div style={{ 
-            fontSize: '0.95rem', 
-            color: isChanged ? '#15803d' : '#1e293b', 
-            fontWeight: isChanged ? 500 : 400,
-            backgroundColor: isChanged ? '#dcfce7' : '#f8fafc',
-            border: `1px solid ${isChanged ? '#bbf7d0' : '#e2e8f0'}`,
-            padding: '8px 12px',
-            borderRadius: '6px',
-            minHeight: '38px',
-            display: 'flex',
-            alignItems: 'center',
-            wordBreak: 'break-word'
-          }}>
+      <div key={label} style={{ display: 'flex', flexDirection: 'column' as any, gap: '8px', gridColumn: isFullWidth ? '1 / -1' : 'auto', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as any }}>{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ flex: 1, padding: '8px 12px', background: '#fee2e2', color: '#991b1b', borderRadius: '6px', fontSize: '0.875rem', textDecoration: 'line-through' }}>
+            {origStr}
+          </div>
+          <ArrowRight size={16} color="#94a3b8" />
+          <div style={{ flex: 1, padding: '8px 12px', background: '#dcfce3', color: '#166534', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500 }}>
             {propStr}
           </div>
-          {isChanged && origStr !== 'N/A' && origStr !== '[]' && origStr !== '{}' && (
-            <div style={{ fontSize: '0.85rem', color: '#94a3b8', textDecoration: 'line-through', paddingLeft: '4px' }}>
-              {origStr}
-            </div>
-          )}
         </div>
       </div>
     );
   };
 
+  const renderBoardMembersDiff = (original: any[], proposed: any[]) => {
+    if (!original?.length && !proposed?.length) return null;
+    if (JSON.stringify(original) === JSON.stringify(proposed)) return null;
+
+    const origMembers = original || [];
+    const propMembers = proposed || [];
+
+    const renderMember = (member: any, type: 'orig' | 'prop') => (
+      <div key={member.fullName + member.position} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px', background: type === 'orig' ? '#fee2e2' : '#dcfce3', color: type === 'orig' ? '#991b1b' : '#166534', borderRadius: '6px', marginBottom: '8px', textDecoration: type === 'orig' ? 'line-through' : 'none' }}>
+        {member.imageUrl ? (
+          <img src={member.imageUrl} alt={member.fullName} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold' }}>{member.fullName?.charAt(0) || '?'}</div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{member.fullName}</span>
+          <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{member.position}</span>
+        </div>
+      </div>
+    );
+
+    return (
+      <div key="board-members" style={{ display: 'flex', flexDirection: 'column' as any, gap: '8px', gridColumn: '1 / -1', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as any }}>Board Members</span>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as any }}>
+            {origMembers.length === 0 ? <div style={{ fontSize: '0.875rem', padding: '8px', background: '#fee2e2', borderRadius: '6px', color: '#991b1b', textDecoration: 'line-through' }}>N/A</div> : origMembers.map((m: any) => renderMember(m, 'orig'))}
+          </div>
+          <ArrowRight size={16} color="#94a3b8" style={{ marginTop: '16px' }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as any }}>
+            {propMembers.length === 0 ? <div style={{ fontSize: '0.875rem', padding: '8px', background: '#dcfce3', borderRadius: '6px', color: '#166534' }}>N/A</div> : propMembers.map((m: any) => renderMember(m, 'prop'))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDiffSection = (title: string, fields: React.ReactNode[]) => {
+    const validFields = fields.filter(f => f !== null);
+    if (validFields.length === 0) return null;
+    return (
+      <div key={title} style={{ marginBottom: '24px', background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Edit3 size={18} color="#3b82f6" /> {title}
+        </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          {validFields}
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={styles.modalContent} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+          <span>Loading proposal data...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.modalContent} style={{ maxWidth: '850px', width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-        <div className={styles.modalHeader} style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className={styles.modalTitle} style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>Review Profile Update Proposal</h3>
-          <button className={styles.closeButton} onClick={onClose} disabled={isSubmitting} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+      <div className={styles.modalContent} style={{ maxWidth: '900px', width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' as any, padding: 0, overflow: 'hidden', borderRadius: '16px' }}>
+        
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 700 }}>Review Profile Update Proposal</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.875rem', color: '#64748b' }}>
+              Submitted on {proposal.createdAt ? new Date(proposal.createdAt).toLocaleDateString() : 'N/A'}
+            </p>
+          </div>
+          <button onClick={onClose} disabled={isSubmitting} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', padding: '8px', borderRadius: '50%' }}>
             <X size={24} />
           </button>
         </div>
 
-        <div className={styles.modalBody} style={{ overflowY: 'auto', padding: '24px', flex: 1, backgroundColor: '#f1f5f9' }}>
+        {/* Body */}
+        <div style={{ overflowY: 'auto' as any, padding: '24px', flex: 1, backgroundColor: '#f1f5f9' }}>
           
-          <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <strong style={{ color: '#0f172a', display: 'block', marginBottom: '8px', fontSize: '0.95rem' }}>Change Summary from Staff:</strong>
-            <p style={{ color: '#475569', margin: 0, fontSize: '0.95rem' }}>{proposal.changeSummary || 'No summary provided.'}</p>
-          </div>
-
-          <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>Legal & Identity Information</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              {renderField('Trade Name', currentProfile?.identity?.tradeName, proposal.proposedIdentity?.tradeName)}
-              {renderField('Legal Name', currentProfile?.identity?.legalName, proposal.proposedIdentity?.legalName)}
-              {renderField('Tax Code', currentProfile?.identity?.taxCode, proposal.proposedIdentity?.taxCode)}
-              {renderField('Registration No', currentProfile?.identity?.registrationNumber, proposal.proposedIdentity?.registrationNumber)}
+          <div style={{ backgroundColor: '#fff', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <AlertCircle size={20} color="#3b82f6" style={{ marginTop: '2px' }} />
+            <div>
+              <strong style={{ color: '#0f172a', display: 'block', marginBottom: '4px', fontSize: '0.95rem' }}>Staff Change Summary</strong>
+              <p style={{ color: '#475569', margin: 0, fontSize: '0.9rem', lineHeight: '1.5' }}>
+                {proposal.changeSummary || 'No summary provided by the staff.'}
+              </p>
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>Contact & Size Information</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              {renderField('Website', currentProfile?.contact?.website, proposal.proposedContact?.website)}
-              {renderField('Contact Email', currentProfile?.contact?.emails, proposal.proposedContact?.emails)}
-              {renderField('Phone Number', currentProfile?.contact?.phones, proposal.proposedContact?.phones)}
-              {renderField('Company Size (Tier)', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier)}
-              {renderField('Head Office Address', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true)}
-            </div>
-          </div>
+          {/* Diffs */}
+          {renderDiffSection('Legal & Identity', [
+            renderDiffField('Trade Name', currentProfile?.identity?.tradeName, proposal.proposedIdentity?.tradeName),
+            renderDiffField('Legal Name', currentProfile?.identity?.legalName, proposal.proposedIdentity?.legalName),
+            renderDiffField('Tax Code', currentProfile?.identity?.taxCode, proposal.proposedIdentity?.taxCode),
+            renderDiffField('Registration No', currentProfile?.identity?.registrationNumber, proposal.proposedIdentity?.registrationNumber),
+            renderDiffField('Stock Ticker', currentProfile?.identity?.stockTicker, proposal.proposedIdentity?.stockTicker),
+          ])}
 
-          <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>Business Information</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              {renderField('Industry', currentProfile?.business?.industries, proposal.proposedBusiness?.industries)}
-              {renderField('Markets (Regions)', currentProfile?.business?.markets, proposal.proposedBusiness?.markets)}
-              {renderField('Target Customers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers)}
-              {renderField('Products & Services', currentProfile?.business?.products?.map((p: any) => p.name).filter(Boolean), proposal.proposedBusiness?.products?.map((p: any) => p.name).filter(Boolean), true)}
-            </div>
-          </div>
+          {renderDiffSection('Contact & Size', [
+            renderDiffField('Website', currentProfile?.contact?.website, proposal.proposedContact?.website),
+            renderDiffField('Contact Email', currentProfile?.contact?.emails, proposal.proposedContact?.emails),
+            renderDiffField('Phone Number', currentProfile?.contact?.phones, proposal.proposedContact?.phones),
+            renderDiffField('Company Size (Tier)', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier),
+            renderDiffField('Head Office', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true),
+          ])}
 
-          <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>Relationship Proposal</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
-              {proposal.proposedRelationship && renderField('Proposed Relationship', currentProfile?.relationshipType, proposal.proposedRelationship, true)}
-            </div>
-          </div>
+          {renderDiffSection('Business & Strategy', [
+            renderDiffField('Industries', currentProfile?.business?.industries, proposal.proposedBusiness?.industries),
+            renderDiffField('Markets', currentProfile?.business?.markets, proposal.proposedBusiness?.markets),
+            renderDiffField('Target Customers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers),
+            renderDiffField('Business Model', currentProfile?.business?.businessModel, proposal.proposedBusiness?.businessModel),
+            renderDiffField('Products & Services', currentProfile?.business?.products, proposal.proposedBusiness?.products, true),
+          ])}
+
+          {renderDiffSection('SWOT Analysis', [
+            renderDiffField('Strengths', currentProfile?.insights?.strengths, proposal.proposedInsights?.strengths, true),
+            renderDiffField('Weaknesses', currentProfile?.insights?.weaknesses, proposal.proposedInsights?.weaknesses, true),
+            renderDiffField('Opportunities', currentProfile?.insights?.opportunities, proposal.proposedInsights?.opportunities, true),
+            renderDiffField('Threats', currentProfile?.insights?.threats, proposal.proposedInsights?.threats, true),
+          ])}
+
+          {renderDiffSection('Board & Management', [
+            renderBoardMembersDiff(currentProfile?.companyMembers || [], proposal.proposedCompanyMembers || []),
+          ])}
           
         </div>
 
-        <div className={styles.modalFooter} style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', borderTop: '1px solid #e2e8f0', backgroundColor: '#ffffff' }}>
-          <button 
-            onClick={onClose} 
-            className={styles.ghostButton}
-            disabled={isSubmitting || confirmAction !== null}
-          >
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', borderTop: '1px solid #e2e8f0', backgroundColor: '#fff' }}>
+          <button onClick={onClose} disabled={isSubmitting || confirmAction !== null} style={{ padding: '10px 16px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
             Cancel
           </button>
-          <button 
-            onClick={() => setConfirmAction('reject')} 
-            className={styles.dangerButton}
-            disabled={isSubmitting || confirmAction !== null}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <XCircle size={16} /> Reject
+          <button onClick={() => setConfirmAction('reject')} disabled={isSubmitting || confirmAction !== null} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', border: 'none', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+            <XCircle size={18} /> Reject Updates
           </button>
-          <button 
-            onClick={() => setConfirmAction('approve')} 
-            className={styles.successButton}
-            disabled={isSubmitting || confirmAction !== null}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <CheckCircle size={16} /> Approve
+          <button onClick={() => setConfirmAction('approve')} disabled={isSubmitting || confirmAction !== null} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', border: 'none', background: '#2563eb', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+            <CheckCircle size={18} /> Approve Updates
           </button>
         </div>
       </div>
 
       {/* Confirmation Modal */}
       {confirmAction && (
-        <div className={styles.modalOverlay} style={{ zIndex: 1000, backgroundColor: 'rgba(0, 0, 0, 0.6)' }}>
-          <div className={styles.modalContent} style={{ maxWidth: '400px', padding: '24px', textAlign: 'center' }}>
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '16px', color: '#0f172a' }}>
+        <div className={styles.modalOverlay} style={{ zIndex: 1000, backgroundColor: 'rgba(15, 23, 42, 0.75)' }}>
+          <div className={styles.modalContent} style={{ maxWidth: '420px', padding: '24px', textAlign: 'center', borderRadius: '16px' }}>
+            <div style={{ display: 'inline-flex', padding: '16px', background: confirmAction === 'approve' ? '#dbeafe' : '#fee2e2', borderRadius: '50%', marginBottom: '16px' }}>
+              {confirmAction === 'approve' ? <CheckCircle size={32} color="#2563eb" /> : <XCircle size={32} color="#dc2626" />}
+            </div>
+            <h3 style={{ fontSize: '1.25rem', margin: '0 0 12px 0', color: '#0f172a' }}>
               Confirm {confirmAction === 'approve' ? 'Approval' : 'Rejection'}
             </h3>
-            <p style={{ color: '#475569', marginBottom: '24px' }}>
-              Are you sure you want to {confirmAction} this profile update proposal?
+            <p style={{ color: '#475569', margin: '0 0 24px 0', lineHeight: '1.5' }}>
+              Are you sure you want to {confirmAction} this profile update proposal? {confirmAction === 'approve' && 'This will instantly update the public company profile and increment its version.'}
             </p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-              <button 
-                className={styles.ghostButton} 
-                onClick={() => setConfirmAction(null)}
-                disabled={isSubmitting}
-              >
+              <button onClick={() => setConfirmAction(null)} disabled={isSubmitting} style={{ flex: 1, padding: '10px', background: '#f1f5f9', border: 'none', color: '#475569', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button 
-                className={confirmAction === 'approve' ? styles.successButton : styles.dangerButton}
-                onClick={executeAction}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Processing...' : `Yes, ${confirmAction}`}
+              <button onClick={executeAction} disabled={isSubmitting} style={{ flex: 1, padding: '10px', background: confirmAction === 'approve' ? '#2563eb' : '#dc2626', border: 'none', color: '#fff', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+                {isSubmitting ? 'Processing...' : 'Yes, Confirm'}
               </button>
             </div>
           </div>
@@ -236,30 +259,19 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
       {/* Toast Notification */}
       {toast && toast.show && (
         <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
+          position: 'fixed', bottom: '24px', right: '24px',
           backgroundColor: toast.type === 'success' ? '#10b981' : '#ef4444',
-          color: 'white',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          zIndex: 9999,
-          animation: 'slideInRight 0.3s ease-out forwards'
+          color: 'white', padding: '12px 24px', borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
+          zIndex: 9999, animation: 'slideInRight 0.3s ease-out forwards' as any
         }}>
           {toast.type === 'success' ? <CheckCircle size={20} /> : <XCircle size={20} />}
           <span style={{ fontWeight: 500 }}>{toast.message}</span>
         </div>
       )}
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `}</style>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      ` }} />
     </div>
   );
 };

@@ -35,7 +35,7 @@ export interface BoardPayload {
   companyMembers: CompanyProfileMember[];
 }
 
-export type EditableListingTab = 'overview' | 'swot' | 'business-fields' | 'board';
+export type EditableListingTab = 'overview' | 'swot' | 'business-fields' | 'board' | 'overview_identity' | 'overview_contact' | 'overview_business';
 
 export interface ListingEditState {
   editing: boolean;
@@ -305,6 +305,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const [bfDraft, setBfDraft] = useState<BfDraft | null>(null);
   const [boardDraft, setBoardDraft] = useState<BoardDraftMember[] | null>(null);
   const [editingMember, setEditingMember] = useState<number | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   const cancelAll = () => {
     setEditing(null);
@@ -320,7 +321,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const startEditing = (tab: EditableListingTab) => {
     setMsg(null);
     setEditingMember(null);
-    if (tab === 'overview') {
+    if (tab.startsWith('overview')) {
       setOverviewDraft({
         legalName: profile.identity?.legalName ?? '',
         tradeName: profile.identity?.tradeName ?? '',
@@ -446,195 +447,158 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   };
 
   /* ── Overview ─────────────────────────────────────────────────── */
-  const renderOverviewView = () => {
+
+
+
+
+  const startFieldEdit = (key: string) => {
+    startEditing('overview');
+    setEditingField(key);
+  };
+
+  const cancelFieldEdit = () => {
+    setEditingField(null);
+    cancelAll();
+  };
+
+  const saveFieldEdit = () => {
+    saveOverview();
+    setEditingField(null);
+  };
+
+  const renderOverview = () => {
     const tradeName = profile.identity?.tradeName;
     const legalName = profile.identity?.legalName;
     const taxCode = profile.identity?.taxCode || 'Chưa cập nhật';
     const regNo = profile.identity?.registrationNumber || 'Chưa cập nhật';
     const empCount = profile.companySize?.employeeCount || intelligence?.company?.employeeCount;
     const empTier = profile.companySize?.employeeTier;
-    const sizeStr = empCount ? `${empCount} nhân sự ${empTier ? `(${empTier})` : ''}` : (empTier || 'Chưa cập nhật');
+    const sizeStr = empCount ? `${empCount} nhân sự ${empTier ? `(${empTier})` : ""}` : (empTier || "Chưa cập nhật");
     const website = profile.contact?.website || intelligence?.company?.website || 'Chưa cập nhật';
     const email = profile.contact?.emails?.[0] || 'Chưa cập nhật';
     const phone = profile.contact?.phones?.[0] || 'Chưa cập nhật';
     const address = profile.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Chưa cập nhật';
-    const ticker = profile.identity?.stockTicker ?? profile.stockTicker?.trim() ?? '';
-    const exchange = profile.identity?.stockExchange ?? profile.stockExchange ?? 'NONE';
-    const exchangeLabel = (ex?: string) => (ex && ex !== 'NONE' ? ex : 'Chưa niêm yết');
+
+    const setField = (key: keyof OverviewDraft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
+    };
+
+    const renderEditableField = (
+      key: keyof OverviewDraft,
+      label: string,
+      currentValue: React.ReactNode,
+      hasValue: boolean,
+      renderInput: () => React.ReactNode,
+      isFullWidth: boolean = false
+    ) => {
+      const isEditingThis = editingField === key && overviewDraft;
+      return (
+        <div style={{ ...C.fieldCell, position: 'relative', gridColumn: isFullWidth ? '1 / -1' : 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <span style={C.fieldLabel}>{label}</span>
+            {editable && !isEditingThis && (
+              <button 
+                type="button" 
+                onClick={() => startFieldEdit(key)} 
+                style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', padding: '2px 8px', borderRadius: '4px' }}>
+                Chỉnh sửa
+              </button>
+            )}
+          </div>
+          {isEditingThis ? (
+            <div style={{ marginTop: '4px' }}>
+              {renderInput()}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={cancelFieldEdit} style={{ ...GHOST_BUTTON, padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: '28px' }}>Hủy</button>
+                <button type="button" onClick={saveFieldEdit} disabled={saving} style={{ ...PRIMARY_BUTTON, padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: '28px' }}>
+                  {saving ? 'Đang lưu...' : 'Lưu'}
+                </button>
+                {msg && <span style={{ fontSize: '0.66rem', fontWeight: 600, color: msg.ok ? '#15803D' : '#B91C1C', alignSelf: 'center' }}>{msg.text}</span>}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: '2px' }}>
+              {typeof currentValue === 'string' ? (
+                 <strong style={{ ...(hasValue ? C.value : C.muted), whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{currentValue}</strong>
+              ) : currentValue}
+            </div>
+          )}
+        </div>
+      );
+    };
 
     return (
       <div style={{ display: 'grid', gridTemplateColumns: overviewAside ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'start' }} id="company-detail-2col-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          
           <section style={C.card}>
-            <div style={C.cardHeader}>
-              <h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2>
-            </div>
+            <div style={C.cardHeader}><h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2></div>
             <div style={C.fieldGrid}>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Tên Thương Mại (Trade Name)</span>
-                <strong style={tradeName ? C.value : C.muted}>{tradeName || 'Chưa cập nhật'}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Tên Pháp Lý (Legal Name)</span>
-                <strong style={legalName ? C.value : C.muted}>{legalName || 'Chưa cập nhật'}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Mã Số Thuế (Tax Code)</span>
-                <strong style={{ ...(taxCode !== 'Chưa cập nhật' ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Số Giấy Đăng Ký KD (Registration No)</span>
-                <strong style={{ ...(regNo !== 'Chưa cập nhật' ? C.value : C.muted), fontFamily: 'monospace' }}>{regNo}</strong>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '8px', borderTop: '1px solid #F1F5F9', paddingTop: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <h3 style={C.h3}>Thông Tin Niêm Yết</h3>
-                {canEditListing && !editable && listing && !listing.editing && (
-                  <button
-                    type="button"
-                    onClick={listing.onStartEdit}
-                    style={{
-                      background: '#EFF6FF',
-                      border: '1px solid #BFDBFE',
-                      color: '#1D4ED8',
-                      fontSize: '0.62rem',
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cập nhật mã CK
-                  </button>
-                )}
-              </div>
-              {canEditListing && !editable && listing && listing.editing ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
-                  <div>
-                    <span style={C.fieldLabel}>Mã Cổ Phiếu</span>
-                    <input
-                      type="text"
-                      value={listing.tickerDraft}
-                      disabled={listing.exchangeDraft === 'NONE'}
-                      onChange={(event) => listing.onTickerChange(event.target.value.toUpperCase())}
-                      placeholder="VD: FPT"
-                      style={{
-                        width: '100%',
-                        padding: '4px 8px',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '6px',
-                        fontSize: '0.72rem',
-                        fontFamily: 'monospace',
-                        textTransform: 'uppercase',
-                        background: listing.exchangeDraft === 'NONE' ? '#F1F5F9' : '#FFFFFF',
-                        color: '#0F172A',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <span style={C.fieldLabel}>Sàn Giao Dịch</span>
-                    <select
-                      value={listing.exchangeDraft}
-                      onChange={(event) => listing.onExchangeChange(event.target.value)}
-                      style={INPUT_STYLE}
-                    >
-                      <option value="HOSE">HOSE</option>
-                      <option value="HNX">HNX</option>
-                      <option value="UPCOM">UPCOM</option>
-                      <option value="NONE">Chưa niêm yết</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      type="button"
-                      onClick={listing.onSave}
-                      disabled={listing.saving || (listing.exchangeDraft !== 'NONE' && !listing.tickerDraft.trim())}
-                      style={{
-                        ...PRIMARY_BUTTON,
-                        opacity: listing.saving || (listing.exchangeDraft !== 'NONE' && !listing.tickerDraft.trim()) ? 0.5 : 1,
-                      }}
-                    >
-                      {listing.saving ? 'Đang lưu...' : 'Lưu'}
-                    </button>
-                    <button type="button" onClick={listing.onCancel} style={GHOST_BUTTON}>
-                      Hủy
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={C.fieldGrid}>
-                  <div style={C.fieldCell}>
-                    <span style={C.fieldLabel}>Mã Cổ Phiếu (Ticker)</span>
-                    <strong style={{ ...(ticker ? C.value : C.muted), color: ticker ? '#1E40AF' : '#94A3B8', fontFamily: 'monospace' }}>
-                      {ticker || 'Chưa niêm yết'}
-                    </strong>
-                  </div>
-                  <div style={C.fieldCell}>
-                    <span style={C.fieldLabel}>Sàn Giao Dịch (Exchange)</span>
-                    <strong style={exchange !== 'NONE' ? C.value : C.muted}>{exchangeLabel(exchange)}</strong>
-                  </div>
-                </div>
-              )}
-              {listing?.msg && (
-                <div style={{ marginTop: '6px', fontSize: '0.62rem', fontWeight: 500, color: listing.msg.ok ? '#15803D' : '#B91C1C' }}>
-                  {listing.msg.text}
-                </div>
-              )}
+              {renderEditableField('tradeName', 'Tên Thương Mại (Trade Name)', tradeName || 'Chưa cập nhật', !!tradeName, () => (
+                <input value={overviewDraft!.tradeName} onChange={setField('tradeName')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('legalName', 'Tên Pháp Lý (Legal Name)', legalName || 'Chưa cập nhật', !!legalName, () => (
+                <input value={overviewDraft!.legalName} onChange={setField('legalName')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('taxCode', 'Mã Số Thuế (Tax Code)', taxCode, taxCode !== 'Chưa cập nhật', () => (
+                <input value={overviewDraft!.taxCode} onChange={setField('taxCode')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('registrationNumber', 'Số Giấy Đăng Ký KD', regNo, regNo !== 'Chưa cập nhật', () => (
+                <input value={overviewDraft!.registrationNumber} onChange={setField('registrationNumber')} style={INPUT_STYLE} />
+              ))}
             </div>
           </section>
 
           <section style={C.card}>
-            <div style={C.cardHeader}>
-              <h2 style={C.h2}>Thông tin Liên hệ & Quy mô</h2>
-            </div>
+            <div style={C.cardHeader}><h2 style={C.h2}>Thông tin Liên hệ & Quy mô</h2></div>
             <div style={C.fieldGrid}>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Website</span>
-                {website !== 'Chưa cập nhật' ? (
-                  <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
-                    {website}
-                  </a>
-                ) : (
-                  <strong style={C.muted}>{website}</strong>
-                )}
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Email liên hệ</span>
-                <strong style={email !== 'Chưa cập nhật' ? C.value : C.muted}>{email}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Điện thoại</span>
-                <strong style={phone !== 'Chưa cập nhật' ? C.value : C.muted}>{phone}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Quy mô nhân sự</span>
-                <strong style={sizeStr !== 'Chưa cập nhật' ? C.value : C.muted}>{sizeStr}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Địa chỉ trụ sở chính</span>
-                <strong style={address !== 'Chưa cập nhật' ? C.value : C.muted}>{address}</strong>
-              </div>
-              <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Ngày thành lập</span>
-                <strong style={C.muted}>N/A</strong>
-              </div>
+              {renderEditableField('website', 'Website', website !== 'Chưa cập nhật' ? <a href={website} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>{website}</strong>, website !== 'Chưa cập nhật', () => (
+                <input value={overviewDraft!.website} onChange={setField('website')} placeholder="https://..." style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('email', 'Email liên hệ', email, email !== 'Chưa cập nhật', () => (
+                <input type="email" value={overviewDraft!.email} onChange={setField('email')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('phone', 'Điện thoại', phone, phone !== 'Chưa cập nhật', () => (
+                <input value={overviewDraft!.phone} onChange={setField('phone')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('employeeTier', 'Quy mô nhân sự (Tier)', sizeStr, sizeStr !== 'Chưa cập nhật', () => (
+                <select value={overviewDraft!.employeeTier} onChange={setField('employeeTier')} style={INPUT_STYLE}>
+                  <option value="">-- Chọn --</option>
+                  <option value="1-10 employees">1-10 nhân sự</option>
+                  <option value="11-50 employees">11-50 nhân sự</option>
+                  <option value="51-200 employees">51-200 nhân sự</option>
+                  <option value="201-500 employees">201-500 nhân sự</option>
+                  <option value="501-1,000 employees">501-1,000 nhân sự</option>
+                  <option value="1,001-5,000 employees">1,001-5,000 nhân sự</option>
+                  <option value="5,001-10,000 employees">5,001-10,000 nhân sự</option>
+                  <option value="10,000+ employees">10,000+ nhân sự</option>
+                </select>
+              ))}
+              {renderEditableField('employeeCount', 'Số lượng nhân sự (Count)', empCount ? String(empCount) : 'Chưa cập nhật', !!empCount, () => (
+                <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} />
+              ))}
+              {renderEditableField('address', 'Địa chỉ trụ sở chính', address, address !== 'Chưa cập nhật', () => (
+                <input value={overviewDraft!.address} onChange={setField('address')} style={INPUT_STYLE} />
+              ), true)}
             </div>
           </section>
 
-          {(profile.business?.businessModel || intelligence?.company?.businessModel) && (
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Giới thiệu & Mô hình kinh doanh</h2>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
-                {profile.business?.businessModel || intelligence?.company?.businessModel}
-              </p>
-            </section>
-          )}
+          <section style={C.card}>
+            <div style={C.cardHeader}><h2 style={C.h2}>Giới thiệu & Mô hình kinh doanh</h2></div>
+            <div style={C.fieldGrid}>
+              {renderEditableField('industries', 'Ngành nghề', profile.business?.industries && profile.business.industries.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {profile.business.industries.map((ind, i) => <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>{ind}</span>)}
+                </div>
+              ) : 'Chưa cập nhật', !!profile.business?.industries?.length, () => (
+                <input value={overviewDraft!.industries} onChange={setField('industries')} placeholder="VD: Công nghệ, Dịch vụ phần mềm" style={INPUT_STYLE} />
+              ), true)}
+
+              {renderEditableField('businessModel', 'Mô hình kinh doanh', profile.business?.businessModel || 'Chưa cập nhật', !!profile.business?.businessModel, () => (
+                <textarea rows={4} value={overviewDraft!.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} />
+              ), true)}
+            </div>
+          </section>
         </div>
 
         {overviewAside && (
@@ -643,153 +607,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
       </div>
     );
   };
-
-  const renderOverviewForm = () => {
-    if (!overviewDraft) return null;
-    const setField = (key: keyof OverviewDraft) =>
-      (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
-      };
-    const setExchange = (value: string) => {
-      setOverviewDraft((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev, stockExchange: value };
-        if (value === 'NONE') next.stockTicker = '';
-        return next;
-      });
-    };
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <section style={C.card}>
-          <div style={C.cardHeader}>
-            <h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2>
-          </div>
-          <div style={C.fieldGrid}>
-            <FormField label="Tên Thương Mại (Trade Name)">
-              <input value={overviewDraft.tradeName} onChange={setField('tradeName')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Tên Pháp Lý (Legal Name)">
-              <input value={overviewDraft.legalName} onChange={setField('legalName')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Mã Số Thuế (Tax Code)">
-              <input value={overviewDraft.taxCode} onChange={setField('taxCode')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Số Giấy Đăng Ký KD (Registration No)">
-              <input value={overviewDraft.registrationNumber} onChange={setField('registrationNumber')} style={INPUT_STYLE} />
-            </FormField>
-          </div>
-        </section>
-
-        <section style={C.card}>
-          <div style={C.cardHeader}>
-            <h2 style={C.h2}>Thông Tin Niêm Yết</h2>
-          </div>
-          <div style={C.fieldGrid}>
-            <FormField label="Mã Cổ Phiếu (Ticker)">
-              <input
-                value={overviewDraft.stockTicker}
-                disabled={overviewDraft.stockExchange === 'NONE'}
-                onChange={(event) => setField('stockTicker')(event)}
-                placeholder="VD: FPT"
-                style={{
-                  ...INPUT_STYLE,
-                  fontFamily: 'monospace',
-                  textTransform: 'uppercase',
-                  background: overviewDraft.stockExchange === 'NONE' ? '#F1F5F9' : '#FFFFFF',
-                }}
-              />
-            </FormField>
-            <FormField label="Sàn Giao Dịch (Exchange)">
-              <select
-                value={overviewDraft.stockExchange}
-                onChange={(event) => setExchange(event.target.value)}
-                style={INPUT_STYLE}
-              >
-                <option value="HOSE">HOSE</option>
-                <option value="HNX">HNX</option>
-                <option value="UPCOM">UPCOM</option>
-                <option value="NONE">Chưa niêm yết</option>
-              </select>
-            </FormField>
-          </div>
-        </section>
-
-        <section style={C.card}>
-          <div style={C.cardHeader}>
-            <h2 style={C.h2}>Thông tin Liên hệ & Quy mô</h2>
-          </div>
-          <div style={C.fieldGrid}>
-            <FormField label="Website">
-              <input value={overviewDraft.website} onChange={setField('website')} placeholder="https://..." style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Email liên hệ">
-              <input type="email" value={overviewDraft.email} onChange={setField('email')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Điện thoại">
-              <input value={overviewDraft.phone} onChange={setField('phone')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Quy mô nhân sự (Employee Tier)">
-              <select
-                value={overviewDraft.employeeTier}
-                onChange={(event) =>
-                  setOverviewDraft((prev) => (prev ? { ...prev, employeeTier: event.target.value } : prev))
-                }
-                style={INPUT_STYLE}
-              >
-                {EMPLOYEE_TIERS.map((tier) => (
-                  <option key={tier} value={tier}>{tier ? tier : 'Chưa cập nhật'}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Số lượng nhân sự (Employee Count)">
-              <input type="number" min={1} value={overviewDraft.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Địa chỉ trụ sở chính">
-              <input value={overviewDraft.address} onChange={setField('address')} style={INPUT_STYLE} />
-            </FormField>
-          </div>
-        </section>
-
-        <section style={C.card}>
-          <div style={C.cardHeader}>
-            <h2 style={C.h2}>Giới thiệu & Mô hình kinh doanh</h2>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <FormField label="Ngành nghề (phân cách bằng dấu phẩy)">
-              <input value={overviewDraft.industries} onChange={setField('industries')} placeholder="VD: Công nghệ, Dịch vụ phần mềm" style={INPUT_STYLE} />
-            </FormField>
-            <FormField label="Mô hình kinh doanh">
-              <textarea rows={3} value={overviewDraft.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.4' }} />
-            </FormField>
-          </div>
-        </section>
-
-        <SaveBar saving={saving} msg={msg} onCancel={cancelAll} onSave={saveOverview} />
-      </div>
-    );
-  };
-
-  const renderOverview = () => {
-    const editingThis = editable && editing === 'overview' && overviewDraft;
-    const toolbar = editable && !editingThis
-      ? (
-        <TabToolbar
-          title="Hồ sơ công ty chủ quản"
-          subtitle="Thông tin pháp lý, niêm yết, liên hệ, quy mô và mô hình kinh doanh của công ty chủ quản."
-          onEdit={() => startEditing('overview')}
-        />
-      )
-      : null;
-    return (
-      <div>
-        {toolbar}
-        {editingThis ? renderOverviewForm() : renderOverviewView()}
-      </div>
-    );
-  };
-
-  /* ── SWOT ─────────────────────────────────────────────────────── */
+  /* ―― SWOT ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――― */
   const renderSwotView = () => {
     const swot = profile.insights || {};
     const strengths = swot.strengths || [];

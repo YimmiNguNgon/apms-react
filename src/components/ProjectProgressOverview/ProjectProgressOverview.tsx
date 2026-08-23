@@ -10,6 +10,7 @@ interface ProjectProgressOverviewProps {
   isOverdue?: boolean;
   plannedEndDate?: string | null;
   projectStatus?: ProjectStatus;
+  isOkrProject?: boolean;
 }
 
 const formatDate = (value: string | null | undefined) => {
@@ -26,6 +27,7 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
   isOverdue = false,
   plannedEndDate,
   projectStatus,
+  isOkrProject = false,
 }) => {
   const safeProgress = Math.max(0, Math.min(100, Math.round(progressPercentage)));
   const safeTotal = Math.max(0, totalTasks);
@@ -74,7 +76,9 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
       <div className={styles.mainProgressArea}>
         <div className={styles.progressTextHeader}>
           <span className={styles.percentage}>{safeProgress}%</span>
-          {isZeroTasks ? (
+          {isOkrProject ? (
+            <span className={styles.taskCount}>Overall OKR Progress</span>
+          ) : isZeroTasks ? (
             <span className={styles.taskCount}>No tasks yet</span>
           ) : (
             <span className={styles.taskCount}>
@@ -99,21 +103,25 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
       </div>
 
       <div className={styles.metricsGrid}>
-        <div className={styles.metricItem}>
-          <div className={styles.metricLabel}>
-            <CheckCircle2 size={14} className={styles.metricIconCompleted} />
-            Completed
-          </div>
-          <div className={styles.metricValue}>{safeCompleted}</div>
-        </div>
+        {!isOkrProject && (
+          <>
+            <div className={styles.metricItem}>
+              <div className={styles.metricLabel}>
+                <CheckCircle2 size={14} className={styles.metricIconCompleted} />
+                Completed
+              </div>
+              <div className={styles.metricValue}>{safeCompleted}</div>
+            </div>
 
-        <div className={styles.metricItem}>
-          <div className={styles.metricLabel}>
-            <CircleDashed size={14} className={styles.metricIconRemaining} />
-            Remaining
-          </div>
-          <div className={styles.metricValue}>{safeRemaining}</div>
-        </div>
+            <div className={styles.metricItem}>
+              <div className={styles.metricLabel}>
+                <CircleDashed size={14} className={styles.metricIconRemaining} />
+                Remaining
+              </div>
+              <div className={styles.metricValue}>{safeRemaining}</div>
+            </div>
+          </>
+        )}
 
         <div className={styles.metricItem}>
           <div className={styles.metricLabel}>
@@ -133,7 +141,7 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
         </div>
       )}
 
-      {isZeroTasks && projectStatus !== 'CANCELLED' && (
+      {isZeroTasks && !isOkrProject && projectStatus !== 'CANCELLED' && (
         <div className={styles.zeroStateMessage}>
           Project progress will appear after tasks are added.
         </div>

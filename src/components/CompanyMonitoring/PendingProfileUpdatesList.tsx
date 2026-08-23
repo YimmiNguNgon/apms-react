@@ -32,30 +32,6 @@ export const PendingProfileUpdatesList: React.FC<PendingProfileUpdatesListProps>
     fetchProposals();
   }, [companyProfileId]);
 
-  const handleApprove = async (id: string) => {
-    try {
-      await api.patch(`/profile-update-proposals/${id}/approve`);
-      fetchProposals();
-      // Notify parent to refresh CompanyProfileDetail
-      window.dispatchEvent(new CustomEvent('apms-profile-updated'));
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to approve proposal';
-      alert(msg);
-      throw err;
-    }
-  };
-
-  const handleReject = async (id: string) => {
-    try {
-      await api.patch(`/profile-update-proposals/${id}/reject`);
-      fetchProposals();
-    } catch (err: any) {
-      const msg = err.response?.data?.message || err.message || 'Failed to reject proposal';
-      alert(msg);
-      throw err;
-    }
-  };
-
   if (loading) return <div style={{ fontSize: '0.875rem', color: '#64748b' }}>Loading profile updates...</div>;
   if (error) return <div className={styles.errorText}>{error}</div>;
 
@@ -73,7 +49,7 @@ export const PendingProfileUpdatesList: React.FC<PendingProfileUpdatesListProps>
               Profile Update Proposed
             </div>
             <div className={styles.cardText} style={{ marginBottom: '4px', fontSize: '0.875rem', color: '#64748b' }}>
-              <strong>Proposed At:</strong> {new Date(p.createdAt).toLocaleDateString()}
+              <strong>Proposed At:</strong> {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : 'N/A'}
             </div>
             <div style={{ fontSize: '0.9rem', color: '#334155' }}>
               {p.changeSummary || 'No summary provided.'}
@@ -93,8 +69,11 @@ export const PendingProfileUpdatesList: React.FC<PendingProfileUpdatesListProps>
         <ProfileUpdateApprovalModal
           proposal={selectedProposal}
           onClose={() => setSelectedProposal(null)}
-          onApprove={handleApprove}
-          onReject={handleReject}
+          onSuccess={() => {
+            setSelectedProposal(null);
+            fetchProposals();
+            window.dispatchEvent(new CustomEvent('apms-profile-updated'));
+          }}
         />
       )}
     </div>

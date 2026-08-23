@@ -149,6 +149,7 @@ export const OwnerCompanyProfilePage: React.FC = () => {
           initials={initials}
           industry={profile.business?.industries?.[0]}
           reviewStatus={profile.reviewStatus || 'APPROVED'}
+          version={profile.version}
           topRow={
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

@@ -514,9 +514,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             />
           )}
 
-          {!isOwnerProfile && (
-            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
-          )}
+          <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
 
           {/* Quick Info Summary */}
           {!isDrawerMode && (

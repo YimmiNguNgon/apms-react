@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import type { PageResponse } from '../services/api';
 import styles from './StaffMonitoring.module.css';
 import { useUser, ROLES } from '../context/UserContext';
-import { CompanyProfileEditModal } from '../components/Monitoring/CompanyProfileEditModal';
+import { StaffMonitoringReviewPage } from './StaffMonitoringReviewPage';
 
 import { companyMonitoringApi } from '../API/companyMonitoringApi';
 
@@ -18,6 +18,7 @@ interface CompanyMonitoringAssignment {
   nextReviewAt: string | null;
   assignedStaffName?: string;
   assignedStaffEmail?: string;
+  latestProposalStatus?: string;
 }
 
 export const StaffMonitoringDashboard: React.FC = () => {
@@ -163,7 +164,7 @@ export const StaffMonitoringDashboard: React.FC = () => {
       </section>
 
       {selectedAssignment && (
-        <CompanyProfileEditModal
+        <StaffMonitoringReviewPage
           assignmentId={selectedAssignment.id}
           companyProfileId={selectedAssignment.companyProfileId}
           onClose={() => {

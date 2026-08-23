@@ -1,17 +1,18 @@
-import { api } from "../services/api";
+import { api, type ApiResponse } from "../services/api";
 import type {
   CreateProjectTaskRequest,
   CreateProjectTaskSubmissionRequest,
   PageResult,
   ProjectTaskResponse,
   ProjectTaskSubmissionResponse,
+  ProjectTaskActivityResponse,
   ProjectTaskWorkbenchResponse,
   ReviewTaskSubmissionRequest,
   TaskStatus,
 } from "../types/domain";
 
 export const taskApi = {
-  getProjectTasks: async (projectId: number, params?: { assignedToUserId?: number }) => {
+  getProjectTasks: async (projectId: number, params?: { assignedToUserId?: number; status?: TaskStatus | 'AVAILABLE' }) => {
     return api.get<PageResult<ProjectTaskResponse>>(
       `/projects/${projectId}/tasks`,
       {
@@ -19,6 +20,7 @@ export const taskApi = {
           page: 0,
           size: 100,
           ...(params?.assignedToUserId ? { assignedToUserId: params.assignedToUserId } : {}),
+          ...(params?.status ? { status: params.status } : {}),
         },
       }
     );
@@ -38,6 +40,18 @@ export const taskApi = {
     );
   },
 
+  claimProjectTask: async (projectId: number, taskId: number) => {
+    return api.post<ProjectTaskResponse>(
+      `/projects/${projectId}/tasks/${taskId}/claim`
+    );
+  },
+
+  releaseProjectTask: async (projectId: number, taskId: number) => {
+    return api.post<ProjectTaskResponse>(
+      `/projects/${projectId}/tasks/${taskId}/release`
+    );
+  },
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   deleteProjectTask: async (_projectId: number, _taskId: number) => {
     throw new Error("Task deletion is not supported by the backend. Tasks can be moved to CANCELLED status instead.");
@@ -53,6 +67,12 @@ export const taskApi = {
     return api.post<ProjectTaskSubmissionResponse>(
       `/projects/${projectId}/tasks/${taskId}/submissions`,
       data
+    );
+  },
+
+  getTaskActivity: (projectId: number | string, taskId: number | string) => {
+    return api.get<ApiResponse<ProjectTaskActivityResponse[]>>(
+      `/projects/${projectId}/tasks/${taskId}/activity`
     );
   },
 
