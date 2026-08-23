@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { AddMemberRequest, AiExtractionJobResponse, CreateProjectRequest, DuplicateCompanyCheckResponse, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest } from "../types/domain";
+import type { AddMemberRequest, AiExtractionJobResponse, CreateProjectRequest, DuplicateCompanyCheckResponse, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest, KeyResultReferenceResponse } from "../types/domain";
 
 const BASE_URL = `${API_BASE_URL}/projects`;
 const getAuthHeader = () => {
@@ -29,6 +29,26 @@ export const projectApi = {
       return payload as ApiResponse<RelationshipTypeOption[]>;
     } catch (error) {
       console.error("Error fetching target relationship types:", error);
+      throw error;
+    }
+  },
+  getKeyResultReference: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/reference/key-results`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Get key results reference failed:", { status: response.status, payload });
+        throw new Error(payload?.message || "Failed to fetch key results reference");
+      }
+
+      return payload as ApiResponse<KeyResultReferenceResponse[]>;
+    } catch (error) {
+      console.error("Error fetching key results reference:", error);
       throw error;
     }
   },
@@ -200,6 +220,24 @@ export const projectApi = {
       return payload as ApiResponse<DuplicateCompanyCheckResponse>;
     } catch (error) {
       console.error('Error checking duplicate company name:', error);
+      throw error;
+    }
+  },
+  checkDuplicateTaxCode: async (taxCode: string) => {
+    try {
+      const params = new URLSearchParams({ taxCode });
+      const response = await fetch(`${BASE_URL}/check-duplicate-tax-code?${params.toString()}`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Failed to check duplicate tax code');
+      }
+      return payload as ApiResponse<import('../types/domain').DuplicateTaxCodeCheckResponse>;
+    } catch (error) {
+      console.error('Error checking duplicate tax code:', error);
       throw error;
     }
   },

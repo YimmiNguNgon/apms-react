@@ -229,6 +229,7 @@ export interface ProjectResponse {
   projectType: ProjectType;
   targetCompanyProfileId: string | null;
   targetCompanyName: string;
+  targetCompanyTaxCode?: string | null;
   targetRelationshipType?: RelationshipType | null;
   description: string | null;
   status: ProjectStatus;
@@ -243,6 +244,15 @@ export interface ProjectResponse {
   progressPercentage?: number;
   isOverdue?: boolean;
   members: ProjectMemberResponse[];
+  objective?: string | null;
+  keyResults?: Array<{
+    id: number;
+    type: string;
+    name: string;
+    description: string;
+    weight: number;
+    progress: number;
+  }> | null;
 }
 
 export interface CreateProjectRequest {
@@ -250,14 +260,36 @@ export interface CreateProjectRequest {
   projectType: ProjectType;
   targetCompanyProfileId?: string | null;
   targetCompanyName: string;
+  targetCompanyTaxCode?: string;
   targetRelationshipType?: RelationshipType | null;
   description?: string | null;
+  objective?: string | null;
   plannedEndDate: string;
+  keyResults?: Array<{
+    type: string;
+    weight: number;
+  }>;
+}
+
+export interface KeyResultReferenceResponse {
+  type: string;
+  displayName: string;
+  description: string;
+  supportedRelationshipTypes: RelationshipType[];
 }
 
 export interface DuplicateCompanyCheckResponse {
   duplicate: boolean;
   matchingProjects: MatchingProject[];
+}
+
+export interface DuplicateTaxCodeCheckResponse {
+  exists: boolean;
+  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | null;
+  companyProfileId?: string;
+  projectId?: number;
+  companyName?: string;
+  taxCode?: string;
 }
 
 export interface MatchingProject {
@@ -594,7 +626,7 @@ export interface ImportJobResponse {
 }
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
+export type TaskStatus = 'AVAILABLE' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
 export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'PARTNER_CONTRACT_COLLECTION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'GENERAL_TASK';
 
 export type NewsDraftStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'DELETED';
@@ -722,7 +754,23 @@ export interface ProjectTaskResponse {
   completedAt?: string | null;
   taskType: TaskType;
   targetCompanyProfileId?: string | null;
+  targetCompanyName?: string | null;
+  keyResult?: {
+    id: number;
+    type: string;
+    name: string;
+    weight?: number;
+  } | null;
   availableActions?: string[];
+}
+
+export interface ProjectTaskActivityResponse {
+  id: number;
+  actorId?: number;
+  actorName: string;
+  action: string;
+  detail?: string;
+  occurredAt: string;
 }
 
 export interface ProjectTaskDraftResponse {

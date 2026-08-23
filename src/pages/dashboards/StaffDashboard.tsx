@@ -25,6 +25,7 @@ type StaffTaskRow = ProjectTaskResponse & {
 };
 
 const statusLabel: Record<TaskStatus, string> = {
+  AVAILABLE: 'Available',
   TODO: 'To do',
   IN_PROGRESS: 'In progress',
   IN_REVIEW: 'Waiting manager',
@@ -172,11 +173,12 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
   const sortedTasks = useMemo(() => {
     const weight: Record<TaskStatus, number> = {
       IN_PROGRESS: 0,
-      TODO: 1,
-      IN_REVIEW: 2,
-      DONE: 3,
-      BLOCKED: 4,
-      CANCELLED: 5,
+      AVAILABLE: 1,
+      TODO: 2,
+      IN_REVIEW: 3,
+      DONE: 4,
+      BLOCKED: 5,
+      CANCELLED: 6,
     };
 
     return [...tasks].sort((a, b) => {

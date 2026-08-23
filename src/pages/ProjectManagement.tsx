@@ -20,6 +20,7 @@ import type {
   TaskPriority,
   TaskType,
   UpdateProjectRequest,
+  KeyResultReferenceResponse,
 } from '../types/domain';
 
 type ProjectFormState = {
@@ -27,10 +28,24 @@ type ProjectFormState = {
   projectType: ProjectType;
   targetCompanyProfileId: string;
   targetCompanyName: string;
+  targetCompanyTaxCode: string;
   targetRelationshipType: string;
   description: string;
+  objective: string;
   plannedEndDate: string;
+  keyResults: Array<{ type: string; weight: number }>;
 };
+
+type DuplicateTaxCodeState = {
+  loading: boolean;
+  checked: boolean;
+  exists: boolean;
+  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | null;
+  companyProfileId?: string;
+  projectId?: number;
+  companyName?: string;
+  taxCode?: string;
+} | null;
 
 type FeedbackState = {
   kind: 'success' | 'error';
@@ -117,9 +132,12 @@ const initialProjectForm = (): ProjectFormState => ({
   projectType: 'RESEARCH_NEW_COMPANY',
   targetCompanyProfileId: '',
   targetCompanyName: '',
+  targetCompanyTaxCode: '',
   targetRelationshipType: 'PARTNER_WITH',
   description: '',
+  objective: '',
   plannedEndDate: '',
+  keyResults: [],
 });
 
 type ProjectManagementProps = {
@@ -149,6 +167,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [, setCandidates] = useState<CandidateResponse[]>([]);
   const [companyOptions, setCompanyOptions] = useState<ProfileResponse[]>([]);
   const [companyOptionsLoading, setCompanyOptionsLoading] = useState(false);
+  const [krReference, setKrReference] = useState<KeyResultReferenceResponse[]>([]);
+  const [krReferenceLoading, setKrReferenceLoading] = useState(false);
   const [relationshipOptions, setRelationshipOptions] = useState<RelationshipTypeOption[]>(RELATIONSHIP_OPTIONS);
   const [relationshipOptionsLoading, setRelationshipOptionsLoading] = useState(false);
   const [boardLoading, setBoardLoading] = useState(false);
@@ -163,6 +183,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [, setDetailError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [taxCodeCheck, setTaxCodeCheck] = useState<DuplicateTaxCodeState>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -234,6 +255,20 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       if (!signal?.aborted) {
         setCompanyOptionsLoading(false);
       }
+    }
+  }, []);
+
+  const reloadKrReference = useCallback(async (signal?: AbortSignal) => {
+    setKrReferenceLoading(true);
+    try {
+      const res = await projectApi.getKeyResultReference();
+      if (!signal?.aborted && Array.isArray(res.data)) {
+        setKrReference(res.data);
+      }
+    } catch {
+      if (!signal?.aborted) setKrReference([]);
+    } finally {
+      if (!signal?.aborted) setKrReferenceLoading(false);
     }
   }, []);
 
@@ -341,8 +376,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     if (!showCreateForm) return;
     const controller = new AbortController();
     void reloadCompanyOptions(controller.signal);
+    void reloadKrReference(controller.signal);
     return () => controller.abort();
-  }, [reloadCompanyOptions, showCreateForm]);
+  }, [reloadCompanyOptions, reloadKrReference, showCreateForm]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -461,10 +497,37 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     }
   };
 
+  const handleTaxCodeCheck = async (taxCode: string) => {
+    if (!taxCode.trim()) {
+      setTaxCodeCheck(null);
+      return;
+    }
+    setTaxCodeCheck({ loading: true, checked: false, exists: false, matchType: null });
+    try {
+      const res = await projectApi.checkDuplicateTaxCode(taxCode);
+      const data = res?.data;
+      if (data) {
+        setTaxCodeCheck({
+          loading: false,
+          checked: true,
+          exists: data.exists,
+          matchType: data.matchType,
+          companyProfileId: data.companyProfileId,
+          projectId: data.projectId,
+          companyName: data.companyName,
+          taxCode: data.taxCode,
+        });
+      }
+    } catch (err) {
+      setTaxCodeCheck({ loading: false, checked: true, exists: false, matchType: null });
+    }
+  };
+
   const handleCreateProject = async () => {
     const projectName = projectForm.projectName.trim();
     const targetCompanyProfileId = projectForm.targetCompanyProfileId.trim();
     const description = projectForm.description.trim();
+    const objective = projectForm.objective.trim();
     const selectedCompany = companyOptions.find((profile) => profile.companyId === targetCompanyProfileId || profile.id === targetCompanyProfileId);
     const targetRelationshipType = normalizeRelationshipInput(projectForm.targetRelationshipType);
 
@@ -483,8 +546,25 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
+    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY' && taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT') {
+      setFeedback({ kind: 'error', message: 'Company tax code already exists in an active project. Duplicate creation is not allowed.' });
+      return;
+    }
+
     if (!projectForm.plannedEndDate) {
       setFeedback({ kind: 'error', message: 'Planned end date is required.' });
+      return;
+    }
+
+    const selectedKRs = projectForm.keyResults.filter((kr) => kr.weight > 0);
+    if (selectedKRs.length === 0) {
+      setFeedback({ kind: 'error', message: 'At least one Key Result must be selected.' });
+      return;
+    }
+
+    const totalWeight = selectedKRs.reduce((sum, kr) => sum + kr.weight, 0);
+    if (totalWeight !== 100) {
+      setFeedback({ kind: 'error', message: 'Total weight of Key Results must be exactly 100.' });
       return;
     }
 
@@ -509,10 +589,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         projectName,
         projectType: projectForm.projectType,
         targetCompanyProfileId: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? targetCompanyProfileId : null,
-        targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectName,
+        targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectForm.targetCompanyName,
+        targetCompanyTaxCode: projectForm.projectType === 'RESEARCH_NEW_COMPANY' ? projectForm.targetCompanyTaxCode : undefined,
         targetRelationshipType,
         description: description || null,
+        objective: objective || null,
         plannedEndDate: projectForm.plannedEndDate,
+        keyResults: selectedKRs,
       };
 
       const res = await projectApi.createProject(payload);
@@ -620,107 +703,324 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
         {showCreateForm && (
           <div className="modal-overlay project-modal-overlay" onClick={() => setShowCreateForm(false)}>
-          <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()}>
-            <div className="project-modal-head">
+          <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="project-modal-head" style={{ flexShrink: 0 }}>
               <div>
                 <span className="workspace-side-eyebrow">{t('create.eyebrow')}</span>
                 <h3 id="create-project-title">{t('create.title')}</h3>
-                <p>{t('create.description')}</p>
+                <p>Define the project objective, target company, and key results.</p>
               </div>
               <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => setShowCreateForm(false)}>&times;</button>
             </div>
-            {feedback?.kind === 'error' && (
-              <div className="project-modal-feedback workspace-inline-error">{feedback.message}</div>
-            )}
-            <div className="workspace-form-grid">
-              <label>
-                <span>{t('create.projectNameLabel')}</span>
-                <input
-                  className="search-input"
-                  placeholder={t('create.projectNamePlaceholder')}
-                  value={projectForm.projectName}
-                  onChange={(event) => setProjectForm((current) => ({ ...current, projectName: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>{t('create.projectTypeLabel')}</span>
-                <select
-                  className="search-input"
-                  value={projectForm.projectType}
-                  onChange={(event) => {
-                    const projectType = event.target.value as ProjectType;
-                    setProjectForm((current) => ({
-                      ...current,
-                      projectType,
-                      targetCompanyName: '',
-                      targetCompanyProfileId: '',
-                    }));
-                  }}
-                >
-                  <option value="RESEARCH_NEW_COMPANY">{t('create.typeNewCompany')}</option>
-                  <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
-                </select>
-              </label>
-              {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (
-                <label>
-                  <span>{t('create.existingCompanyLabel')}</span>
-                  <select
-                    className="search-input"
-                    value={projectForm.targetCompanyProfileId}
-                    onChange={(event) => {
-                      const selectedId = event.target.value;
-                      const profile = companyOptions.find((item) => item.companyId === selectedId || item.id === selectedId);
-                      setProjectForm((current) => ({
-                        ...current,
-                        targetCompanyProfileId: selectedId,
-                        targetCompanyName: profile ? profileName(profile) : '',
-                        targetRelationshipType: profile?.relationshipType || current.targetRelationshipType,
-                      }));
-                    }}
-                  >
-                    <option value="">{companyOptionsLoading ? t('create.loadingCompanies') : t('create.selectCompany')}</option>
-                    {companyOptions.map((profile) => (
-                      <option key={profile.companyId || profile.id} value={profile.companyId}>
-                        {profileName(profile)} - {profileRoleLabel(profile)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+            
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+              {feedback?.kind === 'error' && (
+                <div className="project-modal-feedback workspace-inline-error" style={{ marginTop: '16px' }}>{feedback.message}</div>
               )}
-              <label>
-                <span>{t('create.relationshipLabel')}</span>
-                <select
-                  className="search-input"
-                  value={projectForm.targetRelationshipType}
-                  onChange={(event) => setProjectForm((current) => ({ ...current, targetRelationshipType: event.target.value }))}
-                  disabled={relationshipOptionsLoading || projectForm.projectType === 'UPDATE_EXISTING_COMPANY'}
-                >
-                  <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
-                  {relationshipOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>{t('create.descriptionLabel')}</span>
-                <input className="search-input" placeholder={t('create.descriptionPlaceholder')} value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} />
-              </label>
-              <label>
-                <span>{t('create.plannedEndDateLabel')}</span>
-                <input
-                  className="search-input"
-                  type="date"
-                  value={projectForm.plannedEndDate}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(event) => setProjectForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
-                />
-              </label>
+              
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Information</h4>
+                <div className="workspace-form-grid">
+                  <label>
+                    <span>{t('create.projectNameLabel')}</span>
+                    <input
+                      className="search-input"
+                      placeholder={t('create.projectNamePlaceholder')}
+                      value={projectForm.projectName}
+                      onChange={(event) => setProjectForm((current) => ({ ...current, projectName: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>{t('create.projectTypeLabel')}</span>
+                    <select
+                      className="search-input"
+                      value={projectForm.projectType}
+                      onChange={(event) => {
+                        const projectType = event.target.value as ProjectType;
+                        setProjectForm((current) => ({
+                          ...current,
+                          projectType,
+                          targetCompanyName: '',
+                          targetCompanyProfileId: '',
+                        }));
+                      }}
+                    >
+                      <option value="RESEARCH_NEW_COMPANY">{t('create.typeNewCompany')}</option>
+                      <option value="UPDATE_EXISTING_COMPANY">{t('create.typeUpdateCompany')}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Target company</span>
+                    {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <select
+                        className="search-input"
+                        value={projectForm.targetCompanyProfileId}
+                        onChange={(event) => {
+                          const selectedId = event.target.value;
+                          const profile = companyOptions.find((item) => item.companyId === selectedId || item.id === selectedId);
+                          setProjectForm((current) => {
+                            const newRelationship = profile?.relationshipType || current.targetRelationshipType;
+                            const normalizedRel = normalizeRelationshipInput(newRelationship);
+                            const validKrs = current.keyResults.filter((kr) => {
+                              const ref = krReference.find((r) => r.type === kr.type);
+                              return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
+                            });
+                            return {
+                              ...current,
+                              targetCompanyProfileId: selectedId,
+                              targetCompanyName: profile ? profileName(profile) : '',
+                              targetRelationshipType: newRelationship,
+                              keyResults: validKrs,
+                            };
+                          });
+                        }}
+                      >
+                        <option value="">{companyOptionsLoading ? t('create.loadingCompanies') : t('create.selectCompany')}</option>
+                        {companyOptions.map((profile) => (
+                          <option key={profile.companyId || profile.id} value={profile.companyId}>
+                            {profileName(profile)} - {profileRoleLabel(profile)}
+                          </option>
+                        ))}
+                      </select>
+                      {projectForm.targetCompanyProfileId && (
+                        <input
+                          className="search-input"
+                          placeholder="No tax code available"
+                          value={companyOptions.find(item => item.companyId === projectForm.targetCompanyProfileId || item.id === projectForm.targetCompanyProfileId)?.identity?.taxCode || ''}
+                          readOnly
+                          style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)' }}
+                        />
+                      )}
+                    </div>
+                  ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <input
+                          className="search-input"
+                          placeholder="Enter target company name"
+                          value={projectForm.targetCompanyName}
+                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyName: event.target.value }))}
+                        />
+                        <input
+                          className="search-input"
+                          placeholder="Enter company tax code"
+                          value={projectForm.targetCompanyTaxCode}
+                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyTaxCode: event.target.value }))}
+                          onBlur={(event) => void handleTaxCodeCheck(event.target.value)}
+                        />
+                        {taxCodeCheck?.loading && <span style={{ fontSize: '0.85rem', color: '#666' }}>Checking tax code...</span>}
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'COMPANY_PROFILE' && (
+                          <div style={{ backgroundColor: '#fff3cd', padding: '8px', borderRadius: '4px', fontSize: '0.9rem', color: '#856404', marginTop: '4px' }}>
+                            Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
+                            <button type="button" onClick={() => {
+                              setProjectForm(current => ({
+                                ...current, 
+                                projectType: 'UPDATE_EXISTING_COMPANY',
+                                targetCompanyProfileId: taxCodeCheck.companyProfileId || ''
+                              }));
+                            }} style={{ marginLeft: '8px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                              Use existing company
+                            </button>
+                          </div>
+                        )}
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT' && (
+                          <div style={{ backgroundColor: '#f8d7da', padding: '8px', borderRadius: '4px', fontSize: '0.9rem', color: '#721c24', marginTop: '4px' }}>
+                            Company is already being researched in an active project (<strong>{taxCodeCheck.companyName}</strong>). Duplicate creation is blocked.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </label>
+                  <label>
+                    <span>{t('create.relationshipLabel')}</span>
+                    <select
+                      className="search-input"
+                      value={projectForm.targetRelationshipType}
+                      onChange={(event) => {
+                        const newRelationship = event.target.value;
+                        const normalizedRel = normalizeRelationshipInput(newRelationship);
+                        setProjectForm((current) => {
+                          const validKrs = current.keyResults.filter((kr) => {
+                            const ref = krReference.find((r) => r.type === kr.type);
+                            return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
+                          });
+                          return {
+                            ...current,
+                            targetRelationshipType: newRelationship,
+                            keyResults: validKrs,
+                          };
+                        });
+                      }}
+                      disabled={relationshipOptionsLoading || projectForm.projectType === 'UPDATE_EXISTING_COMPANY'}
+                    >
+                      <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
+                      {relationshipOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Due date</span>
+                    <input
+                      className="search-input"
+                      type="date"
+                      value={projectForm.plannedEndDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(event) => setProjectForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '32px' }}>
+                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Objective</h4>
+                <label style={{ display: 'block' }}>
+                  <textarea
+                    className="search-input"
+                    style={{ minHeight: '60px', padding: '12px', width: '100%', resize: 'vertical' }}
+                    placeholder="Describe the main business outcome this project should achieve."
+                    value={projectForm.objective}
+                    onChange={(event) => setProjectForm((current) => ({ ...current, objective: event.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div style={{ marginTop: '32px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
+                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Key Results</h4>
+                  {(() => {
+                    const totalWeight = projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0);
+                    const is100 = totalWeight === 100;
+                    const isOver = totalWeight > 100;
+                    return (
+                      <div style={{ fontSize: '0.9rem', textAlign: 'right' }}>
+                        <div style={{ fontWeight: '600', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : 'inherit' }}>
+                          Total Weight {totalWeight} / 100
+                        </div>
+                        {!is100 && !isOver && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            {100 - totalWeight}% remaining
+                          </div>
+                        )}
+                        {isOver && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)' }}>
+                            Exceeds 100%
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {krReferenceLoading ? (
+                  <div>Loading Key Results...</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {krReference.map((kr) => {
+                      const isSupported = kr.supportedRelationshipTypes.length === 0 || kr.supportedRelationshipTypes.includes(normalizeRelationshipInput(projectForm.targetRelationshipType) as RelationshipType);
+                      const selectedKr = projectForm.keyResults.find((k) => k.type === kr.type);
+                      const isSelected = !!selectedKr;
+                      const supportedLabels = kr.supportedRelationshipTypes.map(rt => relationshipOptions.find(o => o.value === rt)?.label || rt).join(', ');
+
+                      return (
+                        <div
+                          key={kr.type}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                            background: isSelected ? 'var(--primary-light)' : 'transparent',
+                            opacity: isSupported ? 1 : 0.6,
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            id={`kr-checkbox-${kr.type}`}
+                            checked={isSelected}
+                            disabled={!isSupported}
+                            onChange={(e) => {
+                              if (!isSupported) return;
+                              const checked = e.target.checked;
+                              setProjectForm((current) => {
+                                const existing = current.keyResults.filter((k) => k.type !== kr.type);
+                                if (checked) {
+                                  return { ...current, keyResults: [...existing, { type: kr.type, weight: 10 }] };
+                                } else {
+                                  return { ...current, keyResults: existing };
+                                }
+                              });
+                            }}
+                            style={{
+                              width: '20px',
+                              height: '20px',
+                              cursor: isSupported ? 'pointer' : 'not-allowed',
+                              flexShrink: 0,
+                              margin: 0
+                            }}
+                          />
+                          <label htmlFor={`kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
+                            <div style={{ fontWeight: 600, color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{kr.description}</div>
+                            {!isSupported && (
+                              <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)', marginTop: '8px' }}>
+                                Available only for {supportedLabels} projects.
+                              </div>
+                            )}
+                          </label>
+                          {isSelected && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              <input
+                                type="number"
+                                className="search-input"
+                                style={{ width: '70px', padding: '6px 10px', textAlign: 'center' }}
+                                value={selectedKr.weight}
+                                min={1}
+                                max={100}
+                                onChange={(e) => {
+                                  const newWeight = parseInt(e.target.value, 10) || 0;
+                                  setProjectForm((current) => ({
+                                    ...current,
+                                    keyResults: current.keyResults.map((k) => (k.type === kr.type ? { ...k, weight: newWeight } : k)),
+                                  }));
+                                }}
+                              />
+                              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--primary-dark)' }}>%</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: '32px', marginBottom: '32px' }}>
+                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Additional notes (optional)</h4>
+                <label style={{ display: 'block' }}>
+                  <textarea
+                    className="search-input"
+                    placeholder="Enter any additional information..."
+                    value={projectForm.description}
+                    onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))}
+                    style={{ minHeight: '60px', padding: '12px', width: '100%', resize: 'vertical' }}
+                  />
+                </label>
+              </div>
             </div>
-            <div className="workspace-head-actions">
+
+            <div className="workspace-head-actions" style={{ flexShrink: 0, padding: '16px 24px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-main)' }}>
               <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>{t('create.cancel')}</button>
-              <button className="btn btn-primary" onClick={() => void handleCreateProject()} disabled={createLoading}>
+              <button
+                className="btn btn-primary"
+                onClick={() => void handleCreateProject()}
+                disabled={createLoading || projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0) !== 100}
+              >
                 {createLoading ? t('create.submitting') : t('create.submit')}
               </button>
             </div>

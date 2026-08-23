@@ -6,13 +6,14 @@ import { useTheme } from '../hooks/useTheme';
 import { LogoutModal } from './LogoutModal';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { api, type PageResponse } from '../services/api';
+import { resolveNotificationDestination } from '../utils/notificationResolver';
 
 interface TopbarProps {
   activePage: string;
   setActivePage: (page: string) => void;
 }
 
-type NotificationItem = {
+export type NotificationItem = {
   id: number;
   title: string;
   message?: string | null;
@@ -179,8 +180,13 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
       }
     }
 
-    if (item.projectId) {
-      localStorage.setItem('apms-active-project', String(item.projectId));
+    const destination = resolveNotificationDestination(item, currentUser.role);
+    if (destination) {
+      localStorage.setItem('apms-active-project', String(destination.projectId));
+      localStorage.setItem('apms-project-detail-active-tab', destination.tab);
+      if (destination.taskId) {
+        localStorage.setItem('apms-project-detail-focus-task-id', String(destination.taskId));
+      }
       setActivePage('project-detail');
     }
     setShowNotif(false);

@@ -948,7 +948,8 @@ const ExtractionCurrentValue: React.FC<{
   field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string };
   value: string;
   onChange: (value: string) => void;
-}> = ({ field, value, onChange }) => {
+  readOnly?: boolean;
+}> = ({ field, value, onChange, readOnly }) => {
   const trimmedValue = value.trim();
 
   if (urlFieldKeys.has(field.key)) {
@@ -981,6 +982,7 @@ const ExtractionCurrentValue: React.FC<{
             placeholder={field.placeholder}
             aria-label={`${field.label} current value`}
             onChange={(event) => onChange(event.target.value)}
+            readOnly={readOnly}
           />
         </details>
       </div>
@@ -1090,6 +1092,7 @@ const ExtractionCurrentValue: React.FC<{
           placeholder={field.placeholder}
           aria-label={`${field.label} current value`}
           onChange={(event) => onChange(event.target.value)}
+          readOnly={readOnly}
         />
       ) : (
         <input
@@ -1097,6 +1100,7 @@ const ExtractionCurrentValue: React.FC<{
           placeholder={field.placeholder}
           aria-label={`${field.label} current value`}
           onChange={(event) => onChange(event.target.value)}
+          readOnly={readOnly}
         />
       )}
     </label>
@@ -1134,7 +1138,8 @@ const AiExtractCard: React.FC<{
   review: StaffExtractionReview;
   onChange: (key: StaffCandidateEditKey, value: string) => void;
   onAskAi?: (field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }, review: StaffExtractionReview) => void;
-}> = ({ group, field, review, onChange, onAskAi }) => {
+  readOnly?: boolean;
+}> = ({ group, field, review, onChange, onAskAi, readOnly }) => {
   const evidence = review.evidence[field.key];
   const score = evidence?.confidenceScore ?? null;
   const hasValue = hasExtractedFieldValue(review.edit[field.key]);
@@ -1180,6 +1185,7 @@ const AiExtractCard: React.FC<{
           field={field}
           value={review.edit[field.key]}
           onChange={(value) => onChange(field.key, value)}
+          readOnly={readOnly}
         />
         <EvidencePanel evidence={evidence} />
         {!hasValue && !evidence && <AiExtractEmptyState group={group} />}
@@ -1192,7 +1198,8 @@ const StaffAiExtractResult: React.FC<{
   review: StaffExtractionReview;
   onChange: (key: StaffCandidateEditKey, value: string) => void;
   onAskAi?: (field: { key: StaffCandidateEditKey; label: string; multiline?: boolean; placeholder?: string }, review: StaffExtractionReview) => void;
-}> = ({ review, onChange, onAskAi }) => (
+  isResearchNewCompany?: boolean;
+}> = ({ review, onChange, onAskAi, isResearchNewCompany }) => (
   <div className={styles.aiExtractResult}>
     <div className={styles.aiExtractSummary}>
       <div>
@@ -1213,6 +1220,7 @@ const StaffAiExtractResult: React.FC<{
               review={review}
               onChange={onChange}
               onAskAi={onAskAi}
+              readOnly={isResearchNewCompany && (field.key === 'legalName' || field.key === 'taxId')}
             />
           ))
       )}
@@ -1326,6 +1334,7 @@ const isCandidateIncomplete = (candidate: CandidateResponse) => {
 };
 
 const statusToColumn: Record<ApiTaskStatus, TaskStatus> = {
+  AVAILABLE: 'todo',
   TODO: 'todo',
   IN_PROGRESS: 'progress',
   IN_REVIEW: 'review',
@@ -1379,24 +1388,29 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
 
   return {
     id: `APMS-${task.id}`,
+    projectId: task.projectId,
     title: task.title,
     description: task.description || 'No description provided.',
-    status: statusToColumn[task.status] ?? 'todo',
+    status: task.keyResult ? task.status : (statusToColumn[task.status] ?? 'todo'),
     priority: priorityToCard[task.priority ?? 'MEDIUM'],
     assignee: fallbackMember,
     reporter: members[0],
     dueDate: task.dueDate || task.createdAt || new Date().toISOString(),
-    labels: [task.taskType?.replace(/_/g, ' ') || 'GENERAL TASK'],
+    labels: task.keyResult ? [task.keyResult.name] : [task.taskType?.replace(/_/g, ' ') || 'GENERAL TASK'],
+    availableActions: task.availableActions,
+    taskType: task.taskType,
+    keyResultType: task.keyResult?.type,
     attachments: [],
     comments: [],
     activity: [
-      { id: task.id, actor: task.assignedToName || 'APMS', action: `created task with status ${task.status}`, time: formatOptionalDate(task.createdAt) },
+      { id: task.id, actor: task.keyResult ? 'System' : (task.assignedToName || 'APMS'), action: task.keyResult ? `Task automatically generated from ${task.keyResult.name} Key Result` : `created task with status ${task.status}`, time: formatOptionalDate(task.createdAt) },
     ],
     aiGenerated: false,
     aiSummary: 'This task was loaded from the project task API.',
     aiSuggestions: ['Use the task detail modal for future workflow details.'],
     aiRiskAnalysis: task.status === 'BLOCKED' ? 'Task is currently blocked.' : 'No risk analysis available yet.',
     aiNextSteps: ['Update task status as work progresses.'],
+    keyResult: task.keyResult,
   };
 };
 
@@ -1404,16 +1418,26 @@ const TaskCard: React.FC<{
   task: ProjectTask;
   onOpen: (task: ProjectTask) => void;
   onDelete?: (task: ProjectTask) => void;
+  onRelease?: (task: ProjectTask) => void;
+  onReview?: (task: ProjectTask) => void;
+  onClaim?: (taskId: string) => void;
   deleting?: boolean;
+  releasing?: boolean;
+  claiming?: boolean;
 }> = ({
   task,
   onOpen,
   onDelete,
+  onRelease,
+  onReview,
+  onClaim,
   deleting = false,
+  releasing = false,
+  claiming = false,
 }) => (
   <motion.article
     layout
-    className={`${styles.taskCard} ${task.status === 'done' ? styles.taskCardDone : ''}`}
+    className={`${styles.taskCard} ${task.status === 'done' || task.status === 'DONE' ? styles.taskCardDone : ''}`}
     onClick={() => onOpen(task)}
     whileHover={{ y: -3 }}
     transition={{ type: 'spring', stiffness: 420, damping: 30 }}
@@ -1445,7 +1469,9 @@ const TaskCard: React.FC<{
     </div>
     <h4 className={styles.taskTitle}>{task.title}</h4>
     <div className={styles.labels}>
-      <span className={`${styles.priority} ${priorityClass[task.priority]}`}>{task.priority}</span>
+      {!task.keyResult && (
+        <span className={`${styles.priority} ${priorityClass[task.priority]}`}>{task.priority}</span>
+      )}
       {task.labels.map((label) => (
         <span className={styles.label} key={label}>{label}</span>
       ))}
@@ -1458,10 +1484,84 @@ const TaskCard: React.FC<{
         <span title="Comments"><MessageSquare size={14} />{task.comments.length}</span>
       </div>
     </div>
+    {(() => {
+      const hasRelease = onRelease && task.availableActions?.includes('RELEASE_TASK');
+      const hasClaim = onClaim && task.availableActions?.includes('CLAIM_TASK');
+      if (!hasRelease && !onReview && !hasClaim) return null;
+      return (
+        <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', gap: '8px' }}>
+          {hasRelease && (
+            <button
+              className={styles.button}
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRelease(task);
+              }}
+              disabled={releasing}
+            >
+              {releasing ? 'Releasing...' : 'Release Task'}
+            </button>
+          )}
+          {onReview && (
+            <button
+              className={`${styles.button} ${styles.primaryButton}`}
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReview(task);
+              }}
+            >
+              Review
+            </button>
+          )}
+          {hasClaim && (
+            <button
+              className={`${styles.button} ${styles.primaryButton}`}
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClaim(task.id.replace('APMS-', ''));
+              }}
+              disabled={claiming}
+            >
+              {claiming ? 'Taking...' : 'Take Task'}
+            </button>
+          )}
+        </div>
+      );
+    })()}
   </motion.article>
 );
 
-const TaskDetailModal: React.FC<{ task: ProjectTask | null; onClose: () => void }> = ({ task, onClose }) => (
+const TaskDetailModal: React.FC<{
+  task: ProjectTask | null;
+  onClose: () => void;
+  onClaim?: (taskId: string) => void;
+  onOpenWorkbench?: (task: ProjectTask) => void;
+  onRelease?: (task: ProjectTask) => void;
+}> = ({ task, onClose, onClaim, onOpenWorkbench, onRelease }) => {
+  const [activityLogs, setActivityLogs] = useState<import('../types/domain').ProjectTaskActivityResponse[]>([]);
+
+  useEffect(() => {
+    if (task && task.projectId) {
+      taskApi.getTaskActivity(task.projectId, task.id.replace('APMS-', ''))
+        .then(res => setActivityLogs(res.data?.data || []))
+        .catch(() => setActivityLogs([]));
+    } else {
+      setActivityLogs([]);
+    }
+  }, [task]);
+
+  const formatDateWithTime = (dateString: string) => {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString;
+    const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timePart = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${datePart} · ${timePart}`;
+  };
+
+  return (
   <AnimatePresence>
     {task && (
       <motion.div className={styles.overlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -1487,28 +1587,103 @@ const TaskDetailModal: React.FC<{ task: ProjectTask | null; onClose: () => void 
             <h3><FileText size={16} /> Basic Information</h3>
             <p className={styles.description}>{task.description}</p>
             <div className={styles.infoGrid}>
-              <div><span>Status</span><strong>{columns.find((column) => column.id === task.status)?.title}</strong></div>
-              <div><span>Priority</span><strong>{task.priority}</strong></div>
+              <div><span>Status</span><strong>
+                {task.status === 'AVAILABLE' ? 'Available' :
+                 task.status === 'IN_PROGRESS' ? 'In Progress' :
+                 task.status === 'IN_REVIEW' ? 'In Review' :
+                 task.status === 'DONE' ? 'Done' :
+                 task.status === 'CANCELLED' ? 'Cancelled' :
+                 task.status === 'TODO' || task.status === 'todo' ? 'To Do' :
+                 task.status === 'progress' ? 'In Progress' :
+                 task.status === 'review' ? 'In Review' :
+                 task.status === 'done' ? 'Done' :
+                 task.status}
+              </strong></div>
+              {task.keyResult ? (
+                <>
+                  <div><span>Key Result</span><strong>{task.keyResult.name}</strong></div>
+                  <div><span>KR Weight</span><strong>{task.keyResult.weight != null ? `${task.keyResult.weight} %` : ''}</strong></div>
+                </>
+              ) : null}
+              {!task.keyResult && (
+                <div><span>Priority</span><strong>{task.priority}</strong></div>
+              )}
               <div><span>Assignee</span><strong>{task.assignee.name}</strong></div>
-              <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
+              {!task.keyResult && (
+                <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
+              )}
               <div><span>Due date</span><strong>{formatDate(task.dueDate)}</strong></div>
-              <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
+              {!task.keyResult && (
+                <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
+              )}
             </div>
           </section>
 
           <section className={styles.drawerSection}>
             <h3><Activity size={16} /> Activity History</h3>
-            <ul className={styles.historyList}>
-              {task.activity.map((item) => (
-                <li key={item.id}><strong>{item.actor}</strong> {item.action} <span>{item.time}</span></li>
-              ))}
-            </ul>
+            {activityLogs.length > 0 ? (
+              <ul className={styles.historyList}>
+                {activityLogs.map((item) => (
+                  <li key={item.id}>
+                    <strong>{item.actorName}</strong> {item.action} <span>{formatDateWithTime(item.occurredAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.description}>No activity yet.</p>
+            )}
           </section>
+
+          {(onClaim || onOpenWorkbench || onRelease || task?.status === 'IN_REVIEW' || task?.status === 'DONE') && (
+            <section className={styles.drawerSection}>
+              {onClaim && task?.availableActions?.includes('CLAIM_TASK') && (
+                <button
+                  className={styles.primaryButton}
+                  onClick={() => {
+                    onClaim(task.id.replace('APMS-', ''));
+                    onClose();
+                  }}
+                >
+                  Take Task
+                </button>
+              )}
+              {onOpenWorkbench && task?.availableActions?.includes('SUBMIT_TASK') && (
+                <button
+                  className={styles.primaryButton}
+                  onClick={() => {
+                    onOpenWorkbench(task);
+                    onClose();
+                  }}
+                  style={{ marginRight: '8px' }}
+                >
+                  Open Workbench
+                </button>
+              )}
+              {onRelease && task?.availableActions?.includes('RELEASE_TASK') && (
+                <button
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    onRelease(task);
+                    onClose();
+                  }}
+                >
+                  Release Task
+                </button>
+              )}
+              {task?.status === 'IN_REVIEW' && (
+                <p className={styles.statusMessage}>Waiting for Manager Review</p>
+              )}
+              {(task?.status === 'DONE' || task?.status === 'done') && (
+                <p className={styles.statusMessage}>Completed</p>
+              )}
+            </section>
+          )}
         </motion.aside>
       </motion.div>
     )}
   </AnimatePresence>
-);
+  );
+};
 
 interface ProjectDetailPageProps {
   setActivePage?: (page: string) => void;
@@ -3179,9 +3354,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const { currentUser } = useUser();
   const isManager = currentUser?.role === ROLES.MANAGER || currentUser?.role === ROLES.OWNER || currentUser?.role === ROLES.ADMIN;
   const isStaffView = currentUser?.role === ROLES.STAFF;
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem(PROJECT_DETAIL_TAB_STORAGE_KEY) || 'Kanban Board');
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem(PROJECT_DETAIL_TAB_STORAGE_KEY);
+    return (saved === 'Pending Reviews' || saved === 'Available Tasks') ? 'Kanban Board' : (saved || 'Kanban Board');
+  });
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [apiTasks, setApiTasks] = useState<ProjectTaskResponse[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<ProjectTaskResponse[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskRefreshTick, setTaskRefreshTick] = useState(0);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -3191,6 +3370,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [selectedStaffTask, setSelectedStaffTask] = useState<ProjectTaskResponse | null>(null);
   const [selectedManagerReviewTask, setSelectedManagerReviewTask] = useState<ProjectTaskResponse | null>(null);
   const [cancelTaskConfirmOpen, setCancelTaskConfirmOpen] = useState(false);
+  const [releaseTaskConfirmOpen, setReleaseTaskConfirmOpen] = useState(false);
+  const [releaseTaskError, setReleaseTaskError] = useState<string | null>(null);
+  const [releasingTask, setReleasingTask] = useState(false);
   const [cancelTaskLoading, setCancelTaskLoading] = useState(false);
   const [cancelTaskError, setCancelTaskError] = useState<string | null>(null);
   const cancelTaskDialogRef = useRef<HTMLDivElement | null>(null);
@@ -3205,6 +3387,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
   const [workbenchError, setWorkbenchError] = useState<string | null>(null);
   const [workbenchMessage, setWorkbenchMessage] = useState<string | null>(null);
+  const [pendingReviewTasks, setPendingReviewTasks] = useState<ProjectTaskResponse[]>([]);
+  const [pendingReviewLoading, setPendingReviewLoading] = useState(false);
+  const [projectRefreshTick, setProjectRefreshTick] = useState(0);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
 
@@ -3234,6 +3419,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [aiProgress, setAiProgress] = useState<{ percent: number; label: string } | null>(null);
   const [pendingExtractionReviews, setPendingExtractionReviews] = useState<StaffExtractionReview[]>([]);
   const [lastExtractionReviews, setLastExtractionReviews] = useState<StaffExtractionReview[]>([]);
+  const [claimingTaskId, setClaimingTaskId] = useState<number | null>(null);
+  const [releasingTaskId, setReleasingTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     cancelTaskLoadingRef.current = cancelTaskLoading;
@@ -3427,7 +3614,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (step === 'Complete task' || step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
     return false;
   };
-  const visibleTabs = useMemo(() => (isStaffView ? ['Kanban Board', 'Documents', 'Company Members', 'Members'] : tabs), [isStaffView]);
+  const visibleTabs = useMemo(() => {
+    if (isStaffView) return ['Kanban Board', 'Documents', 'Company Members', 'Members'];
+    return tabs;
+  }, [isStaffView, isManager]);
   const staffAccountId = useMemo(() => {
     if (!isStaffView) return null;
     if (currentUser?.id && currentUser.id > 0) return currentUser.id;
@@ -3503,7 +3693,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [projectRefreshTick]);
 
   useEffect(() => {
     if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
@@ -3536,6 +3726,49 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       cancelled = true;
     };
   }, [currentProjectId, currentUser?.email, isStaffView, staffAccountId, taskRefreshTick]);
+
+  useEffect(() => {
+    if (!isManager || !Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
+
+    let cancelled = false;
+    setPendingReviewLoading(true);
+
+    taskApi.getProjectTasks(currentProjectId, { status: 'IN_REVIEW' })
+      .then((payload) => {
+        if (cancelled) return;
+        setPendingReviewTasks(unwrapList<ProjectTaskResponse>(payload));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPendingReviewTasks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPendingReviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId, isManager, taskRefreshTick]);
+
+  useEffect(() => {
+    if (!isStaffView || !Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
+
+    let cancelled = false;
+    taskApi.getProjectTasks(currentProjectId, { status: 'AVAILABLE' })
+      .then((payload) => {
+        if (cancelled) return;
+        setAvailableTasks(unwrapList<ProjectTaskResponse>(payload));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableTasks([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId, isStaffView, taskRefreshTick]);
 
   useEffect(() => {
     const refreshProjectTasks = () => setTaskRefreshTick((current) => current + 1);
@@ -3617,6 +3850,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     };
   }, [inviteEmail, showInviteModal]);
 
+  // --- DEEP LINK NOTIFICATION EFFECT ---
+  useEffect(() => {
+    const focusTaskIdStr = localStorage.getItem('apms-project-detail-focus-task-id');
+    if (!focusTaskIdStr) return;
+    const focusTaskId = Number(focusTaskIdStr);
+
+    if (activeTab === 'Kanban Board' || activeTab === 'My Tasks') {
+      if (apiTasks.length > 0) {
+        const target = apiTasks.find((t) => t.id === focusTaskId);
+        if (target) {
+          localStorage.removeItem('apms-project-detail-focus-task-id');
+          if (isManager && target.status === 'IN_REVIEW') {
+            setSelectedManagerReviewTask(target);
+            void loadManagerWorkbench(target);
+          } else if (isStaffView) {
+            setSelectedStaffTask(target);
+            const mappedCard = tasks.find((t) => t.id === `APMS-${focusTaskId}`);
+            if (mappedCard) setSelectedTask(mappedCard);
+          } else {
+            const mappedCard = tasks.find((t) => t.id === `APMS-${focusTaskId}`);
+            if (mappedCard) setSelectedTask(mappedCard);
+          }
+        }
+      }
+    }
+  }, [activeTab, isManager, isStaffView, apiTasks, tasks]);
+
   const displayedProject = useMemo(() => ({
     name: apiProject?.projectName || projectDetail.name,
     key: toProjectKey(apiProject),
@@ -3624,7 +3884,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     type: apiProject ? projectTypeLabel[apiProject.projectType] : projectDetail.type,
     priority: projectDetail.priority,
     managerName: apiProject?.managerName || 'Not assigned',
-    startDate: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
+    createdAt: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
     dueDate: formatOptionalDate(apiProject?.plannedEndDate || projectDetail.dueDate),
     targetCompanyName: apiProject?.targetCompanyName,
     description: apiProject?.description,
@@ -3639,8 +3899,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [apiProject]);
 
   useEffect(() => {
-    setTasks(apiTasks.map((task) => mapApiTaskToCard(task, projectMembers)));
-  }, [apiTasks, projectMembers]);
+    let mergedTasks = apiTasks;
+    if (isStaffView) {
+      const apiTaskIds = new Set(apiTasks.map((t) => t.id));
+      const uniqueAvailable = availableTasks.filter((t) => !apiTaskIds.has(t.id));
+      mergedTasks = [...uniqueAvailable, ...apiTasks];
+    }
+    setTasks(mergedTasks.map((task) => mapApiTaskToCard(task, projectMembers)));
+  }, [apiTasks, availableTasks, projectMembers, isStaffView]);
 
   useEffect(() => {
     if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
@@ -4044,6 +4310,49 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const handleClaimTask = async (taskId: number) => {
+    if (!currentProjectId) return;
+    setClaimingTaskId(taskId);
+    setTaskError(null);
+    try {
+      await taskApi.claimProjectTask(currentProjectId, taskId);
+      setToast({ kind: 'success', message: 'Task taken successfully. You can find it in My Tasks.' });
+      queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+      setTaskRefreshTick((t) => t + 1);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Cannot claim task.';
+      if (msg.includes('409') || msg.toLowerCase().includes('already claimed')) {
+        setToast({ kind: 'error', message: 'This task has already been taken by another staff member.' });
+      } else {
+        setToast({ kind: 'error', message: msg });
+      }
+      setTaskRefreshTick((t) => t + 1);
+    } finally {
+      setClaimingTaskId(null);
+    }
+  };
+
+  const handleReleaseTask = async (task: ProjectTask) => {
+    if (!currentProjectId) return;
+    const taskId = Number(task.id.replace('APMS-', ''));
+    setReleasingTaskId(taskId);
+    setTaskError(null);
+    try {
+      await taskApi.releaseProjectTask(currentProjectId, taskId);
+      setToast({ kind: 'success', message: 'Task released back to the Available pool.' });
+      queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+      setTaskRefreshTick((t) => t + 1);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Cannot release task.';
+      setToast({ kind: 'error', message: msg });
+      setTaskRefreshTick((t) => t + 1);
+    } finally {
+      setReleasingTaskId(null);
+    }
+  };
+
   const openCandidateDetail = async (candidate: CandidateResponse) => {
     setCandidateReviewTaskContext(null);
     setCandidateActionMessage(null);
@@ -4266,6 +4575,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     } else {
       setManagerCompanyMemberDraft(null);
     }
+
+    try {
+      const payload = await taskApi.getSubmissions(task.projectId, task.id, { page: 0, size: 1 });
+      const submissions = 'content' in payload.data ? payload.data.content : payload.data;
+      const latestSubmissions = Array.isArray(submissions) ? submissions : [];
+      setWorkbench((current) => current ? { ...current, submissions: latestSubmissions } : current);
+      if (latestSubmissions.length === 0 && task.status === 'IN_REVIEW') {
+        setWorkbenchError('No submission record was found for this task.');
+      }
+    } catch (e) {
+      if (task.status === 'IN_REVIEW') {
+        setWorkbenchError('Cannot load latest submission.');
+      }
+    }
   };
 
   const resetStaffWorkbenchForms = () => {
@@ -4398,9 +4721,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const handleReviewTask = (taskCard: ProjectTask) => {
+    const rawId = Number(taskCard.id.replace('APMS-', ''));
+    const apiTask = apiTasks.find((t) => t.id === rawId);
+    if (apiTask) {
+      setSelectedManagerReviewTask(apiTask);
+      void loadManagerWorkbench(apiTask);
+    }
+  };
+
   const handleOpenTask = (task: ProjectTask) => {
     const taskId = Number(task.id.replace('APMS-', ''));
-    const apiTask = apiTasks.find((item) => item.id === taskId);
+    const findRawTaskById = (id: number) =>
+      apiTasks.find((item) => item.id === id) ?? availableTasks.find((item) => item.id === id);
+    const apiTask = findRawTaskById(taskId);
 
     if (!isStaffView) {
       if (apiTask && (apiTask.status === 'IN_REVIEW' || apiTask.status === 'DONE')) {
@@ -4418,9 +4752,58 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return;
     }
 
-    setSelectedStaffTask(apiTask);
-    resetStaffWorkbenchForms();
-    void loadStaffWorkbench(apiTask);
+    if (apiTask.status === 'AVAILABLE') {
+      setSelectedTask(task);
+      return;
+    }
+
+    if (['IN_PROGRESS', 'IN_REVIEW', 'DONE'].includes(apiTask.status)) {
+      setSelectedStaffTask(apiTask);
+      resetStaffWorkbenchForms();
+      void loadStaffWorkbench(apiTask);
+      return;
+    }
+
+    // Fallback
+    setSelectedTask(task);
+  };
+
+  const handleOpenWorkbenchFromModal = (task: ProjectTask) => {
+    const taskId = Number(task.id.replace('APMS-', ''));
+    const apiTask = apiTasks.find((item) => item.id === taskId) ?? availableTasks.find((item) => item.id === taskId);
+    if (apiTask) {
+      setSelectedStaffTask(apiTask);
+      resetStaffWorkbenchForms();
+      void loadStaffWorkbench(apiTask);
+    }
+  };
+
+  const handleReleaseTaskFromModal = (task: ProjectTask) => {
+    const taskId = Number(task.id.replace('APMS-', ''));
+    const apiTask = apiTasks.find((item) => item.id === taskId) ?? availableTasks.find((item) => item.id === taskId);
+    if (apiTask) {
+      setSelectedStaffTask(apiTask);
+      setReleaseTaskError(null);
+      setReleaseTaskConfirmOpen(true);
+    }
+  };
+
+  const confirmReleaseStaffTask = async () => {
+    if (!selectedStaffTask || !currentProjectId) return;
+    setReleasingTask(true);
+    setReleaseTaskError(null);
+    try {
+      await taskApi.releaseProjectTask(currentProjectId, selectedStaffTask.id);
+      setToast({ kind: 'success', message: 'Task released successfully.' });
+      setReleaseTaskConfirmOpen(false);
+      setSelectedStaffTask(null);
+      setWorkbench(null);
+      setTaskRefreshTick((t) => t + 1);
+    } catch (error) {
+      setReleaseTaskError(error instanceof Error ? error.message : 'Cannot release this task.');
+    } finally {
+      setReleasingTask(false);
+    }
   };
 
   useEffect(() => {
@@ -5290,11 +5673,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       };
 
       setApiTasks((current) => current.map((item) => item.id === updatedTask.id ? updatedTask : item));
+      setPendingReviewTasks((current) => current.filter((item) => item.id !== updatedTask.id));
       setSelectedManagerReviewTask(updatedTask);
       setWorkbench((current) => current ? { ...current, taskStatus: nextStatus } : current);
-      setWorkbenchMessage(decision === 'APPROVE' ? 'Task approved and moved to Done.' : 'Task rejected and returned to staff.');
+      setWorkbenchMessage(decision === 'APPROVE' ? 'Task approved and moved to Done.' : 'Correction requested from staff.');
       await loadManagerWorkbench(updatedTask);
       setTaskRefreshTick((current) => current + 1);
+      setProjectRefreshTick((current) => current + 1);
       setSelectedManagerReviewTask(null);
       setManagerReviewComment('');
     } catch (error) {
@@ -5447,10 +5832,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 )}
               </div>
             </div>
+            {apiProject?.objective && (
+              <div style={{ marginTop: '16px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px' }}>Objective</h3>
+                <p style={{ margin: 0, fontWeight: 500, lineHeight: 1.5 }}>{apiProject.objective}</p>
+              </div>
+            )}
             <div className={styles.metaGrid}>
               {/* <div className={styles.metaItem}><span>Priority</span><strong>{displayedProject.priority}</strong></div> */}
               {/* <div className={styles.metaItem}><span>Manager</span><strong>{displayedProject.managerName}</strong></div> */}
-              <div className={styles.metaItem}><span>Start date</span><strong>{displayedProject.startDate}</strong></div>
+              <div className={styles.metaItem}><span>Created date</span><strong>{displayedProject.createdAt}</strong></div>
               <div className={styles.metaItem}><span>Due date</span><strong>{displayedProject.dueDate}</strong></div>
             </div>
           </motion.header>
@@ -5462,7 +5853,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             isOverdue={apiProject?.isOverdue}
             plannedEndDate={apiProject?.plannedEndDate}
             projectStatus={apiProject?.status}
+            isOkrProject={!!apiProject?.keyResults?.length}
           />
+
+          {apiProject?.keyResults && apiProject.keyResults.length > 0 && (
+            <div style={{ marginTop: '32px', marginBottom: '32px' }}>
+              <h3 style={{ marginBottom: '16px', fontSize: '1.25rem' }}>Key Results</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+                {apiProject.keyResults.map(kr => (
+                  <div key={kr.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: 'var(--bg-primary)' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>{kr.name}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{kr.description}</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                      <span style={{ fontWeight: 500 }}>Weight: {kr.weight}%</span>
+                      <span style={{ fontWeight: 600, color: kr.progress === 100 ? 'var(--success-text)' : 'var(--text-secondary)' }}>
+                        {kr.progress === 100 ? 'Completed' : 'Not completed'}
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                      <div style={{ width: `${kr.progress}%`, height: '100%', backgroundColor: kr.progress === 100 ? 'var(--success-color)' : 'var(--brand-primary)', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <nav className={styles.tabs} aria-label="Project navigation tabs">
             {visibleTabs.map((tab) => (
@@ -5477,11 +5894,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             ))}
           </nav>
 
+
+
+
+
           {activeTab === 'Kanban Board' ? (
             <>
               {taskError && !/403|denied|forbidden/i.test(taskError) && <div className={styles.inlineError}>{taskError}</div>}
               <div className={styles.board}>
-                {columns.map((column) => {
+                {(apiProject?.keyResults && apiProject.keyResults.length > 0 ? [
+                  { id: 'AVAILABLE', title: 'Available', hint: 'Ready for staff to claim', empty: 'No tasks are currently available.' },
+                  { id: 'IN_PROGRESS', title: 'In Progress', hint: 'Currently being worked on', empty: 'No tasks are currently in progress.' },
+                  { id: 'IN_REVIEW', title: 'In Review', hint: 'Waiting for validation', empty: 'No tasks are waiting for review.' },
+                  { id: 'DONE', title: 'Done', hint: 'Completed and accepted', empty: 'No completed tasks yet.' }
+                ] : [
+                  { id: 'todo', title: 'To Do', hint: 'Ready for discovery', empty: 'No tasks yet' },
+                  { id: 'progress', title: 'In Progress', hint: 'Currently being worked on', empty: 'No tasks yet' },
+                  { id: 'review', title: 'In Review', hint: 'Waiting for validation', empty: 'No tasks yet' },
+                  { id: 'done', title: 'Done', hint: 'Completed and accepted', empty: 'No tasks yet' }
+                ]).map((column) => {
                   const columnTasks = tasks.filter((task) => task.status === column.id);
                   return (
                     <motion.section
@@ -5503,12 +5934,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               key={task.id}
                               task={task}
                               onOpen={handleOpenTask}
-                              onDelete={!isStaffView ? handleDeleteTask : undefined}
+                              onDelete={!isStaffView && !task.keyResultType ? handleDeleteTask : undefined}
+                              onRelease={isStaffView ? handleReleaseTask : undefined}
+                              onReview={isManager && (task.status === 'review' || task.status === 'IN_REVIEW') ? handleReviewTask : undefined}
+                              onClaim={isStaffView ? (id) => void handleClaimTask(Number(id)) : undefined}
                               deleting={deletingTaskId === Number(task.id.replace('APMS-', ''))}
+                              releasing={releasingTaskId === Number(task.id.replace('APMS-', ''))}
+                              claiming={claimingTaskId === Number(task.id.replace('APMS-', ''))}
                             />
                           ))}
                         </AnimatePresence>
-                        {columnTasks.length === 0 && <div className={styles.empty}>{tasksLoading ? 'Loading tasks...' : 'No tasks yet'}</div>}
+                        {columnTasks.length === 0 && <div className={styles.empty}>{tasksLoading ? 'Loading tasks...' : column.empty}</div>}
                         {!isStaffView && column.id === 'todo' && (
                           <button
                             className={styles.columnCreateButton}
@@ -5854,12 +6290,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </table>
               </div>
             </motion.section>
-          ) : (
-            <motion.div className={styles.header} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <h2>{activeTab}</h2>
-              <p className={styles.description}>This section is prepared for future API integration and detailed project workflows.</p>
-            </motion.div>
-          )}
+          ) : null}
         </main>
       </div>
       <AnimatePresence>
@@ -6259,15 +6690,57 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               transition={{ type: 'spring', stiffness: 360, damping: 30 }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>APMS-{selectedStaffTask.id}</span>
-                  <h2 id="staff-workbench-title">{selectedStaffTask.title}</h2>
-                  <p>{selectedStaffTask.description || taskTypeText[selectedStaffTask.taskType].description}</p>
+              <div className={styles.inviteHead} style={{ alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span className={styles.taskKey}>APMS-{selectedStaffTask.id}</span>
+                    <span className={styles.tag}>{selectedStaffTask.status.replace('_', ' ')}</span>
+                    <span className={styles.tag}>{selectedStaffTask.taskType.replace(/_/g, ' ')}</span>
+                    {selectedStaffTask.dueDate && <span className={styles.tag}><Clock size={12} style={{ display: 'inline', marginRight: '4px' }}/>{new Date(selectedStaffTask.dueDate).toLocaleDateString()}</span>}
+                  </div>
+                  <h2 id="staff-workbench-title" style={{ marginTop: 0, marginBottom: '4px' }}>{selectedStaffTask.title}</h2>
+                  <p style={{ marginTop: 0 }}>
+                    {selectedStaffTask.targetCompanyProfileId && <span style={{ fontWeight: 500, marginRight: '8px' }}><Building2 size={12} style={{ display: 'inline', marginRight: '4px' }}/> {selectedStaffTask.targetCompanyProfileId}</span>}
+                    {selectedStaffTask.description || taskTypeText[selectedStaffTask.taskType]?.description}
+                  </p>
                 </div>
-                <button className={styles.iconButton} type="button" aria-label="Close staff workbench" onClick={() => setSelectedStaffTask(null)}>
-                  <X size={18} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={() => {
+                      const mockMapped = {
+                        id: `APMS-${selectedStaffTask.id}`,
+                        projectId: selectedStaffTask.projectId,
+                        title: selectedStaffTask.title,
+                        description: selectedStaffTask.description || 'No description provided.',
+                        status: selectedStaffTask.status,
+                        priority: selectedStaffTask.priority || 'MEDIUM',
+                        assignee: selectedStaffTask.assignedToUserId
+                          ? { name: selectedStaffTask.assignedToName || 'Assigned', avatar: `https://i.pravatar.cc/150?u=${selectedStaffTask.assignedToUserId}` }
+                          : { name: 'Unassigned', avatar: '' },
+                        reporter: { name: 'System', avatar: '' },
+                        dueDate: selectedStaffTask.dueDate,
+                        labels: [],
+                        availableActions: selectedStaffTask.availableActions,
+                        taskType: selectedStaffTask.taskType,
+                        attachments: [],
+                        comments: [],
+                        activity: [],
+                        aiSummary: '',
+                        aiSuggestions: [],
+                        aiRiskAnalysis: '',
+                        aiNextSteps: [],
+                        keyResult: selectedStaffTask.keyResult
+                      };
+                      setSelectedTask(mockMapped as any);
+                    }}
+                  >
+                    <Activity size={14} style={{ marginRight: '6px' }} /> View Details
+                  </button>
+                  <button className={styles.iconButton} type="button" aria-label="Close staff workbench" onClick={() => setSelectedStaffTask(null)}>
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               {workbenchError && <div className={styles.inlineError}>{workbenchError}</div>}
@@ -6314,13 +6787,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <Clock size={16} />Start task
                   </button>
                 ) : staffTaskStatus === 'IN_PROGRESS' ? (
-                  <button
-                    className={`${styles.button} ${styles.dangerButton}`}
-                    type="button"
-                    onClick={() => void handleCancelStaffTask()}
-                  >
-                    <X size={16} />Cancel task
-                  </button>
+                  selectedStaffTask.keyResult ? (
+                    <button
+                      className={`${styles.button} ${styles.secondaryButton}`}
+                      type="button"
+                      onClick={() => {
+                        setReleaseTaskError(null);
+                        setReleaseTaskConfirmOpen(true);
+                      }}
+                    >
+                      <X size={16} />Release task
+                    </button>
+                  ) : (
+                    <button
+                      className={`${styles.button} ${styles.dangerButton}`}
+                      type="button"
+                      onClick={() => void handleCancelStaffTask()}
+                    >
+                      <X size={16} />Cancel task
+                    </button>
+                  )
                 ) : (
                   <span className={styles.taskTypeBadge}>{staffTaskStatus}</span>
                 )}
@@ -6552,6 +7038,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               review={mergedPendingExtractionReview}
                               onChange={updateMergedPendingExtractionEdit}
                               onAskAi={openFieldAiAssist}
+                              isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
                             />
                           </article>
                         )}
@@ -6602,6 +7089,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           taskId={selectedStaffTask.id}
                           role="STAFF"
                           readOnly={staffTaskStatus !== 'IN_PROGRESS' || !isStaffEditableCandidateStatus(staffCandidate.status)}
+                          isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
                           onReviewed={() => {
                             taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
                               .then((payload: any) => setWorkbench(payload.data))
@@ -7160,7 +7648,55 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       </AnimatePresence>
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
-          {cancelTaskConfirmOpen && selectedStaffTask && (
+          {releaseTaskConfirmOpen && selectedStaffTask && (
+            <motion.div
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setReleaseTaskConfirmOpen(false)}
+            >
+              <motion.div
+                className={styles.confirmModalContent}
+                initial={{ opacity: 0, y: 15, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 15, scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3>Release task?</h3>
+                <p>
+                  This task will return to the Available pool and another Staff member may claim it.
+                  <br/><br/>
+                  Saved research/workbench data will not be deleted.
+                </p>
+                {releaseTaskError && (
+                  <div className={styles.errorNotice} style={{ marginTop: '16px' }}>
+                    <AlertTriangle size={16} />
+                    <span>{releaseTaskError}</span>
+                  </div>
+                )}
+                <div className={styles.modalActions}>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={() => setReleaseTaskConfirmOpen(false)}
+                    disabled={releasingTask}
+                  >
+                    Keep Task
+                  </button>
+                  <button
+                    className={styles.primaryButton}
+                    onClick={() => void confirmReleaseStaffTask()}
+                    disabled={releasingTask}
+                  >
+                    {releasingTask ? 'Releasing...' : 'Release Task'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+      {cancelTaskConfirmOpen && selectedStaffTask && (
             <motion.div
               className={styles.nestedConfirmOverlay}
               initial={{ opacity: 0 }}
@@ -7576,17 +8112,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               className={`${styles.button} ${styles.dangerButton}`}
                               type="button"
                               onClick={() => void handleManagerReviewSubmission('REJECT')}
-                              disabled={managerReviewLoading}
+                              disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
                             >
-                              {managerReviewLoading ? 'Saving...' : 'Reject'}
+                              {managerReviewLoading ? 'Saving...' : 'Request Changes'}
                             </button>
                             <button
                               className={`${styles.button} ${styles.primaryButton}`}
                               type="button"
                               onClick={() => void handleManagerReviewSubmission('APPROVE')}
-                              disabled={managerReviewLoading}
+                              disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
                             >
-                              <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : 'Approve task'}
+                              <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : 'Approve'}
                             </button>
                           </div>
                         )}
@@ -8071,7 +8607,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         </AnimatePresence>,
         document.body
       )}
-      <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+      <TaskDetailModal
+        task={selectedTask}
+        onClose={() => setSelectedTask(null)}
+        onClaim={isStaffView ? (id) => void handleClaimTask(Number(id)) : undefined}
+        onOpenWorkbench={isStaffView ? handleOpenWorkbenchFromModal : undefined}
+        onRelease={isStaffView ? handleReleaseTaskFromModal : undefined}
+      />
     </section>
   );
 };
