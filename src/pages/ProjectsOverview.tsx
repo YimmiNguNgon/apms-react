@@ -284,7 +284,7 @@ export const ProjectsOverview: React.FC = () => {
         try {
           const res = await api.get<boolean>(`/profiles/exists`, { params: { taxCode: createForm.targetCompanyTaxCode } });
           if (res.data === true) {
-            setCreateError('A company with this tax ID already exists. Please select the "Update existing company" project type.');
+            setCreateError('A company with this tax ID already exists. Please select the "Existing company" project type.');
             setCreateLoading(false);
             return;
           }

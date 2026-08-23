@@ -39,7 +39,8 @@ export const PendingProfileUpdatesList: React.FC<PendingProfileUpdatesListProps>
       // Notify parent to refresh CompanyProfileDetail
       window.dispatchEvent(new CustomEvent('apms-profile-updated'));
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to approve proposal');
+      const msg = err.response?.data?.message || err.message || 'Failed to approve proposal';
+      alert(msg);
       throw err;
     }
   };
@@ -49,7 +50,8 @@ export const PendingProfileUpdatesList: React.FC<PendingProfileUpdatesListProps>
       await api.patch(`/profile-update-proposals/${id}/reject`);
       fetchProposals();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to reject proposal');
+      const msg = err.response?.data?.message || err.message || 'Failed to reject proposal';
+      alert(msg);
       throw err;
     }
   };

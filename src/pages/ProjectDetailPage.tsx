@@ -53,7 +53,6 @@ import { candidateApi } from '../API/candidateApi';
 import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
-import { RoleEvaluationWorkspace } from '../components/RoleEvaluationWorkspace';
 import type {
   AiExtractionResult,
   CandidateResponse,
@@ -152,7 +151,7 @@ const projectStatusLabel: Record<ApiProjectStatus, string> = {
 
 const projectTypeLabel: Record<ApiProjectType, string> = {
   RESEARCH_NEW_COMPANY: 'New Company Research',
-  UPDATE_EXISTING_COMPANY: 'Update Existing Company',
+  UPDATE_EXISTING_COMPANY: 'Existing Company',
 };
 
 const toProjectKey = (project: ProjectResponse | null) =>
@@ -7592,23 +7591,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-                  {selectedManagerReviewTask.taskType === 'ROLE_EVALUATION' && (
-                    <section className={styles.workbenchPanel}>
-                      <RoleEvaluationWorkspace
-                        mode={currentUser?.role === ROLES.OWNER ? 'owner' : 'manager'}
-                        project={apiProject}
-                        task={selectedManagerReviewTask}
-                        documents={projectDocuments.length > 0 ? projectDocuments : workbench?.documents || []}
-                        documentsLoading={projectDocumentsLoading}
-                        managerComment={managerReviewComment}
-                        onManagerCommentChange={setManagerReviewComment}
-                        onReviewed={async () => {
-                          await loadManagerWorkbench(selectedManagerReviewTask);
-                          setTaskRefreshTick((current) => current + 1);
-                        }}
-                      />
-                    </section>
-                  )}
+
 
                   {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
                   <section className={styles.workbenchPanel}>

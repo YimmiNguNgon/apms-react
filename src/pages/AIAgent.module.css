@@ -31,10 +31,12 @@
 }
 
 .panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(380px, calc(100vw - 32px));
-  height: min(560px, calc(100vh - 104px));
+  display: flex;
+  flex-direction: column;
+  width: min(660px, calc(100vw - 32px));
+  height: min(720px, calc(80vh - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
   margin-bottom: 12px;
   overflow: hidden;
   border: 1px solid #e2e8f0;
@@ -49,7 +51,13 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid #e2e8f0;
-  padding: 14px;
+  padding: 10px 14px;
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+}
+.chatHeader:active {
+  cursor: grabbing;
 }
 
 .chatTitle {
@@ -132,7 +140,10 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   background: #f8fafc;
   padding: 14px 12px;
@@ -167,39 +178,42 @@
 }
 
 .messageRow {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .aiRow {
-  grid-template-columns: 32px minmax(0, 1fr);
+  flex-direction: row;
 }
 
 .userRow {
-  grid-template-columns: minmax(0, 1fr) 32px;
+  flex-direction: row-reverse;
 }
 
 .userRow .avatar {
-  grid-column: 2;
-  grid-row: 1;
   background: #e2e8f0;
   color: #334155;
 }
 
 .userRow .messageBlock {
-  grid-column: 1;
   align-items: flex-end;
 }
 
 .avatar {
+  flex: 0 0 auto;
   width: 32px;
   height: 32px;
 }
 
 .messageBlock {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   gap: 5px;
 }
@@ -217,27 +231,79 @@
 }
 
 .bubble {
+  width: fit-content;
   max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #ffffff;
   padding: 10px 12px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bubble p {
-  margin: 0;
+  margin: 0 0 8px;
   color: #334155;
   font-size: var(--text-body);
   line-height: 1.55;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.bubble ul,
+.bubble ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.bubble li {
+  margin: 2px 0;
+  color: #334155;
+  font-size: var(--text-body);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bubble h1,
+.bubble h2,
+.bubble h3,
+.bubble h4 {
+  margin: 8px 0 6px;
+  color: #0f172a;
+}
+
+.bubble br {
+  line-height: normal;
+}
+
+.bubble a,
+.bubble span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.aiBubble {
+  max-width: 88%;
 }
 
 .userBubble {
+  max-width: 78%;
   border-color: #2563eb;
   background: #2563eb;
 }
 
-.userBubble p {
+.userBubble p,
+.userBubble li,
+.userBubble h1,
+.userBubble h2,
+.userBubble h3,
+.userBubble h4 {
   color: #ffffff;
 }
 
@@ -315,31 +381,51 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .actions button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
   min-height: 30px;
-  border-radius: 999px;
+  height: auto;
+  border-radius: 16px;
   color: #2563eb;
   font-size: var(--text-caption);
   font-weight: 700;
-  padding: 6px 9px;
+  padding: 8px 12px;
 }
 
 .composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
-  gap: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
   border-top: 1px solid #e2e8f0;
   background: #ffffff;
   padding: 11px 12px;
+  flex-shrink: 0;
 }
 
 .composer textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
-  min-height: 42px;
-  max-height: 105px;
+  box-sizing: border-box;
+  min-height: 52px;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   resize: none;
   border: 1px solid #d8e0ee;
   border-radius: 13px;
@@ -357,12 +443,17 @@
 }
 
 .composer button {
+  flex: 0 0 auto;
   width: 42px;
   height: 42px;
   border-color: #2563eb;
   border-radius: 13px;
   background: #2563eb;
   color: #ffffff;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .composer button:disabled {
@@ -379,7 +470,12 @@
 
   .panel {
     width: 100%;
-    height: min(560px, calc(100vh - 92px));
+    height: min(720px, calc(100vh - 92px));
+  }
+
+  .aiBubble,
+  .userBubble {
+    max-width: 92%;
   }
 
   .launcher {

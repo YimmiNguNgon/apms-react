@@ -61,14 +61,46 @@ export const AIAgent: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  const [position, setPosition] = useState<{ x: number | null, y: number | null }>({ x: null, y: null });
+  const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
   const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.OWNER;
   const isManagerMode = currentUser?.role === ROLES.MANAGER;
   const isStaffMode = currentUser?.role === ROLES.STAFF;
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (isOpen) {
+      requestAnimationFrame(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      });
+    }
+  }, [isOpen, messages]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (position.x !== null && position.y !== null) {
+        const panelEl = document.querySelector(`.${styles.panel}`) as HTMLElement;
+        if (panelEl) {
+          const rect = panelEl.getBoundingClientRect();
+          const maxX = Math.max(0, window.innerWidth - rect.width);
+          const maxY = Math.max(0, window.innerHeight - rect.height);
+          let newX = position.x;
+          let newY = position.y;
+          
+          if (newX > maxX) newX = maxX;
+          if (newY > maxY) newY = maxY;
+          
+          if (newX !== position.x || newY !== position.y) {
+            setPosition({ x: newX, y: newY });
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [position]);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -190,7 +222,8 @@ export const AIAgent: React.FC = () => {
     }
   };
 
-  const startNewChat = () => {
+  const startNewChat = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setMessages([]);
     setSessionId(null);
     setInput('');
@@ -213,8 +246,59 @@ export const AIAgent: React.FC = () => {
   return (
     <section className={styles.widget} id="page-ai-agent" aria-live="polite">
       {isOpen && (
-        <div className={styles.panel}>
-          <header className={styles.chatHeader}>
+        <div 
+          className={styles.panel}
+          style={position.x !== null && position.y !== null ? { position: 'fixed', left: position.x, top: position.y, margin: 0, bottom: 'auto', right: 'auto' } : undefined}
+        >
+          <header 
+            className={styles.chatHeader}
+            onPointerDown={(e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              if (window.innerWidth <= 560) return;
+              
+              dragRef.current.isDragging = true;
+              dragRef.current.startX = e.clientX;
+              dragRef.current.startY = e.clientY;
+              
+              const panelEl = (e.currentTarget as HTMLElement).closest(`.${styles.panel}`) as HTMLElement;
+              if (panelEl) {
+                const rect = panelEl.getBoundingClientRect();
+                dragRef.current.initialX = rect.left;
+                dragRef.current.initialY = rect.top;
+                
+                if (position.x === null) {
+                  setPosition({ x: rect.left, y: rect.top });
+                }
+              }
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!dragRef.current.isDragging) return;
+              
+              let newX = dragRef.current.initialX + (e.clientX - dragRef.current.startX);
+              let newY = dragRef.current.initialY + (e.clientY - dragRef.current.startY);
+              
+              const panelEl = (e.currentTarget as HTMLElement).closest(`.${styles.panel}`) as HTMLElement;
+              if (panelEl) {
+                const rect = panelEl.getBoundingClientRect();
+                const maxX = Math.max(0, window.innerWidth - rect.width);
+                const maxY = Math.max(0, window.innerHeight - rect.height);
+                
+                newX = Math.max(0, Math.min(newX, maxX));
+                newY = Math.max(0, Math.min(newY, maxY));
+              }
+              
+              setPosition({ x: newX, y: newY });
+            }}
+            onPointerUp={(e) => {
+              dragRef.current.isDragging = false;
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            }}
+            onPointerCancel={(e) => {
+              dragRef.current.isDragging = false;
+              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            }}
+          >
             <div className={styles.chatTitle}>
               <span><Bot size={18} /></span>
               <div>
@@ -226,7 +310,7 @@ export const AIAgent: React.FC = () => {
               <button className={styles.newChatButton} type="button" onClick={startNewChat} title="New chat">
                 <MessageSquarePlus size={16} />
               </button>
-              <button className={styles.iconButton} type="button" onClick={() => setIsOpen(false)} title="Close chat">
+              <button className={styles.iconButton} type="button" onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} title="Close chat">
                 <X size={18} />
               </button>
             </div>
@@ -296,7 +380,11 @@ export const AIAgent: React.FC = () => {
               isManagerMode ? "Ask about your team progress, pending reviews, or company profiles..." :
               "Ask about your business ecosystem, relationships, risks, opportunities, or company intelligence..."
             }
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              event.target.style.height = 'auto';
+              event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`;
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();

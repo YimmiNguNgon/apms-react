@@ -90,20 +90,7 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
       </div>
 
       <div className={styles.metricTile}>
-        <span className={styles.metricLabel}>Completeness</span>
-        <span className={styles.metricValue}>{completenessScore}{completenessRate !== null ? '%' : ''}</span>
-        <span className={styles.metricSubtext}>Data completeness</span>
-        {completenessRate !== null && (
-          <div className={styles.metricProgress}>
-            <div 
-              className={styles.metricFill} 
-              style={{ 
-                width: `${completenessScore}%`,
-                backgroundColor: completenessRate < 0.5 ? '#f97316' : completenessRate < 0.8 ? '#3b82f6' : '#22c55e'
-              }} 
-            />
-          </div>
-        )}
+        
       </div>
     </div>
   );

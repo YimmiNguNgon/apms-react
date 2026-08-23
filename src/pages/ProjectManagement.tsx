@@ -61,7 +61,7 @@ const formatProjectDate = (value: string | null) => {
 
 const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   RESEARCH_NEW_COMPANY: 'New company research',
-  UPDATE_EXISTING_COMPANY: 'Update existing company',
+  UPDATE_EXISTING_COMPANY: 'Existing company',
 };
 
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -498,7 +498,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         try {
           const res = await api.get<boolean>(`/profiles/exists`, { params: { taxCode: projectForm.targetCompanyTaxCode } });
           if (res.data === true) {
-            setFeedback({ kind: 'error', message: 'A company with this tax ID already exists. Please select the "Update existing company" project type.' });
+            setFeedback({ kind: 'error', message: 'A company with this tax ID already exists. Please select the "Existing company" project type.' });
             setCreateLoading(false);
             return;
           }

@@ -46,7 +46,7 @@
     "projectNamePlaceholder": "",
     "projectTypeLabel": "Project type",
     "typeNewCompany": "New company research",
-    "typeUpdateCompany": "Update existing company",
+    "typeUpdateCompany": "Existing company",
     "existingCompanyLabel": "Existing company",
     "selectCompany": "Select an existing company",
     "loadingCompanies": "Loading companies...",

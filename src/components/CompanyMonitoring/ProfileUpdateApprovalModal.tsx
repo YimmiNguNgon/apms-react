@@ -62,7 +62,8 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
         onClose();
       }, 1500);
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Action failed', 'error');
+      const msg = err.response?.data?.message || err.message || 'Action failed';
+      showToast(msg, 'error');
     } finally {
       setIsSubmitting(false);
       setConfirmAction(null);
@@ -153,6 +154,16 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
               {renderField('Phone Number', currentProfile?.contact?.phones, proposal.proposedContact?.phones)}
               {renderField('Company Size (Tier)', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier)}
               {renderField('Head Office Address', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true)}
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>Business Information</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              {renderField('Industry', currentProfile?.business?.industries, proposal.proposedBusiness?.industries)}
+              {renderField('Markets (Regions)', currentProfile?.business?.markets, proposal.proposedBusiness?.markets)}
+              {renderField('Target Customers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers)}
+              {renderField('Products & Services', currentProfile?.business?.products?.map((p: any) => p.name).filter(Boolean), proposal.proposedBusiness?.products?.map((p: any) => p.name).filter(Boolean), true)}
             </div>
           </div>
 

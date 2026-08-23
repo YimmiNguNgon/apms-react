@@ -118,7 +118,7 @@ const relationshipLabel = (value?: string | null) => {
 const projectTypeLabel = (value?: string | null) => {
   const normalized = value?.toUpperCase();
   if (normalized?.includes('NEW') && normalized?.includes('COMPANY')) return 'Research New Company';
-  if (normalized?.includes('UPDATE') && normalized?.includes('EXISTING')) return 'Update Existing Company';
+  if (normalized?.includes('UPDATE') && normalized?.includes('EXISTING')) return 'Existing Company';
   return humanize(value);
 };
 
