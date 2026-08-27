@@ -36,6 +36,7 @@ export type ProjectActivity = {
 
 export type ProjectTask = {
   id: string;
+  backendId?: number;
   projectId?: number;
   title: string;
   description: string;

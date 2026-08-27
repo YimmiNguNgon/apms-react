@@ -8,6 +8,9 @@ interface CompanyProfileHeaderProps {
   reviewStatus?: string;
   version?: string;
   topRow?: React.ReactNode;
+  isHidden?: boolean;
+  onToggleVisibility?: () => void;
+  isVisibilityLoading?: boolean;
 }
 
 /**
@@ -21,6 +24,9 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
   reviewStatus,
   version,
   topRow,
+  isHidden,
+  onToggleVisibility,
+  isVisibilityLoading,
 }) => {
   return (
     <>
@@ -107,9 +113,41 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
                 {industry}
               </span>
             )}
-            <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto' }}>
-              Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{reviewStatus || 'VERIFIED'}</strong>
-              {version && <span style={{ marginLeft: '6px', color: '#6366F1' }}>• v{version}</span>}
+            <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{reviewStatus || 'VERIFIED'}</strong></span>
+              {reviewStatus === 'APPROVED' && typeof isHidden === 'boolean' && (
+                <span style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  background: isHidden ? '#f1f5f9' : '#dcfce7',
+                  color: isHidden ? '#64748b' : '#15803d',
+                  border: isHidden ? '1px solid #cbd5e1' : '1px solid #bbf7d0'
+                }}>
+                  {isHidden ? 'Hidden' : 'Published'}
+                </span>
+              )}
+              {version && <span style={{ color: '#6366F1' }}>• v{version}</span>}
+              {onToggleVisibility && reviewStatus === 'APPROVED' && (
+                <button
+                  type="button"
+                  onClick={onToggleVisibility}
+                  disabled={isVisibilityLoading}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    padding: '2px 8px',
+                    fontSize: '0.65rem',
+                    cursor: isVisibilityLoading ? 'not-allowed' : 'pointer',
+                    color: '#475569',
+                    marginLeft: '8px',
+                  }}
+                >
+                  {isVisibilityLoading ? 'Updating...' : (isHidden ? 'Publish' : 'Hide')}
+                </button>
+              )}
             </span>
           </div>
         </div>

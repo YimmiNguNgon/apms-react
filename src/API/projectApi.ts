@@ -116,6 +116,30 @@ export const projectApi = {
       throw error;
     }
   },
+  updateProject: async (projectId: number, updateData: import("../types/domain").UpdateProjectRequest) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Update project failed:", { status: response.status, payload, projectId, updateData });
+        throw new Error(payload?.message || "Failed to update project");
+      }
+
+      return payload as ApiResponse<ProjectResponse>;
+    } catch (error) {
+      console.error("Error updating project:", error);
+      throw error;
+    }
+  },
   addMember: async (projectId: number, memberData: AddMemberRequest) => {
     try {
       const response = await fetch(`${BASE_URL}/${projectId}/members`, {
@@ -156,11 +180,70 @@ export const projectApi = {
 
       return payload as ApiResponse<void>;
     } catch (error) {
-      console.error("Error removing member:", error);
+      console.error("Error removing project member:", error);
       throw error;
     }
   },
-  updateProjectStatus: async (projectId: number, statusData: UpdateProjectStatusRequest) => {
+  updateMemberRole: async (projectId: number, userId: number, projectRole: 'LEADER' | 'DEPUTY' | 'MEMBER') => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/members/${userId}/role`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ projectRole }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to update member role");
+      }
+      return payload as ApiResponse<ProjectMemberResponse>;
+    } catch (error) {
+      console.error("Error updating member role:", error);
+      throw error;
+    }
+  },
+  transferLeadership: async (projectId: number, newLeaderId: number, leaveProject: boolean = false) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/members/transfer-leadership`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ newLeaderAccountId: newLeaderId, leaveProject }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to transfer leadership");
+      }
+      return payload as ApiResponse<void>;
+    } catch (error) {
+      console.error("Error transferring leadership:", error);
+      throw error;
+    }
+  },
+  leaveProject: async (projectId: number) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/members/leave`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to leave project");
+      }
+      return payload as ApiResponse<void>;
+    } catch (error) {
+      console.error("Error leaving project:", error);
+      throw error;
+    }
+  },
+  updateProjectStatus: async (projectId: number, request: UpdateProjectStatusRequest) => {
     try {
       const response = await fetch(`${BASE_URL}/${projectId}/status`, {
         method: "PATCH",
@@ -168,18 +251,43 @@ export const projectApi = {
           "Content-Type": "application/json",
           ...getAuthHeader(),
         },
-        body: JSON.stringify(statusData),
+        body: JSON.stringify(request),
       });
+
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        console.error("Update project status failed:", { status: response.status, payload, projectId, statusData });
+        console.error("Update project status failed:", { status: response.status, payload });
         throw new Error(payload?.message || "Failed to update project status");
       }
 
       return payload as ApiResponse<ProjectResponse>;
     } catch (error) {
       console.error("Error updating project status:", error);
+      throw error;
+    }
+  },
+  closeProject: async (projectId: number, reason?: string) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/close`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ reason }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("Close project failed:", { status: response.status, payload });
+        throw new Error(payload?.message || "Failed to close project");
+      }
+
+      return payload as ApiResponse<ProjectResponse>;
+    } catch (error) {
+      console.error("Error closing project:", error);
       throw error;
     }
   },

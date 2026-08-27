@@ -81,9 +81,10 @@ const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   DRAFT: 'Inactive',
   ACTIVE: 'Active',
-  COMPLETED: 'Done',
+  COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
   ARCHIVED: 'Archived',
+  CLOSED: 'Closed',
 };
 
 const PROJECT_STATUS_TONES: Record<ProjectStatus, 'neutral' | 'info' | 'success' | 'danger'> = {
@@ -92,6 +93,7 @@ const PROJECT_STATUS_TONES: Record<ProjectStatus, 'neutral' | 'info' | 'success'
   COMPLETED: 'success',
   CANCELLED: 'danger',
   ARCHIVED: 'neutral',
+  CLOSED: 'neutral',
 };
 
 const RELATIONSHIP_OPTIONS: Array<{ value: RelationshipType; label: string }> = [
@@ -151,6 +153,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const isStaffView = currentUser?.role === ROLES.STAFF;
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [projectSearch, setProjectSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(() => {
     const saved = localStorage.getItem('apms-active-project');
@@ -645,34 +649,36 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     const isSelected = selectedProjectId === project.id;
     const tone = PROJECT_STATUS_TONES[project.status];
     const rowNumber = currentPage * pageSize + index + 1;
+    const displayStatus = project.status === 'ACTIVE' && project.isOverdue ? 'Overdue' : PROJECT_STATUS_LABELS[project.status];
+    const displayTone = project.status === 'ACTIVE' && project.isOverdue ? 'danger' : tone;
+    
+    let barColor = 'var(--bg-input)';
+    const pct = Math.max(0, Math.min(100, project.progressPercentage ?? 0));
+    if (pct > 0 && pct < 50) barColor = 'var(--danger, #ef4444)';
+    else if (pct >= 50 && pct < 80) barColor = 'var(--warning, #f59e0b)';
+    else if (pct >= 80 && pct < 100) barColor = 'var(--primary, #3b82f6)';
+    else if (pct === 100) barColor = 'var(--success, #10b981)';
 
     return (
       <div
         key={project.id}
-        className={`project-list-row ${isSelected ? 'selected' : ''}`}
+        className={`manager-project-row ${isSelected ? 'selected' : ''}`}
         role="row"
       >
-        <span className="project-list-index">{rowNumber}</span>
-        <span className="project-list-name"><strong>{project.projectName}</strong></span>
+        <span className="project-list-muted">{rowNumber}</span>
+        <span className="project-list-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}><strong>{project.projectName}</strong></span>
+        <span className="project-list-target" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{project.targetCompanyName}</span>
         <span className="project-list-muted">{PROJECT_TYPE_LABELS[project.projectType]}</span>
-        <span className="project-list-target">{project.targetCompanyName}</span>
-        <span className="project-list-date">{formatProjectDate(project.createdAt)}</span>
+        <div className="manager-project-progress" title={`${Math.round(pct)}% complete`}>
+          <div className="manager-project-progress-fill" style={{ width: `${pct}%`, background: barColor }} />
+          <span className="manager-project-progress-label">{Math.round(pct)}%</span>
+        </div>
         <span className="project-list-date">{project.plannedEndDate ? formatProjectDate(project.plannedEndDate) : '—'}</span>
-        <span className={`workspace-badge ${tone}`}>{PROJECT_STATUS_LABELS[project.status]}</span>
-        <span className="project-row-actions">
-          {!isStaffView && project.status === 'DRAFT' && (
-            <button className="project-activate-btn" type="button" onClick={() => void handleActivateProject(project)}>
-              Active
-            </button>
-          )}
+        <span className={`workspace-badge ${displayTone}`}>{displayStatus}</span>
+        <span className="manager-project-action">
           <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
             View detail
           </button>
-          {!isStaffView && project.status === 'DRAFT' && (
-            <button className="project-delete-btn" type="button" onClick={() => openDeleteProjectModal(project)}>
-              Delete
-            </button>
-          )}
         </span>
       </div>
     );
@@ -685,7 +691,19 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       p.targetCompanyName?.toLowerCase().includes(term) ||
       String(p.id).includes(term)
     );
+  }).filter((p) => {
+    if (statusFilter === 'ALL') return true;
+    if (statusFilter === 'OVERDUE') return p.status === 'ACTIVE' && p.isOverdue;
+    if (statusFilter === 'ACTIVE') return p.status === 'ACTIVE' && !p.isOverdue;
+    return p.status === statusFilter;
+  }).filter((p) => {
+    if (typeFilter === 'ALL') return true;
+    return p.projectType === typeFilter;
   });
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [projectSearch, statusFilter, typeFilter]);
 
   const totalElements = filteredProjectsAll.length;
   const pageSize = 5;
@@ -702,8 +720,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         <div className="workspace-page-head">
           <div>
             <div className="workspace-breadcrumbs">{t('breadcrumb.section')} <span>/</span> {t('breadcrumb.current')}</div>
-            <h1>{t('title.heading')}</h1>
-            {/* <p>Manage the kanban board, project scope, and member assignments from one workspace.</p> */}
+            <h1>Project Management</h1>
+            <p style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Overview of projects you manage</p>
           </div>
           <div className="workspace-head-actions">
             {/* <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button> */}
@@ -1070,40 +1088,53 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         )}
 
         <div className="workspace-focus-card">
-          <div>
-            {/* <span className="workspace-side-eyebrow">Board sync</span> */}
-            {/* <h3>Selected board drives downstream task intake</h3> */}
-            {/* <p>When you select a project here, APMS uses it as the active workspace for document upload, extraction, and candidate review.</p> */}
-          </div>
           <div className="workspace-focus-metrics">
             <article>
               <strong>{projects.length}</strong>
-              <span>Projects</span>
+              <span>Total Projects</span>
             </article>
             <article>
-              <strong>{selectedMembers.length}</strong>
-              <span>Members on selected board</span>
+              <strong>{projects.filter(p => p.status === 'ACTIVE' && !p.isOverdue).length}</strong>
+              <span>Active</span>
             </article>
             <article>
-              <strong>{activeProjectStorage}</strong>
-              <span>Current active project</span>
+              <strong>{projects.filter(p => p.status === 'ACTIVE' && p.isOverdue).length}</strong>
+              <span>Overdue</span>
+            </article>
+            <article>
+              <strong>{projects.filter(p => p.status === 'CLOSED' || p.status === 'COMPLETED').length}</strong>
+              <span>Closed / Completed</span>
             </article>
           </div>
         </div>
 
-        <div className="workspace-board-layout project-detail-layout">
-          <div className="project-list-table" role="table" aria-label="Projects">
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <div className="manager-project-container">
+          <div role="table" aria-label="Projects" style={{ width: '100%', minWidth: 0 }}>
+            <div className="manager-project-filters">
               <input
                 className="search-input"
                 type="text"
-                placeholder="Filter projects by name, ID, or company..."
+                placeholder="Search by project name, ID, or company..."
                 value={projectSearch}
                 onChange={(e) => setProjectSearch(e.target.value)}
-                style={{ width: '100%', maxWidth: '320px' }}
               />
+              <select className="search-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="ALL">All Status</option>
+                <option value="DRAFT">Inactive</option>
+                <option value="ACTIVE">Active</option>
+                <option value="OVERDUE">Overdue</option>
+                <option value="CLOSED">Closed</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+              <select className="search-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="ALL">All Types</option>
+                <option value="RESEARCH_NEW_COMPANY">New Company Research</option>
+                <option value="UPDATE_EXISTING_COMPANY">Update Existing Company</option>
+              </select>
             </div>
-            <div className="project-list-row project-list-head" role="row"><span>No.</span><span>Project</span><span>Type</span><span>Target company</span><span>Created</span><span>End date</span><span>Status</span><span style={{ textAlign: 'right' }}>Action</span></div>
+            <div className="manager-project-header" role="row">
+              <span>STT</span><span>PROJECT</span><span>TARGET COMPANY</span><span>TYPE</span><span>PROGRESS</span><span>END DATE</span><span>STATUS</span><span>ACTION</span>
+            </div>
             {filteredProjects.length === 0 ? <div className="workspace-empty">No projects found.</div> : filteredProjects.map(renderProjectRow)}
             <div className="project-table-pagination">
               <span>Showing {pageStart}-{pageEnd} of {totalElements} projects</span>

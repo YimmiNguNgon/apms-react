@@ -341,7 +341,7 @@ const MainApp: React.FC = () => {
         <Sidebar activePage={activePage} setActivePage={navigateToPage} />
         <div className="main-content">
           <Topbar activePage={activePage} setActivePage={navigateToPage} />
-          <div className="page-container">
+          <div className={`page-container ${activePage === 'project-detail' ? 'full-bleed' : ''}`}>
             {renderPage()}
           </div>
         </div>

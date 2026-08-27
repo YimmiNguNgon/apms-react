@@ -39,6 +39,7 @@
     "supplier": "Supplier",
     "customer": "Customer",
     "investorShareholder": "Investor – Shareholder",
+    "potentialPartner": "Potential Partner",
     "searchButton": "Search"
   },
   "table": {

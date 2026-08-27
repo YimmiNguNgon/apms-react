@@ -491,16 +491,16 @@ export const ProjectInspectionDrawer: React.FC<ProjectInspectionDrawerProps> = (
 
                       <span
                         style={{
-                          background: m.memberRole === 'MANAGER' ? '#FEF3C7' : '#EFF6FF',
-                          border: `1px solid ${m.memberRole === 'MANAGER' ? '#FDE68A' : '#BFDBFE'}`,
-                          color: m.memberRole === 'MANAGER' ? '#92400E' : '#1D4ED8',
+                          background: m.projectRole === 'LEADER' ? '#FEF3C7' : '#EFF6FF',
+                          border: `1px solid ${m.projectRole === 'LEADER' ? '#FDE68A' : '#BFDBFE'}`,
+                          color: m.projectRole === 'LEADER' ? '#92400E' : '#1D4ED8',
                           fontSize: '11px',
                           fontWeight: '700',
                           padding: '4px 12px',
                           borderRadius: '20px',
                         }}
                       >
-                        {m.memberRole}
+                        {m.projectRole}
                       </span>
                     </div>
                   ))}

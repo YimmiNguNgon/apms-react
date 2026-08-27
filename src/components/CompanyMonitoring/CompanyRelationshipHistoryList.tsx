@@ -30,7 +30,7 @@ export const CompanyRelationshipHistoryList: React.FC<CompanyRelationshipHistory
 
   if (loading) return <div>Loading history...</div>;
   if (error) return <div className={styles.errorText}>{error}</div>;
-  if (history.length === 0) return null;
+  if (history.length === 0) return <div style={{ color: 'var(--text-secondary)', padding: '12px 0', fontSize: '0.85rem' }}>No relationship history yet.</div>;
 
   return (
     <div>
