@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
 import { useUser, ROLES } from '../context/UserContext';
@@ -105,6 +105,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [intelLoading, setIntelLoading] = useState(false);
 
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const contextProjectIdStr = localStorage.getItem('apms-context-project');
+  const contextProjectId = contextProjectIdStr ? parseInt(contextProjectIdStr, 10) : null;
 
   const canEditListing =
     !!currentUser &&
@@ -259,6 +262,64 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     }
   };
 
+  const contextProject = useMemo(() => {
+    if (!contextProjectId) return null;
+    return projects.find(p => p.id === contextProjectId) || null;
+  }, [contextProjectId, projects]);
+
+  const currentUserProjectRole = useMemo(() => {
+    if (!contextProject || !currentUser) return null;
+    const member = contextProject.members?.find(m => m.accountId === currentUser.id);
+    return member?.projectRole || null;
+  }, [contextProject, currentUser]);
+
+  const canViewMonitoringPanel = useMemo(() => {
+    if (!currentUser) return false;
+    
+    // 1. Owner never sees it
+    if (currentUser.role === ROLES.OWNER) return false;
+    
+    // 2. Manager needs specific project context
+    if (currentUser.role === ROLES.MANAGER) {
+      if (!contextProjectId || !contextProject) return false;
+      
+      const isTargetCompany = contextProject.targetCompanyProfileId === profile?.id || contextProject.targetCompanyProfileId === profile?.companyId;
+      if (!isTargetCompany) return false;
+      
+      return currentUserProjectRole === 'LEADER';
+    }
+    
+    // 3. Staff and others do not see the management panel here
+    return false;
+  }, [currentUser, contextProjectId, contextProject, profile?.id, profile?.companyId, currentUserProjectRole]);
+
+  const canToggleVisibility = 
+    !!contextProjectId &&
+    currentUser?.role === ROLES.MANAGER &&
+    currentUserProjectRole === 'LEADER' &&
+    Boolean(contextProject?.targetCompanyProfileId && (contextProject.targetCompanyProfileId === profile?.id || contextProject.targetCompanyProfileId === profile?.companyId));
+
+  const handleToggleVisibility = async () => {
+    if (!profile?.id || !contextProjectId) return;
+    setTogglingVisibility(true);
+    const newVisibility = profile.isHidden ? 'PUBLISHED' : 'HIDDEN';
+    try {
+      const response = await api.patch<any>(`/projects/${contextProjectId}/company-profiles/${profile.id}/visibility`, { visibility: newVisibility });
+      const updatedIsHidden = (response as any)?.data?.isHidden ?? (response as any)?.isHidden;
+      if (typeof updatedIsHidden === 'boolean') {
+        setProfile(current => current ? { ...current, isHidden: updatedIsHidden } : current);
+      } else {
+        // Fallback if response format is unexpected
+        setProfile(current => current ? { ...current, isHidden: newVisibility === 'HIDDEN' } : current);
+      }
+    } catch (err) {
+      console.error('Failed to toggle visibility', err);
+      alert(err instanceof Error ? err.message : 'Failed to toggle visibility');
+    } finally {
+      setTogglingVisibility(false);
+    }
+  };
+
 
   const renderOverviewTab = () => {
     const taxCode = profile?.identity?.taxCode || 'Not updated';
@@ -297,6 +358,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
             
             {/* Ticker & Exchange inside Panel 1 */}
+
             {/* <div style={{ marginTop: '8px', borderTop: '1px solid #F1F5F9', paddingTop: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <h3 style={C.h3}>Thông Tin Niêm Yết</h3>
@@ -514,7 +576,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             />
           )}
 
-          <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
+          {canViewMonitoringPanel && (
+            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
+          )}
 
           {/* Quick Info Summary */}
           {!isDrawerMode && (
@@ -982,7 +1046,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <button
               onClick={() => {
                 if (setActivePage) {
-                  if (isOwnerProfile && currentUser) {
+                  if (contextProjectIdStr) {
+                    localStorage.removeItem('apms-context-project');
+                    setActivePage('project-detail');
+                  } else if (isOwnerProfile && currentUser) {
                     setActivePage(`${currentUser.role}-dashboard`);
                   } else if (currentUser?.role === ROLES.STAFF) {
                     setActivePage('staff-dashboard');
@@ -1010,13 +1077,23 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               id="btn-back-to-company-list"
             >
               <ArrowLeft size={14} />
-              {(isOwnerProfile || currentUser?.role === ROLES.STAFF) ? 'Back to Dashboard' : 'Back to Company Profiles'}
+              {contextProjectIdStr 
+                ? 'Back to Project'
+                : (isOwnerProfile || currentUser?.role === ROLES.STAFF) 
+                  ? 'Back to Dashboard' 
+                  : 'Back to Company Profiles'}
             </button>
             <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
             <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>APMS</span>
               <span>/</span>
-              <span>{isOwnerProfile ? 'My Enterprise' : 'Company Detail'}</span>
+              <span>
+                {contextProjectIdStr 
+                  ? 'Project' 
+                  : isOwnerProfile 
+                    ? 'My Enterprise' 
+                    : 'Company Detail'}
+              </span>
               <span>/</span>
               <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
             </div>
@@ -1106,8 +1183,66 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {profile.business.industries[0]}
                 </span>
               )}
-              <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto' }}>
-                Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{profile.reviewStatus || 'VERIFIED'}</strong>
+              <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                
+                {(() => {
+                  const isHidden = profile.isHidden ?? false;
+                  const isApproved = profile.reviewStatus === 'APPROVED';
+                  const isInteractive = canToggleVisibility && isApproved && !togglingVisibility;
+
+                  // Only render if explicitly associated with the current project and has manager/leader permissions
+                  if (!canToggleVisibility) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      title={!isApproved ? 'Profile can be published after approval.' : undefined}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        opacity: togglingVisibility ? 0.6 : 1,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.65rem', color: isHidden ? '#ef4444' : '#15803d', fontWeight: 600 }}>
+                        Visibility: {isHidden ? 'Hidden' : 'Published'}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={isInteractive ? handleToggleVisibility : undefined}
+                        disabled={!isInteractive}
+                        style={{
+                          position: 'relative',
+                          width: '42px',
+                          height: '22px',
+                          borderRadius: '999px',
+                          border: 'none',
+                          background: isHidden ? '#ef4444' : '#22c55e',
+                          cursor: isInteractive ? 'pointer' : 'not-allowed',
+                          transition: 'background 0.2s ease',
+                          padding: 0,
+                          opacity: !isApproved ? 0.7 : 1
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '2px',
+                            left: isHidden ? '2px' : '22px',
+                            width: '18px',
+                            height: '18px',
+                            background: '#ffffff',
+                            borderRadius: '50%',
+                            transition: 'left 0.2s ease',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                          }}
+                        />
+                      </button>
+                    </div>
+                  );
+                })()}
               </span>
             </div>
           </div>

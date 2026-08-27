@@ -703,7 +703,7 @@ const ProjectMemberList: React.FC<{ members: ProjectMemberResponse[] }> = ({ mem
           <ProjectAvatar label={member.fullName || member.email} small />
           <div>
             <strong>{member.fullName || member.email || `Account #${member.accountId}`}</strong>
-            <span>{humanize(member.memberRole)}</span>
+            <span>{humanize(member.projectRole)}</span>
           </div>
           <span className={styles.onlineDot} />
         </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
+import { useUser, ROLES, type Role } from '../context/UserContext';
 import i18n from '../i18n';
 import { formatDate as utilFormatDate } from '../utils/format';
 import type { PageResult, ProfileResponse, GraphCompanyDto, DashboardSummaryDto } from '../types/domain';
@@ -109,6 +110,7 @@ const newestProfilesFirst = (profiles: ProfileResponse[]) =>
 
 export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const { t } = useTranslation('company-list');
+  const { currentUser } = useUser();
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -116,6 +118,8 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [relationshipFilter, setRelationshipFilter] = useState('');
+  const [industryFilter, setIndustryFilter] = useState('');
+  const [industriesList, setIndustriesList] = useState<string[]>([]);
 
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
@@ -132,6 +136,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         api.get<PageResult<ProfileResponse>>('/profiles', {
           params: {
             keyword: searchQuery.trim() || undefined,
+            industry: industryFilter || undefined,
             relationshipType: relationshipFilter || undefined,
             excludeOwner: true,
             page,
@@ -167,7 +172,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   useEffect(() => {
     const timer = setTimeout(() => void fetchProfiles(0), 400);
     return () => clearTimeout(timer);
-  }, [searchQuery, relationshipFilter]);
+  }, [searchQuery, relationshipFilter, industryFilter]);
 
   useEffect(() => {
     api.get<GraphCompanyDto[]>('/graph/network').then((res) => {
@@ -192,13 +197,19 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
     api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
       if (res.data) setSummary(res.data);
     }).catch(err => console.error('Failed to load dashboard summary', err));
+
+    api.get<string[]>('/profiles/industries').then((res) => {
+      if (res.data) {
+        setIndustriesList(res.data.filter(Boolean).sort());
+      }
+    }).catch(err => console.error('Failed to load industries', err));
   }, []);
 
   const metrics = useMemo(() => {
     return [
       { label: t('stats.profiles.label'), value: summary?.totalCompanyProfiles || 0, note: t('stats.profiles.note') },
-      { label: t('status.verified'), value: summary?.verifiedCompanyCount || 0, note: t('stats.verified.note') },
-      { label: t('stats.industries.label'), value: summary?.totalIndustries || 0, note: t('stats.industries.note', { count: summary?.totalCompanyProfiles || 0 }) },
+      { label: 'Relationships', value: (summary?.partnerCount || 0) + (summary?.competitorCount || 0) + (summary?.supplierCount || 0) + (summary?.potentialPartnerCount || 0), note: 'Total network relationships' },
+      { label: t('stats.industries.label'), value: summary?.totalIndustries || 0, note: 'Distribution across sectors' },
     ];
   }, [summary, t]);
 
@@ -245,42 +256,54 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
               }}
             />
           </div>
+          <select value={industryFilter} onChange={(event) => setIndustryFilter(event.target.value)}>
+            <option value="">All industries</option>
+            {industriesList.map(ind => (
+              <option key={ind} value={ind}>{ind}</option>
+            ))}
+          </select>
           <select value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
             <option value="">{t('filters.allRelationships')}</option>
             <option value="PARTNER_WITH">{t('filters.partner')}</option>
             <option value="COMPETITOR_OF">{t('filters.competitor')}</option>
             <option value="SUPPLIER_OF">{t('filters.supplier')}</option>
             <option value="CUSTOMER_OF">{t('filters.customer')}</option>
-            <option value="POTENTIAL_PARTNER_OF">{t('filters.investorShareholder')}</option>
+            <option value="POTENTIAL_PARTNER_OF">{t('filters.potentialPartner')}</option>
           </select>
+
+          <button className={styles.primaryButton} onClick={() => void fetchProfiles(0)} disabled={loading}>
+            {loading ? t('table.loading') : t('filters.searchButton')}
+          </button>
         </div>
 
         {/* Table */}
-        <div className={styles.tableWrap}>
+        <div className={`${styles.tableWrap} ${loading ? styles.tableWrapLoading : ''}`}>
           <table className={styles.table}>
             <thead>
               <tr>
+                <th style={{ width: '40px', textAlign: 'center' }}>STT</th>
                 <th>{t('table.company')}</th>
                 <th>{t('table.relationship')}</th>
                 <th>{t('table.industry')}</th>
-                <th>{t('table.status')}</th>
-                <th>{t('table.updated')}</th>
                 <th style={{ textAlign: 'right' }}>{t('table.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>{t('table.loading')}</div></td>
+                  <td colSpan={5}><div className={styles.empty}>{t('table.loading')}</div></td>
                 </tr>
               )}
               {!loading && profiles.length === 0 && (
                 <tr>
-                  <td colSpan={6}><div className={styles.empty}>{t('table.empty')}</div></td>
+                  <td colSpan={5}><div className={styles.empty}>{t('table.empty')}</div></td>
                 </tr>
               )}
-              {!loading && profiles.map((profile) => (
+              {!loading && profiles.map((profile, index) => (
                 <tr key={profile.companyId || profile.id}>
+                  <td style={{ textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                    {(currentPage * PAGE_SIZE) + index + 1}
+                  </td>
                   <td>
                     <div className={styles.companyCell}>
                       <span>{profileName(profile).slice(0, 2).toUpperCase()}</span>
@@ -308,9 +331,8 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                     })()}
                   </td>
                   <td>{profileIndustry(profile)}</td>
-                  <td><span className={`${styles.badge} ${statusTone(profile.reviewStatus)}`}>{displayReviewStatus(profile.reviewStatus)}</span></td>
-                  <td>{formatDate(profile.metadata?.updatedAt || profile.metadata?.createdAt)}</td>
                   <td style={{ textAlign: 'right' }}>
+
                     <button className={styles.secondaryButton} type="button" onClick={() => openProfile(profile)} title={t('table.viewTitle')}>
                       {t('table.viewButton')}
                     </button>

@@ -37,9 +37,10 @@
     "partner": "Partner",
     "competitor": "Competitor",
     "supplier": "Supplier",
-    "customer": "Customer",
-    "investorShareholder": "Investor – Shareholder",
-    "searchButton": "Search"
+    "customer": "Khách hàng",
+    "investorShareholder": "Nhà đầu tư – Cổ đông",
+    "potentialPartner": "Đối tác tiềm năng",
+    "searchButton": "Tìm kiếm"
   },
   "table": {
     "company": "Company",

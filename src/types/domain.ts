@@ -6,7 +6,7 @@ export type Role =
   | 'ROLE_MANAGER'
   | 'ROLE_STAFF';
 
-export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED';
+export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED' | 'CLOSED';
 export type ProjectType =
   | 'RESEARCH_NEW_COMPANY'
   | 'UPDATE_EXISTING_COMPANY';
@@ -136,6 +136,8 @@ export interface ProfileResponse {
   }>;
   financialReports?: CompanyProfileFinancialReport[];
   reviewStatus?: string;
+  visibility?: 'PUBLISHED' | 'HIDDEN';
+  isHidden?: boolean;
   tags?: string[];
   stockTicker?: string;
   stockExchange?: string;
@@ -220,7 +222,8 @@ export interface ProjectMemberResponse {
   accountId: number;
   email?: string | null;
   fullName?: string | null;
-  memberRole: 'MANAGER' | 'STAFF';
+  accountRole: string;
+  projectRole: 'LEADER' | 'DEPUTY' | 'MEMBER';
   joinedAt: string | null;
 }
 
@@ -244,6 +247,9 @@ export interface ProjectResponse {
   completedTasks?: number;
   progressPercentage?: number;
   isOverdue?: boolean;
+  closedAt?: string | null;
+  closeReason?: string | null;
+  closedBy?: number | null;
   members: ProjectMemberResponse[];
   objective?: string | null;
   keyResults?: Array<{
@@ -305,11 +311,20 @@ export interface MultiDocumentExtractionRequest {
   rawDocumentIds: string[];
 }
 
-export interface UpdateProjectRequest {
+export type UpdateProjectRequest = {
   projectName?: string;
   description?: string | null;
-  status?: ProjectStatus | null;
-}
+  objective?: string | null;
+  targetRelationshipType?: RelationshipType;
+  plannedEndDate?: string;
+  targetCompanyName?: string;
+  targetCompanyTaxCode?: string;
+  targetCompanyProfileId?: string;
+  keyResults?: Array<{
+    type: string;
+    weight: number;
+  }>;
+};
 
 export interface UpdateProjectStatusRequest {
   status: ProjectStatus;
@@ -320,7 +335,6 @@ export interface UpdateProjectStatusRequest {
 export interface AddMemberRequest {
   accountId?: number | null;
   email?: string | null;
-  memberRole: 'MANAGER' | 'STAFF';
 }
 
 export interface FinancialInfo {

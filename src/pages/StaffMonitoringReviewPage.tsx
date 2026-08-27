@@ -136,6 +136,7 @@ export const StaffMonitoringReviewPage: React.FC<{
           industry={localProfile.business?.industries?.[0]}
           reviewStatus={localProfile.reviewStatus || 'UNVERIFIED'}
           version={localProfile.version}
+          isHidden={localProfile.isHidden}
           topRow={
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

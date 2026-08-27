@@ -23,6 +23,7 @@ import {
   Lightbulb,
   MessageSquare,
   MoreHorizontal,
+  MoreVertical,
   Paperclip,
   Plus,
   Search,
@@ -51,6 +52,7 @@ import { accountApi } from '../API/accountApi';
 import { taskApi } from '../API/taskApi';
 import { candidateApi } from '../API/candidateApi';
 import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
+import { EditProjectModal } from '../components/EditProjectModal';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
 import type {
@@ -141,12 +143,13 @@ const formatMemberDate = (value: string | null | undefined) => {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).format(date);
 };
 
-const projectStatusLabel: Record<ApiProjectStatus, string> = {
-  DRAFT: 'Draft',
-  ACTIVE: 'Active',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  ARCHIVED: 'Archived',
+const PROJECT_STATUS_LABELS: Record<ApiProjectStatus, string> = {
+  DRAFT: 'Bản nháp',
+  ACTIVE: 'Đang thực hiện',
+  COMPLETED: 'Hoàn thành',
+  CANCELLED: 'Đã hủy',
+  ARCHIVED: 'Lưu trữ',
+  CLOSED: 'Đóng',
 };
 
 const projectTypeLabel: Record<ApiProjectType, string> = {
@@ -220,7 +223,19 @@ const memberInitials = (member: ProjectMemberResponse) =>
     .toUpperCase() || 'U';
 
 const memberRoleLabel = (member: ProjectMemberResponse) =>
-  member.memberRole === 'MANAGER' ? 'Project owner' : 'Staff';
+  member.projectRole === 'LEADER' ? 'Leader' : member.projectRole === 'DEPUTY' ? 'Deputy' : 'Member';
+
+const formatAccountRole = (role: string | undefined | null) => {
+  if (!role) return 'Unknown';
+  // convert BUSINESS_DEVELOPMENT_MANAGER to BD Manager
+  const map: Record<string, string> = {
+    'BUSINESS_OWNER': 'Business Owner',
+    'BUSINESS_DEVELOPMENT_MANAGER': 'BD Manager',
+    'BUSINESS_DEVELOPMENT_STAFF': 'BD Staff',
+    'SYSTEM_ADMIN': 'System Admin',
+  };
+  return map[role] || role;
+};
 
 const candidateStatusLabel: Record<CandidateStatus, string> = {
   DRAFT: 'Draft',
@@ -1370,7 +1385,7 @@ const makeTaskMember = (member?: ProjectMemberResponse | null) => {
     name: memberDisplayName(member),
     role: memberRoleLabel(member),
     avatar: memberInitials(member),
-    color: member.memberRole === 'MANAGER' ? '#2563EB' : '#22C55E',
+    color: member.projectRole === 'LEADER' ? '#2563EB' : member.projectRole === 'DEPUTY' ? '#8B5CF6' : '#22C55E',
     workload: 0,
   };
 };
@@ -1388,6 +1403,7 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
 
   return {
     id: `APMS-${task.id}`,
+    backendId: task.id,
     projectId: task.projectId,
     title: task.title,
     description: task.description || 'No description provided.',
@@ -1522,41 +1538,48 @@ const TaskCard: React.FC<{
 const TaskDetailModal: React.FC<{
   task: ProjectTask | null;
   onClose: () => void;
-  onClaim?: (taskId: string) => void;
   onOpenWorkbench?: (task: ProjectTask) => void;
   onRelease?: (task: ProjectTask) => void;
-}> = ({ task, onClose, onClaim, onOpenWorkbench, onRelease }) => {
+}> = ({ task, onClose, onOpenWorkbench, onRelease }) => {
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState(false);
 
   useEffect(() => {
-    const fallbackLogs = (task?.activity || []).map(a => {
-      let isoDate = a.time;
-      if (!a.time.includes('ago') && !a.time.includes('Today') && !a.time.includes('Yesterday') && a.time !== 'No date') {
-        const d = new Date(a.time);
-        if (!isNaN(d.getTime())) {
-          isoDate = d.toISOString();
-        }
-      }
-      return {
-        id: a.id,
-        actorName: a.actor,
-        action: a.action,
-        occurredAt: isoDate
-      };
-    });
+    if (!task) return;
+    
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [task]);
 
+  useEffect(() => {
     if (task && task.projectId) {
-      taskApi.getTaskActivity(task.projectId, task.id.replace('APMS-', ''))
+      setActivityLoading(true);
+      setActivityError(false);
+      taskApi.getTaskActivity(task.projectId, task.backendId ?? task.id.replace('APMS-', ''))
         .then(res => {
-          if (res.data?.data && res.data.data.length > 0) {
-            setActivityLogs(res.data.data);
+          if (Array.isArray(res.data)) {
+            setActivityLogs(res.data);
           } else {
-            setActivityLogs(fallbackLogs);
+            console.error("Unexpected activity response shape:", res);
+            setActivityError(true);
+            setActivityLogs([]);
           }
+          setActivityLoading(false);
         })
-        .catch(() => setActivityLogs(fallbackLogs));
+        .catch((err) => {
+          console.error("Failed to load task activity:", err);
+          setActivityError(true);
+          setActivityLogs([]);
+          setActivityLoading(false);
+        });
     } else {
-      setActivityLogs(fallbackLogs);
+      setActivityLogs([]);
+      setActivityLoading(false);
     }
   }, [task]);
 
@@ -1571,10 +1594,23 @@ const TaskDetailModal: React.FC<{
     return `${datePart} · ${timePart}`;
   };
 
-  return (
-  <AnimatePresence>
-    {task && (
-      <motion.div className={styles.overlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+  const getActionText = (action: string, detail: string) => {
+    switch (action) {
+      case 'PROJECT_TASK_CREATED': return detail || 'Generated this task';
+      case 'PROJECT_TASK_CLAIMED': return 'Claimed this task';
+      case 'PROJECT_TASK_RELEASED': return 'Released this task';
+      case 'PROJECT_TASK_SUBMITTED': return 'Submitted this task for review';
+      case 'PROJECT_TASK_SUBMISSION_REVISION_REQUESTED': return 'Requested changes';
+      case 'PROJECT_TASK_SUBMISSION_APPROVED': return 'Approved this task';
+      default: return action;
+    }
+  };
+
+  return typeof document !== 'undefined'
+    ? createPortal(
+        <AnimatePresence>
+          {task && (
+            <motion.div className={styles.overlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
         <motion.aside
           className={styles.drawer}
           initial={{ opacity: 0, y: 18, scale: 0.97 }}
@@ -1631,32 +1667,36 @@ const TaskDetailModal: React.FC<{
 
           <section className={styles.drawerSection}>
             <h3><Activity size={16} /> Activity History</h3>
-            {activityLogs.length > 0 ? (
-              <ul className={styles.historyList}>
+            {activityLoading ? (
+              <p className={styles.description}>Loading activity...</p>
+            ) : activityError ? (
+              <p className={styles.description}>Unable to load activity.</p>
+            ) : activityLogs.length > 0 ? (
+              <div className={styles.timeline}>
                 {activityLogs.map((item) => (
-                  <li key={item.id}>
-                    <strong>{item.actorName}</strong> {item.action} <span>{formatDateWithTime(item.occurredAt)}</span>
-                  </li>
+                  <div key={item.id} className={styles.timelineItem}>
+                    <div className={styles.timelineDot} />
+                    <div className={styles.timelineContent}>
+                      <div className={styles.timelineHeader}>
+                        <strong>{item.actorName}</strong>
+                      </div>
+                      <div className={styles.timelineAction}>
+                        {getActionText(item.action, item.detail)}
+                      </div>
+                      <div className={styles.timelineTime}>
+                        {formatDateWithTime(item.occurredAt)}
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             ) : (
               <p className={styles.description}>No activity yet.</p>
             )}
           </section>
 
-          {(onClaim || onOpenWorkbench || onRelease || task?.status === 'IN_REVIEW' || task?.status === 'DONE') && (
+          {(onOpenWorkbench || onRelease || task?.status === 'IN_REVIEW' || task?.status === 'DONE') && (
             <section className={styles.drawerSection}>
-              {onClaim && task?.availableActions?.includes('CLAIM_TASK') && (
-                <button
-                  className={styles.primaryButton}
-                  onClick={() => {
-                    onClaim(task.id.replace('APMS-', ''));
-                    onClose();
-                  }}
-                >
-                  Take Task
-                </button>
-              )}
               {onOpenWorkbench && task?.availableActions?.includes('SUBMIT_TASK') && (
                 <button
                   className={styles.primaryButton}
@@ -1669,17 +1709,6 @@ const TaskDetailModal: React.FC<{
                   Open Workbench
                 </button>
               )}
-              {onRelease && task?.availableActions?.includes('RELEASE_TASK') && (
-                <button
-                  className={styles.secondaryButton}
-                  onClick={() => {
-                    onRelease(task);
-                    onClose();
-                  }}
-                >
-                  Release Task
-                </button>
-              )}
               {task?.status === 'IN_REVIEW' && (
                 <p className={styles.statusMessage}>Waiting for Manager Review</p>
               )}
@@ -1689,10 +1718,12 @@ const TaskDetailModal: React.FC<{
             </section>
           )}
         </motion.aside>
-      </motion.div>
-    )}
-  </AnimatePresence>
-  );
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )
+    : null;
 };
 
 interface ProjectDetailPageProps {
@@ -3398,6 +3429,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [pendingReviewLoading, setPendingReviewLoading] = useState(false);
   const [projectRefreshTick, setProjectRefreshTick] = useState(0);
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeReason, setCloseReason] = useState('');
+  const [closeLoading, setCloseLoading] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
 
   // Async Multi-Document Extraction States
@@ -3406,6 +3442,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const [extractingImportJobId, setExtractingImportJobId] = useState<number | null>(null);
   const [projectDocuments, setProjectDocuments] = useState<WorkbenchDocumentResponse[]>([]);
+  const [projectDocumentsError, setProjectDocumentsError] = useState<string | null>(null);
   const [projectDocumentsLoading, setProjectDocumentsLoading] = useState(false);
   const [documentsTabItems, setDocumentsTabItems] = useState<WorkbenchDocumentResponse[]>([]);
   const [documentsTabLoading, setDocumentsTabLoading] = useState(false);
@@ -3416,6 +3453,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [documentDeleteLoading, setDocumentDeleteLoading] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<ProjectMemberResponse | null>(null);
   const [removeMemberLoading, setRemoveMemberLoading] = useState(false);
+  const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState(false);
+  const [showTransferLeaveModal, setShowTransferLeaveModal] = useState(false);
+  const [leaveProjectLoading, setLeaveProjectLoading] = useState(false);
+  const [transferLeaveCandidateId, setTransferLeaveCandidateId] = useState<number | "">("");
+  const [openMemberMenuId, setOpenMemberMenuId] = useState<number | null>(null);
   const [companyMembersProfile, setCompanyMembersProfile] = useState<ProfileResponse | null>(null);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [companyMembersError, setCompanyMembersError] = useState<string | null>(null);
@@ -3576,6 +3618,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [candidateRelationshipFilter, setCandidateRelationshipFilter] = useState('ALL');
   const currentProjectId = apiProject?.id ?? Number(localStorage.getItem('apms-active-project'));
   const isDraftProject = apiProject?.status === 'DRAFT';
+  const isTerminalProject = apiProject?.status === 'CLOSED' || apiProject?.status === 'COMPLETED';
   const staffTaskStatus = workbench?.taskStatus || selectedStaffTask?.status;
   const canUseStaffWorkbench = Boolean(selectedStaffTask && selectedStaffTask.status === 'IN_PROGRESS');
   const isStaffWorkbenchStepActive = (step: string) => {
@@ -3886,7 +3929,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const displayedProject = useMemo(() => ({
     name: apiProject?.projectName || projectDetail.name,
     key: toProjectKey(apiProject),
-    status: apiProject ? projectStatusLabel[apiProject.status] : projectDetail.status,
+    status: apiProject ? PROJECT_STATUS_LABELS[apiProject.status] : projectDetail.status,
     type: apiProject ? projectTypeLabel[apiProject.projectType] : projectDetail.type,
     priority: projectDetail.priority,
     managerName: apiProject?.managerName || 'Not assigned',
@@ -3899,8 +3942,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const projectMembers = useMemo(() => {
     const rows = apiProject?.members ?? [];
     return [...rows].sort((a, b) => {
-      if (a.memberRole === b.memberRole) return a.accountId - b.accountId;
-      return a.memberRole === 'MANAGER' ? -1 : 1;
+      if (a.projectRole === b.projectRole) return a.accountId - b.accountId;
+      if (a.projectRole === 'LEADER') return -1;
+      if (b.projectRole === 'LEADER') return 1;
+      if (a.projectRole === 'DEPUTY') return -1;
+      if (b.projectRole === 'DEPUTY') return 1;
+      return 0;
     });
   }, [apiProject]);
 
@@ -3917,12 +3964,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   useEffect(() => {
     if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
       setProjectDocuments([]);
+      setProjectDocumentsError(null);
       setSelectedProjectDocumentIds([]);
       return;
     }
 
     let cancelled = false;
     setProjectDocumentsLoading(true);
+    setProjectDocumentsError(null);
 
     api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
       params: { includeHidden: false, page: 0, size: 100 },
@@ -3936,7 +3985,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       .catch((error) => {
         if (cancelled) return;
         setProjectDocuments([]);
-        setWorkbenchError(error instanceof Error ? error.message : 'Cannot load project documents.');
+        setProjectDocumentsError(error instanceof Error ? error.message : 'Cannot load project documents.');
       })
       .finally(() => {
         if (!cancelled) setProjectDocumentsLoading(false);
@@ -4060,9 +4109,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [activeTab, apiProject?.targetCompanyProfileId]);
 
   const assignableMembers = useMemo(
-    () => projectMembers.filter((member) => member.memberRole === 'STAFF'),
+    () => projectMembers.filter((member) => member.projectRole !== 'LEADER'),
     [projectMembers]
   );
+
+  const currentUserProjectRole = useMemo(() => {
+    return projectMembers.find((m) => m.accountId === currentUser?.id)?.projectRole;
+  }, [projectMembers, currentUser]);
+
+  const isCurrentLeader = currentUserProjectRole === 'LEADER';
+  const isCurrentDeputy = currentUserProjectRole === 'DEPUTY';
+  const canManageMembers = (isCurrentLeader || isCurrentDeputy) && !isTerminalProject;
 
   const candidateStats = useMemo(() => {
     const reviewCandidates = candidates.filter((candidate) => visibleCandidateStatuses.has(candidate.status));
@@ -4206,6 +4263,42 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const handleCloseProject = async () => {
+    if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) {
+      setCloseError('Cannot find selected project id.');
+      return;
+    }
+
+    const is100Percent = apiProject?.progressPercentage === 100;
+    if (!is100Percent && !closeReason.trim()) {
+      setCloseError('Please provide a reason for closing the project.');
+      return;
+    }
+
+    setCloseLoading(true);
+    setCloseError(null);
+
+    try {
+      const payload = await projectApi.closeProject(currentProjectId, closeReason.trim());
+      const updatedProject = payload?.data;
+      setApiProject((current) => {
+        const nextProject = updatedProject ?? current;
+        if (nextProject) {
+          sessionStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, JSON.stringify(nextProject));
+        }
+        return nextProject;
+      });
+      setShowCloseModal(false);
+      setToast({ kind: 'success', message: `Project ${is100Percent ? 'completed' : 'closed'} successfully.` });
+      // Refetch
+      setProjectRefreshTick(prev => prev + 1);
+    } catch (error) {
+      setCloseError(error instanceof Error ? error.message : 'Failed to close project.');
+    } finally {
+      setCloseLoading(false);
+    }
+  };
+
   const handleInviteMember = async () => {
     if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) {
       setInviteError('Cannot find selected project id.');
@@ -4228,7 +4321,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await projectApi.addMember(currentProjectId, {
         accountId: matchedAccount?.id ?? null,
         email,
-        memberRole: 'STAFF',
       });
 
       const nextMember = payload?.data as ProjectMemberResponse | undefined;
@@ -5051,6 +5143,78 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const handleUpdateMemberRole = async (member: ProjectMemberResponse, newRole: 'LEADER' | 'DEPUTY' | 'MEMBER') => {
+    if (!currentProjectId) return;
+    try {
+      await projectApi.updateMemberRole(currentProjectId, member.accountId, newRole);
+      setApiProject((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          members: current.members.map((m) =>
+            m.accountId === member.accountId ? { ...m, projectRole: newRole } : m
+          ),
+        };
+      });
+      setToast({ kind: 'success', message: `Member ${memberDisplayName(member)} role updated to ${newRole}.` });
+    } catch (error) {
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Failed to update member role.' });
+    }
+  };
+
+  const handleTransferLeadership = async (member: ProjectMemberResponse) => {
+    if (!currentProjectId || !window.confirm(`Are you sure you want to transfer project leadership to ${memberDisplayName(member)}? You will become a MEMBER.`)) return;
+    try {
+      await projectApi.transferLeadership(currentProjectId, member.accountId, false);
+      setApiProject((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          members: current.members.map((m) => {
+            if (m.accountId === member.accountId) return { ...m, projectRole: 'LEADER' };
+            if (m.projectRole === 'LEADER') return { ...m, projectRole: 'MEMBER' };
+            return m;
+          }),
+        };
+      });
+      setToast({ kind: 'success', message: `Leadership transferred to ${memberDisplayName(member)}.` });
+    } catch (error) {
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Failed to transfer leadership.' });
+    }
+  };
+
+  const handleLeaveProject = async () => {
+    if (!currentProjectId) return;
+    setLeaveProjectLoading(true);
+    try {
+      await projectApi.leaveProject(currentProjectId);
+      setToast({ kind: 'success', message: 'Left project successfully.' });
+      if (setActivePage) setActivePage('project-management');
+      else window.location.hash = 'project-management';
+    } catch (error) {
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Failed to leave project.' });
+    } finally {
+      setLeaveProjectLoading(false);
+      setShowLeaveConfirmModal(false);
+    }
+  };
+
+  const handleTransferAndLeaveProject = async (newLeaderId: number) => {
+    if (!currentProjectId) return;
+    setLeaveProjectLoading(true);
+    try {
+      await projectApi.transferLeadership(currentProjectId, newLeaderId, true);
+      setToast({ kind: 'success', message: 'Leadership transferred and left project successfully.' });
+      setShowTransferLeaveModal(false);
+      if (setActivePage) setActivePage('project-management');
+      else window.location.hash = 'project-management';
+    } catch (error) {
+      setToast({ kind: 'error', message: error instanceof Error ? error.message : 'Failed to transfer leadership and leave.' });
+    } finally {
+      setLeaveProjectLoading(false);
+    }
+  };
+
   const handleRunAiExtraction = async (document: WorkbenchDocumentResponse) => {
     if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
@@ -5817,46 +5981,100 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <h1>{projectLoading ? 'Loading project...' : displayedProject.name}</h1>
                 <div className={styles.keyLine}>
                   <span className={styles.badge}>{displayedProject.key}</span>
-                  <span className={styles.statusPill}>{displayedProject.status}</span>
-                  <span>{displayedProject.type}</span>
-                  {displayedProject.targetCompanyName && <span>{displayedProject.targetCompanyName}</span>}
+                  <span className={`${styles.statusPill} ${apiProject?.status === 'ACTIVE' && apiProject?.isOverdue ? styles.overduePill : ''}`}>
+                    {apiProject?.status === 'DRAFT' ? 'Draft' :
+                     apiProject?.status === 'ACTIVE' ? (apiProject?.isOverdue ? 'Overdue' : 'Active') :
+                     apiProject?.status === 'COMPLETED' ? 'Completed' :
+                     apiProject?.status === 'CLOSED' ? 'Closed' :
+                     displayedProject.status}
+                  </span>
+                  <span className={styles.badge}>{displayedProject.type === 'RESEARCH_NEW_COMPANY' ? 'New Company Research' : displayedProject.type === 'UPDATE_EXISTING_COMPANY' ? 'Existing Company Update' : displayedProject.type}</span>
                 </div>
-                {displayedProject.description && <p className={styles.projectDescription}>{displayedProject.description}</p>}
               </div>
               <div className={styles.actions}>
+                {isManager && isDraftProject && (
+                  <button className={`${styles.button} ${styles.outlineButton}`} type="button" onClick={() => setShowEditModal(true)}>
+                    <Edit3 size={16} />Edit Project
+                  </button>
+                )}
                 {isManager && isDraftProject && (
                   <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleActivateProject()} disabled={statusLoading}>
                     <CheckCircle2 size={16} />{statusLoading ? 'Activating...' : 'Activate Project'}
                   </button>
                 )}
-                {isManager && (
-                  <>
-                    {/* <button className={styles.button} type="button"><Edit3 size={16} />Edit Project</button> */}
-                    <button
-                      className={`${styles.button} ${styles.primaryButton}`}
-                      type="button"
-                      onClick={() => {
-                        if (ensureProjectIsActive('adding staff')) setShowInviteModal(true);
-                      }}
-                    >
-                      <UserPlus size={16} />Invite Member
-                    </button>
-                    {/* <button className={styles.iconButton} type="button" aria-label="More actions"><MoreHorizontal size={18} /></button> */}
-                  </>
+                {apiProject?.status === 'ACTIVE' && isCurrentLeader && (
+                  <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => setShowCloseModal(true)}>
+                    <CheckCircle2 size={16} />Close Project
+                  </button>
+                )}
+                {isManager && !isTerminalProject && (
+                  <button
+                    className={`${styles.button} ${isDraftProject ? styles.outlineButton : styles.primaryButton}`}
+                    type="button"
+                    onClick={() => {
+                      if (ensureProjectIsActive('adding staff')) setShowInviteModal(true);
+                    }}
+                  >
+                    <UserPlus size={16} />Invite Member
+                  </button>
                 )}
               </div>
             </div>
-            {apiProject?.objective && (
-              <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px' }}>Objective</h3>
-                <p style={{ margin: 0, fontWeight: 500, lineHeight: 1.5 }}>{apiProject.objective}</p>
+
+            <div style={{ marginTop: '24px', backgroundColor: 'var(--bg-primary)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', margin: 0 }}>Project Information</h3>
+                {apiProject?.targetCompanyProfileId && (
+                  <button
+                    className={`${styles.button} ${styles.outlineButton}`}
+                    style={{ padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('apms-selected-company', apiProject.targetCompanyProfileId!);
+                      localStorage.setItem('apms-context-project', String(currentProjectId));
+                      if (setActivePage) {
+                        setActivePage('company-detail');
+                      } else {
+                        window.location.hash = '#/company-detail';
+                      }
+                    }}
+                  >
+                    <ExternalLink size={14} /> View Profile
+                  </button>
+                )}
               </div>
-            )}
-            <div className={styles.metaGrid}>
-              {/* <div className={styles.metaItem}><span>Priority</span><strong>{displayedProject.priority}</strong></div> */}
-              {/* <div className={styles.metaItem}><span>Manager</span><strong>{displayedProject.managerName}</strong></div> */}
-              <div className={styles.metaItem}><span>Created date</span><strong>{displayedProject.createdAt}</strong></div>
-              <div className={styles.metaItem}><span>Due date</span><strong>{displayedProject.dueDate}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Target Company</div>
+                  <div style={{ fontWeight: 500 }}>{displayedProject.targetCompanyName || 'N/A'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Tax Code</div>
+                  <div style={{ fontWeight: 500 }}>{apiProject?.targetCompanyTaxCode || 'N/A'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Relationship</div>
+                  <div style={{ fontWeight: 500 }}>{apiProject?.targetRelationshipType || 'N/A'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Created Date</div>
+                  <div style={{ fontWeight: 500 }}>{displayedProject.createdAt || 'N/A'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Due Date</div>
+                  <div style={{ fontWeight: 500 }}>{displayedProject.dueDate || 'N/A'}</div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.05em' }}>Objective</h3>
+                <p style={{ margin: 0, lineHeight: 1.6 }}>{apiProject?.objective || 'No objective provided.'}</p>
+              </div>
+
+              <div style={{ marginTop: '24px' }}>
+                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.05em' }}>Additional Notes</h3>
+                <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{apiProject?.description || 'No additional notes.'}</p>
+              </div>
             </div>
           </motion.header>
 
@@ -5873,21 +6091,27 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           {apiProject?.keyResults && apiProject.keyResults.length > 0 && (
             <div style={{ marginTop: '32px', marginBottom: '32px' }}>
               <h3 style={{ marginBottom: '16px', fontSize: '1.25rem' }}>Key Results</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+              <div className={styles.krGrid}>
                 {apiProject.keyResults.map(kr => (
-                  <div key={kr.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: 'var(--bg-primary)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '4px' }}>{kr.name}</div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{kr.description}</div>
+                  <div key={kr.id} className={styles.krCard}>
+                    <div className={styles.krHeader}>
+                      <span className={styles.krTitle}>{kr.name}</span>
+                      <span className={styles.krWeight}>{kr.weight}%</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                      <span style={{ fontWeight: 500 }}>Weight: {kr.weight}%</span>
-                      <span style={{ fontWeight: 600, color: kr.progress === 100 ? 'var(--success-text)' : 'var(--text-secondary)' }}>
+                    <div className={styles.krDescription}>{kr.description}</div>
+                    <div className={styles.krFooter}>
+                      <div className={styles.krStatusRow}>
+                        <span>Progress</span>
+                        <span className={kr.progress === 100 ? styles.krCompleted : styles.krNotCompleted}>
+                          {kr.progress}%
+                        </span>
+                      </div>
+                      <div className={styles.krProgressBar}>
+                        <div className={kr.progress === 100 ? styles.krProgressFillSuccess : styles.krProgressFill} style={{ width: `${kr.progress}%` }} />
+                      </div>
+                      <div className={styles.krStatusText}>
                         {kr.progress === 100 ? 'Completed' : 'Not completed'}
-                      </span>
-                    </div>
-                    <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: `${kr.progress}%`, height: '100%', backgroundColor: kr.progress === 100 ? 'var(--success-color)' : 'var(--brand-primary)', transition: 'width 0.3s ease' }} />
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -5949,9 +6173,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               task={task}
                               onOpen={handleOpenTask}
                               onDelete={!isStaffView && !task.keyResultType ? handleDeleteTask : undefined}
-                              onRelease={isStaffView ? handleReleaseTask : undefined}
-                              onReview={isManager && (task.status === 'review' || task.status === 'IN_REVIEW') ? handleReviewTask : undefined}
-                              onClaim={isStaffView ? (id) => void handleClaimTask(Number(id)) : undefined}
+                              onRelease={isStaffView && !isTerminalProject ? handleReleaseTask : undefined}
+                              onReview={!isTerminalProject && task.availableActions?.includes('REVIEW_SUBMISSION') ? handleReviewTask : undefined}
+                              onClaim={isStaffView && !isTerminalProject ? (id) => void handleClaimTask(Number(id)) : undefined}
                               deleting={deletingTaskId === Number(task.id.replace('APMS-', ''))}
                               releasing={releasingTaskId === Number(task.id.replace('APMS-', ''))}
                               claiming={claimingTaskId === Number(task.id.replace('APMS-', ''))}
@@ -6233,27 +6457,30 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <tr>
                       <th>No.</th>
                       <th>Member</th>
-                      <th>Role</th>
+                      <th>Account Role</th>
+                      <th>Project Role</th>
                       <th>Joined</th>
-                      {!isStaffView && <th>Action</th>}
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {projectMembers.length === 0 && (
                       <tr>
-                        <td colSpan={isStaffView ? 4 : 5}>
+                        <td colSpan={5}>
                           <div className={styles.empty}>No members found in this project.</div>
                         </td>
                       </tr>
                     )}
                     {projectMembers.map((member, index) => {
-                      const isManager = member.memberRole === 'MANAGER';
+                      const isLeader = member.projectRole === 'LEADER';
+                      const isDeputy = member.projectRole === 'DEPUTY';
+
                       return (
-                        <tr key={`${member.id}-${member.accountId}`} className={isManager ? styles.managerRow : ''}>
+                        <tr key={`${member.id}-${member.accountId}`} className={isLeader ? styles.leaderRow : ''}>
                           <td>{index + 1}</td>
                           <td>
                             <div className={styles.memberCell}>
-                              <span className={`${styles.memberAvatar} ${isManager ? styles.managerAvatar : ''}`}>
+                              <span className={`${styles.memberAvatar} ${isLeader ? styles.leaderAvatar : isDeputy ? styles.deputyAvatar : styles.memberAvatar}`}>
                                 {memberInitials(member)}
                               </span>
                               <span>
@@ -6263,25 +6490,87 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             </div>
                           </td>
                           <td>
-                            <span className={`${styles.memberRoleBadge} ${isManager ? styles.managerBadge : styles.staffBadge}`}>
+                            <div className={styles.accountRoleBadge}>{formatAccountRole(member.accountRole)}</div>
+                          </td>
+                          <td>
+                            <span className={`${styles.memberRoleBadge} ${isLeader ? styles.leaderBadge : isDeputy ? styles.deputyBadge : styles.memberBadge}`}>
                               {memberRoleLabel(member)}
                             </span>
                           </td>
                           <td>{formatMemberDate(member.joinedAt)}</td>
-                          {!isStaffView && (
-                            <td>
-                              {!isManager && (
+                          <td>
+                            <div className={styles.actionMenuWrapper}>
+                              {(canManageMembers || member.accountId === currentUser?.id) && (
                                 <button
-                                  className={`${styles.button} ${styles.dangerButton || ''}`}
-                                  type="button"
-                                  onClick={() => setMemberToRemove(member)}
-                                  title="Remove staff member from project"
+                                  className={styles.actionMenuButton}
+                                  onClick={() => setOpenMemberMenuId(openMemberMenuId === member.accountId ? null : member.accountId)}
+                                  aria-label="Actions"
                                 >
-                                  <UserX size={16} />Remove
+                                  <MoreVertical size={16} />
                                 </button>
                               )}
-                            </td>
-                          )}
+                              
+                              {openMemberMenuId === member.accountId && (
+                                <>
+                                  <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5}} onClick={() => setOpenMemberMenuId(null)} />
+                                  <div className={styles.actionMenuDropdown}>
+                                    {canManageMembers && isCurrentLeader && member.projectRole === 'MEMBER' && (
+                                      <button
+                                        className={styles.actionMenuItem}
+                                        onClick={() => { setOpenMemberMenuId(null); handleUpdateMemberRole(member, 'DEPUTY'); }}
+                                      >
+                                        Make Deputy
+                                      </button>
+                                    )}
+                                    {canManageMembers && isCurrentLeader && isDeputy && (
+                                      <button
+                                        className={styles.actionMenuItem}
+                                        onClick={() => { setOpenMemberMenuId(null); handleUpdateMemberRole(member, 'MEMBER'); }}
+                                      >
+                                        Remove Deputy Role
+                                      </button>
+                                    )}
+                                    {canManageMembers && isCurrentLeader && !isLeader && (
+                                      <button
+                                        className={styles.actionMenuItem}
+                                        onClick={() => { setOpenMemberMenuId(null); handleTransferLeadership(member); }}
+                                      >
+                                        Transfer Leadership
+                                      </button>
+                                    )}
+                                    {canManageMembers && (isCurrentLeader ? !isLeader : (isCurrentDeputy && !isLeader && !isDeputy)) && member.accountId !== currentUser?.id && (
+                                      <button
+                                        className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
+                                        onClick={() => { setOpenMemberMenuId(null); setMemberToRemove(member); }}
+                                      >
+                                        Remove from Project
+                                      </button>
+                                    )}
+                                    {member.accountId === currentUser?.id && (
+                                      <button
+                                        className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
+                                        onClick={() => {
+                                          setOpenMemberMenuId(null);
+                                          if (isLeader) {
+                                            const candidates = projectMembers.filter(m => m.accountId !== currentUser?.id);
+                                            if (candidates.length === 0) {
+                                              window.alert("You must invite another member before leaving the project.");
+                                              return;
+                                            }
+                                            setShowTransferLeaveModal(true);
+                                          } else {
+                                            setShowLeaveConfirmModal(true);
+                                          }
+                                        }}
+                                      >
+                                        Leave Project
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -6901,8 +7190,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     )}
 
                     <div className={styles.projectDocumentList}>
+                      {projectDocumentsError && (
+                        <div className={styles.inlineError} style={{ margin: '0.5rem 1rem' }}>
+                          Unable to load project documents. {projectDocumentsError}
+                        </div>
+                      )}
                       {projectDocumentsLoading && <div className={styles.empty}>Loading project documents...</div>}
-                      {!projectDocumentsLoading && projectDocuments.length === 0 && (
+                      {!projectDocumentsLoading && !projectDocumentsError && projectDocuments.length === 0 && (
                         <div className={styles.empty}>No project documents found. Upload documents from the project document screen first.</div>
                       )}
                       {projectDocuments.map((document) => {
@@ -8489,16 +8783,179 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </motion.div>
             </motion.div>
           )}
+          {showLeaveConfirmModal && (
+            <motion.div
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !leaveProjectLoading && setShowLeaveConfirmModal(false)}
+            >
+              <motion.div
+                className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="leave-project-title"
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>Leave project</span>
+                    <h2 id="leave-project-title">Leave project?</h2>
+                    <p>
+                      You will no longer be a member of this project.
+                    </p>
+                  </div>
+                  <button className={styles.iconButton} type="button" onClick={() => setShowLeaveConfirmModal(false)} disabled={leaveProjectLoading}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className={styles.modalActions}>
+                  <button className={styles.button} type="button" onClick={() => setShowLeaveConfirmModal(false)} disabled={leaveProjectLoading}>
+                    Cancel
+                  </button>
+                  <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => void handleLeaveProject()} disabled={leaveProjectLoading}>
+                    {leaveProjectLoading ? 'Leaving...' : 'Leave Project'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+          {showTransferLeaveModal && (
+            <motion.div
+              className={styles.nestedConfirmOverlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !leaveProjectLoading && setShowTransferLeaveModal(false)}
+            >
+              <motion.div
+                className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="transfer-leave-title"
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>Transfer & Leave</span>
+                    <h2 id="transfer-leave-title">Transfer leadership before leaving</h2>
+                    <p>Choose another project member to become the new Leader.</p>
+                  </div>
+                  <button className={styles.iconButton} type="button" onClick={() => setShowTransferLeaveModal(false)} disabled={leaveProjectLoading}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className={styles.modalBody}>
+                  <div className={styles.fieldGroup}>
+                    <label>New Leader</label>
+                    <select
+                      value={transferLeaveCandidateId}
+                      onChange={(e) => setTransferLeaveCandidateId(Number(e.target.value))}
+                      disabled={leaveProjectLoading}
+                      className={styles.input}
+                    >
+                      <option value="">-- Select Member --</option>
+                      {projectMembers.filter(m => m.accountId !== currentUser?.id).map((m) => (
+                        <option key={m.accountId} value={m.accountId}>
+                          {memberDisplayName(m)} ({m.email || 'No email'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className={styles.modalActions}>
+                  <button className={styles.button} type="button" onClick={() => setShowTransferLeaveModal(false)} disabled={leaveProjectLoading}>
+                    Cancel
+                  </button>
+                  <button
+                    className={`${styles.button} ${styles.dangerButton}`}
+                    type="button"
+                    onClick={() => {
+                      if (transferLeaveCandidateId) void handleTransferAndLeaveProject(Number(transferLeaveCandidateId));
+                    }}
+                    disabled={leaveProjectLoading || !transferLeaveCandidateId}
+                  >
+                    {leaveProjectLoading ? 'Processing...' : 'Transfer & Leave'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
         </AnimatePresence>,
         document.body
       )}
       <TaskDetailModal
         task={selectedTask}
         onClose={() => setSelectedTask(null)}
-        onClaim={isStaffView ? (id) => void handleClaimTask(Number(id)) : undefined}
-        onOpenWorkbench={isStaffView ? handleOpenWorkbenchFromModal : undefined}
-        onRelease={isStaffView ? handleReleaseTaskFromModal : undefined}
+        onOpenWorkbench={isStaffView && !isTerminalProject ? handleOpenWorkbenchFromModal : undefined}
+        onRelease={isStaffView && !isTerminalProject ? handleReleaseTaskFromModal : undefined}
       />
+      {showCloseModal && apiProject && createPortal(
+        <AnimatePresence>
+          <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className={styles.closeProjectModal} initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()}>
+              <div className={styles.closeModalHeader}>
+                <h2 className={styles.closeModalTitle}>{apiProject.progressPercentage === 100 ? 'Complete project?' : 'Close project?'}</h2>
+                <button className={styles.closeModalCloseBtn} onClick={() => setShowCloseModal(false)}><X size={20} /></button>
+              </div>
+              
+              <div className={styles.closeModalBody}>
+                <p className={styles.closeModalDesc}>
+                  {apiProject.progressPercentage === 100 
+                    ? 'The project has reached 100% of its planned Key Results. Closing it will mark the project as Completed and make the workspace read-only.'
+                    : `This project is currently ${apiProject.progressPercentage || 0}% complete. Closing it will stop further work and make the project workspace read-only.`
+                  }
+                </p>
+                
+                {apiProject.progressPercentage !== 100 && (
+                  <div className={styles.formGroup}>
+                    <label>Reason for closing *</label>
+                    <textarea
+                      value={closeReason}
+                      onChange={(e) => setCloseReason(e.target.value)}
+                      placeholder="Provide a reason..."
+                      rows={4}
+                      style={{ width: '100%', minHeight: '96px', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', resize: 'vertical' }}
+                    />
+                  </div>
+                )}
+  
+                {closeError && <div className={styles.inlineError}>{closeError}</div>}
+              </div>
+
+              <div className={styles.closeModalFooter}>
+                <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setShowCloseModal(false)}>Cancel</button>
+                <button
+                  className={`${styles.button} ${styles.dangerButton}`}
+                  onClick={() => void handleCloseProject()}
+                  disabled={closeLoading || (apiProject.progressPercentage !== 100 && !closeReason.trim())}
+                >
+                  {closeLoading ? 'Processing...' : apiProject.progressPercentage === 100 ? 'Complete Project' : 'Close Project'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+      {showEditModal && apiProject && (
+        <EditProjectModal
+          project={apiProject}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setProjectRefreshTick((current) => current + 1);
+            setToast({ kind: 'success', message: 'Project updated successfully.' });
+          }}
+        />
+      )}
     </section>
   );
 };

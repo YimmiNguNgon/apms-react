@@ -296,7 +296,7 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
   };
 
   const statusTone = (status: string) => {
-    if (status === 'COMPLETED') return { bg: '#D1FAE5', color: '#065F46', label: 'Done' };
+    if (status === 'COMPLETED') return { bg: '#D1FAE5', color: '#065F46', label: 'Completed' };
     if (status === 'IN_PROGRESS') return { bg: '#DBEAFE', color: '#1D4ED8', label: 'In progress' };
     if (status === 'CANCELLED') return { bg: '#FEE2E2', color: '#B91C1C', label: 'Cancelled' };
     return { bg: '#E2E8F0', color: '#475569', label: 'Draft' };
@@ -442,7 +442,7 @@ export const CompanyAssignment: React.FC<{ setActivePage?: (p: string) => void }
                     viewingProject.members.map((m: ProjectMemberResponse, idx: number) => (
                       <div key={idx} style={{ padding: '6px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }}></div>
-                        {m.memberRole}
+                        {m.projectRole}
                       </div>
                     ))
                   ) : (

@@ -33,6 +33,7 @@ const ADMIN_TABS: ListingTabDef[] = [
 export const OwnerCompanyProfilePage: React.FC = () => {
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPatching, setIsPatching] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ListingTabId>('overview');
 
@@ -81,6 +82,8 @@ export const OwnerCompanyProfilePage: React.FC = () => {
   const handleSaveBoard = async (payload: BoardPayload) => {
     await patchProfile(payload);
   };
+
+
 
   const displayName = profile
     ? formatCompanyName(profile.identity?.tradeName || profile.identity?.legalName)
@@ -150,6 +153,7 @@ export const OwnerCompanyProfilePage: React.FC = () => {
           industry={profile.business?.industries?.[0]}
           reviewStatus={profile.reviewStatus || 'APPROVED'}
           version={profile.version}
+          isHidden={profile.isHidden}
           topRow={
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

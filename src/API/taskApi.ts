@@ -71,7 +71,7 @@ export const taskApi = {
   },
 
   getTaskActivity: (projectId: number | string, taskId: number | string) => {
-    return api.get<ApiResponse<ProjectTaskActivityResponse[]>>(
+    return api.get<ProjectTaskActivityResponse[]>(
       `/projects/${projectId}/tasks/${taskId}/activity`
     );
   },

@@ -6,7 +6,7 @@
   max-width: var(--workspace-shell-max);
   margin: 0 auto;
   color: var(--text-primary);
-  padding: 0 0 4px;
+  padding: 0 0 90px;
 }
 
 /* ── Header ─────────────────────────────────────────────── */
@@ -189,11 +189,14 @@
 .tableWrap {
   overflow-x: auto;
   max-height: calc(100vh - 250px);
-  min-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
   border: 1px solid var(--border-color);
   border-radius: 8px;
+}
+
+.tableWrapLoading {
+  min-height: 220px;
 }
 
 .table {

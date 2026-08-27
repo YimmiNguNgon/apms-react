@@ -60,6 +60,11 @@ const fetchProfile = async (companyId: string): Promise<ProfileResponse | null> 
   return safeApiGet<ProfileResponse>(`/profiles/${companyId}`);
 };
 
+export const updateProfileVisibility = async (companyId: string, visibility: 'PUBLISHED' | 'HIDDEN'): Promise<ProfileResponse> => {
+  const response = await api.patch<ProfileResponse>(`/company-profiles/${companyId}/visibility`, { visibility });
+  return response.data;
+};
+
 interface FinancialValue { code?: string; value?: number | null; }
 interface FinancialPeriod { time?: string; data?: FinancialValue[]; }
 interface FinancialRow { code?: string; name?: string; }
