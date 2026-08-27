@@ -18,7 +18,7 @@ interface ManagerCandidateReviewWorkspaceProps {
   isWorkspaceReadOnly?: boolean;
 }
 
-type TabType = 'Overview' | 'Business' | 'SWOT' | 'Analysis';
+type TabType = 'Overview' | 'Business';
 type ManagerUiStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED';
 type EvidenceItem = CandidateFieldEvidence & Record<string, unknown>;
 
@@ -75,19 +75,6 @@ const FIELD_DEFS: Record<TabType, Array<{ label: string; key: string }>> = {
     { label: 'Markets', key: 'business.markets' },
     { label: 'Target Customers', key: 'business.targetCustomers' },
     { label: 'Products & Services', key: 'business.products' },
-  ],
-  SWOT: [
-    { label: 'Strengths', key: 'insights.strengths' },
-    { label: 'Weaknesses', key: 'insights.weaknesses' },
-    { label: 'Opportunities', key: 'insights.opportunities' },
-    { label: 'Threats', key: 'insights.threats' },
-  ],
-  Analysis: [
-    { label: 'Financial', key: 'financial' },
-    { label: 'Innovation', key: 'innovation' },
-    { label: 'Market Analysis', key: 'market' },
-    { label: 'Risk', key: 'risk' },
-    { label: 'Compliance', key: 'compliance' },
   ],
 };
 
@@ -508,7 +495,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
   // ── Next Pending ──
   const handleNextPending = useCallback(() => {
-    const tabs: TabType[] = ['Overview', 'Business', 'SWOT', 'Analysis'];
+    const tabs: TabType[] = ['Overview', 'Business'];
     for (const tab of tabs) {
       const pendingFields = FIELD_DEFS[tab].filter(f => {
         const field = effectiveFieldForKey(serverCandidate, f.key);
@@ -656,7 +643,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         {/* Left Column */}
         <div className={styles.mainContent}>
           <div className={styles.tabsContainer}>
-            {(['Overview', 'Business', 'SWOT', 'Analysis'] as TabType[]).map(tab => {
+            {(['Overview', 'Business'] as TabType[]).map(tab => {
               const tabPending = FIELD_DEFS[tab].filter(f => {
                 const field = effectiveFieldForKey(serverCandidate, f.key);
                 return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';

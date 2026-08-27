@@ -88,8 +88,8 @@ export const companyMonitoringApi = {
 
   getAssignmentByCompany: async (
     companyProfileId: string
-  ): Promise<CompanyMonitoringAssignmentResponse> => {
-    const response = await api.get<CompanyMonitoringAssignmentResponse>(`/company-monitoring/company/${companyProfileId}`);
+  ): Promise<CompanyMonitoringAssignmentResponse | null> => {
+    const response = await api.get<CompanyMonitoringAssignmentResponse | null>(`/company-monitoring/company/${companyProfileId}`);
     return response.data;
   },
 

@@ -51,6 +51,27 @@ interface OwnerProfileSnapshot {
 
 export const OWNER_COMPANY_ID = '6a31a0000000000000000001';
 
+interface LeadershipLikeMember {
+  name?: string | null;
+  fullName?: string | null;
+  position?: string | null;
+  role?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  profileUrl?: string | null;
+  notes?: string | null;
+  education?: string | null;
+  researchedAt?: string | null;
+  crawledAt?: string | null;
+}
+
+type ProfileWithLeadershipFallbacks = ProfileResponse & {
+  boardMembers?: LeadershipLikeMember[];
+  leadership?: LeadershipLikeMember[];
+};
+
 const safeApiGet = <T>(
   url: string,
   params?: Record<string, string | number | boolean | undefined | null>,
@@ -130,11 +151,35 @@ const buildFinancialReportsFromProfile = (profile: ProfileResponse, companyId: s
   return merged;
 };
 
-const classifyBoardGroup = (position?: string, role?: string): number => {
-  const value = `${position ?? ''} ${role ?? ''}`.toLowerCase();
+const normalizeText = (value?: string | null): string =>
+  (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const classifyBoardGroup = (position?: string | null, role?: string | null): number => {
+  const value = normalizeText(`${position ?? ''} ${role ?? ''}`);
   if (value.includes('kiem soat') || value.includes('kiem toan') || value.includes('shareholder')) return 3;
   if (value.includes('giam doc') || value.includes('ceo') || value.includes('cfo') || value.includes('cto') || value.includes('coo')) return 2;
   return 1;
+};
+
+const collectLeadershipMembers = (profile: ProfileResponse | null): LeadershipLikeMember[] => {
+  if (!profile) return [];
+
+  const fallbackProfile = profile as ProfileWithLeadershipFallbacks;
+  const rawMembers = [
+    ...(fallbackProfile.companyMembers ?? []),
+    ...(fallbackProfile.boardMembers ?? []),
+    ...(fallbackProfile.leadership ?? []),
+  ];
+
+  const seen = new Set<string>();
+  return rawMembers.filter((member) => {
+    const name = member.name ?? member.fullName ?? '';
+    const position = member.position ?? member.role ?? '';
+    const key = `${normalizeText(name)}|${normalizeText(position)}`;
+    if (key === '|' || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 export const listingDataApi = {
@@ -162,17 +207,17 @@ export const listingDataApi = {
 
   getBoardMembers: async (companyId: string): Promise<ListingTabResponse<CompanyBoardMember[]>> => {
     const profile = await fetchProfile(companyId);
-    const members = (profile?.companyMembers ?? []).map((member, index) => ({
+    const members = collectLeadershipMembers(profile).map((member, index) => ({
       id: index + 1,
       companyId,
       name: member.name ?? member.fullName ?? null,
       position: member.position ?? member.role ?? null,
       positionGroup: classifyBoardGroup(member.position, member.role),
       personType: member.role ?? null,
-      education: member.notes ?? (member.email ? `Email: ${member.email}` : null),
+      education: member.education ?? member.notes ?? (member.email ? `Email: ${member.email}` : null),
       imageUrl: member.imageUrl ?? null,
-      profileUrl: member.sourceUrl ?? null,
-      crawledAt: member.researchedAt ?? null,
+      profileUrl: member.profileUrl ?? member.sourceUrl ?? null,
+      crawledAt: member.crawledAt ?? member.researchedAt ?? null,
     }));
 
     return {

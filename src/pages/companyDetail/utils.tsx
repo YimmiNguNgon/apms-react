@@ -21,7 +21,6 @@ export interface ListingTabDef {
 
 export const LISTING_TABS: ListingTabDef[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutGrid size={14} /> },
-  { id: 'swot', label: 'SWOT', icon: <TrendingUp size={14} /> },
   { id: 'business-fields', label: 'Business Fields', icon: <Building2 size={14} /> },
   // { id: 'relationship', label: 'Relationship', icon: <Users size={14} /> },
   { id: 'board', label: 'Leadership', icon: <Shield size={14} /> },

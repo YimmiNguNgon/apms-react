@@ -56,7 +56,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
       setLoading(true);
       setError(null);
       const data = await companyMonitoringApi.getAssignmentByCompany(companyProfileId);
-      setAssignment(data);
+      setAssignment(data ?? null);
     } catch (err: any) {
       if (err.status === 404 || err.status === 400) {
         setAssignment(null);

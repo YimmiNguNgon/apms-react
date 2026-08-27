@@ -17,7 +17,6 @@ import { companyMonitoringApi } from '../API/companyMonitoringApi';
 
 const ADMIN_TABS: ListingTabDef[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutGrid size={14} /> },
-  { id: 'swot', label: 'SWOT', icon: <TrendingUp size={14} /> },
   { id: 'business-fields', label: 'Business Fields', icon: <Building2 size={14} /> },
   { id: 'board', label: 'Ban lãnh d?o', icon: <Shield size={14} /> },
 ];
@@ -125,11 +124,8 @@ export const StaffMonitoringReviewPage: React.FC<{
   const hasChanges = JSON.stringify(localProfile) !== JSON.stringify(originalProfile);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 50, overflowY: 'auto' }}>
+    <div style={{ background: '#f8fafc', overflowY: 'auto' }}>
       <PageShell>
-        <button onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', marginBottom: '16px', marginTop: '16px', fontWeight: 600 }}>
-          <ArrowLeft size={16} /> Back to Monitoring
-        </button>
         <CompanyProfileHeader
           displayName={displayName}
           initials={initials}
@@ -138,8 +134,19 @@ export const StaffMonitoringReviewPage: React.FC<{
           version={localProfile.version}
           topRow={
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <button 
+                  onClick={onClose} 
+                  style={{ 
+                    display: 'flex', alignItems: 'center', gap: '6px', 
+                    background: '#fff', border: '1px solid #cbd5e1', 
+                    color: '#475569', cursor: 'pointer', padding: '6px 12px', 
+                    borderRadius: '6px', fontWeight: 600, fontSize: '0.85rem',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}>
+                  <ArrowLeft size={16} /> Quay lại
+                </button>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Monitoring Review
                 </span>
               </div>

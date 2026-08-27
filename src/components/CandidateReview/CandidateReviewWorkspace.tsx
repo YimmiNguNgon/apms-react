@@ -7,8 +7,6 @@ import { CandidateQualitySummary } from './CandidateQualitySummary';
 import { EditableScalarField } from './EditableScalarField';
 import { EditableListField } from './EditableListField';
 import { EditableProductList } from './EditableProductList';
-import { EditableObjectField } from './EditableObjectField';
-import { SwotGrid } from './SwotGrid';
 import styles from './CandidateReview.module.css';
 
 const FLAT_TO_DOT: Record<string, string> = {
@@ -26,15 +24,6 @@ const FLAT_TO_DOT: Record<string, string> = {
   products: 'business.products',
   employeeTier: 'companySize.employeeTier',
   companySize: 'companySize.revenueTier',
-  strengths: 'insights.strengths',
-  weaknesses: 'insights.weaknesses',
-  opportunities: 'insights.opportunities',
-  threats: 'insights.threats',
-  financial: 'financial',
-  innovation: 'innovation',
-  market: 'market',
-  risk: 'risk',
-  compliance: 'compliance',
 };
 
 function normalizeFieldResults(raw: Record<string, any> | undefined): Record<string, any> {
@@ -63,7 +52,7 @@ interface CandidateReviewWorkspaceProps {
   isResearchNewCompany?: boolean;
 }
 
-type TabType = 'Identity' | 'Business' | 'Markets' | 'Products' | 'SWOT' | 'Analysis';
+type TabType = 'Identity' | 'Business' | 'Markets' | 'Products';
 type ReviewFilter = 'ALL' | 'RETURNED' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE';
 
 const TAB_FIELD_GROUPS: Record<TabType, Array<{ key: string; label: string }>> = {
@@ -89,19 +78,6 @@ const TAB_FIELD_GROUPS: Record<TabType, Array<{ key: string; label: string }>> =
   ],
   Products: [
     { key: 'business.products', label: 'Products & Services' },
-  ],
-  SWOT: [
-    { key: 'insights.strengths', label: 'Strengths' },
-    { key: 'insights.weaknesses', label: 'Weaknesses' },
-    { key: 'insights.opportunities', label: 'Opportunities' },
-    { key: 'insights.threats', label: 'Threats' },
-  ],
-  Analysis: [
-    { key: 'financial', label: 'Financial' },
-    { key: 'innovation', label: 'Innovation' },
-    { key: 'market', label: 'Market Analysis' },
-    { key: 'risk', label: 'Risk' },
-    { key: 'compliance', label: 'Compliance' },
   ],
 };
 
@@ -306,7 +282,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
   const isSaving = saveMutation.isPending;
 
-  const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products', 'SWOT', 'Analysis'];
+  const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
   const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = [
     { id: 'ALL', label: 'All', count: tabTotalFields },
     { id: 'RETURNED', label: 'Changes', count: tabReturnedFields },
@@ -552,103 +528,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
             {activeTab === 'Products' && (
               <div className={styles.fieldGrid}>
                 {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
-              </div>
-            )}
-
-            {activeTab === 'SWOT' && (
-              <div className={styles.fieldGrid}>
-                {TAB_FIELD_GROUPS.SWOT.some((field) => shouldShowField(field.key, field.label)) && (
-                  <div className={styles.fieldGridFull}>
-                    <SwotGrid 
-                      strengths={fieldResults['insights.strengths']}
-                      weaknesses={fieldResults['insights.weaknesses']}
-                      opportunities={fieldResults['insights.opportunities']}
-                      threats={fieldResults['insights.threats']}
-                      onChange={handleFieldChange}
-                      disabled={readOnly}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'Analysis' && (
-              <div className={styles.fieldGrid}>
-                {renderReviewField('financial', 'Financial', <EditableObjectField 
-                    disabled={readOnly || isManagerAccepted(fieldResults['financial'])} 
-                    label="Financial" 
-                    fieldKey="financial" 
-                    fieldResult={fieldResults['financial']} 
-                    onChange={handleFieldChange}
-                    schema={[
-                      { key: 'revenue', label: 'Revenue', type: 'number' },
-                      { key: 'revenueCurrency', label: 'Revenue Currency', type: 'string' },
-                      { key: 'revenueGrowth', label: 'Revenue Growth', type: 'number' },
-                      { key: 'profitMargin', label: 'Profit Margin', type: 'number' },
-                      { key: 'debtRatio', label: 'Debt Ratio', type: 'number' },
-                      { key: 'fundingStage', label: 'Funding Stage', type: 'string' },
-                      { key: 'profitability', label: 'Profitability', type: 'string' },
-                    ]}
-                  />, true)}
-                {renderReviewField('innovation', 'Innovation', <EditableObjectField 
-                    disabled={readOnly || isManagerAccepted(fieldResults['innovation'])} 
-                    label="Innovation" 
-                    fieldKey="innovation" 
-                    fieldResult={fieldResults['innovation']} 
-                    onChange={handleFieldChange}
-                    schema={[
-                      { key: 'patents', label: 'Patents', type: 'number' },
-                      { key: 'rdInvestmentPercent', label: 'R&D Investment (%)', type: 'number' },
-                      { key: 'techStack', label: 'Tech Stack', type: 'list' },
-                      { key: 'technologyCapabilities', label: 'Capabilities', type: 'list' },
-                      { key: 'techMaturityLevel', label: 'Maturity Level', type: 'number' },
-                      { key: 'productInnovationRate', label: 'Innovation Rate', type: 'number' },
-                    ]}
-                  />, true)}
-                {renderReviewField('market', 'Market Analysis', <EditableObjectField 
-                    disabled={readOnly || isManagerAccepted(fieldResults['market'])} 
-                    label="Market Analysis" 
-                    fieldKey="market" 
-                    fieldResult={fieldResults['market']} 
-                    onChange={handleFieldChange}
-                    schema={[
-                      { key: 'marketShare', label: 'Market Share (%)', type: 'number' },
-                      { key: 'brandRank', label: 'Brand Rank', type: 'number' },
-                      { key: 'clientCount', label: 'Client Count', type: 'number' },
-                      { key: 'mainMarkets', label: 'Main Markets', type: 'list' },
-                    ]}
-                  />, true)}
-                {renderReviewField('risk', 'Risk', <EditableObjectField 
-                  disabled={readOnly || isManagerAccepted(fieldResults['risk'])} 
-                  label="Risk" 
-                  fieldKey="risk" 
-                  fieldResult={fieldResults['risk']} 
-                  onChange={handleFieldChange}
-                  schema={[
-                    { key: 'overallRiskLevel', label: 'Overall Risk Level', type: 'string' },
-                    { key: 'financialRisk', label: 'Financial Risk', type: 'textarea' },
-                    { key: 'legalRisk', label: 'Legal Risk', type: 'textarea' },
-                    { key: 'reputationRisk', label: 'Reputation Risk', type: 'textarea' },
-                    { key: 'securityRisk', label: 'Security Risk', type: 'textarea' },
-                    { key: 'supplyInterruptionRisk', label: 'Supply Risk', type: 'textarea' },
-                    { key: 'dependencyRisk', label: 'Dependency Risk', type: 'textarea' },
-                  ]}
-                />, true)}
-                {renderReviewField('compliance', 'Compliance', <EditableObjectField 
-                  disabled={readOnly || isManagerAccepted(fieldResults['compliance'])} 
-                  label="Compliance" 
-                  fieldKey="compliance" 
-                  fieldResult={fieldResults['compliance']} 
-                  onChange={handleFieldChange}
-                  schema={[
-                    { key: 'status', label: 'Status', type: 'string' },
-                    { key: 'qualityCertifications', label: 'Quality Certifications', type: 'list' },
-                    { key: 'securityCertifications', label: 'Security Certifications', type: 'list' },
-                    { key: 'antiCorruptionPolicy', label: 'Anti-Corruption Policy', type: 'textarea' },
-                    { key: 'laborCompliance', label: 'Labor Compliance', type: 'textarea' },
-                    { key: 'environmentalPolicy', label: 'Environmental Policy', type: 'textarea' },
-                  ]}
-                />, true)}
               </div>
             )}
 
