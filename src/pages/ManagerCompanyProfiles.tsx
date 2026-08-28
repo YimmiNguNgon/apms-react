@@ -8,13 +8,13 @@ import type { PageResult, ProfileResponse, GraphCompanyDto, DashboardSummaryDto 
 import styles from './CompanyProfiles.module.css';
 
 const relationshipLabel = (rel?: string | null) => {
-  if (!rel) return 'Chưa thiết lập';
+  if (!rel) return 'ChÆ°a thiáº¿t láº­p';
   const r = rel.toUpperCase();
-  if (r === 'PARTNER_WITH' || r === 'PARTNER') return 'Đối tác';
-  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return 'Đối thủ';
-  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return 'Nhà cung cấp';
-  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return 'Khách hàng';
-  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return 'Đối tác tiềm năng';
+  if (r === 'PARTNER_WITH' || r === 'PARTNER') return 'Äá»‘i tÃ¡c';
+  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return 'Äá»‘i thá»§';
+  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return 'NhÃ  cung cáº¥p';
+  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return 'KhÃ¡ch hÃ ng';
+  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return 'Äá»‘i tÃ¡c tiá»m nÄƒng';
   return r;
 };
 
@@ -41,18 +41,16 @@ const profileName = (profile: ProfileResponse) =>
 const profileLegalName = (profile: ProfileResponse) =>
   profile.identity?.legalName || profileName(profile);
 
-const profileIndustry = (profile: ProfileResponse) =>
-  profile.business?.industries?.filter(Boolean).join(', ') || i18n.t('company-list:profile.industryFallback');
+const profileIndustries = (profile: ProfileResponse) =>
+  profile.business?.industries?.filter(Boolean) || [];
 
 const profileRelationshipBadge = (profile: ProfileResponse) => {
   const rel = (profile as unknown as Record<string, unknown>).relationshipType ||
               (profile as unknown as Record<string, unknown>).relationship ||
               (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
 
-  const baseStyle = { color: '#475569', background: '#FFFFFF', border: '1px solid #CBD5E1' };
-
   if (!rel) {
-    return { label: 'None', style: baseStyle };
+    return { label: 'None', style: { color: '#64748B', background: '#F1F5F9', border: '1px solid #E2E8F0' } };
   }
 
   const relStr = String(rel);
@@ -60,22 +58,22 @@ const profileRelationshipBadge = (profile: ProfileResponse) => {
   switch (relStr) {
     case 'PARTNER_WITH':
     case 'PARTNER':
-      return { label: 'Partner', style: baseStyle };
+      return { label: 'Partner', style: { color: '#0369A1', background: '#E0F2FE', border: '1px solid #BAE6FD' } };
     case 'COMPETITOR_OF':
     case 'COMPETITOR':
-      return { label: 'Competitor', style: baseStyle };
+      return { label: 'Competitor', style: { color: '#B91C1C', background: '#FEE2E2', border: '1px solid #FECACA' } };
     case 'SUPPLIER_OF':
     case 'SUPPLIER':
-      return { label: 'Supplier', style: baseStyle };
+      return { label: 'Supplier', style: { color: '#D97706', background: '#FEF3C7', border: '1px solid #FDE68A' } };
     case 'CUSTOMER_OF':
     case 'CUSTOMER':
-      return { label: 'Customer', style: baseStyle };
+      return { label: 'Customer', style: { color: '#15803D', background: '#DCFCE7', border: '1px solid #BBF7D0' } };
     case 'POTENTIAL_PARTNER_OF':
     case 'INVESTOR':
-      return { label: 'Potential Partner', style: baseStyle };
+      return { label: 'Potential Partner', style: { color: '#7E22CE', background: '#FAF5FF', border: '1px solid #E9D5FF' } };
     default:
       const defaultLabel = relStr.charAt(0).toUpperCase() + relStr.slice(1).toLowerCase().replace(/_/g, ' ');
-      return { label: defaultLabel, style: baseStyle };
+      return { label: defaultLabel, style: { color: '#475569', background: '#F8FAFC', border: '1px solid #CBD5E1' } };
   }
 };
 
@@ -108,7 +106,7 @@ const profileUpdatedTime = (profile: ProfileResponse) => {
 const newestProfilesFirst = (profiles: ProfileResponse[]) =>
   [...profiles].sort((a, b) => profileUpdatedTime(b) - profileUpdatedTime(a));
 
-export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
+export const ManagerCompanyProfiles: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const { t } = useTranslation('company-list');
   const { currentUser } = useUser();
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
@@ -139,6 +137,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
             industry: industryFilter || undefined,
             relationshipType: relationshipFilter || undefined,
             excludeOwner: true,
+            createdByMe: true,
             page,
             size: PAGE_SIZE,
           },
@@ -194,7 +193,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
       }
     }).catch(err => console.error('Failed to load graph network', err));
 
-    api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
+    api.get<DashboardSummaryDto>('/dashboard/summary', { params: { createdByMe: true } }).then((res) => {
       if (res.data) setSummary(res.data);
     }).catch(err => console.error('Failed to load dashboard summary', err));
 
@@ -216,7 +215,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const openProfile = (profile: ProfileResponse) => {
     const id = profile.companyId || profile.id;
     if (id) localStorage.setItem('apms-selected-company', id);
-    localStorage.setItem('apms-back-page', 'companies');
+    localStorage.setItem('apms-back-page', 'my-companies');
     setActivePage('company-detail');
   };
 
@@ -225,8 +224,8 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
       {/* ── Header ── */}
       <header className={styles.header}>
         <div>
-          <h1 className={styles.headerTitle}>{t('title')}</h1>
-          <span className={styles.eyebrow}>{t('subtitle')}</span>
+          <h1 className={styles.headerTitle}>My company profile</h1>
+          <span className={styles.eyebrow}>List of companies you created and manage</span>
         </div>
       </header>
 
@@ -243,7 +242,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         ))}
       </section>
 
-      {/* ── Main Panel ── */}
+      {/* â”€â”€ Main Panel â”€â”€ */}
       <main className={styles.panel}>
         {/* Toolbar */}
         <div className={styles.toolbar}>
@@ -331,7 +330,30 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
                       );
                     })()}
                   </td>
-                  <td>{profileIndustry(profile)}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {(() => {
+                        const inds = profileIndustries(profile);
+                        if (!inds.length) return <span style={{ color: '#94A3B8' }}>{t('profile.industryFallback', 'Chưa ghi nhận')}</span>;
+                        const visible = inds.slice(0, 2);
+                        const hidden = inds.length - 2;
+                        return (
+                          <>
+                            {visible.map((ind, i) => (
+                              <span key={i} style={{ background: '#F1F5F9', color: '#334155', padding: '2px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                {ind}
+                              </span>
+                            ))}
+                            {hidden > 0 && (
+                              <span style={{ background: '#E2E8F0', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 600 }}>
+                                +{hidden}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </td>
                   <td style={{ textAlign: 'right' }}>
 
                     <button className={styles.secondaryButton} type="button" onClick={() => openProfile(profile)} title={t('table.viewTitle')}>

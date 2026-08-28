@@ -32,6 +32,7 @@ import styles from './CompanyMonitoringCard.module.css';
 interface CompanyMonitoringCardProps {
   companyProfileId: string;
   responsibleManagerId?: number;
+  setActivePage?: (page: string, params?: Record<string, string>) => void;
 }
 
 export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ companyProfileId, responsibleManagerId }) => {

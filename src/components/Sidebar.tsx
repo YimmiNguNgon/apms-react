@@ -116,31 +116,20 @@ const MANAGER_MENU: MenuSection[] = [
     {
     title: "menu.operations",
     items: [
-      // { id: 'project-management',      label: 'menu.projectManagement' },
-      // { id: 'system-chat',             label: 'menu.chat' },
       { id: "project-management", label: "Project" },
-      // { id: 'score-rules',             label: 'Score Workspace' },
+      { id: "company-monitoring", label: "Monitoring Management" },
       { id: "system-chat", label: "Chat" },
-      // { id: 'competitor-intelligence', label: 'Competitor Intel' },
-      // { id: 'analysis-history',        label: 'Analysis History' },
+
     ],
   },
-  // {
-  //   title: 'Performance',
-  //   items: [
-  //     { id: 'team-kpi', label: 'Team KPI' },
-  //     { id: 'reports',  label: 'Reports' },
-  //   ],
-  // },
+
   {
     title: 'menu.data',
     items: [
-      { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'companies', label: 'menu.companyProfiles' },
+      { id: 'my-companies', label: 'My Companies' },
+      { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'news',      label: 'News' },
-      // { id: 'companies', label: 'Companies' },
-      // { id: 'news',      label: 'News' },
-      // { id: 'verify',    label: 'Verify Queue' },
     ],
   },
 ];
@@ -160,33 +149,8 @@ const STAFF_MENU: MenuSection[] = [
       { id: "staff-monitoring", label: "Monitoring" },
       { id: "system-chat", label: "Chat" },
       { id: 'owner-profile', label: 'My Enterprise' },
-      // { id: "company-profiles", label: "menu.companyProfiles" },
-      // { id: "news", label: "News" },
-      // { id: "news", label: "News" },
     ],
   },
-  // {
-  //   title: 'Research Input',
-  //   items: [
-  //     { id: 'partner-management',    label: 'Partner Directory' },
-  //     { id: 'competitor-management', label: 'Competitor Watchlist' },
-  //   ],
-  // },
-  // {
-  //   title: 'Intelligence',
-  //   items: [
-  //     { id: 'search-companies',  label: 'Search Companies' },
-  //     { id: 'personal-ai-agent', label: 'Research AI Assistant' },
-  //     { id: 'news',              label: 'News & Intel' },
-  //   ],
-  // },
-  // {
-  //   title: 'Development',
-  //   items: [
-  //     { id: 'ai-training-mode', label: 'Training Mode' },
-  //     { id: 'learning-center',  label: 'Learning Center' },
-  //   ],
-  // },
 ];
 
 const OWNER_MENU: MenuSection[] = [
@@ -198,8 +162,6 @@ const OWNER_MENU: MenuSection[] = [
   {
     title: 'menu.ecosystemProjects',
     items: [
-      // { id: 'partner-ecosystem',       label: 'menu.partnerEcosystem' },
-      // { id: 'competitor-intelligence', label: 'menu.competitorIntel' },
       { id: 'news',                    label: 'menu.newsIntelligence' },
       { id: 'owner-internal-news',     label: 'Internal News' },
     ],
@@ -258,6 +220,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
       case 'competitor-intelligence': return <Target size={18} />;
       case 'strategic-reports': return <PieChart size={18} />;
       case 'companies':
+      case 'my-companies':
       case 'company-profiles':
         return <Database size={18} />;
       case 'company-monitoring':

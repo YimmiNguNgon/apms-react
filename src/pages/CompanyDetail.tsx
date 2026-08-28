@@ -148,6 +148,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   }, []);
 
   const [reloadTrigger, setReloadTrigger] = useState(0);
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   useEffect(() => {
     if (!resolvedId) {
@@ -275,23 +276,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const canViewMonitoringPanel = useMemo(() => {
     if (!currentUser) return false;
-    
-    // 1. Owner never sees it
     if (currentUser.role === ROLES.OWNER) return false;
-    
-    // 2. Manager needs specific project context
-    if (currentUser.role === ROLES.MANAGER) {
-      if (!contextProjectId || !contextProject) return false;
-      
-      const isTargetCompany = contextProject.targetCompanyProfileId === profile?.id || contextProject.targetCompanyProfileId === profile?.companyId;
-      if (!isTargetCompany) return false;
-      
-      return currentUserProjectRole === 'LEADER';
-    }
-    
-    // 3. Staff and others do not see the management panel here
-    return false;
-  }, [currentUser, contextProjectId, contextProject, profile?.id, profile?.companyId, currentUserProjectRole]);
+    return currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.MANAGER;
+  }, [currentUser]);
 
   const canToggleVisibility = 
     !!contextProjectId &&
@@ -577,7 +564,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           )}
 
           {canViewMonitoringPanel && (
-            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} responsibleManagerId={profile?.responsibleManagerId} />
+            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} setActivePage={setActivePage} />
           )}
 
           {/* Quick Info Summary */}
@@ -698,7 +685,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 </div>
                 {products.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {products.map((p, idx) => (
+                    {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
                       <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
                           <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
@@ -711,6 +698,24 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         {p.description && <p style={{ margin: 0, fontSize: '0.7rem', color: '#475569', lineHeight: '1.4' }}>{p.description}</p>}
                       </div>
                     ))}
+                    {products.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllProducts(!showAllProducts)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#1D4ED8',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: '4px 0',
+                          textAlign: 'left'
+                        }}
+                      >
+                        {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>No product/service categories recorded.</p>
@@ -1054,7 +1059,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   } else if (currentUser?.role === ROLES.STAFF) {
                     setActivePage('staff-dashboard');
                   } else {
-                    setActivePage('company-profiles');
+                    const backPage = localStorage.getItem('apms-back-page');
+                    setActivePage(backPage ? backPage : 'company-profiles');
                   }
                 } else {
                   history.back();
@@ -1081,7 +1087,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 ? 'Back to Project'
                 : (isOwnerProfile || currentUser?.role === ROLES.STAFF) 
                   ? 'Back to Dashboard' 
-                  : 'Back to Company Profiles'}
+                  : localStorage.getItem('apms-back-page') === 'my-companies'
+                    ? 'Back to My Companies'
+                    : 'Back to Company Profiles'}
             </button>
             <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
             <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>

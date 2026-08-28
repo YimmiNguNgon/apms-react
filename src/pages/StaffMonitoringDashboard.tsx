@@ -135,44 +135,94 @@ export const StaffMonitoringDashboard: React.FC = () => {
                           <th>Company</th>
                           {isManagerOrAdmin && <th>Assigned Staff</th>}
                           <th>Status</th>
-                          <th>Frequency</th>
-                          <th>Assigned</th>
+                          <th>Review Cycle</th>
                           <th>Last Reviewed</th>
+                          <th>Last Review Result</th>
                           <th>Next Review</th>
                           <th style={{ width: 100 }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedAssignments.map(assignment => (
-                          <tr key={assignment.id}>
-                            <td><strong>{assignment.companyName}</strong></td>
-                            {isManagerOrAdmin && <td>{assignment.assignedStaffEmail || assignment.assignedStaffName || 'N/A'}</td>}
-                            <td>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                {getStatusBadge(assignment)}
-                                {(assignment.latestProposalStatus === 'SUBMITTED' || assignment.latestProposalStatus === 'IN_REVIEW') && (
-                                  <span className="workspace-badge warning" style={{ fontSize: 10 }}>Pending Approval</span>
+                        {sortedAssignments.map(assignment => {
+                          let reviewResultLabel = '';
+                          let reviewResultColor = '';
+                          let reviewResultBg = '';
+                          
+                          if (assignment.latestReviewResult === 'NO_CHANGE') {
+                            reviewResultLabel = 'No Change';
+                            reviewResultColor = '#15803d';
+                            reviewResultBg = '#dcfce7';
+                          } else if (assignment.latestReviewResult === 'UPDATE_PROPOSED') {
+                            reviewResultLabel = 'Update Proposed';
+                            reviewResultColor = '#1d4ed8';
+                            reviewResultBg = '#dbeafe';
+                          } else if (assignment.latestReviewResult === 'RELATIONSHIP_CHANGE_PROPOSED') {
+                            reviewResultLabel = 'Relationship Change Proposed';
+                            reviewResultColor = '#7e22ce';
+                            reviewResultBg = '#f3e8ff';
+                          }
+
+                          let proposalBadge = null;
+                          if (assignment.latestReviewResult === 'UPDATE_PROPOSED' && assignment.latestProposalStatus) {
+                            let label = assignment.latestProposalStatus;
+                            let color = '#475569';
+                            let bg = '#f1f5f9';
+                            if (['SUBMITTED', 'IN_REVIEW', 'PENDING'].includes(assignment.latestProposalStatus)) {
+                              label = 'Pending';
+                              color = '#b45309';
+                              bg = '#fef3c7';
+                            } else if (assignment.latestProposalStatus === 'APPROVED') {
+                              label = 'Approved';
+                              color = '#15803d';
+                              bg = '#dcfce7';
+                            } else if (assignment.latestProposalStatus === 'REJECTED') {
+                              label = 'Rejected';
+                              color = '#b91c1c';
+                              bg = '#fee2e2';
+                            }
+                            proposalBadge = (
+                              <span style={{ display: 'inline-block', marginTop: '4px', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, color, background: bg }}>
+                                {label}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <tr key={assignment.id}>
+                              <td><strong>{assignment.companyName}</strong></td>
+                              {isManagerOrAdmin && <td>{assignment.assignedStaffEmail || assignment.assignedStaffName || 'N/A'}</td>}
+                              <td>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {getStatusBadge(assignment)}
+                                </div>
+                              </td>
+                              <td>{assignment.frequency}</td>
+                              <td><span style={{ color: 'var(--text-muted)' }}>{assignment.lastReviewedAt ? formatDate(assignment.lastReviewedAt) : '—'}</span></td>
+                              <td>
+                                {assignment.latestReviewResult ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                    <span style={{ display: 'inline-flex', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, color: reviewResultColor, background: reviewResultBg }}>
+                                      {reviewResultLabel}
+                                    </span>
+                                    {proposalBadge}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)' }}>—</span>
                                 )}
-                                {assignment.latestProposalStatus === 'REJECTED' && (
-                                  <span className="workspace-badge danger" style={{ fontSize: 10 }}>Rejected</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>{assignment.frequency}</td>
-                            <td><span style={{ color: 'var(--text-muted)' }}>{formatDate(assignment.createdAt)}</span></td>
-                            <td><span style={{ color: 'var(--text-muted)' }}>{formatDate(assignment.lastReviewedAt)}</span></td>
-                            <td><strong>{formatDate(assignment.nextReviewAt)}</strong></td>
-                            <td>
-                              <button 
-                                className="btn btn-sm btn-primary"
-                                disabled={assignment.displayStatus === 'PAUSED' || assignment.latestProposalStatus === 'SUBMITTED' || assignment.latestProposalStatus === 'IN_REVIEW'}
-                                onClick={() => setSelectedAssignment(assignment)}
-                              >
-                                {assignment.latestProposalStatus === 'REJECTED' ? 'Review Again' : 'Review'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td><strong>{formatDate(assignment.nextReviewAt)}</strong></td>
+                              <td>
+                                <button 
+                                  className="btn btn-sm btn-primary"
+                                  disabled={assignment.displayStatus === 'PAUSED' || (assignment.latestReviewResult === 'UPDATE_PROPOSED' && ['SUBMITTED', 'IN_REVIEW', 'PENDING'].includes(assignment.latestProposalStatus || ''))}
+                                  onClick={() => setSelectedAssignment(assignment)}
+                                >
+                                  {(assignment.latestReviewResult === 'UPDATE_PROPOSED' && assignment.latestProposalStatus === 'REJECTED') ? 'Review Again' : 'Review'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

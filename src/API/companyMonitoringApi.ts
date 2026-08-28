@@ -6,6 +6,7 @@ import type {
   CompanyMonitoringReviewRequest,
   CompanyMonitoringAssignmentResponse,
   CompanyMonitoringReviewResponse,
+  CompanyProfileUpdateProposalResponse,
   RelationshipChangeProposalRequest,
   RelationshipChangeProposalResponse,
   RelationshipChangeReviewRequest,
@@ -46,11 +47,50 @@ export const companyMonitoringApi = {
     return response.data;
   },
 
+  getMonitoringHistory: async (params?: {
+    page?: number;
+    size?: number;
+    sort?: string;
+  }): Promise<PageResponse<CompanyMonitoringReviewResponse>> => {
+    const response = await api.get<PageResponse<CompanyMonitoringReviewResponse>>('/company-monitoring/reviews', { params });
+    return response.data;
+  },
+
   createMonitoringProposal: async (companyProfileId: string, changeSummary: string): Promise<{ id: string }> => {
     const response = await api.post<{ id: string }>('/profile-update-proposals/monitoring', {
       companyProfileId,
       changeSummary
     });
+    return response.data;
+  },
+
+  getProfileUpdateProposal: async (
+    id: string
+  ): Promise<CompanyProfileUpdateProposalResponse> => {
+    const response = await api.get<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}`);
+    return response.data;
+  },
+
+  getPendingProfileUpdateProposals: async (
+    companyProfileId: string
+  ): Promise<CompanyProfileUpdateProposalResponse[]> => {
+    const response = await api.get<CompanyProfileUpdateProposalResponse[]>(
+      `/company-profiles/${companyProfileId}/pending-proposals`
+    );
+    return response.data;
+  },
+
+  approveProfileUpdateProposal: async (
+    id: string
+  ): Promise<CompanyProfileUpdateProposalResponse> => {
+    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/approve`);
+    return response.data;
+  },
+
+  rejectProfileUpdateProposal: async (
+    id: string
+  ): Promise<CompanyProfileUpdateProposalResponse> => {
+    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/reject`);
     return response.data;
   },
 

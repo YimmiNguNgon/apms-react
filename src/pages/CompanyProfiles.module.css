@@ -16,28 +16,30 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid var(--workspace-panel-border);
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
-  background: var(--bg-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  padding: 8px 14px;
-  margin-bottom: 8px;
+  background: linear-gradient(to right, #eff6ff, #ffffff);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  padding: 16px 20px;
+  margin-bottom: 16px;
 }
 
 .eyebrow {
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  color: #3b82f6;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  margin-bottom: 4px;
+  display: block;
 }
 
 .header h1,
 .detailHeader h1 {
-  margin: 1px 0 0;
-  color: var(--text-primary);
-  font-size: 1.05rem;
-  font-weight: 700;
+  margin: 0;
+  color: #1e3a8a;
+  font-size: 1.3rem;
+  font-weight: 800;
   line-height: 1.2;
   letter-spacing: -0.3px;
 }
@@ -45,7 +47,7 @@
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -60,79 +62,110 @@
   background: var(--bg-surface);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .primaryButton,
 .secondaryButton {
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 0 14px;
 }
 
 .primaryButton {
   border-color: rgba(30, 64, 175, 0.6);
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   color: #ffffff;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
 }
 
 .primaryButton:hover {
   background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+  transform: translateY(-1px);
 }
 
 .secondaryButton:hover,
 .iconButton:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary);
-  background: var(--bg-input);
+  border-color: #3b82f6;
+  color: #2563eb;
+  background: #eff6ff;
 }
 
 .iconButton {
-  min-height: 22px;
-  padding: 0 8px;
-  font-size: 0.68rem;
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.72rem;
 }
 
 /* ── Metric Grid ────────────────────────────────────────── */
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .metricCard {
-  border: 1px solid var(--workspace-panel-border);
-  border-radius: 10px;
-  background: var(--bg-card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  padding: 5px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  padding: 16px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metricCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.08);
+}
+
+.metricCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 4px 0 0 4px;
+}
+
+.metricCard:nth-child(2)::before {
+  background: #10b981;
+}
+
+.metricCard:nth-child(3)::before {
+  background: #8b5cf6;
 }
 
 .metricCard span {
   display: block;
-  color: var(--text-muted);
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
 .metricCard strong {
   display: block;
-  margin: 2px 0 1px;
-  color: var(--text-primary);
-  font-size: 1.1rem;
+  margin: 0 0 4px;
+  color: #0f172a;
+  font-size: 1.8rem;
   font-weight: 800;
   line-height: 1;
 }
 
 .metricCard p {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.62rem;
+  color: #94a3b8;
+  font-size: 0.7rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -166,23 +199,32 @@
 
 .searchBox input {
   width: 100%;
-  padding: 3px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-surface);
-  font-size: 0.72rem;
-  color: var(--text-primary);
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.75rem;
+  color: #1e293b;
   outline: none;
+  transition: border-color 0.2s;
+}
+.searchBox input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .toolbar select {
-  padding: 3px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-surface);
-  font-size: 0.72rem;
-  color: var(--text-primary);
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.75rem;
+  color: #1e293b;
   outline: none;
+  transition: border-color 0.2s;
+}
+.toolbar select:focus {
+  border-color: #3b82f6;
 }
 
 /* ── Table Wrap ─────────────────────────────────────────── */
@@ -201,30 +243,31 @@
 
 .table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.72rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.75rem;
 }
 
 .table th {
   text-align: left;
-  padding: 5px 8px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 0.65rem;
+  padding: 10px 14px;
+  font-weight: 700;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  background: var(--bg-card);
+  letter-spacing: 0.05em;
+  background: #f8fafc;
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
 .table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
-  color: var(--text-secondary);
+  color: #334155;
 }
 
 .table tr:last-child td {
@@ -232,7 +275,7 @@
 }
 
 .table tr:hover td {
-  background: var(--bg-hover);
+  background: #f8fafc;
 }
 
 .companyCell {
@@ -243,16 +286,17 @@
 }
 
 .companyCell > span {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 0.62rem;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  font-size: 0.75rem;
   font-weight: 800;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
 }
 
 .companyCell strong {

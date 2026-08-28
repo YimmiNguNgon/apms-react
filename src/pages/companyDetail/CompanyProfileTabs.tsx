@@ -55,6 +55,7 @@ interface CompanyProfileTabsProps {
   intelligence?: OwnerCompanyIntelligenceResponse | null;
   activeTab: ListingTabId;
   editable?: boolean;
+  editButtonLabel?: string;
   overviewAside?: React.ReactNode;
   canEditListing?: boolean;
   listing?: ListingEditState;
@@ -223,7 +224,7 @@ const FormField: React.FC<{ label: string; children: React.ReactNode }> = ({ lab
   </div>
 );
 
-const TabToolbar: React.FC<{ title: string; subtitle?: string; onEdit: () => void }> = ({ title, subtitle, onEdit }) => (
+const TabToolbar: React.FC<{ title: string; subtitle?: string; onEdit: () => void; editButtonLabel: string }> = ({ title, subtitle, onEdit, editButtonLabel }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
     <div>
       <h2 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>{title}</h2>
@@ -244,7 +245,7 @@ const TabToolbar: React.FC<{ title: string; subtitle?: string; onEdit: () => voi
         whiteSpace: 'nowrap',
       }}
     >
-      Chỉnh sửa
+      {editButtonLabel}
     </button>
   </div>
 );
@@ -286,6 +287,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   intelligence,
   activeTab,
   editable = false,
+  editButtonLabel = 'Chỉnh sửa',
   overviewAside,
   canEditListing = false,
   listing,
@@ -306,6 +308,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const [boardDraft, setBoardDraft] = useState<BoardDraftMember[] | null>(null);
   const [editingMember, setEditingMember] = useState<number | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   const cancelAll = () => {
     setEditing(null);
@@ -501,7 +504,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 type="button" 
                 onClick={() => startFieldEdit(key)} 
                 style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer', padding: '2px 8px', borderRadius: '4px' }}>
-                Chỉnh sửa
+                {editButtonLabel}
               </button>
             )}
           </div>
@@ -746,6 +749,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           title="Phân tích SWOT"
           subtitle="Admin chỉnh sửa thủ công; AI chỉ cung cấp gợi ý phân tích."
           onEdit={() => startEditing('swot')}
+          editButtonLabel={editButtonLabel}
         />
       )
       : null;
@@ -785,7 +789,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 </div>
                 {products.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {products.map((p, idx) => (
+                    {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
                       <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
                           <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
@@ -798,6 +802,24 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                         {p.description && <p style={{ margin: 0, fontSize: '0.7rem', color: '#475569', lineHeight: '1.4' }}>{p.description}</p>}
                       </div>
                     ))}
+                    {products.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllProducts(!showAllProducts)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#1D4ED8',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: '4px 0',
+                          textAlign: 'left'
+                        }}
+                      >
+                        {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Chưa ghi nhận danh mục sản phẩm/dịch vụ.</p>
@@ -934,6 +956,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           title="Lĩnh vực & Hoạt động Kinh doanh"
           subtitle="Sản phẩm & dịch vụ, thị trường hoạt động và khách hàng mục tiêu."
           onEdit={() => startEditing('business-fields')}
+          editButtonLabel={editButtonLabel}
         />
       )
       : null;
@@ -1064,6 +1087,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           title="Ban lãnh đạo"
           subtitle="Họ tên, chức vụ và vai trò của ban lãnh đạo công ty chủ quản."
           onEdit={() => startEditing('board')}
+          editButtonLabel={editButtonLabel}
         />
       )
       : null;

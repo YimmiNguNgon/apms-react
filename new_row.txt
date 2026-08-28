@@ -1,0 +1,48 @@
+﻿  const renderAssignmentRow = (assignment: CompanyMonitoringAssignmentResponse, index: number) => (
+    <div className="monitoring-management-row" key={assignment.id}>
+      <span>{index + 1}</span>
+      <button
+        type="button"
+        className="monitoring-company-link"
+        onClick={() => setActivePage?.('company-detail', { id: assignment.companyProfileId })}
+      >
+        <strong>{assignment.companyName}</strong>
+      </button>
+      <div>
+        {assignment.assignedStaffName && assignment.assignedStaffName !== assignment.assignedStaffEmail ? (
+          <>
+            <strong>{assignment.assignedStaffName}</strong>
+            <small>{assignment.assignedStaffEmail}</small>
+          </>
+        ) : (
+          <strong>{assignment.assignedStaffEmail}</strong>
+        )}
+      </div>
+      <span>{frequencyLabel(assignment.frequency)}</span>
+      <div>
+        <strong>{formatDate(assignment.nextReviewAt)}</strong>
+        <small>Last: {formatDate(assignment.lastReviewedAt)}</small>
+      </div>
+      <span className={`workspace-badge ${statusTone(assignment.assignmentStatus)}`}>
+        {assignment.assignmentStatus}
+      </span>
+      {renderProposalBadge(assignment)}
+      <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
+        <button type="button" className="project-detail-btn" onClick={() => openManageModal(assignment)}>
+          Manage
+        </button>
+        <button
+          type="button"
+          className={assignment.assignmentStatus === 'ACTIVE' ? 'project-delete-btn' : 'project-activate-btn'}
+          disabled={statusActionLoading === assignment.id}
+          onClick={() => handleToggleStatus(assignment)}
+        >
+          {statusActionLoading === assignment.id
+            ? '...'
+            : assignment.assignmentStatus === 'ACTIVE'
+              ? 'Pause'
+              : 'Resume'}
+        </button>
+      </div>
+    </div>
+  );

@@ -8,6 +8,7 @@ export interface ConfirmModalProps {
   message: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
+  confirmDisabled?: boolean;
   isDestructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -19,6 +20,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
+  confirmDisabled = false,
   isDestructive = false,
   onConfirm,
   onCancel
@@ -96,10 +98,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             </button>
             <button
               onClick={onConfirm}
+              disabled={confirmDisabled}
               style={{
                 padding: '8px 16px', borderRadius: '6px', border: 'none',
                 backgroundColor: isDestructive ? '#ef4444' : '#3b82f6', 
-                color: '#fff', fontWeight: 500, cursor: 'pointer'
+                color: '#fff', fontWeight: 500, cursor: confirmDisabled ? 'not-allowed' : 'pointer',
+                opacity: confirmDisabled ? 0.6 : 1
               }}
             >
               {confirmText}
