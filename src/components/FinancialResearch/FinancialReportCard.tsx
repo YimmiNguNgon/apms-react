@@ -1,156 +1,163 @@
 import React from 'react';
+import { FileText, Trash2 } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
-import { FileText, Trash2, CheckCircle2, AlertCircle, Play, RefreshCw, Loader2 } from 'lucide-react';
+import styles from '../../pages/ProjectDetailPage.module.css';
 
 interface Props {
   report: FinancialReportEntry;
-  onExtract: (reportId: string) => void;
   onDelete: (reportId: string) => void;
   onViewPdf: (documentId: string) => void;
+  onSelect: (reportId: string) => void;
   metricCount: number;
   needsReviewCount: number;
+  selected?: boolean;
+  selectedForSubmission?: boolean;
+  isEligible?: boolean;
+  canEdit?: boolean;
+  onExtract?: (reportId: string) => void;
+  onToggleSelection?: (reportId: string) => void;
 }
 
-export default function FinancialReportCard({ report, onExtract, onDelete, onViewPdf, metricCount, needsReviewCount }: Props) {
-  const isExtracting = report.extractionStatus === 'EXTRACTING';
-  const isExtracted = report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
-  const isFailed = report.extractionStatus === 'FAILED';
+const formatReportType = (value?: string | null) =>
+  value ? value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, char => char.toUpperCase()) : null;
 
-  const cardStyle: React.CSSProperties = {
-    border: isExtracting ? '1px solid #3b82f6' : '1px solid #e5e7eb',
-    borderRadius: '12px',
-    padding: '20px',
-    marginBottom: '20px',
-    background: 'white',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    transition: 'all 0.2s ease',
-    position: 'relative',
-    overflow: 'hidden'
+const formatDate = (value?: string | null) => {
+  if (!value) return 'No publication date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }).format(date);
+};
+
+const formatPeriod = (report: FinancialReportEntry) => {
+  const period = report.reportingPeriod;
+  if (!period) return null;
+  if (period.period && period.year) return `${period.period} ${period.year}`;
+  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
+  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
+  return period.year ? String(period.year) : null;
+};
+
+const StatusBadge = ({ status }: { status: string }) => {
+  if (status === 'EXTRACTED' || status === 'NEEDS_REVIEW') return <span className={styles.successBadge}>✓ Extracted</span>;
+  if (status === 'FAILED') return <span className={styles.errorBadge}>Extraction Failed</span>;
+  if (status === 'EXTRACTING') return <span className={styles.blueBadge}>● Extracting...</span>;
+  return <span className={styles.neutralBadge}>Not Extracted</span>;
+};
+
+const getMetricsSummary = (report: FinancialReportEntry, metricCount: number, needsReviewCount: number) => {
+  if (report.extractionStatus !== 'EXTRACTED' && report.extractionStatus !== 'NEEDS_REVIEW') {
+    return report.extractionStatus === 'FAILED' ? 'Please retry extraction' : 'Ready for AI extraction';
+  }
+  let summary = `${metricCount} metrics`;
+  if (needsReviewCount > 0) {
+    summary += ` · ${needsReviewCount} need review`;
+  }
+  return summary;
+};
+
+export default function FinancialReportCard({
+  report,
+  onDelete,
+  onViewPdf,
+  onSelect,
+  metricCount,
+  needsReviewCount,
+  selected = false,
+  selectedForSubmission = false,
+  isEligible = false,
+  canEdit = true,
+  onToggleSelection,
+}: Props) {
+  const reportType = formatReportType(report.reportType);
+  const period = formatPeriod(report);
+
+  const handleDelete = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onDelete(report.id);
   };
 
-  const headerStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' };
-  
-  const actionContainerStyle: React.CSSProperties = { 
-    display: 'flex', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginTop: '20px', 
-    paddingTop: '16px', 
-    borderTop: '1px solid #f3f4f6' 
+  const handleViewPdf = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onViewPdf(report.documentId);
   };
-  
-  const buttonStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px', 
-    background: isExtracting ? '#eff6ff' : isExtracted || isFailed ? 'white' : '#3b82f6',
-    color: isExtracting ? '#3b82f6' : isExtracted || isFailed ? '#3b82f6' : 'white',
-    border: isExtracted || isFailed ? '1px solid #3b82f6' : '1px solid transparent',
-    borderRadius: '8px',
-    cursor: isExtracting ? 'not-allowed' : 'pointer',
-    fontWeight: 500,
-    fontSize: '14px',
-    transition: 'all 0.2s ease',
-    opacity: isExtracting ? 0.8 : 1
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    event.stopPropagation();
+    if (onToggleSelection && isEligible) {
+      onToggleSelection(report.id);
+    }
   };
 
   return (
-    <div style={cardStyle}>
-      {isExtracting && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, height: '4px', width: '100%',
-          background: '#e0e7ff', overflow: 'hidden'
-        }}>
-          <div style={{
-            height: '100%', width: '50%', background: '#3b82f6',
-            animation: 'slide 1.5s infinite linear',
-            borderRadius: '4px'
-          }} />
+    <article
+      className={`${styles.reportCard} ${selected ? styles.reportCardSelected : ''}`}
+      onClick={() => onSelect(report.id)}
+      aria-current={selected ? 'true' : undefined}
+      style={{ display: 'flex', gap: '12px' }}
+    >
+      {(canEdit || report.reviewStatus === 'APPROVED') && (
+        <div style={{ paddingTop: '4px' }} onClick={e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={report.reviewStatus === 'APPROVED' ? true : selectedForSubmission}
+            disabled={report.reviewStatus === 'APPROVED' ? true : !isEligible}
+            onChange={handleCheckboxChange}
+            aria-label={`Select ${report.title} for submission`}
+            title={report.reviewStatus === 'APPROVED' ? "Approved reports are locked." : !isEligible ? "Extract this report before adding it to the submission." : "Select for submission"}
+            style={{ width: '18px', height: '18px', cursor: report.reviewStatus === 'APPROVED' ? 'not-allowed' : isEligible ? 'pointer' : 'not-allowed' }}
+          />
         </div>
       )}
-      <style>
-        {`
-          @keyframes slide {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(200%); }
-          }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-
-      <div style={headerStyle}>
-        <div>
-          <div style={{ fontSize: '13px', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>{report.publicationDate}</span>
-            {report.reportType && (
-              <>
-                <span>•</span>
-                <span style={{background: '#f3f4f6', padding: '2px 8px', borderRadius: '12px'}}>{report.reportType.replace('_', ' ')}</span>
-              </>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className={styles.reportCardHeader}>
+          <div className={styles.reportCardTitleBlock}>
+            <div className={styles.reportMetaLine}>
+              <span>{formatDate(report.publicationDate)}</span>
+              {reportType && <span className={styles.typeBadge}>{reportType}</span>}
+              <StatusBadge status={report.extractionStatus} />
+            </div>
+            <h4>{report.title}</h4>
+            {period && <p>{period}</p>}
+            {report.reviewStatus === 'APPROVED' && <div style={{marginTop: '4px'}}><span className={styles.successBadge}>✓ Approved</span></div>}
+            {report.reviewStatus === 'CHANGES_REQUESTED' && (
+              <div style={{marginTop: '6px'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: '4px'}}>
+                  <span style={{color: '#b91c1c', fontWeight: 600, fontSize: '12px'}}>⚠ Changes Requested</span>
+                </div>
+                <div style={{fontSize: '11px', color: '#7f1d1d', marginTop: '2px'}}>
+                  Manager feedback available
+                </div>
+              </div>
             )}
           </div>
-          <div style={{ fontSize: '18px', fontWeight: '600', margin: '8px 0', color: '#111827' }}>{report.title}</div>
-          <div 
-            style={{ fontSize: '14px', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '12px', fontWeight: 500 }} 
-            onClick={() => onViewPdf(report.documentId)}
-          >
-            <FileText size={16} /> View Source PDF
-          </div>
-        </div>
-        
-        <button onClick={() => onDelete(report.id)} style={{ background: '#fef2f2', border: '1px solid #fee2e2', color: '#ef4444', cursor: 'pointer', padding: '8px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease' }} title="Delete Report">
-          <Trash2 size={18} />
-        </button>
-      </div>
 
-      <div style={actionContainerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {isExtracting ? (
-            <>
-              <Loader2 size={18} color="#3b82f6" style={{ animation: 'spin 1s linear infinite' }} />
-              <span style={{ color: '#3b82f6', fontSize: '14px', fontWeight: 500 }}>AI is extracting data...</span>
-            </>
-          ) : isExtracted ? (
-            <>
-              <CheckCircle2 size={18} color="#10b981" />
-              <div style={{ fontSize: '14px' }}>
-                <span style={{ color: '#10b981', fontWeight: 600 }}>Extracted Successfully</span>
-                <span style={{ color: '#6b7280', marginLeft: '12px' }}>{metricCount} metrics ({needsReviewCount} need review)</span>
-              </div>
-            </>
-          ) : isFailed ? (
-            <>
-              <AlertCircle size={18} color="#ef4444" />
-              <span style={{ color: '#ef4444', fontSize: '14px', fontWeight: 500 }}>Extraction Failed</span>
-            </>
-          ) : (
-            <span style={{ color: '#6b7280', fontSize: '14px' }}>Ready for AI extraction</span>
-          )}
+          <button
+            className={styles.iconDangerButton}
+            type="button"
+            onClick={handleDelete}
+            disabled={!canEdit || report.extractionStatus === 'EXTRACTING'}
+            aria-label={`Delete ${report.title}`}
+            title="Delete report"
+          >
+            <Trash2 size={17} />
+          </button>
         </div>
-        
-        <button 
-          disabled={isExtracting}
-          onClick={() => onExtract(report.id)}
-          style={buttonStyle}
-        >
-          {isExtracting ? (
-            <>
-              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing
-            </>
-          ) : isExtracted ? (
-            <>
-              <RefreshCw size={16} /> Re-extract
-            </>
-          ) : (
-            <>
-              <Play size={16} /> {isFailed ? 'Retry Extract' : 'Extract Financial Data'}
-            </>
-          )}
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
+          <button className={styles.linkButton} type="button" onClick={handleViewPdf}>
+            <FileText size={16} />
+            View Source PDF
+          </button>
+
+          <span className={styles.reportStatusText} style={{ color: needsReviewCount > 0 ? '#b45309' : undefined }}>
+            {getMetricsSummary(report, metricCount, needsReviewCount)}
+          </span>
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
