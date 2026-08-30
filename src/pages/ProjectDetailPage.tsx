@@ -66,6 +66,8 @@ import { ManagerCandidateReviewWorkspace } from '../components/CandidateReview/M
 import { CompanyNewsResearchWorkspace } from '../components/CompanyNewsResearchWorkspace';
 import { ManagerNewsReviewWorkspace } from '../components/CompanyNewsResearch/ManagerNewsReviewWorkspace';
 import { ProjectProgressOverview } from '../components/ProjectProgressOverview/ProjectProgressOverview';
+import FinancialResearchWorkbench from '../components/FinancialResearch/FinancialResearchWorkbench';
+import ManagerFinancialResearchReviewWorkspace from '../components/FinancialResearch/ManagerFinancialResearchReviewWorkspace';
 import type {
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
@@ -3211,10 +3213,15 @@ const taskTypeText: Record<TaskType, { title: string; description: string; steps
     description: 'Find relevant company news, record sources and summaries, save a draft, then submit it for manager review.',
     steps: ['Start Work', 'Research News', 'Review Drafts', 'Submit Review'],
   },
+  FINANCIAL_RESEARCH: {
+    title: 'Financial research',
+    description: 'Create financial reports, extract metrics with AI, review the results, then submit the package to manager.',
+    steps: [],
+  },
   GENERAL_TASK: {
     title: 'General task',
-    description: 'Work on the assigned request, add a completion note, attach evidence if needed, then submit review.',
-    steps: ['Start work', 'Add result', 'Submit review'],
+    description: 'A generic task for miscellaneous assignments.',
+    steps: ['Start work', 'Submit result'],
   },
 };
 
@@ -3962,7 +3969,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [apiTasks, availableTasks, projectMembers, isStaffView]);
 
   useEffect(() => {
-    if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION'].includes(selectedStaffTask.taskType)) {
+    if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType)) {
       setProjectDocuments([]);
       setProjectDocumentsError(null);
       setSelectedProjectDocumentIds([]);
@@ -6183,17 +6190,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           ))}
                         </AnimatePresence>
                         {columnTasks.length === 0 && <div className={styles.empty}>{tasksLoading ? 'Loading tasks...' : column.empty}</div>}
-                        {!isStaffView && column.id === 'todo' && (
-                          <button
-                            className={styles.columnCreateButton}
-                            type="button"
-                            onClick={() => {
-                              if (ensureProjectIsActive('assigning tasks to employees')) setShowCreateTaskModal(true);
-                            }}
-                          >
-                            <Plus size={16} />Create
-                          </button>
-                        )}
                       </div>
                     </motion.section>
                   );
@@ -7038,24 +7034,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 // ) : null;
               })()}
 
-              <div className={styles.workbenchStatusRow}>
-                <div>
-                  <span>Status</span>
-                  <strong>{workbench?.taskStatus || selectedStaffTask.status}</strong>
+              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && (
+                <div className={styles.workbenchStatusRow}>
+                  <div>
+                    <span>Status</span>
+                    <strong>{workbench?.taskStatus || selectedStaffTask.status}</strong>
+                  </div>
+                  <div>
+                    <span>Task type</span>
+                    <strong>{taskTypeText[selectedStaffTask.taskType].title}</strong>
+                  </div>
+                  <div>
+                    <span>Due date</span>
+                    <strong>{formatOptionalDate(selectedStaffTask.dueDate)}</strong>
+                  </div>
+                  <div>
+                    <span>Project target</span>
+                    <strong>{workbench?.targetCompanyName || displayedProject.targetCompanyName || 'No target'}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span>Task type</span>
-                  <strong>{taskTypeText[selectedStaffTask.taskType].title}</strong>
-                </div>
-                <div>
-                  <span>Due date</span>
-                  <strong>{formatOptionalDate(selectedStaffTask.dueDate)}</strong>
-                </div>
-                <div>
-                  <span>Project target</span>
-                  <strong>{workbench?.targetCompanyName || displayedProject.targetCompanyName || 'No target'}</strong>
-                </div>
-              </div>
+              )}
               {!canUseStaffWorkbench && staffTaskStatus === 'TODO' && (
                 <div className={styles.reviewNoteAlert}>
                   <strong>Task has not started yet</strong>
@@ -7073,19 +7071,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              <div className={styles.workbenchFlow}>
-                {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
-                  <div
-                    key={step}
-                    className={`${styles.workbenchStep} ${isStaffWorkbenchStepActive(step) ? styles.workbenchStepDone : ''}`}
-                  >
-                    <span>{index + 1}</span>
-                    <strong>{step}</strong>
-                  </div>
-                ))}
-              </div>
+              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && (
+                <div className={styles.workbenchFlow}>
+                  {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
+                    <div
+                      key={step}
+                      className={`${styles.workbenchStep} ${isStaffWorkbenchStepActive(step) ? styles.workbenchStepDone : ''}`}
+                    >
+                      <span>{index + 1}</span>
+                      <strong>{step}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain}>
                   {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                   <>
@@ -7363,6 +7363,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       setSelectedStaffTask(null);
                     }}
                     onClose={() => setSelectedStaffTask(null)}
+                  />
+                  ) : selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? (
+                  <FinancialResearchWorkbench
+                    projectId={selectedStaffTask.projectId}
+                    taskId={selectedStaffTask.id}
+                    taskTitle={selectedStaffTask.title}
+                    taskStatus={workbench?.taskStatus || selectedStaffTask.status}
+                    taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
+                    dueDate={selectedStaffTask.dueDate}
+                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                    documents={projectDocuments}
+                    canEdit={canUseStaffWorkbench}
+                    uploadingDocument={uploadingEvidence}
+                    onUploadDocument={(file: File) => handleUploadEvidence(file)}
+                    onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
+                    onSubmitSuccess={() => {
+                      void loadStaffWorkbench(selectedStaffTask);
+                      setTaskRefreshTick((current) => current + 1);
+                      setSelectedStaffTask(null);
+                    }}
                   />
                   ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? (
                   <section className={styles.workbenchPanel}>
@@ -7780,7 +7800,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
 
                     </>
-                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH'].includes(selectedStaffTask.taskType) ? null : (
+                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType) ? null : (
                     <section className={styles.workbenchPanel}>
                       <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
                       <div className={styles.workbenchHintList}>
@@ -8081,6 +8101,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   workbenchSubmissions={workbench?.submissions}
                   onClose={() => setSelectedManagerReviewTask(null)}
                   onReviewed={(message, isSuccess) => {
+                    void loadManagerWorkbench(selectedManagerReviewTask);
+                    setTaskRefreshTick((current) => current + 1);
+                    setSelectedManagerReviewTask(null);
+                    setToast({ kind: isSuccess ? 'success' : 'error', message });
+                  }}
+                />
+              ) : selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' ? (
+                <ManagerFinancialResearchReviewWorkspace
+                  projectId={currentProjectId}
+                  taskId={selectedManagerReviewTask.id}
+                  taskTitle={selectedManagerReviewTask.title}
+                  taskDescription={selectedManagerReviewTask.description || taskTypeText[selectedManagerReviewTask.taskType].description}
+                  taskStatus={workbench?.taskStatus || selectedManagerReviewTask.status}
+                  dueDate={selectedManagerReviewTask.dueDate}
+                  targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                  assignedToName={selectedManagerReviewTask.assignedToName}
+                  workbenchSubmissions={workbench?.submissions}
+                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onReviewed={(message: string, isSuccess: boolean) => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
                     setTaskRefreshTick((current) => current + 1);
                     setSelectedManagerReviewTask(null);

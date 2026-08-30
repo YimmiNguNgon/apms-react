@@ -496,7 +496,7 @@ export interface UpdateCandidateRequest {
 }
 
 export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'REVISION_REQUESTED' | 'CHANGES_REQUESTED';
-export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'PARTNER_CONTRACT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'OTHER';
+export type SubmissionType = 'COMPANY_CANDIDATE' | 'PROFILE_UPDATE_PROPOSAL' | 'DOCUMENT_COLLECTION' | 'PARTNER_CONTRACT_COLLECTION' | 'COMPANY_REPORT' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'FINANCIAL_RESEARCH' | 'OTHER';
 
 export interface WorkbenchDocumentResponse extends ImportJobResponse {
   latestExtractionId?: string | null;
@@ -532,6 +532,7 @@ export interface ProjectTaskSubmissionResponse {
   submissionType: SubmissionType;
   targetEntityType?: string | null;
   targetEntityId?: string | null;
+  targetItemIds?: string[] | null;
   status: SubmissionStatus;
   note?: string | null;
   submittedAt?: string | null;
@@ -642,7 +643,7 @@ export interface ImportJobResponse {
 
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskStatus = 'AVAILABLE' | 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'BLOCKED' | 'CANCELLED';
-export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'PARTNER_CONTRACT_COLLECTION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'GENERAL_TASK';
+export type TaskType = 'DOCUMENT_COLLECTION' | 'COMPANY_DATA_PREPARATION' | 'PARTNER_CONTRACT_COLLECTION' | 'ROLE_EVALUATION' | 'COMPANY_MEMBER_RESEARCH' | 'COMPANY_NEWS_RESEARCH' | 'FINANCIAL_RESEARCH' | 'GENERAL_TASK';
 
 export type NewsDraftStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'DELETED';
 
@@ -1327,201 +1328,6 @@ export interface CompanyMonitoringAssignmentResponse {
   id: number;
   companyProfileId: string;
   companyName: string;
-export interface PermissionDto {
-  id: string | number;
-  name: string;
-  module: string;
-  description?: string;
-  // Legacy fields kept for backward compatibility
-  action?: string;
-  admin?: boolean;
-  director?: boolean;
-  manager?: boolean;
-  staff?: boolean;
-}
-
-export interface CandidateAnalysisDto {
-  id: string;
-  insights?: any;
-  financial?: FinancialInfo;
-  market?: MarketInfo;
-  innovation?: InnovationInfo;
-  risk?: RiskInfo;
-  compliance?: ComplianceInfo;
-  validation?: any;
-  normalization?: any;
-  deduplication?: any;
-}
-
-export interface AuditLogDto {
-  id: number;
-  timestamp: string;
-  actorAccountId?: number | null;
-  actorEmail?: string;
-  action: string;
-  entityType: string;
-  entityId?: string | null;
-  detail?: string | null;
-}
-
-export type PageResult<T> = PageResponse<T>;
-
-export interface CompanyDocumentResponse {
-  id: string;
-  companyProfileId: string;
-  sourceDocumentId: string;
-  sourceProjectId?: string | null;
-  sourceProjectName?: string | null;
-  sourceTaskId?: string | null;
-  sourceSubmissionId?: string | null;
-  sourceCandidateId?: string | null;
-  displayName?: string | null;
-  originalFileName?: string | null;
-  documentType?: string | null;
-  description?: string | null;
-  mimeType?: string | null;
-  fileSize?: number | null;
-  status?: string | null;
-  uploadedBy?: { id: string; name: string } | null;
-  uploadedAt?: string | null;
-  approvedBy?: { id: string; name: string } | null;
-  approvedAt?: string | null;
-  previewAvailable: boolean;
-  downloadAvailable: boolean;
-}
-
-export interface OwnerCompanyIntelligenceResponse {
-  company: {
-    id: string;
-    name: string;
-    legalName: string;
-    ticker: string;
-    website: string;
-    headquarters: string;
-    industries: string[];
-    markets: string[];
-    businessModel: string;
-    employeeCount: number;
-  };
-  relationship: {
-    type: string;
-    businessImpact: string;
-    strategicRelevance: string;
-    impactTrend: string;
-    evidence: Array<{
-      sourceName: string;
-      sourceType: string;
-      sourceUrl: string | null;
-      publishedAt: string | null;
-      retrievedAt: string | null;
-      reliability: string;
-    }>;
-  };
-  executiveBrief: {
-    summary: string | null;
-    whyItMatters: string[];
-    confidence: number | null;
-  };
-  aiSummary: {
-    available: boolean;
-    content: string | null;
-    status: 'AVAILABLE' | 'NO_DATA';
-  };
-  news: Array<{
-    id: string;
-    title: string;
-    summary: string;
-    content: string;
-    source: string;
-    sourceUrl: string;
-    publishedAt: string;
-    sentiment: string;
-    topics: string[];
-    businessImpact: string;
-    aiSummary: string;
-  }>;
-  timeline: Array<{
-    id: string;
-    date: string | null;
-    eventType: string;
-    summary: string;
-    impact: string;
-    source: string;
-    sourceUrl: string | null;
-  }>;
-  marketExpansion: Array<{
-    market: string;
-    eventType: string;
-    description: string;
-    businessImpact: string;
-    source: string;
-    sourceUrl: string | null;
-    date: string | null;
-  }>;
-  hiring: Array<{
-    title: string;
-    trend: string | null;
-    description: string;
-    source: string;
-    sourceUrl: string | null;
-    date: string | null;
-  }>;
-  financial: Array<{
-    name: string;
-    value: number;
-    currency: string;
-    period: string | null;
-  }>;
-  leadership: Array<{
-    name: string;
-    position: string;
-    sourceUrl: string | null;
-    researchedAt: string | null;
-  }>;
-  products: Array<{
-    name: string;
-    category: string;
-    description: string;
-  }>;
-  evidence: Array<{
-    sourceName: string;
-    sourceType: string;
-    sourceUrl: string | null;
-    publishedAt: string | null;
-    retrievedAt: string | null;
-    reliability: string;
-  }>;
-  metadata: {
-    lastUpdated: string | null;
-    dataQuality: string | null;
-  };
-}
-
-export type MonitoringFrequency = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUALLY';
-export type MonitoringStatus = 'ACTIVE' | 'PAUSED' | 'CANCELLED';
-export type MonitoringReviewResult = 'NO_CHANGE' | 'UPDATE_PROPOSED' | 'RELATIONSHIP_CHANGE_PROPOSED';
-
-export interface CompanyMonitoringAssignmentRequest {
-  companyProfileId: string;
-  assignedStaffId: number;
-  frequency: MonitoringFrequency;
-}
-
-export interface CompanyMonitoringUpdateRequest {
-  assignedStaffId: number;
-  frequency: MonitoringFrequency;
-}
-
-export interface CompanyMonitoringReviewRequest {
-  result: MonitoringReviewResult;
-  updateProposalId?: string;
-  note?: string;
-}
-
-export interface CompanyMonitoringAssignmentResponse {
-  id: number;
-  companyProfileId: string;
-  companyName: string;
   assignedStaffId: number;
   assignedStaffName: string;
   assignedStaffEmail: string;
@@ -1625,3 +1431,13 @@ export interface CompanyProfileUpdateProposalResponse {
   updatedAt?: string;
   createdByAccountId?: number;
 }
+
+export type ReportingPeriodType = 'QUARTER' | 'HALF_YEAR' | 'FULL_YEAR' | 'AS_OF_DATE' | 'LTM' | 'YTD';
+export interface ReportingPeriod { year?: number | null; periodType?: ReportingPeriodType | string | null; period?: string | null; asOfDate?: string | null; }
+export interface FinancialReportEntry { id: string; title: string; documentId: string; reportType: string; reportingPeriod: ReportingPeriod | null; targetPeriod?: ReportingPeriod | null; reportingYear: number | null; publicationDate: string | null; extractionStatus: string; extractionProgress?: number; extractionErrorMessage?: string | null; reviewStatus: string | null; reviewComment: string | null; reviewedBy?: number | null; reviewedByName?: string | null; reviewedAt?: string | null; }
+export interface FinancialMetricResponse { id: string; label: string; rawValue?: number; rawUnit?: string; value: number; normalizedValue?: number; currency: string; unit: string; normalizedUnit?: string; period: ReportingPeriod | null; confidence: number; qualityStatus: string; verificationStatus: string; inputMethod: string; source: { documentId: string; documentName: string; page: number; reportEntryId: string } | null; evidence: string | null; }
+export interface FinancialResearchResponse { id: string; projectId: number; taskId: number; companyProfileId: string; targetResearchPeriod?: ReportingPeriod | null; reports: FinancialReportEntry[]; metrics: FinancialMetricResponse[]; status: string; submittedReportIds: string[] | null; updatedAt?: string | null; }
+export interface CreateFinancialReportRequest { title: string; documentId: string; reportType: string; statementScope?: string; reportingPeriod?: ReportingPeriod | null; reportingYear?: number | null; publicationDate?: string | null; }
+export interface CreateFinancialMetricRequest { reportId?: string | null; label: string; rawValue?: number | null; rawUnit?: string | null; value: number; currency: string; unit: string; period?: ReportingPeriod | null; evidence?: string | null; }
+export interface UpdateFinancialMetricRequest { label?: string; rawValue?: number | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
+
