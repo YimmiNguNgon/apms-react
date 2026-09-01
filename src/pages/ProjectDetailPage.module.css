@@ -1915,19 +1915,24 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  z-index: 1500;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   overflow-y: auto;
-  background: rgba(15, 23, 42, 0.34);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
   padding: 40px 20px;
+}
+
+.taskDetailOverlay {
+  z-index: 2000 !important;
 }
 
 .modalOverlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  z-index: 1500;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2003,15 +2008,35 @@
 
 
 .taskWorkbenchOverlay {
-  top: var(--topbar-height, 64px);
+  position: fixed;
+  inset: 0;
+  top: 0;
   right: 0;
   bottom: 0;
-  left: var(--sidebar-width, 260px);
-  z-index: 150;
-  align-items: flex-start;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.28);
-  padding: 24px 24px 32px;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
+  padding: 24px;
+}
+
+.financialResearchOverlay {
+  position: fixed;
+  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
+  padding: 24px;
 }
 
 .fieldAiAssistOverlay {
@@ -2503,11 +2528,47 @@
 }
 
 .inviteModal.staffWorkbenchModal {
-  width: min(1680px, calc(100% - 16px));
-  max-height: calc(100dvh - var(--topbar-height) - 56px);
-  padding: 28px;
+  width: min(1680px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.inviteModal.financialResearchModal {
+  width: min(95vw, 1720px);
+  height: 90vh;
+  max-height: calc(100dvh - 48px);
+  border-radius: 18px;
+  background: #f8fafc;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.financialResearchModal .inviteHead {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.financialResearchModal .staffWorkbenchGrid {
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.financialResearchModal .workbenchMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -2663,6 +2724,27 @@
 
 .companyMemberWorkbenchGrid {
   grid-template-columns: minmax(0, 1fr) 240px;
+}
+
+.financialResearchWorkbenchGrid,
+.financialResearchModal .staffWorkbenchGrid {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  align-items: stretch !important;
+  overflow: hidden !important;
+}
+
+.financialResearchModal .workbenchMain {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  gap: 0 !important;
 }
 
 .staffWorkbenchCandidateOpen {

@@ -3,26 +3,38 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BarChart3,
+  Building2,
+  Calendar,
+  Check,
   CheckCircle2,
+  Clock,
+  Edit3,
   FileSearch,
   FileText,
+  Loader2,
+  Play,
   Plus,
+  RefreshCw,
+  RotateCcw,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { API_BASE_URL, api } from '../../services/api';
 import type {
+  CreateFinancialMetricRequest,
+  CreateFinancialReportRequest,
   FinancialMetricResponse,
   FinancialReportEntry,
-  FinancialResearchStatus,
   TaskStatus,
+  UpdateFinancialMetricRequest,
 } from '../../types/domain';
-import CreateFinancialReportModal from './CreateFinancialReportModal';
+import AddFinancialReportModal from './AddFinancialReportModal';
+import AddManualMetricModal from './CreateFinancialReportModal';
+import EditFinancialMetricModal from './EditFinancialMetricModal';
 import ExtractionProgressBar from './ExtractionProgressBar';
 import FinancialReportCard from './FinancialReportCard';
-import styles from '../../pages/ProjectDetailPage.module.css';
-
-const STEPS = ['Sources', 'AI Extraction', 'Review Metrics', 'Submit'];
+import styles from './FinancialResearchWorkbench.module.css';
 
 type FinancialResearchWorkbenchProps = {
   projectId: number;
@@ -33,19 +45,31 @@ type FinancialResearchWorkbenchProps = {
   dueDate?: string | null;
   targetCompanyName?: string | null;
   canEdit?: boolean;
+  isManagerMode?: boolean;
+  onClose?: () => void;
+  onReviewed?: (message: string, isSuccess: boolean) => void;
   documents?: unknown[];
   uploadingDocument?: boolean;
   onUploadDocument?: (file: File) => Promise<unknown> | unknown;
   onRefreshWorkbench?: () => void;
+  onRecallSuccess?: () => void;
   onSubmitSuccess?: () => void;
 };
 
 type PackageCounts = {
   reports: number;
   extracted: number;
+  selected: number;
   metrics: number;
   needsReview: number;
 };
+
+type UploadedDocumentResponse = {
+  rawDocumentId?: string | null;
+  id?: string | null;
+};
+
+type MetricFilter = 'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'MANUAL';
 
 const isReportExtracted = (report: FinancialReportEntry) =>
   report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
@@ -64,81 +88,139 @@ const formatDate = (value?: string | null) => {
 const formatPeriod = (report?: FinancialReportEntry | null) => {
   const period = report?.reportingPeriod;
   if (!period) return 'Not specified';
-  const parts = [period.period, period.periodType?.replace(/_/g, ' '), period.year].filter(Boolean);
-  if (period.asOfDate) parts.push(`as of ${formatDate(period.asOfDate)}`);
-  return parts.join(' - ') || 'Not specified';
+  if (period.period && period.year) return `${period.period} ${period.year}`;
+  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
+  if (period.periodType && period.year) return `${period.periodType.replace(/_/g, ' ')} ${period.year}`;
+  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
+  return period.year ? String(period.year) : 'Not specified';
+};
+
+const formatMetricPeriod = (metric: FinancialMetricResponse) => {
+  const period = metric.period;
+  if (!period) return 'Not specified';
+  if (period.period && period.year) return `${period.period} ${period.year}`;
+  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
+  if (period.periodType && period.year) return `${period.periodType.replace(/_/g, ' ')} ${period.year}`;
+  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
+  return period.year ? String(period.year) : 'Not specified';
 };
 
 const formatStatus = (value?: string | null) =>
   value ? value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, char => char.toUpperCase()) : 'Draft';
 
-const getWorkflowStep = (
-  status: FinancialResearchStatus,
-  reports: FinancialReportEntry[],
-  metrics: FinancialMetricResponse[],
-) => {
-  if (status === 'SUBMITTED' || status === 'APPROVED') return 3;
-  if (metrics.length > 0 || reports.some(isReportExtracted)) return 2;
-  if (reports.length > 0) return 1;
-  return 0;
+const formatReportType = (value?: string | null) =>
+  value ? value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, char => char.toUpperCase()) : null;
+
+const formatMetricNumber = (value?: number | string | null) => {
+  if (value === undefined || value === null || value === '') return 'Not captured';
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+    return new Intl.NumberFormat('vi-VN').format(numeric);
+  }
+  return String(value);
 };
 
-function FinancialResearchHeader({
+const metricBelongsToReport = (metric: FinancialMetricResponse, report: FinancialReportEntry) =>
+  metric.source?.reportEntryId === report.id ||
+  (!metric.source?.reportEntryId && metric.source?.documentId === report.documentId);
+
+const metricValueParts = (metric: FinancialMetricResponse) => {
+  const value = metric.normalizedValue ?? metric.rawValue ?? metric.value;
+  const unit = metric.normalizedUnit ?? metric.rawUnit ?? metric.unit ?? metric.currency;
+  return {
+    value: formatMetricNumber(value),
+    unit: unit || '',
+  };
+};
+
+const getMetricSource = (metric: FinancialMetricResponse) => {
+  if (!metric.source) return 'Manual';
+  if (metric.source.page) return `Page ${metric.source.page}`;
+  return metric.source.documentName || 'Source document';
+};
+
+function FinancialResearchMetaBar({
   status,
   taskTypeLabel,
   dueDate,
   targetCompanyName,
+  onClose,
 }: {
   status?: string | null;
   taskTypeLabel?: string | null;
   dueDate?: string | null;
   targetCompanyName?: string | null;
+  onClose?: () => void;
 }) {
+  const statusStr = (status || 'IN_PROGRESS').toUpperCase();
+  const statusClass =
+    statusStr === 'APPROVED' || statusStr === 'COMPLETED'
+      ? styles.statusApproved
+      : statusStr === 'CHANGES_REQUESTED'
+      ? styles.statusChangesRequested
+      : statusStr === 'SUBMITTED' || statusStr === 'IN_REVIEW'
+      ? styles.statusInProgress
+      : statusStr === 'DRAFT'
+      ? styles.statusDraft
+      : styles.statusInProgress;
+
   return (
-    <header className={styles.header}>
-      <div>
-        <span className={styles.eyebrow}>Financial Research</span>
-        <h2>Research Financial Information</h2>
-      </div>
-      <div className={styles.headerSummary} aria-label="Financial research task summary">
-        <div>
-          <span>Status</span>
-          <strong>{formatStatus(status)}</strong>
+    <div className={styles.metaBar}>
+      <div className={styles.metaGroup}>
+        <div className={styles.metaItem}>
+          <span className={styles.metaLabel}>Status:</span>
+          <span className={`${styles.statusBadge} ${statusClass}`}>
+            ● {formatStatus(status)}
+          </span>
         </div>
-        <div>
-          <span>Task type</span>
-          <strong>{taskTypeLabel || 'Financial research'}</strong>
-        </div>
-        <div>
-          <span>Due date</span>
-          <strong>{formatDate(dueDate)}</strong>
-        </div>
-        <div>
-          <span>Target company</span>
+
+        <div className={styles.metaDivider} />
+
+        <div className={styles.metaItem}>
+          <Building2 size={14} className={styles.metaLabel} />
+          <span className={styles.metaLabel}>Company:</span>
           <strong>{targetCompanyName || 'No target'}</strong>
         </div>
-      </div>
-    </header>
-  );
-}
 
-function FinancialResearchStepper({ activeStep }: { activeStep: number }) {
-  return (
-    <nav className={styles.stepper} aria-label="Financial research workflow">
-      {STEPS.map((step, index) => {
-        const stateClass = index < activeStep
-          ? styles.stepDone
-          : index === activeStep
-            ? styles.stepActive
-            : '';
-        return (
-          <div className={`${styles.step} ${stateClass}`} key={step}>
-            <span>{index + 1}</span>
-            <strong>{step}</strong>
-          </div>
-        );
-      })}
-    </nav>
+        <div className={styles.metaDivider} />
+
+        <div className={styles.metaItem}>
+          <BarChart3 size={14} className={styles.metaLabel} />
+          <span className={styles.metaLabel}>Task:</span>
+          <strong>{taskTypeLabel || 'Financial research'}</strong>
+        </div>
+
+        <div className={styles.metaDivider} />
+
+        <div className={styles.metaItem}>
+          <Calendar size={14} className={styles.metaLabel} />
+          <span className={styles.metaLabel}>Due date:</span>
+          <strong>{formatDate(dueDate)}</strong>
+        </div>
+      </div>
+
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 'auto',
+          }}
+          aria-label="Close"
+        >
+          <X size={18} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -185,56 +267,33 @@ function SelectedReportSummary({
   const isFailed = report.extractionStatus === 'FAILED';
 
   return (
-    <div className={styles.selectedReport}>
-      <div className={styles.selectedReportHead}>
-        <div>
-          <span className={styles.eyebrow}>Selected report</span>
+    <div className={styles.metricsPanel}>
+      <div className={styles.reportDetailHead}>
+        <div className={styles.reportDetailTitleGroup}>
           <h3>{report.title}</h3>
+          <div className={styles.reportDetailMeta}>
+            <span>{formatPeriod(report)}</span>
+            <span>•</span>
+            <span>{formatReportType(report.reportType) || 'Financial Statement'}</span>
+            <span>•</span>
+            <span>{formatDate(report.publicationDate)}</span>
+          </div>
         </div>
-        <span className={styles.statusBadge}>
-          {isExtracting ? 'Extracting' : isFailed ? 'Extraction failed' : 'Not extracted yet'}
+        <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
+          {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
         </span>
       </div>
 
-      <dl className={styles.reportMetaGrid}>
-        <div>
-          <dt>Period</dt>
-          <dd>{formatPeriod(report)}</dd>
-        </div>
-        <div>
-          <dt>Publication date</dt>
-          <dd>{formatDate(report.publicationDate)}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{isExtracting ? 'AI extraction in progress' : isFailed ? 'Failed' : 'Not extracted yet'}</dd>
-        </div>
-        <div>
-          <dt>Metrics</dt>
-          <dd>{metricsCount}</dd>
-        </div>
-      </dl>
-
       {report.reviewStatus === 'CHANGES_REQUESTED' && (
-        <div style={{
-          margin: '0 0 16px 0', 
-          padding: '16px', 
-          backgroundColor: '#fffbeb', 
-          border: '1px solid #fde68a', 
-          borderLeft: '4px solid #f59e0b', 
-          borderRadius: '4px'
-        }}>
-          <h4 style={{ color: '#b45309', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
-            <span style={{ fontSize: '15px' }}>⚠</span> Changes Requested
-          </h4>
-          <div style={{ color: '#1f2937', fontSize: '14px' }}>
-            <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '13px' }}>Manager Feedback</div>
-            <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5', marginBottom: '12px' }}>
-              {report.reviewComment || 'Manager requested changes to this report.\nNo detailed feedback was provided.'}
-            </div>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>
-              {report.reviewedByName || 'Manager'} {report.reviewedAt ? `· ${formatDate(report.reviewedAt)}` : ''}
-            </div>
+        <div className={styles.managerFeedbackBanner}>
+          <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className={styles.managerFeedbackContent}>
+            <strong>Manager Feedback / Changes Requested</strong>
+            <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>
+            <small>
+              {report.reviewedByName || 'Manager'}
+              {report.reviewedAt ? ` • ${formatDate(report.reviewedAt)}` : ''}
+            </small>
           </div>
         </div>
       )}
@@ -248,21 +307,20 @@ function SelectedReportSummary({
           errorMessage={report.extractionErrorMessage}
         />
       ) : (
-        <div className={styles.callout}>
-          <Sparkles size={18} />
-          <span>Run AI extraction to generate financial metrics for this report.</span>
+        <div className={styles.inlineEmpty} style={{ flexDirection: 'column', gap: 12, minHeight: 180 }}>
+          <Sparkles size={24} color="#2563eb" />
+          <span>Click below to run AI extraction and generate financial metrics for this report.</span>
+          <button className={styles.primaryButton} type="button" onClick={() => onExtract(report.id)} disabled={!canEdit}>
+            <Sparkles size={14} />
+            {isFailed ? 'Retry Extract' : 'Extract Financial Data'}
+          </button>
         </div>
       )}
 
       {isFailed && report.extractionErrorMessage && (
-        <div className={styles.errorBox}>{report.extractionErrorMessage}</div>
-      )}
-
-      {!isExtracting && (
-        <button className={styles.primaryButton} type="button" onClick={() => onExtract(report.id)} disabled={!canEdit}>
-          <Sparkles size={16} />
-          {isFailed ? 'Retry Extract' : 'Extract Financial Data'}
-        </button>
+        <div className={`${styles.statusBadge} ${styles.statusError}`} style={{ borderRadius: 8, padding: '8px 12px', width: 'fit-content' }}>
+          {report.extractionErrorMessage}
+        </div>
       )}
     </div>
   );
@@ -271,79 +329,150 @@ function SelectedReportSummary({
 function ExtractedMetricsPanel({
   report,
   metrics,
-  selectedMetric,
   selectedMetricId,
+  metricFilter,
+  evidenceOpen,
+  verifyingMetricId,
   onSelectMetric,
+  onCloseEvidence,
+  onFilterChange,
   canEdit,
   onReExtract,
+  onVerifyMetric,
+  onEditMetric,
+  onAddManualMetric,
+  onViewPdf,
 }: {
   report: FinancialReportEntry;
   metrics: FinancialMetricResponse[];
-  selectedMetric?: FinancialMetricResponse;
   selectedMetricId?: string | null;
+  metricFilter: MetricFilter;
+  evidenceOpen: boolean;
+  verifyingMetricId?: string | null;
   onSelectMetric: (metricId: string) => void;
+  onCloseEvidence: () => void;
+  onFilterChange: (filter: MetricFilter) => void;
   canEdit: boolean;
   onReExtract: (reportId: string) => void;
+  onVerifyMetric: (metricId: string) => void;
+  onEditMetric: (metric: FinancialMetricResponse) => void;
+  onAddManualMetric: () => void;
+  onViewPdf: (documentId: string) => void;
 }) {
-  const needsReview = metrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW').length;
+  const isApproved = report.reviewStatus === 'APPROVED';
+  const canEditThisReport = canEdit && !isApproved;
+
+  const needsReview = metrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length;
   const verified = metrics.filter(metric => metric.verificationStatus === 'VERIFIED').length;
+  const manual = metrics.filter(metric => metric.inputMethod === 'MANUAL').length;
+  const visibleMetrics = metrics.filter(metric => {
+    if (metricFilter === 'NEEDS_REVIEW') return metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED';
+    if (metricFilter === 'VERIFIED') return metric.verificationStatus === 'VERIFIED';
+    if (metricFilter === 'MANUAL') return metric.inputMethod === 'MANUAL';
+    return true;
+  });
+
+  const filterItems: Array<{ key: MetricFilter; label: string; count: number; warning?: boolean }> = [
+    { key: 'ALL', label: 'All', count: metrics.length },
+    { key: 'NEEDS_REVIEW', label: 'Needs Review', count: needsReview, warning: needsReview > 0 },
+    { key: 'VERIFIED', label: 'Verified', count: verified },
+    { key: 'MANUAL', label: 'Manual', count: manual },
+  ];
 
   return (
     <div className={styles.metricsPanel}>
-      <div className={styles.selectedReportHead}>
-        <div>
-          <span className={styles.eyebrow}>Extracted metrics</span>
+      <div className={styles.reportDetailHead}>
+        <div className={styles.reportDetailTitleGroup}>
           <h3>{report.title}</h3>
+          <div className={styles.reportDetailMeta}>
+            <span>{formatPeriod(report)}</span>
+            <span>•</span>
+            <span>{formatReportType(report.reportType) || 'Financial Statement'}</span>
+            <span>•</span>
+            <span>{formatDate(report.publicationDate)}</span>
+          </div>
         </div>
+        {isApproved ? (
+          <span className={`${styles.statusBadge} ${styles.statusApproved}`}>
+            <CheckCircle2 size={13} />
+            Approved by Manager (Read Only)
+          </span>
+        ) : (
+          <span className={`${styles.statusBadge} ${styles.statusExtracted}`}>
+            <CheckCircle2 size={13} />
+            Extraction Complete
+          </span>
+        )}
       </div>
-      
+
       {report.reviewStatus === 'CHANGES_REQUESTED' && (
-        <div style={{
-          margin: '0 0 16px 0', 
-          padding: '16px', 
-          backgroundColor: '#fffbeb', 
-          border: '1px solid #fde68a', 
-          borderLeft: '4px solid #f59e0b', 
-          borderRadius: '4px'
-        }}>
-          <h4 style={{ color: '#b45309', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
-            <span style={{ fontSize: '15px' }}>⚠</span> Changes Requested
-          </h4>
-          <div style={{ color: '#1f2937', fontSize: '14px' }}>
-            <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '13px' }}>Manager Feedback</div>
-            <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5', marginBottom: '12px' }}>
-              {report.reviewComment || 'Manager requested changes to this report.\nNo detailed feedback was provided.'}
-            </div>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>
-              {report.reviewedByName || 'Manager'} {report.reviewedAt ? `· ${formatDate(report.reviewedAt)}` : ''}
-            </div>
+        <div className={styles.managerFeedbackBanner}>
+          <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div className={styles.managerFeedbackContent}>
+            <strong>Manager Feedback / Changes Requested</strong>
+            <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>
+            <small>
+              {report.reviewedByName || 'Manager'}
+              {report.reviewedAt ? ` • ${formatDate(report.reviewedAt)}` : ''}
+            </small>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', gap: '8px' }}>
-        <button className={styles.secondaryButton} type="button" onClick={() => onReExtract(report.id)} disabled={!canEdit}>
-          Re-extract
-        </button>
-      </div>
+      <div className={styles.reportToolbar}>
+        <div className={styles.filterSegment} role="tablist">
+          {filterItems.map(item => (
+            <button
+              key={item.key}
+              className={`${styles.filterTab} ${metricFilter === item.key ? styles.filterTabActive : ''}`}
+              type="button"
+              onClick={() => onFilterChange(item.key)}
+            >
+              {item.label}
+              <span className={`${styles.filterCount} ${item.warning ? styles.filterCountWarning : ''}`}>
+                {item.count}
+              </span>
+            </button>
+          ))}
+        </div>
 
-      <div className={styles.metricsSummary}>
-        <div>
-          <span>Metrics</span>
-          <strong>{metrics.length}</strong>
-        </div>
-        <div>
-          <span>Verified</span>
-          <strong>{verified}</strong>
-        </div>
-        <div>
-          <span>Needs review</span>
-          <strong>{needsReview}</strong>
+        <div className={styles.toolbarActions}>
+          <button className={styles.secondaryButton} type="button" onClick={() => onViewPdf(report.documentId)}>
+            <FileText size={14} />
+            View Source PDF
+          </button>
+          {canEditThisReport && (
+            <>
+              <button className={styles.secondaryButton} type="button" onClick={() => onReExtract(report.id)}>
+                <RefreshCw size={14} />
+                Re-extract
+              </button>
+              <button
+                className={styles.primaryButton}
+                type="button"
+                onClick={onAddManualMetric}
+                style={{ padding: '6px 12px', fontSize: '12px', height: '32px' }}
+              >
+                <Plus size={13} />
+                Add Metric
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {metrics.length === 0 ? (
-        <div className={styles.inlineEmpty}>Extraction completed, but no financial metrics were returned.</div>
+        <div className={styles.inlineEmpty} style={{ flexDirection: 'column', gap: '10px' }}>
+          <span>Extraction completed, but no financial metrics were returned.</span>
+          {canEditThisReport && (
+            <button className={styles.primaryButton} type="button" onClick={onAddManualMetric} style={{ width: 'fit-content' }}>
+              <Plus size={14} />
+              Add First Metric
+            </button>
+          )}
+        </div>
+      ) : visibleMetrics.length === 0 ? (
+        <div className={styles.inlineEmpty}>No metrics match this filter.</div>
       ) : (
         <div className={styles.metricsTableWrap}>
           <table className={styles.metricsTable}>
@@ -352,68 +481,123 @@ function ExtractedMetricsPanel({
                 <th>Metric</th>
                 <th>Value</th>
                 <th>Period</th>
+                <th>Source</th>
                 <th>Quality</th>
-                <th>Verified</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {metrics.map(metric => (
-                <tr
-                  className={metric.id === selectedMetricId ? styles.metricRowSelected : ''}
-                  key={metric.id}
-                  onClick={() => onSelectMetric(metric.id)}
-                >
-                  <td>{metric.label}</td>
-                  <td>{[metric.rawValue, metric.rawUnit].filter(Boolean).join(' ') || 'Not captured'}</td>
-                  <td>{[metric.period?.period, metric.period?.year].filter(Boolean).join(' ') || 'Not specified'}</td>
-                  <td>
-                    <span className={metric.qualityStatus === 'NEEDS_REVIEW' ? styles.warningBadge : styles.successBadge}>
-                      {metric.qualityStatus === 'NEEDS_REVIEW' ? 'Needs review' : 'Valid'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={metric.verificationStatus === 'VERIFIED' ? styles.successBadge : styles.neutralBadge}>
-                      {metric.verificationStatus === 'VERIFIED' ? 'Verified' : 'Unverified'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {visibleMetrics.map(metric => {
+                const value = metricValueParts(metric);
+                const isVerified = metric.verificationStatus === 'VERIFIED';
+                const isNeedsReview = metric.qualityStatus === 'NEEDS_REVIEW' && !isVerified;
+                const showEvidence = evidenceOpen && metric.id === selectedMetricId;
+                return (
+                  <React.Fragment key={metric.id}>
+                    <tr
+                      className={showEvidence ? styles.metricRowSelected : ''}
+                      onClick={() => onSelectMetric(metric.id)}
+                      aria-selected={showEvidence}
+                    >
+                      <td className={styles.metricLabelCell}>{metric.label}</td>
+                      <td className={styles.metricValueCell}>
+                        {value.value}
+                        {value.unit && <span className={styles.metricValueUnit}>{value.unit}</span>}
+                      </td>
+                      <td>{formatMetricPeriod(metric)}</td>
+                      <td>
+                        <span className={styles.sourceTag}>{getMetricSource(metric)}</span>
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${isNeedsReview ? styles.statusNeedsReview : isVerified ? styles.statusApproved : styles.statusNeutral}`}>
+                          {isNeedsReview ? 'Needs Review' : isVerified ? 'Verified' : 'Ready'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles.tableActionRow}>
+                          <button
+                            className={isVerified ? styles.verifiedActionTag : styles.verifyActionBtn}
+                            type="button"
+                            disabled={isVerified || !canEditThisReport || verifyingMetricId === metric.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onVerifyMetric(metric.id);
+                            }}
+                          >
+                            {isVerified ? (
+                              <>
+                                <CheckCircle2 size={13} />
+                                Verified
+                              </>
+                            ) : verifyingMetricId === metric.id ? (
+                              'Saving...'
+                            ) : (
+                              'Verify'
+                            )}
+                          </button>
+                          {canEditThisReport && (
+                            <button
+                              className={styles.secondaryButton}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onEditMetric(metric);
+                              }}
+                              style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                              title="Edit metric values"
+                            >
+                              <Edit3 size={12} />
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {showEvidence && (
+                      <tr className={styles.evidenceTableRow}>
+                        <td colSpan={6} className={styles.evidenceTableCell}>
+                          <aside className={styles.evidencePanel}>
+                            <div className={styles.evidenceHeader}>
+                              <div className={styles.evidenceTitle}>
+                                <FileText size={15} />
+                                <span>Evidence & Document Excerpt</span>
+                              </div>
+                              <button className={styles.evidenceCloseBtn} type="button" onClick={onCloseEvidence} aria-label="Close evidence">
+                                <X size={14} />
+                              </button>
+                            </div>
+                            <div className={styles.evidenceMetricInfo}>
+                              <strong>{metric.label}:</strong>
+                              <span>{value.value} {value.unit}</span>
+                            </div>
+                            <p className={styles.evidenceQuoteBox}>
+                              "{metric.evidence || 'No evidence excerpt was provided for this metric.'}"
+                            </p>
+                            <div className={styles.evidenceMetaRow}>
+                              <div className={styles.evidenceMetaItem}>
+                                <span>Document:</span>
+                                <strong>{metric.source?.documentName || report.title}</strong>
+                              </div>
+                              <div className={styles.evidenceMetaItem}>
+                                <span>Page:</span>
+                                <strong>{metric.source?.page ?? 'N/A'}</strong>
+                              </div>
+                              <div className={styles.evidenceMetaItem}>
+                                <span>Confidence:</span>
+                                <strong>{metric.confidence != null ? `${Math.round(metric.confidence * 100)}%` : 'N/A'}</strong>
+                              </div>
+                            </div>
+                          </aside>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      <aside className={styles.evidencePanel}>
-        <div className={styles.evidenceHeader}>
-          <FileText size={17} />
-          <strong>Evidence / detail</strong>
-        </div>
-        {selectedMetric ? (
-          <>
-            <div className={styles.evidenceMetric}>
-              <span>{selectedMetric.label}</span>
-              <strong>{[selectedMetric.rawValue, selectedMetric.rawUnit].filter(Boolean).join(' ') || 'Not captured'}</strong>
-            </div>
-            <p>{selectedMetric.evidence || 'No evidence text was provided for this metric.'}</p>
-            <dl className={styles.evidenceMeta}>
-              <div>
-                <dt>Source</dt>
-                <dd>{selectedMetric.source?.documentName || report.title}</dd>
-              </div>
-              <div>
-                <dt>Page</dt>
-                <dd>{selectedMetric.source?.page ?? 'Not specified'}</dd>
-              </div>
-              <div>
-                <dt>Confidence</dt>
-                <dd>{selectedMetric.confidence != null ? `${Math.round(selectedMetric.confidence * 100)}%` : 'Not provided'}</dd>
-              </div>
-            </dl>
-          </>
-        ) : (
-          <p>Select a metric row to inspect the source evidence.</p>
-        )}
-      </aside>
     </div>
   );
 }
@@ -428,6 +612,9 @@ function FinancialReportsPanel({
   onExtract,
   onDelete,
   onViewPdf,
+  selectedReportIdsForSubmission,
+  eligibleReportIds,
+  onToggleSelection,
 }: {
   reports: FinancialReportEntry[];
   metrics: FinancialMetricResponse[];
@@ -438,42 +625,67 @@ function FinancialReportsPanel({
   onExtract: (reportId: string) => void;
   onDelete: (reportId: string) => void;
   onViewPdf: (documentId: string) => void;
+  selectedReportIdsForSubmission: string[];
+  eligibleReportIds: string[];
+  onToggleSelection: (reportId: string) => void;
 }) {
+  const selectedSubmissionSet = useMemo(() => new Set(selectedReportIdsForSubmission), [selectedReportIdsForSubmission]);
+  const eligibleSubmissionSet = useMemo(() => new Set(eligibleReportIds), [eligibleReportIds]);
+  const groupedReports = reports.reduce((groups, report) => {
+    const key = formatPeriod(report);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(report);
+    return groups;
+  }, {} as Record<string, FinancialReportEntry[]>);
+
   return (
-    <section className={styles.panel}>
+    <section className={`${styles.panel} ${styles.leftPanel}`}>
       <div className={styles.panelHead}>
-        <div>
-          <h3>Financial Reports</h3>
-          <p>Create report sources before running AI extraction.</p>
+        <div className={styles.panelTitleGroup}>
+          <div className={styles.panelTitleWithBadge}>
+            <h3>Financial Reports</h3>
+            <span className={styles.badgeCount}>{reports.length}</span>
+          </div>
+          <p>Add documents & extract data</p>
         </div>
         <button className={styles.primaryButton} type="button" onClick={onCreate} disabled={!canEdit}>
-          <Plus size={16} />
-          Create Financial Report
+          <Plus size={14} />
+          Create Report
         </button>
       </div>
 
       {reports.length === 0 ? (
-        <FinancialReportsEmptyState onCreate={onCreate} disabled={!canEdit} />
+        <FinancialReportsEmptyState onCreate={onCreate} disabled={canEdit === false} />
       ) : (
-        <div className={styles.reportList}>
-          {reports.map(report => {
-            const reportMetrics = metrics.filter(metric => metric.source?.reportEntryId === report.id);
-            const reportNeedsReview = reportMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW').length;
-            return (
-              <FinancialReportCard
-                key={report.id}
-                report={report}
-                metricCount={reportMetrics.length}
-                needsReviewCount={reportNeedsReview}
-                selected={report.id === selectedReportId}
-                canEdit={canEdit}
-                onSelect={onSelect}
-                onExtract={onExtract}
-                onDelete={onDelete}
-                onViewPdf={onViewPdf}
-              />
-            );
-          })}
+        <div className={styles.reportGroups}>
+          {Object.entries(groupedReports).map(([group, groupReports]) => (
+            <div className={styles.reportGroup} key={group}>
+              <h4 className={styles.reportGroupTitle}>{group}</h4>
+              <div className={styles.reportList}>
+                {groupReports.map(report => {
+                  const reportMetrics = metrics.filter(metric => metricBelongsToReport(metric, report));
+                  const reportNeedsReview = reportMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length;
+                  return (
+                    <FinancialReportCard
+                      key={report.id}
+                      report={report}
+                      metricCount={reportMetrics.length}
+                      needsReviewCount={reportNeedsReview}
+                      selected={report.id === selectedReportId}
+                      selectedForSubmission={selectedSubmissionSet.has(report.id)}
+                      isEligible={eligibleSubmissionSet.has(report.id)}
+                      canEdit={canEdit}
+                      onSelect={onSelect}
+                      onToggleSelection={onToggleSelection}
+                      onExtract={onExtract}
+                      onDelete={onDelete}
+                      onViewPdf={onViewPdf}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </section>
@@ -482,41 +694,224 @@ function FinancialReportsPanel({
 
 function FinancialPackageSummary({
   counts,
+  allApproved = false,
   disabled,
   submitting,
   submitted,
+  canRecall,
+  onRecall,
+  recalling,
   onSubmit,
 }: {
   counts: PackageCounts;
+  allApproved?: boolean;
   disabled: boolean;
   submitting: boolean;
   submitted: boolean;
+  canRecall?: boolean;
+  onRecall?: () => void;
+  recalling?: boolean;
   onSubmit: () => void;
 }) {
+  const isWarning = counts.needsReview > 0;
+  const isSuccess = !isWarning && counts.selected > 0 && counts.metrics > 0;
+
+  const label = submitted
+    ? (canRecall
+        ? `Submitted to Manager • ${counts.selected || counts.reports} report(s) waiting for Manager review.`
+        : 'This package has been submitted and is currently under Manager review.')
+    : allApproved
+      ? 'All financial reports in this task have been approved by manager.'
+    : counts.selected === 0
+      ? 'Select at least one extracted report to submit.'
+    : counts.metrics === 0
+      ? 'Extract metrics before submitting the selected report(s).'
+    : counts.needsReview > 0
+      ? `${counts.needsReview} selected metric(s) need review before submission.`
+      : `${counts.selected} report(s), ${counts.metrics} metric(s) ready to submit.`;
+
   return (
-    <section className={styles.packageSummary}>
-      <div className={styles.packageMetrics}>
-        <div>
-          <span>Reports</span>
-          <strong>{counts.reports}</strong>
-        </div>
-        <div>
-          <span>Extracted</span>
-          <strong>{counts.extracted}</strong>
-        </div>
-        <div>
-          <span>Metrics</span>
-          <strong>{counts.metrics}</strong>
-        </div>
-        <div>
-          <span>Needs Review</span>
-          <strong>{counts.needsReview}</strong>
-        </div>
+    <footer className={styles.packageSummary}>
+      <div className={`${styles.summaryStatusGroup} ${isWarning ? styles.summaryStatusWarning : isSuccess || allApproved || submitted ? styles.summaryStatusSuccess : styles.summaryStatusNeutral}`}>
+        {isWarning ? (
+          <AlertTriangle size={16} />
+        ) : isSuccess || allApproved ? (
+          <CheckCircle2 size={16} />
+        ) : submitted ? (
+          <Clock size={16} />
+        ) : (
+          <FileText size={16} />
+        )}
+        <span>{label}</span>
       </div>
-      <button className={styles.submitButton} type="button" onClick={onSubmit} disabled={disabled || submitted || submitting}>
-        {submitting ? 'Submitting...' : submitted ? 'Submitted' : 'Submit to Manager'}
-      </button>
-    </section>
+      {!allApproved && (
+        submitted ? (
+          canRecall && onRecall && (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={onRecall}
+              disabled={recalling}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#0f172a',
+                borderColor: '#cbd5e1',
+                background: '#ffffff',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              {recalling ? (
+                <>
+                  <Loader2 size={14} className={styles.spinIcon} />
+                  Recalling...
+                </>
+              ) : (
+                <>
+                  <RotateCcw size={14} />
+                  Recall Submission
+                </>
+              )}
+            </button>
+          )
+        ) : (
+          <button className={styles.submitBtn} type="button" onClick={onSubmit} disabled={disabled || submitted || submitting}>
+            {submitting ? (
+              <>
+                <Loader2 size={14} className={styles.spinIcon} />
+                Submitting...
+              </>
+            ) : (
+              'Submit to Manager'
+            )}
+          </button>
+        )
+      )}
+    </footer>
+  );
+}
+
+function ManagerReviewSummaryBar({
+  selectedReport,
+  reports,
+  isRecalled,
+  onApprove,
+  onRequestChanges,
+  onApproveAll,
+  isProcessing,
+}: {
+  selectedReport: FinancialReportEntry | null;
+  reports: FinancialReportEntry[];
+  isRecalled?: boolean;
+  onApprove: (reportId: string) => void;
+  onRequestChanges: (reportId: string) => void;
+  onApproveAll: () => void;
+  isProcessing: boolean;
+}) {
+  if (isRecalled) {
+    return (
+      <footer className={styles.packageSummary}>
+        <div className={styles.summaryStatusGroup} style={{ color: '#ea580c' }}>
+          <AlertTriangle size={16} />
+          <span>This submission was recalled by Staff for further editing. No active review is pending.</span>
+        </div>
+      </footer>
+    );
+  }
+
+  const pendingReports = reports.filter(r => r.reviewStatus !== 'APPROVED');
+  const isApproved = selectedReport?.reviewStatus === 'APPROVED';
+  const isChangesRequested = selectedReport?.reviewStatus === 'CHANGES_REQUESTED';
+
+  return (
+    <footer className={styles.packageSummary}>
+      <div className={styles.summaryStatusGroup}>
+        {isApproved ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 600 }}>
+            <CheckCircle2 size={16} />
+            <span>
+              "{selectedReport?.title}" was approved by {selectedReport?.reviewedByName || 'Manager'}.
+            </span>
+          </div>
+        ) : isChangesRequested ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ea580c', fontWeight: 600 }}>
+            <AlertTriangle size={16} />
+            <span>
+              "{selectedReport?.title}" returned for changes: "{selectedReport?.reviewComment || 'Staff needs to make corrections.'}"
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600 }}>
+            <FileText size={16} />
+            <span>
+              Reviewing "{selectedReport?.title || 'Financial Report'}" • {pendingReports.length} report(s) pending review
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {pendingReports.length > 1 && (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={onApproveAll}
+            disabled={isProcessing}
+            style={{ padding: '7px 14px', fontSize: '13px', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}
+          >
+            <Check size={14} />
+            Approve All ({pendingReports.length})
+          </button>
+        )}
+
+        {selectedReport && !isApproved && (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => onRequestChanges(selectedReport.id)}
+            disabled={isProcessing}
+            style={{ padding: '7px 14px', fontSize: '13px', color: '#c2410c', borderColor: '#fed7aa', background: '#fff7ed' }}
+          >
+            <AlertTriangle size={14} />
+            Request Changes
+          </button>
+        )}
+
+        {selectedReport && !isApproved && (
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => onApprove(selectedReport.id)}
+            disabled={isProcessing}
+            style={{ padding: '7px 16px', fontSize: '13px', background: '#16a34a', borderColor: '#16a34a' }}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 size={14} className={styles.spinIcon} />
+                Approving...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={14} />
+                Approve Report
+              </>
+            )}
+          </button>
+        )}
+
+        {selectedReport && isApproved && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#16a34a', fontWeight: 700, fontSize: '13px', padding: '6px 12px', background: '#dcfce7', borderRadius: '8px' }}>
+            <CheckCircle2 size={15} />
+            Approved
+          </span>
+        )}
+      </div>
+    </footer>
   );
 }
 
@@ -529,16 +924,32 @@ export default function FinancialResearchWorkbench({
   dueDate,
   targetCompanyName,
   canEdit = true,
-  documents: _documents,
-  uploadingDocument: _uploadingDocument,
-  onUploadDocument: _onUploadDocument,
-  onRefreshWorkbench: _onRefreshWorkbench,
+  isManagerMode = false,
+  onClose,
+  onReviewed,
+  onRefreshWorkbench,
+  onRecallSuccess,
   onSubmitSuccess,
 }: FinancialResearchWorkbenchProps) {
   const queryClient = useQueryClient();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isAddMetricModalOpen, setIsAddMetricModalOpen] = useState(false);
+  const [editingMetric, setEditingMetric] = useState<FinancialMetricResponse | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<FinancialReportEntry | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>('ALL');
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [selectedReportIdsForSubmission, setSelectedReportIdsForSubmission] = useState<string[]>([]);
+  const [submissionSelectionTouched, setSubmissionSelectionTouched] = useState(false);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   const { data: researchRes, isLoading, isError, error } = useQuery({
     queryKey: ['financial-research', projectId, taskId],
@@ -553,10 +964,24 @@ export default function FinancialResearchWorkbench({
   });
 
   const research = researchRes?.data;
-  const reports = research?.reports || [];
-  const metrics = research?.metrics || [];
+  const reports = useMemo(() => research?.reports || [], [research?.reports]);
+  const metrics = useMemo(() => research?.metrics || [], [research?.metrics]);
+  const extractedReports = useMemo(() => reports.filter(isReportExtracted), [reports]);
   const isSubmitted = research?.status === 'SUBMITTED' || research?.status === 'APPROVED';
   const isReadOnly = !canEdit || isSubmitted;
+  const eligibleReportIds = useMemo(
+    () => extractedReports.filter(report => report.reviewStatus !== 'APPROVED').map(report => report.id),
+    [extractedReports],
+  );
+  const selectedSubmissionReportSet = useMemo(() => new Set(selectedReportIdsForSubmission), [selectedReportIdsForSubmission]);
+  const selectedSubmissionReports = useMemo(
+    () => extractedReports.filter(report => selectedSubmissionReportSet.has(report.id)),
+    [extractedReports, selectedSubmissionReportSet],
+  );
+  const selectedSubmissionMetrics = useMemo(
+    () => metrics.filter(metric => selectedSubmissionReports.some(report => metricBelongsToReport(metric, report))),
+    [metrics, selectedSubmissionReports],
+  );
 
   const selectedReport = useMemo(
     () => reports.find(report => report.id === selectedReportId) || null,
@@ -564,29 +989,45 @@ export default function FinancialResearchWorkbench({
   );
 
   const selectedReportMetrics = useMemo(
-    () => selectedReport ? metrics.filter(metric => metric.source?.reportEntryId === selectedReport.id) : [],
+    () => selectedReport ? metrics.filter(metric => metricBelongsToReport(metric, selectedReport)) : [],
     [metrics, selectedReport],
   );
 
-  const selectedMetric = useMemo(
-    () => selectedReportMetrics.find(metric => metric.id === selectedMetricId) || selectedReportMetrics[0],
-    [selectedMetricId, selectedReportMetrics],
-  );
+  const allApproved = reports.length > 0 && reports.every(report => report.reviewStatus === 'APPROVED');
 
   const counts = useMemo<PackageCounts>(() => ({
     reports: reports.length,
-    extracted: reports.filter(isReportExtracted).length,
-    metrics: metrics.length,
-    needsReview: metrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW').length,
-  }), [metrics, reports]);
+    extracted: extractedReports.length,
+    selected: selectedReportIdsForSubmission.length,
+    metrics: selectedSubmissionMetrics.length,
+    needsReview: selectedSubmissionMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length,
+  }), [extractedReports.length, reports.length, selectedReportIdsForSubmission.length, selectedSubmissionMetrics]);
 
-  const activeStep = getWorkflowStep((research?.status || 'DRAFT') as FinancialResearchStatus, reports, metrics);
-  const canSubmit = counts.reports > 0 && counts.metrics > 0 && counts.needsReview === 0;
+  const canSubmit = !allApproved && counts.selected > 0 && counts.metrics > 0 && counts.needsReview === 0;
+
+  useEffect(() => {
+    setSubmissionSelectionTouched(false);
+    setSelectedReportIdsForSubmission([]);
+  }, [research?.id]);
+
+  useEffect(() => {
+    const eligibleSet = new Set(eligibleReportIds);
+    setSelectedReportIdsForSubmission(previous => {
+      const next = submissionSelectionTouched
+        ? previous.filter(reportId => eligibleSet.has(reportId))
+        : eligibleReportIds;
+      if (next.length === previous.length && next.every((reportId, index) => reportId === previous[index])) {
+        return previous;
+      }
+      return next;
+    });
+  }, [eligibleReportIds, submissionSelectionTouched]);
 
   useEffect(() => {
     if (reports.length === 0) {
       setSelectedReportId(null);
       setSelectedMetricId(null);
+      setEvidenceOpen(false);
       return;
     }
     if (!selectedReportId || !reports.some(report => report.id === selectedReportId)) {
@@ -597,56 +1038,210 @@ export default function FinancialResearchWorkbench({
   useEffect(() => {
     if (selectedReportMetrics.length === 0) {
       setSelectedMetricId(null);
+      setEvidenceOpen(false);
       return;
     }
-    if (!selectedMetricId || !selectedReportMetrics.some(metric => metric.id === selectedMetricId)) {
-      setSelectedMetricId(selectedReportMetrics[0].id);
+    if (selectedMetricId && !selectedReportMetrics.some(metric => metric.id === selectedMetricId)) {
+      setSelectedMetricId(null);
+      setEvidenceOpen(false);
     }
   }, [selectedMetricId, selectedReportMetrics]);
 
   const addReportMutation = useMutation({
-    mutationFn: (data: any) => financialResearchApi.addReport(projectId, taskId, data),
+    mutationFn: (data: CreateFinancialReportRequest) => financialResearchApi.addReport(projectId, taskId, data),
     onSuccess: (res) => {
       const createdReport = res.data.reports.at(-1);
       if (createdReport) setSelectedReportId(createdReport.id);
       setIsCreateModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: 'Financial report created successfully.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to create report.', type: 'error' });
     },
   });
 
   const removeReportMutation = useMutation({
     mutationFn: (reportId: string) => financialResearchApi.removeReport(projectId, taskId, reportId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      const title = reportToDelete?.title || 'Financial Report';
+      setReportToDelete(null);
+      setToast({ message: `Report "${title}" deleted successfully.`, type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to delete report.', type: 'error' });
+    },
   });
 
   const extractMutation = useMutation({
     mutationFn: (reportId: string) => financialResearchApi.extractReport(projectId, taskId, reportId),
     onMutate: (reportId) => setSelectedReportId(reportId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Extraction failed.', type: 'error' });
+    },
   });
 
   const reExtractMutation = useMutation({
     mutationFn: (reportId: string) => financialResearchApi.reExtractReport(projectId, taskId, reportId),
     onMutate: (reportId) => setSelectedReportId(reportId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
-  });
-
-  const submitTaskMutation = useMutation({
-    mutationFn: () => financialResearchApi.submitResearch(projectId, taskId, research!.id, []),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      onSubmitSuccess?.();
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Re-extraction failed.', type: 'error' });
     },
   });
 
+  const verifyMetricMutation = useMutation({
+    mutationFn: (metricId: string) => financialResearchApi.verifyMetric(projectId, taskId, metricId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to verify metric.', type: 'error' });
+    },
+  });
+
+  const addMetricMutation = useMutation({
+    mutationFn: (data: CreateFinancialMetricRequest) => financialResearchApi.addMetric(projectId, taskId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setIsAddMetricModalOpen(false);
+      setToast({ message: 'Manual financial metric added successfully.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to add manual metric.', type: 'error' });
+    },
+  });
+
+  const updateMetricMutation = useMutation({
+    mutationFn: ({ metricId, data }: { metricId: string; data: UpdateFinancialMetricRequest }) =>
+      financialResearchApi.updateMetric(projectId, taskId, metricId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setEditingMetric(null);
+      setToast({ message: 'Financial metric updated successfully.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to update metric.', type: 'error' });
+    },
+  });
+
+  const submitTaskMutation = useMutation({
+    mutationFn: () => financialResearchApi.submitResearch(
+      projectId,
+      taskId,
+      research!.id,
+      selectedReportIdsForSubmission,
+    ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: 'Financial research submitted to manager.', type: 'success' });
+      onSubmitSuccess?.();
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to submit research.', type: 'error' });
+    },
+  });
+
+  const canRecall = Boolean(
+    research?.canRecallSubmission ?? (
+      isSubmitted &&
+      research?.status === 'SUBMITTED' &&
+      reports.filter(r => (research?.submittedReportIds && research.submittedReportIds.length > 0 ? research.submittedReportIds.includes(r.id) : true))
+             .every(r => r.reviewStatus !== 'APPROVED' && r.reviewStatus !== 'CHANGES_REQUESTED')
+    )
+  );
+
+  const [isRecallModalOpen, setIsRecallModalOpen] = useState(false);
+
+  const recallMutation = useMutation({
+    mutationFn: () => financialResearchApi.recallSubmission(projectId, taskId),
+    onSuccess: () => {
+      setIsRecallModalOpen(false);
+      setSelectedReportIdsForSubmission([]);
+      setSubmissionSelectionTouched(false);
+      setToast({ message: 'Submission recalled successfully. You can now edit and resubmit.', type: 'success' });
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      queryClient.invalidateQueries({ queryKey: ['project-task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['project-task-submissions', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['project-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['project-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      onRecallSuccess?.();
+      onRefreshWorkbench?.();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to recall submission.';
+      setToast({ message: msg, type: 'error' });
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setIsRecallModalOpen(false);
+    },
+  });
+
+  const [isRequestChangesModalOpen, setIsRequestChangesModalOpen] = useState(false);
+  const [changesReason, setChangesReason] = useState('');
+
+  const reviewReportMutation = useMutation({
+    mutationFn: ({ reportId, status, reason }: { reportId: string; status: 'APPROVED' | 'CHANGES_REQUESTED'; reason?: string }) =>
+      financialResearchApi.reviewReport(projectId, taskId, reportId, status, reason),
+    onSuccess: (res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setIsRequestChangesModalOpen(false);
+      setChangesReason('');
+      const actionLabel = vars.status === 'APPROVED' ? 'approved' : 'returned for changes';
+      setToast({ message: `Report ${actionLabel} successfully.`, type: 'success' });
+
+      const allAppr = res.data.reports.every(r => r.reviewStatus === 'APPROVED');
+      if (allAppr) {
+        onReviewed?.('All financial reports approved. Task completed.', true);
+      } else if (vars.status === 'CHANGES_REQUESTED') {
+        onReviewed?.('Report returned to staff for changes.', true);
+      }
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to review report.', type: 'error' });
+    },
+  });
+
+  const handleApproveAllReports = async () => {
+    const unapproved = reports.filter(r => r.reviewStatus !== 'APPROVED');
+    for (const r of unapproved) {
+      await financialResearchApi.reviewReport(projectId, taskId, r.id, 'APPROVED');
+    }
+    queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+    setToast({ message: `All ${unapproved.length} reports approved successfully.`, type: 'success' });
+    onReviewed?.('All financial reports approved. Task completed.', true);
+  };
+
   const handleExtract = (reportId: string) => {
     const report = reports.find(item => item.id === reportId);
-    if (!report || isReadOnly) return;
+    if (!report || isReadOnly || report.reviewStatus === 'APPROVED') return;
     if (isReportExtracted(report)) {
       reExtractMutation.mutate(reportId);
       return;
     }
     extractMutation.mutate(reportId);
+  };
+
+  const handleSelectReport = (reportId: string) => {
+    setSelectedReportId(reportId);
+    setSelectedMetricId(null);
+    setMetricFilter('ALL');
+    setEvidenceOpen(false);
+  };
+
+  const handleSelectMetric = (metricId: string) => {
+    setSelectedMetricId(metricId);
+    setEvidenceOpen(true);
+  };
+
+  const handleToggleReportSelection = (reportId: string) => {
+    if (!eligibleReportIds.includes(reportId)) return;
+    setSubmissionSelectionTouched(true);
+    setSelectedReportIdsForSubmission(previous =>
+      previous.includes(reportId)
+        ? previous.filter(selectedId => selectedId !== reportId)
+        : [...previous, reportId],
+    );
   };
 
   const handleViewPdf = (documentId: string) => {
@@ -665,97 +1260,111 @@ export default function FinancialResearchWorkbench({
     return <div className={styles.stateMessage}>Research not found.</div>;
   }
 
+  const effectiveCanEdit = isManagerMode ? false : !isReadOnly;
+
   return (
     <div className={styles.workbench}>
-      <FinancialResearchHeader
-        status={taskStatus || research.status}
+      <FinancialResearchMetaBar
+        status={research.status === 'SUBMITTED' ? 'IN_REVIEW' : research.status === 'APPROVED' ? 'DONE' : 'IN_PROGRESS'}
         taskTypeLabel={taskTypeLabel}
         dueDate={dueDate}
         targetCompanyName={targetCompanyName}
+        onClose={onClose}
       />
-
-      {taskTitle && <p className={styles.taskTitle}>{taskTitle}</p>}
-
-      <FinancialResearchStepper activeStep={activeStep} />
 
       <div className={styles.mainGrid}>
         <FinancialReportsPanel
           reports={reports}
           metrics={metrics}
           selectedReportId={selectedReportId}
-          canEdit={!isReadOnly}
+          canEdit={effectiveCanEdit}
           onCreate={() => setIsCreateModalOpen(true)}
-          onSelect={setSelectedReportId}
+          onSelect={handleSelectReport}
           onExtract={handleExtract}
-          onDelete={(reportId) => removeReportMutation.mutate(reportId)}
+          onDelete={(reportId) => {
+            const r = reports.find(item => item.id === reportId);
+            if (r) setReportToDelete(r);
+          }}
           onViewPdf={handleViewPdf}
+          selectedReportIdsForSubmission={selectedReportIdsForSubmission}
+          eligibleReportIds={eligibleReportIds}
+          onToggleSelection={handleToggleReportSelection}
         />
 
-        <section className={styles.panel}>
-          <div className={styles.panelHead}>
-            <div>
-              <h3>Extracted Metrics</h3>
-              <p>{selectedReport ? 'Review metrics for the selected report.' : 'Select or create a report to begin extraction.'}</p>
-            </div>
+        <section className={`${styles.panel} ${styles.rightPanel}`}>
+          <div className={styles.rightPanelBody}>
+            {!selectedReport ? (
+              <FinancialMetricsEmptyState />
+            ) : isReportExtracted(selectedReport) ? (
+              <ExtractedMetricsPanel
+                report={selectedReport}
+                metrics={selectedReportMetrics}
+                selectedMetricId={selectedMetricId}
+                metricFilter={metricFilter}
+                evidenceOpen={evidenceOpen}
+                verifyingMetricId={verifyMetricMutation.isPending ? verifyMetricMutation.variables ?? null : null}
+                onSelectMetric={handleSelectMetric}
+                onCloseEvidence={() => setEvidenceOpen(false)}
+                onFilterChange={setMetricFilter}
+                canEdit={effectiveCanEdit}
+                onReExtract={(reportId) => reExtractMutation.mutate(reportId)}
+                onVerifyMetric={(metricId) => verifyMetricMutation.mutate(metricId)}
+                onEditMetric={(metric) => setEditingMetric(metric)}
+                onAddManualMetric={() => setIsAddMetricModalOpen(true)}
+                onViewPdf={handleViewPdf}
+              />
+            ) : (
+              <SelectedReportSummary
+                report={selectedReport}
+                metricsCount={selectedReportMetrics.length}
+                canEdit={effectiveCanEdit && selectedReport.reviewStatus !== 'APPROVED'}
+                onExtract={handleExtract}
+              />
+            )}
           </div>
-
-          {!selectedReport ? (
-            <FinancialMetricsEmptyState />
-          ) : isReportExtracted(selectedReport) ? (
-            <ExtractedMetricsPanel
-              report={selectedReport}
-              metrics={selectedReportMetrics}
-              selectedMetric={selectedMetric}
-              selectedMetricId={selectedMetric?.id}
-              onSelectMetric={setSelectedMetricId}
-              canEdit={!isReadOnly}
-              onReExtract={(reportId) => reExtractMutation.mutate(reportId)}
-            />
-          ) : (
-            <SelectedReportSummary
-              report={selectedReport}
-              metricsCount={selectedReportMetrics.length}
-              canEdit={!isReadOnly}
-              onExtract={handleExtract}
-            />
-          )}
         </section>
       </div>
 
-      {counts.needsReview > 0 && (
-        <div className={styles.reviewWarning}>
-          <AlertTriangle size={18} />
-          <span>{counts.needsReview} metric(s) need review before this package can be submitted.</span>
-        </div>
-      )}
-
-      {isSubmitted && (
+      {isSubmitted && !isManagerMode && (
         <div className={styles.submittedNotice}>
           <CheckCircle2 size={18} />
           <span>This financial research package is currently {formatStatus(research.status)}.</span>
         </div>
       )}
 
-      <FinancialPackageSummary
-        counts={counts}
-        disabled={isReadOnly || !canSubmit}
-        submitting={submitTaskMutation.isPending}
-        submitted={isSubmitted}
-        onSubmit={() => submitTaskMutation.mutate()}
-      />
+      {isManagerMode ? (
+        <ManagerReviewSummaryBar
+          selectedReport={selectedReport}
+          reports={reports}
+          isRecalled={research.status !== 'SUBMITTED'}
+          onApprove={(reportId) => reviewReportMutation.mutate({ reportId, status: 'APPROVED' })}
+          onRequestChanges={() => setIsRequestChangesModalOpen(true)}
+          onApproveAll={handleApproveAllReports}
+          isProcessing={reviewReportMutation.isPending}
+        />
+      ) : (
+        <FinancialPackageSummary
+          counts={counts}
+          allApproved={allApproved}
+          disabled={isReadOnly || !canSubmit}
+          submitting={submitTaskMutation.isPending}
+          submitted={isSubmitted}
+          canRecall={canRecall}
+          onRecall={() => setIsRecallModalOpen(true)}
+          recalling={recallMutation.isPending}
+          onSubmit={() => submitTaskMutation.mutate()}
+        />
+      )}
 
-      <CreateFinancialReportModal
+      <AddFinancialReportModal
         open={isCreateModalOpen}
-        submitting={addReportMutation.isPending}
         onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={async (data: any, file: File | null) => {
+        onSubmit={async (data, file) => {
           const formData = new FormData();
-          if (file) {
-            formData.append('file', file);
-          }
+          formData.append('file', file);
           formData.append('taskId', String(taskId));
 
-          const res = await api.post<any>(`/projects/${projectId}/documents/upload`, formData);
+          const res = await api.post<UploadedDocumentResponse>(`/projects/${projectId}/documents/upload`, formData);
           const documentId = res.data?.rawDocumentId || res.data?.id;
 
           if (!documentId) {
@@ -768,6 +1377,224 @@ export default function FinancialResearchWorkbench({
           });
         }}
       />
+
+      <AddManualMetricModal
+        open={isAddMetricModalOpen}
+        report={selectedReport}
+        onClose={() => setIsAddMetricModalOpen(false)}
+        onSave={async (data) => {
+          await addMetricMutation.mutateAsync(data);
+        }}
+        isSaving={addMetricMutation.isPending}
+      />
+
+      <EditFinancialMetricModal
+        open={Boolean(editingMetric)}
+        metric={editingMetric}
+        onClose={() => setEditingMetric(null)}
+        onSave={async (metricId, data) => {
+          await updateMetricMutation.mutateAsync({ metricId, data });
+        }}
+        isSaving={updateMetricMutation.isPending}
+      />
+
+      {/* Recall Confirmation Modal */}
+      {isRecallModalOpen && (
+        <div className={styles.modalOverlay} onClick={() => setIsRecallModalOpen(false)}>
+          <div className={styles.deleteConfirmModal} onClick={(e) => e.stopPropagation()} style={{ width: '480px' }}>
+            <div className={styles.deleteModalHead}>
+              <div className={styles.deleteModalIcon} style={{ background: '#eff6ff', color: '#2563eb' }}>
+                <RotateCcw size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Recall Submission?</h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Current submission: {(research.submittedReportIds || []).length || counts.selected} report{((research.submittedReportIds || []).length || counts.selected) !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
+            <p className={styles.deleteModalText}>
+              This submission is currently waiting for Manager review.
+            </p>
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 14px',
+              fontSize: '12.5px',
+              color: '#334155',
+              lineHeight: '1.6',
+              marginBottom: '16px',
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: '4px', color: '#0f172a' }}>Recalling it will:</div>
+              <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                <li>Remove it from the active Manager review queue</li>
+                <li>Return the task to <strong>In Progress</strong></li>
+                <li>Allow you to edit the financial reports and extracted metrics</li>
+                <li>Require you to submit again after making changes</li>
+              </ul>
+            </div>
+            <div className={styles.deleteModalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setIsRecallModalOpen(false)}
+                disabled={recallMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => recallMutation.mutate()}
+                disabled={recallMutation.isPending}
+                style={{ background: '#2563eb', borderColor: '#2563eb' }}
+              >
+                {recallMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} />
+                    Recalling...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={14} />
+                    Recall Submission
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Changes Modal */}
+      {isRequestChangesModalOpen && selectedReport && (
+        <div className={styles.modalOverlay} onClick={() => setIsRequestChangesModalOpen(false)}>
+          <div className={styles.deleteConfirmModal} onClick={(e) => e.stopPropagation()} style={{ width: '500px' }}>
+            <div className={styles.deleteModalHead}>
+              <div className={styles.deleteModalIcon} style={{ background: '#fff7ed', color: '#ea580c' }}>
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Request Changes</h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>For {selectedReport.title}</span>
+              </div>
+            </div>
+            <p className={styles.deleteModalText}>
+              Provide specific feedback explaining what staff needs to correct or re-extract:
+            </p>
+            <textarea
+              required
+              value={changesReason}
+              onChange={(e) => setChangesReason(e.target.value)}
+              placeholder="e.g. Please verify Q2 Charter Capital or re-extract liabilities..."
+              style={{
+                width: '100%',
+                minHeight: '85px',
+                boxSizing: 'border-box',
+                padding: '10px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                resize: 'vertical',
+              }}
+            />
+            <div className={styles.deleteModalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setIsRequestChangesModalOpen(false);
+                  setChangesReason('');
+                }}
+                disabled={reviewReportMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                style={{ background: '#ea580c' }}
+                onClick={() => reviewReportMutation.mutate({
+                  reportId: selectedReport.id,
+                  status: 'CHANGES_REQUESTED',
+                  reason: changesReason.trim(),
+                })}
+                disabled={!changesReason.trim() || reviewReportMutation.isPending}
+              >
+                {reviewReportMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Feedback'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {reportToDelete && (
+        <div className={styles.modalOverlay} onClick={() => setReportToDelete(null)}>
+          <div className={styles.deleteConfirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.deleteModalHead}>
+              <div className={styles.deleteModalIcon}>
+                <AlertTriangle size={20} />
+              </div>
+              <h3>Delete Financial Report</h3>
+            </div>
+            <p className={styles.deleteModalText}>
+              Are you sure you want to delete <strong>"{reportToDelete.title}"</strong>? All associated extracted metrics will also be permanently removed.
+            </p>
+            <div className={styles.deleteModalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setReportToDelete(null)}
+                disabled={removeReportMutation.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                onClick={() => removeReportMutation.mutate(reportToDelete.id)}
+                disabled={removeReportMutation.isPending}
+              >
+                {removeReportMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete Report'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
+      {toast && (
+        <div className={`${styles.toast} ${toast.type === 'success' ? styles.toastSuccess : styles.toastError}`}>
+          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          <span>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className={styles.toastCloseBtn}
+            aria-label="Close notification"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

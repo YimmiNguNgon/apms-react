@@ -41,6 +41,7 @@ const taskTypeLabel: Record<TaskType, string> = {
   ROLE_EVALUATION: 'Role evaluation',
   COMPANY_MEMBER_RESEARCH: 'Company member research',
   COMPANY_NEWS_RESEARCH: 'Company news research',
+  FINANCIAL_RESEARCH: 'Financial research',
   GENERAL_TASK: 'General task',
 };
 
@@ -51,6 +52,7 @@ const taskTypeHint: Record<TaskType, string> = {
   ROLE_EVALUATION: 'Evaluate relationship, risk, evidence, and recommendation.',
   COMPANY_MEMBER_RESEARCH: 'Research key people and attach verified source URLs.',
   COMPANY_NEWS_RESEARCH: 'Research and attach recent news about the target company.',
+  FINANCIAL_RESEARCH: 'Select financial source documents, run AI extraction, verify metrics, and submit.',
   GENERAL_TASK: 'Complete the assigned request and submit a clear result note.',
 };
 

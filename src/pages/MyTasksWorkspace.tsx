@@ -248,7 +248,7 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     setSubmitting(true);
     try {
       await api.post(`/projects/${selectedTask.projectId}/tasks/${selectedTask.id}/submissions`, {
-        submissionType: selectedTask.taskType === 'COMPANY_DATA_PREPARATION' ? 'COMPANY_CANDIDATE' : 'OTHER',
+        submissionType: selectedTask.taskType === 'COMPANY_DATA_PREPARATION' ? 'COMPANY_CANDIDATE' : selectedTask.taskType === 'FINANCIAL_RESEARCH' ? 'FINANCIAL_RESEARCH' : 'OTHER',
         targetEntityType: 'CompanyProfile',
         targetEntityId: attachedCompanyProfileId || null,
         note: note || ''

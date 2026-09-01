@@ -1,295 +1,692 @@
-import React, { useMemo, useState } from 'react';
-import { Download, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
-import { listingDataApi } from '../../API/listingDataApi';
-import type { CompanyFinancial } from '../../types/listingData';
-import { ListingTabShell } from './common';
-import { useListingTabData } from './utils';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileSearch,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
+import { financialResearchApi } from '../../API/financialResearchApi';
+import { API_BASE_URL } from '../../services/api';
+import type {
+  FinancialMetricResponse,
+  FinancialReportEntry,
+} from '../../types/domain';
+import styles from './FinancialsTab.module.css';
 
-interface FinancialValue { code?: string; value?: number | null; }
-interface FinancialPeriod { time?: string; data?: FinancialValue[]; }
-interface FinancialRow { code?: string; name?: string; }
-interface FinancialDocument { unit?: string | null; templace?: FinancialRow[]; data?: Array<{ code?: string; name?: string; data?: FinancialPeriod[] }>; }
+interface FinancialsTabProps {
+  companyId: string;
+  editable?: boolean;
+}
 
-const REPORT_TABS = [
-  { label: 'BCTC tóm tắt', type: 'SUMMARY' },
-  { label: 'Cân đối kế toán', type: 'BALANCE_SHEET' },
-  { label: 'Kết quả KD', type: 'INCOME_STATEMENT' },
-  { label: 'Lưu chuyển tiền tệ', type: 'CASH_FLOW' },
-  { label: 'Chỉ số TC', type: 'RATIOS' },
-  { label: 'Chỉ tiêu kế hoạch', type: 'PLAN' },
-];
-const parseDocument = (itemsJson?: string | null): FinancialDocument | null => {
-  try { return itemsJson ? JSON.parse(itemsJson) as FinancialDocument : null; } catch { return null; }
-};
-const valueFor = (period: FinancialPeriod, code?: string) => Number(period.data?.find((item) => item.code === code)?.value ?? 0);
-const formatValue = (value: number, unit: string, sourceSnapshot = false) => {
-  const divisor = sourceSnapshot || Math.abs(value) < 100_000_000 ? 1 : unit === 'Tỷ đồng' ? 1_000_000_000 : unit === 'Triệu đồng' ? 1_000_000 : 1;
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value / divisor);
-};
+interface ReportWithContext {
+  report: FinancialReportEntry;
+  metrics: FinancialMetricResponse[];
+  projectId: number;
+  taskId: number;
+}
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', minWidth: 92, boxSizing: 'border-box',
-  border: '1px solid #cbd5e1', borderRadius: 4, padding: '5px 6px', fontSize: 12, textAlign: 'right',
-  background: '#fff', color: '#1e293b',
-};
-
-const FinancialsTab: React.FC<{ companyId: string; editable?: boolean }> = ({ companyId, editable }) => {
-  const { loading, error, data, reload } = useListingTabData<CompanyFinancial[]>(`financials:v2:${companyId}`, companyId, listingDataApi.getFinancials);
-  const [activeReport, setActiveReport] = useState(REPORT_TABS[0].type);
-  const [periodType, setPeriodType] = useState('Theo năm');
-  const [unit, setUnit] = useState('Tỷ đồng');
-
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editMsg, setEditMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [draft, setDraft] = useState<Record<string, Record<string, string>>>({});
-  const [addedYears, setAddedYears] = useState<string[]>([]);
-  const [removedYears, setRemovedYears] = useState<string[]>([]);
-  const [newYear, setNewYear] = useState('');
-
-  const report = useMemo(() => {
-    const selected = (data?.data ?? []).find((item) => item.reportType === activeReport) ?? data?.data?.[0];
-    return parseDocument(selected?.itemsJson) ?? null;
-  }, [activeReport, data]);
-  const rawPeriods = useMemo(() => report?.data?.[0]?.data ?? [], [report]);
-  const periods = useMemo(() => {
-    if (periodType === 'Theo quý') return rawPeriods;
-
-    const byYear = new Map<string, Map<string, number>>();
-    rawPeriods.forEach((period) => {
-      const year = period.time?.match(/(\d{4})$/)?.[1] ?? period.time ?? 'Năm khác';
-      const values = byYear.get(year) ?? new Map<string, number>();
-      period.data?.forEach((item) => {
-        if (!item.code) return;
-        values.set(item.code, (values.get(item.code) ?? 0) + Number(item.value ?? 0));
-      });
-      byYear.set(year, values);
+const formatDate = (dateStr?: string | null) => {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
     });
+  } catch {
+    return dateStr;
+  }
+};
 
-    return [...byYear.entries()].map(([year, values]) => ({
-      time: year,
-      data: [...values.entries()].map(([code, value]) => ({ code, value })),
-    }));
-  }, [periodType, rawPeriods]);
-  const rows = report?.templace ?? [];
+const formatPeriod = (report: FinancialReportEntry): string => {
+  const p = report.reportingPeriod;
+  if (!p) return report.reportingYear ? String(report.reportingYear) : 'N/A';
+  if (p.periodType === 'QUARTER') return `${p.period || ''} ${p.year || ''}`.trim();
+  if (p.periodType === 'HALF_YEAR') return `${p.period || ''} ${p.year || ''}`.trim();
+  if (p.periodType === 'FULL_YEAR') return `FY ${p.year || ''}`.trim();
+  return `${p.period || ''} ${p.year || ''}`.trim() || 'N/A';
+};
 
-  const draftYears = useMemo(
-    () => Object.keys(draft).sort((a, b) => Number(a) - Number(b)),
-    [draft],
+const formatGroupPeriod = (report: FinancialReportEntry): string => {
+  const p = report.reportingPeriod;
+  if (!p) return report.reportingYear ? String(report.reportingYear) : 'Other Period';
+  if (p.periodType === 'QUARTER') return `${p.period || 'Q'} ${p.year || ''}`.trim();
+  if (p.periodType === 'HALF_YEAR') return `${p.period || 'H'} ${p.year || ''}`.trim();
+  if (p.periodType === 'FULL_YEAR') return `FY ${p.year || ''}`.trim();
+  return `${p.period || ''} ${p.year || ''}`.trim() || 'Other Period';
+};
+
+const getPeriodRank = (periodLabel: string): number => {
+  const upper = periodLabel.toUpperCase();
+  if (upper.startsWith('FY') || upper.startsWith('FULL')) return 7;
+  if (upper.startsWith('Q4')) return 6;
+  if (upper.startsWith('H2')) return 5;
+  if (upper.startsWith('Q3')) return 4;
+  if (upper.startsWith('Q2')) return 3;
+  if (upper.startsWith('H1')) return 2;
+  if (upper.startsWith('Q1')) return 1;
+  return 0;
+};
+
+const formatReportType = (value?: string | null) => {
+  if (!value) return null;
+  return value
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, char => char.toUpperCase());
+};
+
+const formatMetricNumber = (value?: number | string | null) => {
+  if (value === undefined || value === null || value === '') return '—';
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+    return new Intl.NumberFormat('vi-VN').format(numeric);
+  }
+  return String(value);
+};
+
+const metricValueParts = (metric: FinancialMetricResponse) => {
+  const value = metric.normalizedValue ?? metric.rawValue ?? metric.value;
+  const unit = metric.normalizedUnit ?? metric.rawUnit ?? metric.unit ?? metric.currency;
+  return {
+    value: formatMetricNumber(value),
+    unit: unit || '',
+  };
+};
+
+const formatMetricPeriod = (metric: FinancialMetricResponse, report?: FinancialReportEntry) => {
+  const period = metric.period;
+  if (!period) {
+    if (report) return formatPeriod(report);
+    return '—';
+  }
+  if (period.period && period.year) return `${period.period} ${period.year}`;
+  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
+  if (period.periodType === 'QUARTER' && period.period && period.year) return `${period.period} ${period.year}`;
+  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
+  if (period.periodType === 'AS_OF_DATE' || period.periodType?.includes('AS_OF')) {
+    const pStr = period.period || report?.reportingPeriod?.period;
+    if (pStr && period.year) return `${pStr} ${period.year}`;
+    if (period.year) return `As of ${period.year}`;
+  }
+  if (period.periodType && period.year) {
+    const pt = period.periodType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    return `${pt} ${period.year}`;
+  }
+  if (period.year) return String(period.year);
+  if (report) return formatPeriod(report);
+  return '—';
+};
+
+const isImportantMetric = (label: string) => {
+  const upper = label.toUpperCase();
+  return (
+    upper === label ||
+    upper.includes('TỔNG') ||
+    upper.includes('VỐN CHỦ') ||
+    upper.includes('LỢI NHUẬN') ||
+    upper.includes('DOANH THU') ||
+    upper.includes('NỢ PHẢI TRẢ')
   );
+};
 
-  const startEdit = () => {
-    const seed: Record<string, Record<string, string>> = {};
-    rawPeriods.forEach((period) => {
-      if (!period.time) return;
-      const values: Record<string, string> = {};
-      period.data?.forEach((item) => {
-        if (item.code) values[item.code] = item.value == null ? '' : String(item.value);
+const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>('ALL');
+  const [expandedReportIds, setExpandedReportIds] = useState<Set<string>>(new Set());
+
+  const {
+    data: researchList,
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ['company-profile-approved-financials', companyId],
+    queryFn: () => financialResearchApi.getApprovedFinancials(companyId).then(res => res.data),
+    staleTime: 30_000,
+  });
+
+  // Extract only approved reports & their metrics from approved research
+  const allApprovedReportsWithContext = useMemo<ReportWithContext[]>(() => {
+    if (!researchList) return [];
+    const items: ReportWithContext[] = [];
+
+    researchList.forEach(research => {
+      if (research.status !== 'APPROVED') return;
+
+      const reports = research.reports || [];
+      const metrics = research.metrics || [];
+
+      reports.forEach(report => {
+        if (report.reviewStatus === 'APPROVED') {
+          const reportMetrics = metrics.filter(
+            m =>
+              m.source?.reportEntryId === report.id ||
+              (!m.source?.reportEntryId && m.source?.documentId === report.documentId),
+          );
+
+          items.push({
+            report,
+            metrics: reportMetrics,
+            projectId: research.projectId,
+            taskId: research.taskId,
+          });
+        }
       });
-      seed[period.time] = values;
     });
-    setDraft(seed);
-    setAddedYears([]);
-    setRemovedYears([]);
-    setNewYear('');
-    setEditMsg(null);
-    setEditMode(true);
-  };
 
-  const cancelEdit = () => {
-    setEditMode(false);
-    setDraft({});
-    setAddedYears([]);
-    setRemovedYears([]);
-    setNewYear('');
-    setEditMsg(null);
-  };
+    return items;
+  }, [researchList]);
 
-  const updateValue = (year: string, code: string, value: string) => {
-    setDraft((prev) => ({ ...prev, [year]: { ...prev[year], [code]: value } }));
-  };
+  // Derive all unique years
+  const availableYears = useMemo<number[]>(() => {
+    const years = new Set<number>();
+    allApprovedReportsWithContext.forEach(({ report }) => {
+      const yr =
+        report.reportingPeriod?.year ||
+        report.reportingYear ||
+        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
+      if (yr && !Number.isNaN(yr)) years.add(yr);
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [allApprovedReportsWithContext]);
 
-  const addYear = () => {
-    const year = newYear.trim();
-    if (!/^\d{4}$/.test(year)) {
-      setEditMsg({ ok: false, text: 'Năm tài chính phải có 4 chữ số, ví dụ 2025.' });
-      return;
+  // Sync selectedYear with latest available year
+  useEffect(() => {
+    if (availableYears.length > 0) {
+      if (selectedYear === null || !availableYears.includes(selectedYear)) {
+        setSelectedYear(availableYears[0]);
+      }
+    } else {
+      setSelectedYear(null);
     }
-    const numeric = Number(year);
-    if (numeric < 1900 || numeric > 2100) {
-      setEditMsg({ ok: false, text: 'Năm tài chính phải nằm trong khoảng 1900-2100.' });
-      return;
-    }
-    if (draft[year] || addedYears.includes(year)) {
-      setEditMsg({ ok: false, text: `Năm ${year} đã tồn tại trong báo cáo này.` });
-      return;
-    }
-    setDraft((prev) => ({ ...prev, [year]: {} }));
-    setAddedYears((prev) => [...prev, year]);
-    setRemovedYears((prev) => prev.filter((y) => y !== year));
-    setNewYear('');
-    setEditMsg(null);
-  };
+  }, [availableYears, selectedYear]);
 
-  const removeYear = (year: string) => {
-    setDraft((prev) => {
-      const next = { ...prev };
-      delete next[year];
+  // Available quarter tabs for currently selected year
+  const availableQuarters = useMemo<string[]>(() => {
+    const base = ['ALL', 'Q1', 'Q2', 'Q3', 'Q4', 'FY'];
+    if (!selectedYear) return base;
+
+    const reportsInYear = allApprovedReportsWithContext.filter(({ report }) => {
+      const yr =
+        report.reportingPeriod?.year ||
+        report.reportingYear ||
+        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
+      return yr === selectedYear;
+    });
+
+    const hasH1 = reportsInYear.some(
+      ({ report }) =>
+        report.reportingPeriod?.period === 'H1' || report.reportingPeriod?.periodType === 'HALF_YEAR',
+    );
+    const hasH2 = reportsInYear.some(
+      ({ report }) => report.reportingPeriod?.period === 'H2',
+    );
+
+    const tabs = ['ALL', 'Q1', 'Q2'];
+    if (hasH1) tabs.push('H1');
+    tabs.push('Q3', 'Q4');
+    if (hasH2) tabs.push('H2');
+    tabs.push('FY');
+    return tabs;
+  }, [allApprovedReportsWithContext, selectedYear]);
+
+  // Filter reports by Year and Quarter
+  const filteredReports = useMemo<ReportWithContext[]>(() => {
+    if (!selectedYear) return [];
+
+    return allApprovedReportsWithContext.filter(({ report }) => {
+      const yr =
+        report.reportingPeriod?.year ||
+        report.reportingYear ||
+        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
+      if (yr !== selectedYear) return false;
+
+      if (selectedQuarter === 'ALL') return true;
+
+      const p = report.reportingPeriod?.period;
+      const pType = report.reportingPeriod?.periodType;
+
+      if (selectedQuarter === 'FY') {
+        return pType === 'FULL_YEAR' || p === 'FY' || p === 'YEAR' || p === 'Full Year';
+      }
+      if (selectedQuarter === 'Q1') return p === 'Q1';
+      if (selectedQuarter === 'Q2') return p === 'Q2';
+      if (selectedQuarter === 'Q3') return p === 'Q3';
+      if (selectedQuarter === 'Q4') return p === 'Q4';
+      if (selectedQuarter === 'H1') return p === 'H1' || pType === 'HALF_YEAR';
+      if (selectedQuarter === 'H2') return p === 'H2';
+
+      return true;
+    });
+  }, [allApprovedReportsWithContext, selectedYear, selectedQuarter]);
+
+  // Group filtered reports by period label
+  const periodGroups = useMemo(() => {
+    const map = new Map<string, ReportWithContext[]>();
+
+    filteredReports.forEach(item => {
+      const label = formatGroupPeriod(item.report);
+      const list = map.get(label) || [];
+      list.push(item);
+      map.set(label, list);
+    });
+
+    // Sort groups descending by chronological period rank
+    const sortedEntries = Array.from(map.entries()).sort(([labelA], [labelB]) => {
+      return getPeriodRank(labelB) - getPeriodRank(labelA);
+    });
+
+    // Inside each group, sort reports by publicationDate DESC
+    sortedEntries.forEach(([, list]) => {
+      list.sort((a, b) => {
+        const dateA = a.report.publicationDate ? new Date(a.report.publicationDate).getTime() : 0;
+        const dateB = b.report.publicationDate ? new Date(b.report.publicationDate).getTime() : 0;
+        return dateB - dateA;
+      });
+    });
+
+    return sortedEntries;
+  }, [filteredReports]);
+
+  const toggleExpand = (reportId: string) => {
+    setExpandedReportIds(prev => {
+      const next = new Set(prev);
+      if (next.has(reportId)) {
+        next.delete(reportId);
+      } else {
+        next.add(reportId);
+      }
       return next;
     });
-    if (addedYears.includes(year)) {
-      setAddedYears((prev) => prev.filter((y) => y !== year));
-    } else if (!removedYears.includes(year)) {
-      setRemovedYears((prev) => [...prev, year]);
-    }
   };
 
-  const saveChanges = async () => {
-    setSaving(true);
-    setEditMsg(null);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+
+  const handleViewPdf = async (projectId: number, documentId: string) => {
+    if (!documentId) return;
     try {
-      const years = Object.keys(draft);
-      years.forEach((year) => {
-        if (!/^\d{4}$/.test(year)) throw new Error(`Năm tài chính không hợp lệ: "${year}".`);
-        const numeric = Number(year);
-        if (numeric < 1900 || numeric > 2100) throw new Error(`Năm tài chính ${year} nằm ngoài khoảng 1900-2100.`);
-      });
-      years.forEach((year) => {
-        Object.entries(draft[year]).forEach(([code, raw]) => {
-          if (raw.trim() !== '' && !Number.isFinite(Number(raw))) {
-            const rowName = rows.find((row) => row.code === code)?.name ?? code;
-            throw new Error(`Giá trị "${raw}" của chỉ tiêu "${rowName}" năm ${year} không phải là số.`);
-          }
-        });
-      });
+      setOpeningDocId(documentId);
+      const token =
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('apms-token') ||
+        localStorage.getItem('token');
 
-      const templace = rows.filter((row): row is FinancialRow & { code: string } => Boolean(row.code));
-      const promises: Promise<unknown>[] = [];
-      years.sort((a, b) => Number(a) - Number(b)).forEach((year) => {
-        const values = templace.map((row) => ({ code: row.code, value: Number(draft[year][row.code] ?? 0) }));
-        const doc: FinancialDocument = {
-          unit: report?.unit ?? null,
-          templace: templace.map((row) => ({ code: row.code, name: row.name })),
-          data: [{
-            code: activeReport,
-            name: activeReport,
-            data: [{ time: year, data: values }],
-          }],
-        };
-        promises.push(listingDataApi.upsertOwnerFinancialReport({
-          reportType: activeReport,
-          reportYear: Number(year),
-          periodType: 'YEAR',
-          reportPeriod: year,
-          itemsJson: JSON.stringify(doc),
-        }));
-      });
-      removedYears.forEach((year) => {
-        promises.push(listingDataApi.deleteOwnerFinancialReport(activeReport, Number(year)));
-      });
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-      await Promise.all(promises);
-      setEditMsg({ ok: true, text: 'Đã lưu thay đổi báo cáo tài chính.' });
-      setEditMode(false);
-      setDraft({});
-      setAddedYears([]);
-      setRemovedYears([]);
-      setNewYear('');
-      reload();
+      const res = await fetch(
+        `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+        { headers },
+      );
+
+      if (!res.ok) {
+        const fallbackRes = await fetch(
+          `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+          { headers },
+        );
+        if (!fallbackRes.ok) {
+          throw new Error('Failed to load document');
+        }
+        const blob = await fallbackRes.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
     } catch (err) {
-      setEditMsg({ ok: false, text: err instanceof Error ? err.message : 'Không thể lưu thay đổi.' });
+      console.error('Error opening document:', err);
+      window.open(
+        `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+        '_blank',
+      );
     } finally {
-      setSaving(false);
+      setOpeningDocId(null);
     }
   };
 
-  const exportExcel = () => {
-    const csvRows = rows.map((row) => [row.name || '', ...periods.map((period) => String(valueFor(period, row.code)))]);
-    const csv = [['Chỉ tiêu', ...periods.map((period) => period.time || '')], ...csvRows]
-      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
-    const href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a'); anchor.href = href; anchor.download = `${companyId}-financials.csv`; anchor.click(); URL.revokeObjectURL(href);
-  };
+  // 1. Loading State
+  if (isLoading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Financial Reports</h2>
+          </div>
+          <p className={styles.subtitle}>
+            Approved financial reports and extracted financial information for this company.
+          </p>
+        </div>
+        <div className={styles.stateContainer}>
+          <div className={styles.stateIcon}>
+            <Loader2 size={26} className={styles.spin} />
+          </div>
+          <h3 className={styles.stateTitle}>Loading financial reports...</h3>
+          <p className={styles.stateSubtitle}>Retrieving official approved data for this company.</p>
+        </div>
+      </div>
+    );
+  }
 
-  return <ListingTabShell loading={loading} error={error} hasData={Boolean(report)} crawledAt={data?.crawledAt} onRetry={reload}>
-    <section style={{ background: '#fff', border: '1px solid #dbe3ee', borderRadius: 6, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #dbe3ee' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#163b68' }}><TrendingUp size={18} /><strong>Financial Information</strong></div>
+  // 2. Error State
+  if (isError) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Financial Reports</h2>
+          </div>
+          <p className={styles.subtitle}>
+            Approved financial reports and extracted financial information for this company.
+          </p>
+        </div>
+        <div className={styles.stateContainer}>
+          <div className={styles.stateIcon}>
+            <FileText size={26} />
+          </div>
+          <h3 className={styles.stateTitle}>Unable to load financial reports</h3>
+          <p className={styles.stateSubtitle}>
+            There was an error communicating with the server. Please try again.
+          </p>
+          <button className={styles.primaryButton} type="button" onClick={() => void refetch()}>
+            <RefreshCw size={14} />
+            Retry
+          </button>
+        </div>
       </div>
-      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', background: '#f7f9fc' }}>
+    );
+  }
+
+  // 3. Global Empty State (No approved research yet)
+  if (allApprovedReportsWithContext.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Financial Reports</h2>
+          </div>
+          <p className={styles.subtitle}>
+            Approved financial reports and extracted financial information for this company.
+          </p>
+        </div>
+        <div className={styles.stateContainer}>
+          <div className={styles.stateIcon}>
+            <FileSearch size={28} />
+          </div>
+          <h3 className={styles.stateTitle}>No Financial Data</h3>
+          <p className={styles.stateSubtitle}>
+            No approved financial research has been published for this company yet.
+          </p>
+        </div>
       </div>
-      <div style={{ overflowX: 'auto', background: '#fff' }}>
-        <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ textAlign: 'left', padding: '16px', color: '#b91c1c', fontSize: '18px', fontWeight: 600, minWidth: '300px', textTransform: 'uppercase' }}>
-                INCOME STATEMENT
-              </th>
-              <th style={{ width: '36px', textAlign: 'center', borderLeft: '1px solid #e2e8f0', padding: 0 }}>
-                <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ChevronLeft size={16} color="#0284c7" />
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.headerSection}>
+        <h2 className={styles.title}>Financial Reports</h2>
+        <p className={styles.subtitle}>
+          Approved financial reports and extracted financial information for this company.
+        </p>
+      </div>
+
+      {/* Filters Bar: Year & Quarter */}
+      <div className={styles.filtersBar}>
+        <div className={styles.filtersLeft}>
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>Year</span>
+            <div className={styles.yearSelectWrapper}>
+              <select
+                className={styles.yearSelect}
+                value={selectedYear ?? ''}
+                onChange={e => setSelectedYear(Number(e.target.value))}
+                aria-label="Select Year"
+              >
+                {availableYears.map(yr => (
+                  <option key={yr} value={yr}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className={styles.divider} />
+
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>Quarter</span>
+            <div className={styles.quarterTabs}>
+              {availableQuarters.map(q => (
+                <button
+                  key={q}
+                  type="button"
+                  className={`${styles.quarterTab} ${selectedQuarter === q ? styles.quarterTabActive : ''}`}
+                  onClick={() => setSelectedQuarter(q)}
+                >
+                  {q === 'ALL' ? 'All' : q}
                 </button>
-              </th>
-              {periods.map(period => (
-                <th key={period.time} style={{ padding: '10px 16px', textAlign: 'right', minWidth: '120px', borderLeft: '1px solid #e2e8f0' }}>
-                  <div style={{ color: '#0284c7', fontSize: '14px', fontWeight: 600 }}>{period.time}</div>
-                  <div style={{ color: '#b91c1c', fontSize: '9px', fontWeight: 400, marginTop: '2px', textTransform: 'uppercase' }}>Audited</div>
-                </th>
               ))}
-              <th style={{ width: '36px', textAlign: 'center', borderLeft: '1px solid #e2e8f0', background: '#f8fafc', padding: 0 }}>
-                <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ChevronRight size={16} color="#94a3b8" />
-                </button>
-              </th>
-              <th style={{ textAlign: 'center', padding: '10px', color: '#475569', fontSize: '13px', fontWeight: 500, minWidth: '100px', borderLeft: '1px solid #e2e8f0' }}>
-                GROWTH
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => {
-              const values = periods.map((period) => valueFor(period, row.code));
-              const max = Math.max(...values.map(Math.abs), 1);
-              // Simple heuristic to bold some rows like the screenshot
-              const isBold = row.name?.toLowerCase().includes('lợi nhuận') || row.name?.toLowerCase().includes('tổng');
-              
-              return (
-                <tr key={row.code} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '12px 16px', color: '#0f172a', fontSize: '13px', fontWeight: isBold ? 600 : 400 }}>
-                    {row.name}
-                  </td>
-                  <td style={{ borderLeft: '1px solid #f1f5f9', background: '#fafaf9' }}></td>
-                  {values.map((v, i) => (
-                    <td key={i} style={{ padding: '12px 16px', textAlign: 'right', color: '#0f172a', fontSize: '13px', fontWeight: isBold ? 600 : 400, borderLeft: '1px solid #f1f5f9' }}>
-                      {formatValue(v, unit)}
-                    </td>
-                  ))}
-                  <td style={{ borderLeft: '1px solid #f1f5f9', background: '#f8fafc' }}></td>
-                  <td style={{ padding: '12px', borderLeft: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '18px', justifyContent: 'center' }}>
-                      {values.map((v, i) => (
-                        <div 
-                          key={i} 
-                          title={`${periods[i].time}: ${formatValue(v, unit)}`}
-                          style={{ 
-                            width: '6px', 
-                            height: `${Math.max(3, Math.round((Math.abs(v) / max) * 18))}px`, 
-                            background: '#0284c7', 
-                            opacity: v < 0 ? 0.5 : 1
-                          }} 
-                        />
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            </div>
+          </div>
+        </div>
+
+        {isFetching && (
+          <Loader2 size={16} className={styles.spin} style={{ color: '#94a3b8' }} />
+        )}
       </div>
-      {!report && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>No financial reports saved for this company yet.</div>}
-    </section>
-  </ListingTabShell>;
+
+      {/* Filter Empty State (Data exists in other periods, but not selected) */}
+      {filteredReports.length === 0 ? (
+        <div className={styles.stateContainer}>
+          <div className={styles.stateIcon}>
+            <Search size={26} />
+          </div>
+          <h3 className={styles.stateTitle}>
+            No reports found for {selectedQuarter !== 'ALL' ? `${selectedQuarter} ` : ''}
+            {selectedYear}
+          </h3>
+          <p className={styles.stateSubtitle}>
+            There are no approved financial reports matching the selected filter.
+          </p>
+          {selectedQuarter !== 'ALL' && (
+            <button
+              className={styles.primaryButton}
+              type="button"
+              onClick={() => setSelectedQuarter('ALL')}
+            >
+              Show All Quarters
+            </button>
+          )}
+        </div>
+      ) : (
+        /* Period Grouped Report List */
+        <div className={styles.reportList}>
+          {periodGroups.map(([groupLabel, groupItems]) => (
+            <div key={groupLabel} className={styles.periodGroup}>
+              <div className={styles.periodHeader}>
+                <span className={styles.periodBadge}>{groupLabel}</span>
+                <div className={styles.periodLine} />
+              </div>
+
+              {groupItems.map(({ report, metrics, projectId }) => {
+                const isExpanded = expandedReportIds.has(report.id);
+                const yearLabel =
+                  report.reportingPeriod?.year ||
+                  report.reportingYear ||
+                  (report.publicationDate ? new Date(report.publicationDate).getFullYear() : '—');
+                const periodLabel = report.reportingPeriod?.period || '—';
+                const reportTypeFormatted = formatReportType(report.reportType);
+
+                return (
+                  <div
+                    key={report.id}
+                    className={`${styles.reportCard} ${isExpanded ? styles.reportCardExpanded : ''}`}
+                  >
+                    {/* Collapsed / Main Header Row */}
+                    <div
+                      className={styles.reportRow}
+                      onClick={() => toggleExpand(report.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleExpand(report.id);
+                        }
+                      }}
+                    >
+                      <div className={styles.reportRowLeft}>
+                        <div className={styles.expandButton} aria-label={isExpanded ? 'Collapse' : 'Expand'}>
+                          {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </div>
+
+                        <div className={styles.reportIcon}>
+                          <FileText size={18} />
+                        </div>
+
+                        <div className={styles.reportMetaGroup}>
+                          <span className={styles.metaDate}>
+                            <Calendar size={13} />
+                            {formatDate(report.publicationDate)}
+                          </span>
+                          <span className={styles.metaYearBadge}>{yearLabel}</span>
+                          <span className={styles.metaPeriodBadge}>{periodLabel}</span>
+                        </div>
+
+                        <span className={styles.metaDot}>•</span>
+
+                        <div className={styles.reportTitleGroup}>
+                          <h5 className={styles.reportTitle}>{report.title}</h5>
+                        </div>
+                      </div>
+
+                      <div className={styles.reportRowRight}>
+                        <button
+                          type="button"
+                          className={styles.viewReportBtn}
+                          disabled={openingDocId === report.documentId}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleViewPdf(projectId, report.documentId);
+                          }}
+                        >
+                          {openingDocId === report.documentId ? (
+                            <Loader2 size={13} className={styles.spin} />
+                          ) : (
+                            <FileText size={13} />
+                          )}
+                          <span>{openingDocId === report.documentId ? 'Opening...' : 'View Report'}</span>
+                          <ExternalLink size={11} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Section with Metrics Table */}
+                    {isExpanded && (
+                      <div className={styles.expandedSection}>
+                        <div className={styles.expandedHead}>
+                          <div className={styles.expandedHeadLeft}>
+                            <h6 className={styles.expandedTitle}>Extracted Financial Information</h6>
+                            <span className={styles.metricsCountBadge}>
+                              {metrics.length} metric{metrics.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        {metrics.length === 0 ? (
+                          <div className={styles.noMetricsText}>
+                            No financial metrics extracted for this report.
+                          </div>
+                        ) : (
+                          <div className={styles.tableWrapper}>
+                            <table className={styles.metricsTable}>
+                              <thead>
+                                <tr>
+                                  <th style={{ width: '42%' }}>Metric</th>
+                                  <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
+                                  <th style={{ width: '18%' }}>Period</th>
+                                  <th style={{ width: '12%' }}>Source</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {metrics.map((metric, idx) => {
+                                  const parts = metricValueParts(metric);
+                                  const hasPage = Boolean(metric.source?.page);
+                                  const isImportant = isImportantMetric(metric.label);
+
+                                  return (
+                                    <tr key={metric.id || idx}>
+                                      <td className={`${styles.metricName} ${isImportant ? styles.metricNameImportant : ''}`}>
+                                        {metric.label}
+                                      </td>
+                                      <td className={styles.metricValueCell}>
+                                        <span>{parts.value}</span>
+                                        {parts.unit && (
+                                          <span className={styles.metricUnit}>{parts.unit}</span>
+                                        )}
+                                      </td>
+                                      <td className={styles.periodCell}>
+                                        <span className={styles.periodPill}>
+                                          {formatMetricPeriod(metric, report)}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        {hasPage ? (
+                                          <button
+                                            type="button"
+                                            className={styles.sourceLink}
+                                            onClick={e => {
+                                              e.stopPropagation();
+                                              handleViewPdf(
+                                                projectId,
+                                                metric.source?.documentId || report.documentId,
+                                              );
+                                            }}
+                                            title="Open source document"
+                                          >
+                                            <FileText size={11} />
+                                            <span>Page {metric.source?.page}</span>
+                                          </button>
+                                        ) : (
+                                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                            {metric.source?.documentName || 'Doc'}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default FinancialsTab;

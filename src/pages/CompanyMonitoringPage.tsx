@@ -585,12 +585,12 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   useEffect(() => {
     if (!showCreateModal) return;
 
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
-      if (companyFieldRef.current && !companyFieldRef.current.contains(target)) {
+      if (companyFieldRef.current && target instanceof Node && !companyFieldRef.current.contains(target)) {
         setCompanySuggestionsOpen(false);
       }
-      if (staffFieldRef.current && !staffFieldRef.current.contains(target)) {
+      if (staffFieldRef.current && target instanceof Node && !staffFieldRef.current.contains(target)) {
         setStaffSuggestionsOpen(false);
       }
     };
@@ -1913,11 +1913,11 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                           </div>
                         </div>
 
-                        {(historyProposalBundle.proposal.rejectionReason || historyProposalBundle.proposal.reviewNote) && (
+                        {(historyProposalBundle.proposal.reviewComment || historyProposalBundle.proposal.reviewComment) && (
                           <div style={{ marginTop: '16px' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Decision Note</span>
                             <p style={{ margin: '4px 0 0 0', color: 'var(--text-primary)' }}>
-                              {historyProposalBundle.proposal.rejectionReason || historyProposalBundle.proposal.reviewNote}
+                              {historyProposalBundle.proposal.reviewComment || historyProposalBundle.proposal.reviewComment}
                             </p>
                           </div>
                         )}

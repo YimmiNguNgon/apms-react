@@ -1612,7 +1612,7 @@ const TaskDetailModal: React.FC<{
     ? createPortal(
         <AnimatePresence>
           {task && (
-            <motion.div className={styles.overlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+            <motion.div className={`${styles.overlay} ${styles.taskDetailOverlay}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
         <motion.aside
           className={styles.drawer}
           initial={{ opacity: 0, y: 18, scale: 0.97 }}
@@ -6964,7 +6964,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             onClick={() => setSelectedStaffTask(null)}
           >
             <motion.div
-              className={`${styles.inviteModal} ${styles.staffWorkbenchModal}`}
+              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchModal : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="staff-workbench-title"
@@ -7378,6 +7378,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     uploadingDocument={uploadingEvidence}
                     onUploadDocument={(file: File) => handleUploadEvidence(file)}
                     onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
+                    onRecallSuccess={() => {
+                      void loadStaffWorkbench(selectedStaffTask);
+                      setTaskRefreshTick((current) => current + 1);
+                    }}
                     onSubmitSuccess={() => {
                       void loadStaffWorkbench(selectedStaffTask);
                       setTaskRefreshTick((current) => current + 1);
@@ -8078,7 +8082,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             onClick={() => setSelectedManagerReviewTask(null)}
           >
             <motion.div
-              className={`${styles.inviteModal} ${styles.staffWorkbenchModal}`}
+              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchModal : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="manager-task-review-title"

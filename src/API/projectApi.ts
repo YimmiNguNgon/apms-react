@@ -12,6 +12,23 @@ const getAuthHeader = () => {
   return headers;
 };
 export const projectApi = {
+  downloadProjectDocument: async (
+    projectId: string | number,
+    documentId: string,
+    download = true,
+  ): Promise<Blob> => {
+    const response = await fetch(`${BASE_URL}/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=${download}`, {
+      method: 'GET',
+      headers: { ...getAuthHeader() },
+    });
+
+    if (!response.ok) {
+      const error = new Error(`Failed to download document: ${response.statusText}`) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+    return response.blob();
+  },
   getTargetRelationshipTypes: async () => {
     try {
       const response = await fetch(`${BASE_URL}/relationship-types`, {
