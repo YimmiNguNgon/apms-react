@@ -111,4 +111,11 @@ export const taskApi = {
       }
     );
   },
+
+  cancelSubmission: async (projectId: number, taskId: number, submissionId?: number) => {
+    const url = submissionId
+      ? `/projects/${projectId}/tasks/${taskId}/submissions/${submissionId}/cancel`
+      : `/projects/${projectId}/tasks/${taskId}/submissions/cancel`;
+    return api.post<ApiResponse<void>>(url);
+  },
 };

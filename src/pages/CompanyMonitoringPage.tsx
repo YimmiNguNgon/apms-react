@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AssignMonitorModal } from '../components/CompanyMonitoring/AssignMonitorModal';
+import { MonitoringReviewDetailsModal } from '../components/Monitoring/MonitoringReviewDetailsModal';
+import { EvidenceImagePreviewModal } from '../components/Monitoring/EvidenceImagePreviewModal';
 import { AlertTriangle, CheckCircle, Plus, XCircle } from 'lucide-react';
 import { api } from '../services/api';
 import { accountApi } from '../API/accountApi';
@@ -9,8 +12,10 @@ import type {
   CompanyProfileUpdateProposalResponse,
   MonitoringFrequency,
   ProfileResponse,
-  UserSearchResponse
+  UserSearchResponse,
+  FieldEvidence
 } from '../types/domain';
+import styles from './CompanyProfiles.module.css';
 
 type MonitoringTab = 'assignments' | 'pending' | 'history';
 type MonitoringFormState = {
@@ -23,7 +28,7 @@ type StaffCandidate = UserSearchResponse & {
   roleName?: string;
   name?: string;
 };
-type ProposalBundle = {
+export type ProposalBundle = {
   proposal: CompanyProfileUpdateProposalResponse;
   profile: ProfileResponse | null;
   error?: string;
@@ -32,13 +37,18 @@ type ProposalReviewRow = {
   assignment: CompanyMonitoringAssignmentResponse;
   proposalId: string;
 };
-type ChangeRow = {
+export type ChangeRow = {
   key: string;
   label: string;
   currentValue: unknown;
   proposedValue: unknown;
   source: string;
+  fieldPath?: string;
+  evidence?: FieldEvidence;
 };
+type MonitoringRow =
+  | { kind: 'assignment'; assignment: CompanyMonitoringAssignmentResponse }
+  | { kind: 'unassigned'; profile: ProfileResponse };
 type MonitoringFieldErrors = {
   company?: string;
   staff?: string;
@@ -58,14 +68,18 @@ const initialForm: MonitoringFormState = {
   frequency: 'MONTHLY'
 };
 
-const formatDate = (value?: string | null) => {
+export const formatDate = (value?: string | null) => {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('vi-VN');
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 };
 
-const formatDateTime = (value?: string | null) => {
+export const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -87,9 +101,10 @@ const isStaffAccount = (user: StaffCandidate) => {
   return values.some((value) => value.includes('STAFF'));
 };
 
-const statusTone = (status: string) => {
+export const statusTone = (status: string) => {
   switch (status) {
     case 'ACTIVE':
+    case 'ON_SCHEDULE':
     case 'UP_TO_DATE':
       return 'success';
     case 'DUE':
@@ -103,7 +118,7 @@ const statusTone = (status: string) => {
   }
 };
 
-const proposalTone = (status?: string | null) => {
+export const proposalTone = (status?: string | null) => {
   switch ((status || '').toUpperCase()) {
     case 'APPROVED':
     case 'APPLIED':
@@ -122,7 +137,7 @@ const proposalTone = (status?: string | null) => {
   }
 };
 
-const frequencyLabel = (value: MonitoringFrequency) => {
+export const frequencyLabel = (value: MonitoringFrequency) => {
   switch (value) {
     case 'MONTHLY':
       return 'Monthly';
@@ -135,7 +150,7 @@ const frequencyLabel = (value: MonitoringFrequency) => {
   }
 };
 
-const reviewResultLabel = (value?: string | null) => {
+export const reviewResultLabel = (value?: string | null) => {
   switch (value) {
     case 'NO_CHANGE':
       return 'No Change';
@@ -148,7 +163,7 @@ const reviewResultLabel = (value?: string | null) => {
   }
 };
 
-const reviewResultTone = (value?: string | null) => {
+export const reviewResultTone = (value?: string | null) => {
   switch (value) {
     case 'NO_CHANGE':
       return 'success';
@@ -160,7 +175,7 @@ const reviewResultTone = (value?: string | null) => {
   }
 };
 
-const proposalStatusLabel = (value?: string | null) => {
+export const proposalStatusLabel = (value?: string | null) => {
   if (!value) return '-';
   return value
     .toLowerCase()
@@ -244,7 +259,7 @@ const fieldLabel = (path: string) => {
 
 
 
-const collectProposalChanges = (
+export const collectProposalChanges = (
   proposal: CompanyProfileUpdateProposalResponse,
   profile: ProfileResponse | null
 ): ChangeRow[] => {
@@ -271,6 +286,21 @@ const collectProposalChanges = (
     }
   ];
 
+  const sectionRoots: Record<string, string> = {
+    'Identity': 'identity',
+    'Contact': 'contact',
+    'Company Size': 'companySize',
+    'Business': 'business',
+    'Insights': 'insights',
+    'Financial': 'financial',
+    'Market': 'market',
+    'Innovation': 'innovation',
+    'Risk': 'risk',
+    'Compliance': 'compliance',
+    'Leadership': 'companyMembers',
+    'Relationship': 'relationshipType'
+  };
+
   return sections.flatMap((section) => {
     if (!section.proposed) return [];
 
@@ -278,19 +308,32 @@ const collectProposalChanges = (
       const currentValue = getByPath(section.current, path);
       if (normalizeValue(currentValue) === normalizeValue(proposedValue)) return [];
 
+      const root = sectionRoots[section.source];
+      const fieldPath = root === 'companyMembers' || root === 'relationshipType' ? root : `${root}.${path}`;
+
+      if (proposal.changedFieldPaths && proposal.changedFieldPaths.length > 0) {
+        if (!proposal.changedFieldPaths.includes(fieldPath)) {
+          return [];
+        }
+      }
+
+      const evidence = proposal.fieldEvidence?.find(e => e.fieldPath === fieldPath);
+
       return [{
         key: `${section.source}.${path}`,
         label: fieldLabel(path),
         currentValue,
         proposedValue,
-        source: section.source
+        source: section.source,
+        fieldPath,
+        evidence
       }];
     });
   });
 };
 
 
-const ValueDisplay = ({ value, level = 0, isProposed = false }: { value: unknown; level?: number; isProposed?: boolean }) => {
+export const ValueDisplay = ({ value, level = 0, isProposed = false }: { value: unknown; level?: number; isProposed?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
 
   if (value === null || value === undefined || value === '') return <span style={{ color: 'var(--text-muted)' }}>{isProposed ? 'Removed' : 'Not provided'}</span>;
@@ -390,13 +433,14 @@ const ValueDisplay = ({ value, level = 0, isProposed = false }: { value: unknown
 export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ setActivePage }) => {
   const [activeTab, setActiveTab] = useState<MonitoringTab>('assignments');
   const [assignments, setAssignments] = useState<CompanyMonitoringAssignmentResponse[]>([]);
+  const [managerProfiles, setManagerProfiles] = useState<ProfileResponse[]>([]);
   const [monitoringHistory, setMonitoringHistory] = useState<CompanyMonitoringReviewResponse[]>([]);
   const [monitoringHistoryTotal, setMonitoringHistoryTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [proposalLoading, setProposalLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [statusActionLoading, setStatusActionLoading] = useState<number | null>(null);
+
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
@@ -417,19 +461,18 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const [proposalReadOnly, setProposalReadOnly] = useState(false);
   const [selectedHistoryReview, setSelectedHistoryReview] = useState<CompanyMonitoringReviewResponse | null>(null);
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [evidencePreviewImageId, setEvidencePreviewImageId] = useState<string | null>(null);
   const [proposalBundles, setProposalBundles] = useState<Record<string, ProposalBundle>>({});
   const [assignmentPendingProposalIds, setAssignmentPendingProposalIds] = useState<Record<number, string[]>>({});
   const [form, setForm] = useState<MonitoringFormState>(initialForm);
-  const [companyQuery, setCompanyQuery] = useState('');
+
   const [staffQuery, setStaffQuery] = useState('');
   const [fieldTouched, setFieldTouched] = useState({
     company: false,
     staff: false,
     frequency: false
   });
-  const [companySuggestions, setCompanySuggestions] = useState<ProfileResponse[]>([]);
-  const [companySuggestionsOpen, setCompanySuggestionsOpen] = useState(false);
-  const [companySearchLoading, setCompanySearchLoading] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<ProfileResponse | null>(null);
 
   const [staffSuggestions, setStaffSuggestions] = useState<StaffCandidate[]>([]);
@@ -437,21 +480,35 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const [staffSearchLoading, setStaffSearchLoading] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffCandidate | null>(null);
 
-  const companyFieldRef = useRef<HTMLLabelElement | null>(null);
   const staffFieldRef = useRef<HTMLLabelElement | null>(null);
 
   const loadAssignments = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await companyMonitoringApi.getAllAssignments({
-        page: 0,
-        size: 100,
-        sort: 'updatedAt,desc'
-      });
-      setAssignments(response.content || []);
+      
+      const [assignmentsRes, profilesRes] = await Promise.all([
+        companyMonitoringApi.getAllAssignments({
+          page: 0,
+          size: 500,
+          sort: 'updatedAt,desc'
+        }),
+        api.get('/profiles', {
+          params: { excludeOwner: true, createdByMe: true, page: 0, size: 500 }
+        })
+      ]);
+      
+      setAssignments(assignmentsRes.content || []);
+      
+      const profileData = (profilesRes as any).data || profilesRes;
+      let items: ProfileResponse[] = [];
+      if (Array.isArray(profileData)) items = profileData;
+      else if (profileData && Array.isArray(profileData.content)) items = profileData.content;
+      else if (profileData && Array.isArray(profileData.data)) items = profileData.data;
+      
+      setManagerProfiles(items);
     } catch (err) {
-      console.error('Failed to load monitoring assignments', err);
+      console.error('Failed to load monitoring assignments and profiles', err);
       setError('Unable to load monitoring assignments from backend.');
     } finally {
       setLoading(false);
@@ -488,57 +545,18 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     loadMonitoringHistory();
   }, [loadMonitoringHistory]);
 
-  useEffect(() => {
-    if (!showCreateModal || selectedAssignment) return;
+  // Compute unified unassigned and assigned rows
+  const unassignedProfiles = useMemo(() => {
+    const assignedIds = new Set(assignments.map(a => a.companyProfileId));
+    return managerProfiles.filter(p => p.reviewStatus === 'APPROVED' && !assignedIds.has(p.id));
+  }, [assignments, managerProfiles]);
 
-    const keyword = companyQuery.trim();
-    if (keyword.length < 1) {
-      setCompanySuggestions([]);
-      setCompanySuggestionsOpen(false);
-      setCompanySearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setCompanySearchLoading(true);
-    setCompanySuggestionsOpen(true);
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        const response = await api.get('/profiles', {
-          params: {
-            keyword,
-            page: 0,
-            size: 20,
-            excludeOwner: true,
-            createdByMe: true
-          }
-        });
-        const profileData = (response as any).data || response;
-        if (!cancelled) {
-          let items: any[] = [];
-          if (Array.isArray(profileData)) items = profileData;
-          else if (profileData && Array.isArray(profileData.content)) items = profileData.content;
-          else if (profileData && Array.isArray(profileData.data)) items = profileData.data;
-          
-          setCompanySuggestions(items);
-        }
-      } catch (err: any) {
-        console.error('Failed to search managed company profiles', err);
-        if (!cancelled) {
-          setCompanySuggestions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setCompanySearchLoading(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [companyQuery, selectedAssignment, showCreateModal]);
+  const monitoringRows = useMemo<MonitoringRow[]>(() => {
+    const rows: MonitoringRow[] = [];
+    unassignedProfiles.forEach(profile => rows.push({ kind: 'unassigned', profile }));
+    assignments.forEach(assignment => rows.push({ kind: 'assignment', assignment }));
+    return rows;
+  }, [unassignedProfiles, assignments]);
 
   useEffect(() => {
     if (!showCreateModal) return;
@@ -586,11 +604,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     if (!showCreateModal) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (companyFieldRef.current && target instanceof Node && !companyFieldRef.current.contains(target)) {
-        setCompanySuggestionsOpen(false);
-      }
-      if (staffFieldRef.current && target instanceof Node && !staffFieldRef.current.contains(target)) {
+      const target = event.target as Node;
+      if (staffFieldRef.current && !staffFieldRef.current.contains(target)) {
         setStaffSuggestionsOpen(false);
       }
     };
@@ -733,13 +748,10 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
   const resetAssignmentForm = () => {
     setForm(initialForm);
-    setCompanyQuery('');
     setStaffQuery('');
     setSelectedCompany(null);
     setSelectedStaff(null);
-    setCompanySuggestions([]);
     setStaffSuggestions([]);
-    setCompanySuggestionsOpen(false);
     setStaffSuggestionsOpen(false);
     setFieldTouched({ company: false, staff: false, frequency: false });
     setFormError(null);
@@ -762,10 +774,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
   const selectCompany = (profile: ProfileResponse) => {
     setSelectedCompany(profile);
-    setCompanyQuery(profileName(profile));
     setForm((current) => ({ ...current, companyProfileId: profile.id }));
     setFieldTouched((current) => ({ ...current, company: true }));
-    setCompanySuggestionsOpen(false);
   };
 
   const selectStaff = (staff: StaffCandidate) => {
@@ -776,10 +786,17 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     setStaffSuggestionsOpen(false);
   };
 
-  const openCreateModal = () => {
+  const openCreateModal = (profile: ProfileResponse) => {
     setSelectedAssignment(null);
     resetAssignmentForm();
+    selectCompany(profile);
     setShowCreateModal(true);
+  };
+
+  const openProfile = (profileId: string) => {
+    localStorage.setItem('apms-selected-company', profileId);
+    localStorage.setItem('apms-back-page', 'company-monitoring');
+    setActivePage?.('company-detail');
   };
 
   const openManageModal = (assignment: CompanyMonitoringAssignmentResponse) => {
@@ -804,10 +821,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     });
     setSelectedCompany(company);
     setSelectedStaff(staff);
-    setCompanyQuery(assignment.companyName);
     setStaffQuery(assignment.assignedStaffEmail);
     setFieldTouched({ company: false, staff: false, frequency: false });
-    setCompanySuggestionsOpen(false);
     setStaffSuggestionsOpen(false);
     setFormError(null);
     setShowCreateModal(true);
@@ -870,23 +885,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     }
   };
 
-  const handleToggleStatus = async (assignment: CompanyMonitoringAssignmentResponse) => {
-    try {
-      setStatusActionLoading(assignment.id);
-      if (assignment.assignmentStatus === 'ACTIVE') {
-        await companyMonitoringApi.pauseAssignment(assignment.id);
-        await refreshAfterMutation('Monitoring assignment paused.');
-      } else {
-        await companyMonitoringApi.resumeAssignment(assignment.id);
-        await refreshAfterMutation('Monitoring assignment resumed.');
-      }
-    } catch (err) {
-      console.error('Failed to change monitoring assignment status', err);
-      setError('Unable to update monitoring assignment status.');
-    } finally {
-      setStatusActionLoading(null);
-    }
-  };
+
 
   const handleProposalDecision = async () => {
     if (!selectedProposalId || !confirmAction) return;
@@ -896,8 +895,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       setDecisionError(null);
       const updated =
         confirmAction === 'approve'
-          ? await companyMonitoringApi.approveProfileUpdateProposal(selectedProposalId)
-          : await companyMonitoringApi.rejectProfileUpdateProposal(selectedProposalId);
+          ? await companyMonitoringApi.approveProfileUpdateProposal(selectedProposalId, decisionNote || undefined)
+          : await companyMonitoringApi.rejectProfileUpdateProposal(selectedProposalId, decisionNote || undefined);
 
       setProposalBundles((current) => {
         const existing = current[selectedProposalId];
@@ -910,6 +909,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         };
       });
       setConfirmAction(null);
+      setDecisionNote('');
       await refreshAfterMutation(
         confirmAction === 'approve' ? 'Profile update proposal approved.' : 'Profile update proposal rejected.'
       );
@@ -934,22 +934,46 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     }
   };
 
-  const filteredAssignments = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return assignments.filter((assignment) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        assignment.companyName.toLowerCase().includes(normalizedSearch) ||
-        assignment.assignedStaffName.toLowerCase().includes(normalizedSearch) ||
-        assignment.assignedStaffEmail.toLowerCase().includes(normalizedSearch);
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        assignment.assignmentStatus === statusFilter ||
-        assignment.displayStatus === statusFilter;
-      const matchesFrequency = frequencyFilter === 'ALL' || assignment.frequency === frequencyFilter;
-      return matchesSearch && matchesStatus && matchesFrequency;
+  const filteredRows = useMemo(() => {
+    return monitoringRows.filter((row) => {
+      const isUnassigned = row.kind === 'unassigned';
+      const companyName = isUnassigned ? profileName(row.profile) : row.assignment.companyName;
+      
+      if (search) {
+        const term = search.toLowerCase();
+        if (isUnassigned) {
+          if (!companyName?.toLowerCase().includes(term)) return false;
+        } else {
+          if (
+            !companyName?.toLowerCase().includes(term) &&
+            !row.assignment.assignedStaffEmail?.toLowerCase().includes(term) &&
+            !row.assignment.assignedStaffName?.toLowerCase().includes(term)
+          ) return false;
+        }
+      }
+
+      if (statusFilter !== 'ALL') {
+        if (isUnassigned) {
+          if (statusFilter !== 'UNASSIGNED') return false;
+        } else {
+          const matches = row.assignment.assignmentStatus === statusFilter ||
+            row.assignment.displayStatus === statusFilter ||
+            (statusFilter === 'ON_SCHEDULE' && row.assignment.displayStatus === 'UP_TO_DATE');
+          if (!matches) return false;
+        }
+      }
+
+      if (frequencyFilter !== 'ALL') {
+        if (isUnassigned) return false; // Unassigned has no frequency
+        if (row.assignment.frequency !== frequencyFilter) return false;
+      }
+
+      return true;
     });
-  }, [assignments, frequencyFilter, search, statusFilter]);
+  }, [monitoringRows, search, statusFilter, frequencyFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const pendingReviewRows = useMemo<ProposalReviewRow[]>(() => {
     const rows: ProposalReviewRow[] = [];
@@ -989,8 +1013,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     });
   }, [pendingReviewRows, proposalSearch]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredAssignments.length / PAGE_SIZE));
-  const currentAssignments = filteredAssignments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const pendingPages = Math.max(1, Math.ceil(filteredPendingRows.length / PAGE_SIZE));
   const currentPending = filteredPendingRows.slice((proposalPage - 1) * PAGE_SIZE, proposalPage * PAGE_SIZE);
   const historyPages = Math.max(1, Math.ceil(monitoringHistoryTotal / PAGE_SIZE));
@@ -1001,8 +1023,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     const due = assignments.filter((item) => item.displayStatus === 'DUE').length;
     const overdue = assignments.filter((item) => item.displayStatus === 'OVERDUE').length;
     const paused = assignments.filter((item) => item.assignmentStatus === 'PAUSED').length;
-    return { active, due, overdue, paused };
-  }, [assignments]);
+    return { active, due, overdue, paused, unassigned: unassignedProfiles.length };
+  }, [assignments, unassignedProfiles.length]);
 
   const selectedProposalBundle = selectedProposalId ? proposalBundles[selectedProposalId] : null;
   const selectedProposalHistoryReview = selectedProposalId
@@ -1056,6 +1078,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const openProposalReview = (proposalId: string) => {
     setProposalReadOnly(false);
     setSelectedProposalId(proposalId);
+    setDecisionNote('');
   };
 
   const openProposalReadOnly = (proposalId: string) => {
@@ -1095,17 +1118,41 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     return <span className={`workspace-badge ${proposalTone(status)}`}>{status}</span>;
   };
 
+  const renderUnassignedRow = (profile: ProfileResponse, index: number) => (
+    <tr key={profile.id}>
+      <td className="admin-mono">{index + 1}</td>
+      <td>
+        <strong>{profileName(profile)}</strong>
+      </td>
+      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td>
+        <span className="workspace-badge danger">Not Assigned</span>
+      </td>
+      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td>
+        <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
+          <button type="button" className={styles.secondaryButton} onClick={() => openProfile(profile.id)}>
+            View Profile
+          </button>
+          <button 
+            type="button" 
+            className={styles.primaryButton} 
+            onClick={() => openCreateModal(profile)}
+          >
+            Assign Monitor
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+
   const renderAssignmentRow = (assignment: CompanyMonitoringAssignmentResponse, index: number) => (
     <tr key={assignment.id}>
       <td className="admin-mono">{index + 1}</td>
       <td>
-        <button
-          type="button"
-          className="monitoring-company-link"
-          onClick={() => setActivePage?.('company-detail', { id: assignment.companyProfileId })}
-        >
-          <strong>{assignment.companyName}</strong>
-        </button>
+        <strong>{assignment.companyName}</strong>
       </td>
       <td>
         {assignment.assignedStaffName && assignment.assignedStaffName !== assignment.assignedStaffEmail ? (
@@ -1121,8 +1168,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       <td>{frequencyLabel(assignment.frequency)}</td>
       <td>
         <strong>{formatDate(assignment.nextReviewAt)}</strong>
-        <br />
-        <small style={{ color: 'var(--text-secondary)' }}>Last: {formatDate(assignment.lastReviewedAt)}</small>
       </td>
       <td>
         <span className={`workspace-badge ${statusTone(assignment.assignmentStatus)}`}>
@@ -1132,21 +1177,13 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       <td>{renderProposalBadge(assignment)}</td>
       <td>
         <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
-          <button type="button" className="project-detail-btn" onClick={() => openManageModal(assignment)}>
+          <button type="button" className={styles.secondaryButton} onClick={() => openProfile(assignment.companyProfileId)}>
+            View Profile
+          </button>
+          <button type="button" className={styles.secondaryButton} onClick={() => openManageModal(assignment)}>
             Manage
           </button>
-          <button
-            type="button"
-            className={assignment.assignmentStatus === 'ACTIVE' ? 'project-delete-btn' : 'project-activate-btn'}
-            disabled={statusActionLoading === assignment.id}
-            onClick={() => handleToggleStatus(assignment)}
-          >
-            {statusActionLoading === assignment.id
-              ? '...'
-              : assignment.assignmentStatus === 'ACTIVE'
-                ? 'Pause'
-                : 'Resume'}
-          </button>
+
         </div>
       </td>
     </tr>
@@ -1161,13 +1198,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     return (
       <tr key={`${assignment.id}-${proposalId}`}>
         <td>
-          <button
-            type="button"
-            className="monitoring-company-link"
-            onClick={() => openProposalReview(proposalId)}
-          >
-            <strong>{assignment.companyName}</strong>
-          </button>
+          <strong>{assignment.companyName}</strong>
         </td>
         <td>
           {assignment.assignedStaffName && assignment.assignedStaffName !== assignment.assignedStaffEmail ? (
@@ -1189,13 +1220,18 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           <small style={{ color: 'var(--text-secondary)' }}>{changes === null ? 'Loading...' : `${changes} changed fields`}</small>
         </td>
         <td>
-          <button
-            type="button"
-            className="project-activate-btn"
-            onClick={() => openProposalReview(proposalId)}
-          >
-            Review
-          </button>
+          <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className={styles.secondaryButton} onClick={() => openProfile(assignment.companyProfileId)}>
+              View Profile
+            </button>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => openProposalReview(proposalId)}
+            >
+              Review
+            </button>
+          </div>
         </td>
       </tr>
     );
@@ -1240,63 +1276,61 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           <strong>{formatDateTime(review.reviewedAt)}</strong>
         </td>
         <td>
-          <button
-            type="button"
-            className="project-detail-btn"
-            onClick={() => setSelectedHistoryReview(review)}
-          >
-            View
-          </button>
+          <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" className={styles.secondaryButton} onClick={() => openProfile(review.companyProfileId)}>
+              View Profile
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setSelectedHistoryReview(review)}
+            >
+              View Detail
+            </button>
+          </div>
         </td>
       </tr>
     );
   };
 
   return (
-    <main id="page-company-monitoring" className="workspace-main-full manager-page">
-      <section className="workspace-page-head">
+    <div className={styles.page}>
+      <header className={styles.header}>
         <div>
-          <span className="workspace-chip">Company Monitoring</span>
-          <h1>Monitoring Management</h1>
-          <p>
-            Assign staff to monitored companies, review profile update proposals, and track decisions using backend
-            monitoring data.
-          </p>
+          <h1 className={styles.headerTitle}>Monitoring Management</h1>
+          <span className={styles.eyebrow}>Assign staff to monitored companies, review profile update proposals, and track decisions</span>
         </div>
-        <div className="workspace-head-actions">
-          <button type="button" className="btn btn-primary" onClick={openCreateModal}>
-            <Plus size={16} /> New assignment
-          </button>
-        </div>
-      </section>
+      </header>
 
       {toast && <div className="admin-toast success">{toast}</div>}
       {error && <div className="admin-toast danger">{error}</div>}
       {proposalError && <div className="admin-toast danger">{proposalError}</div>}
       {historyError && <div className="admin-toast danger">{historyError}</div>}
 
-      <section className="workspace-stats workspace-stats-compact">
-        <article className="workspace-stat-card">
-          <span className="workspace-stat-label">Active</span>
+      <section className={styles.metricGrid} style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+        <article className={styles.metricCard}>
+          <span>Awaiting Assignment</span>
+          <strong>{metrics.unassigned}</strong>
+          <p>Companies without active monitoring</p>
+        </article>
+        <article className={styles.metricCard}>
+          <span>Active Monitoring</span>
           <strong>{metrics.active}</strong>
           <p>Assignments currently monitored</p>
         </article>
-        <article className="workspace-stat-card">
-          <span className="workspace-stat-label">Due</span>
-          <strong>{metrics.due}</strong>
-          <p>Reviews waiting for staff</p>
-        </article>
-        <article className="workspace-stat-card">
-          <span className="workspace-stat-label">Overdue</span>
-          <strong>{metrics.overdue}</strong>
-          <p>Past their scheduled review date</p>
-        </article>
-        <article className="workspace-stat-card">
-          <span className="workspace-stat-label">Pending reviews</span>
+        <article className={styles.metricCard}>
+          <span>Pending Reviews</span>
           <strong>{pendingReviewRows.length}</strong>
           <p>Profile proposals awaiting manager decision</p>
         </article>
+        <article className={styles.metricCard}>
+          <span>Overdue</span>
+          <strong>{metrics.overdue}</strong>
+          <p>Past their scheduled review date</p>
+        </article>
       </section>
+
+      <main className={styles.panel}>
 
       <div className="tabs" style={{ marginBottom: '16px' }}>
         <button
@@ -1304,9 +1338,9 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           className={`tab ${activeTab === 'assignments' ? 'active' : ''}`}
           onClick={() => setActiveTab('assignments')}
         >
-          Assignments 
+          Monitoring 
           <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'assignments' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'assignments' ? '#fff' : 'var(--text-secondary)' }}>
-            {assignments.length}
+            {monitoringRows.length}
           </span>
         </button>
         <button
@@ -1335,12 +1369,12 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         <section className="workspace-panel">
           <div className="workspace-section-head">
             <div>
-              <h3>Monitoring Assignments</h3>
-              <p>Create, reassign, pause, or resume company monitoring assignments.</p>
+              <h3>Company Monitoring</h3>
+              <p>Assign staff, manage review cycles, and track company monitoring.</p>
             </div>
           </div>
 
-          <div className="admin-toolbar monitoring-management-filters">
+          <div className={styles.toolbar} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: '12px' }}>
             <input
               className="admin-input"
               placeholder="Search company or staff"
@@ -1349,11 +1383,12 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
             />
             <select className="admin-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="ALL">All statuses</option>
+              <option value="UNASSIGNED">Not Assigned</option>
               <option value="ACTIVE">Active</option>
               <option value="PAUSED">Paused</option>
               <option value="DUE">Due</option>
               <option value="OVERDUE">Overdue</option>
-              <option value="UP_TO_DATE">Up to date</option>
+              <option value="ON_SCHEDULE">On Schedule</option>
             </select>
             <select
               className="admin-select"
@@ -1367,8 +1402,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
             </select>
           </div>
 
-          <div className="admin-table-card">
-            <table className="admin-table">
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
               <thead>
                 <tr>
                   <th>#</th>
@@ -1386,9 +1421,11 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                   <tr>
                     <td colSpan={8} className="workspace-empty monitoring-management-pagination">Loading monitoring assignments...</td>
                   </tr>
-                ) : currentAssignments.length ? (
-                  currentAssignments.map((assignment, index) =>
-                    renderAssignmentRow(assignment, (currentPage - 1) * PAGE_SIZE + index)
+                ) : currentRows.length ? (
+                  currentRows.map((row, index) =>
+                    row.kind === 'unassigned' 
+                      ? renderUnassignedRow(row.profile, (currentPage - 1) * PAGE_SIZE + index)
+                      : renderAssignmentRow(row.assignment, (currentPage - 1) * PAGE_SIZE + index)
                   )
                 ) : (
                   <tr>
@@ -1401,8 +1438,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
           <div className="project-table-pagination monitoring-management-pagination">
             <span>
-              Showing {filteredAssignments.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}-
-              {Math.min(currentPage * PAGE_SIZE, filteredAssignments.length)} of {filteredAssignments.length}
+              Showing {filteredRows.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}-
+              {Math.min(currentPage * PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
             </span>
             <div>
               <button
@@ -1439,7 +1476,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
             {proposalLoading && <span className="workspace-badge info">Loading proposals</span>}
           </div>
 
-          <div className="admin-toolbar monitoring-proposal-filters">
+          <div className={styles.toolbar}>
             <input
               className="admin-input"
               placeholder="Search company, staff, or proposal id"
@@ -1448,8 +1485,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
             />
           </div>
 
-          <div className="admin-table-card">
-            <table className="admin-table">
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Company / Proposal</th>
@@ -1511,8 +1548,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
             {historyLoading && <span className="workspace-badge info">Loading history</span>}
           </div>
 
-          <div className="admin-table-card">
-            <table className="admin-table">
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
               <thead>
                 <tr>
                   <th>Company</th>
@@ -1573,380 +1610,22 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         </section>
       )}
 
-      {showCreateModal && (
-        <div className="admin-modal-backdrop" role="presentation" onMouseDown={closeModal}>
-          <div
-            className="admin-modal"
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(event) => event.stopPropagation()}
-            style={{ width: '560px', maxWidth: '90vw', padding: 0 }}
-          >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '24px 28px 20px', borderBottom: '1px solid var(--cds-border-subtle, #e0e0e0)' }}>
-              <div>
-                <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {selectedAssignment ? 'Manage monitoring assignment' : 'Create monitoring assignment'}
-                </h3>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                  {selectedAssignment
-                    ? 'Update the assigned staff member or schedule frequency.'
-                    : 'Assign a company to a staff member for periodic review.'}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="workspace-icon-btn"
-                onClick={closeModal}
-                aria-label="Close assignment modal"
-                style={{ marginLeft: '16px', marginTop: '-4px', fontSize: '1.5rem', lineHeight: 1, padding: '4px 8px' }}
-              >
-                &times;
-              </button>
-            </div>
+      </main>
 
-            {/* Body */}
-            <div style={{ padding: '24px 28px' }}>
-              <form id="monitoring-assignment-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {formError && <div className="admin-form-error" style={{ marginBottom: 0 }}>{formError}</div>}
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }} ref={companyFieldRef}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Company</span>
-                    <input
-                      className="admin-input"
-                      placeholder="Search company name..."
-                      value={selectedAssignment ? selectedAssignment.companyName : companyQuery}
-                      onChange={(e) => {
-                         if (selectedCompany) {
-                           setSelectedCompany(null);
-                           setForm(curr => ({ ...curr, companyProfileId: '' }));
-                         }
-                         setCompanyQuery(e.target.value);
-                      }}
-                      onBlur={() => {
-                        setTimeout(() => {
-                           setFieldTouched(curr => ({ ...curr, company: true }));
-                        }, 200);
-                      }}
-                      disabled={Boolean(selectedAssignment)}
-                      onFocus={() => { if (!selectedAssignment && companyQuery) setCompanySuggestionsOpen(true); }}
-                    />
-                    {companySuggestionsOpen && (
-                      <div className="admin-suggestions-dropdown" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10, background: 'var(--cds-layer, #fff)', border: '1px solid var(--cds-border-subtle)', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '240px', overflowY: 'auto' }}>
-                        {companySearchLoading ? (
-                          <div style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Searching...</div>
-                        ) : companySuggestions.length === 0 && companyQuery.trim().length > 0 ? (
-                          <div style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No companies found.</div>
-                        ) : (
-                          companySuggestions.map((profile) => (
-                            <div
-                              key={profile.id}
-                              className="admin-suggestion-item"
-                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--cds-border-subtle)' }}
-                              onClick={() => selectCompany(profile)}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--cds-layer-hover, #f4f4f4)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                            >
-                              <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{profileName(profile)}</div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{profile.business?.industries?.[0] || 'Company Profile'}</div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                    {fieldErrors.company && <div style={{ color: 'var(--cds-support-error, #da1e28)', fontSize: '0.85rem', marginTop: '2px' }}>{fieldErrors.company}</div>}
-                  </label>
-
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }} ref={staffFieldRef}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Assigned staff</span>
-                    <input
-                      className="admin-input"
-                      placeholder="Search staff email..."
-                      value={staffQuery}
-                      onChange={(e) => {
-                         if (selectedStaff) {
-                           setSelectedStaff(null);
-                           setForm(curr => ({ ...curr, assignedStaffId: '' }));
-                         }
-                         setStaffQuery(e.target.value);
-                      }}
-                      onBlur={() => {
-                        setTimeout(() => {
-                           setFieldTouched(curr => ({ ...curr, staff: true }));
-                        }, 200);
-                      }}
-                      onFocus={() => { if (staffQuery) setStaffSuggestionsOpen(true); }}
-                    />
-                    {staffSuggestionsOpen && (
-                      <div className="admin-suggestions-dropdown" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10, background: 'var(--cds-layer, #fff)', border: '1px solid var(--cds-border-subtle)', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '240px', overflowY: 'auto' }}>
-                        {staffSearchLoading ? (
-                          <div style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Searching...</div>
-                        ) : staffSuggestions.length === 0 && staffQuery.trim().length > 0 ? (
-                          <div style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No staff found.</div>
-                        ) : (
-                          staffSuggestions.map((staff) => (
-                            <div
-                              key={staff.id}
-                              className="admin-suggestion-item"
-                              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--cds-border-subtle)' }}
-                              onClick={() => selectStaff(staff)}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--cds-layer-hover, #f4f4f4)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                            >
-                              <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{staff.email}</div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{staff.name || 'Staff Member'}</div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                    {fieldErrors.staff && <div style={{ color: 'var(--cds-support-error, #da1e28)', fontSize: '0.85rem', marginTop: '2px' }}>{fieldErrors.staff}</div>}
-                  </label>
-
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Review cycle</span>
-                    <select
-                      className="admin-select"
-                      value={form.frequency}
-                      onChange={(event) => {
-                        setForm((current) => ({ ...current, frequency: event.target.value as MonitoringFrequency }));
-                        if (!fieldTouched.frequency) setFieldTouched(curr => ({ ...curr, frequency: true }));
-                      }}
-                    >
-                      <option value="MONTHLY">Monthly</option>
-                      <option value="QUARTERLY">Quarterly</option>
-                      <option value="SEMI_ANNUALLY">Semi-annually</option>
-                    </select>
-                    {fieldErrors.frequency && <div style={{ color: 'var(--cds-support-error, #da1e28)', fontSize: '0.85rem', marginTop: '2px' }}>{fieldErrors.frequency}</div>}
-                  </label>
-                </div>
-
-                {selectedAssignment && (
-                  <div className="monitoring-management-summary" style={{ marginTop: '8px', padding: '16px', background: 'var(--cds-layer-01)', borderRadius: '6px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Current company</span>
-                        <strong style={{ fontSize: '0.95rem' }}>{selectedAssignment.companyName}</strong>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Current staff</span>
-                        <strong style={{ fontSize: '0.95rem' }}>{selectedAssignment.assignedStaffName}</strong>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Last reviewed</span>
-                        <strong style={{ fontSize: '0.95rem' }}>{formatDateTime(selectedAssignment.lastReviewedAt)}</strong>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Next review</span>
-                        <strong style={{ fontSize: '0.95rem' }}>{formatDateTime(selectedAssignment.nextReviewAt)}</strong>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </form>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: '16px 28px', borderTop: '1px solid var(--cds-border-subtle, #e0e0e0)', display: 'flex', justifyContent: 'flex-end', gap: '12px', background: 'var(--cds-layer-01, #f4f4f4)', borderBottomLeftRadius: '8px', borderBottomRightRadius: '8px' }}>
-              <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={saving} style={{ background: 'transparent', border: 'none', boxShadow: 'none', color: 'var(--text-primary)' }}>
-                Cancel
-              </button>
-              <button type="submit" form="monitoring-assignment-form" className="btn btn-primary" disabled={saving} style={{ padding: '0 24px' }}>
-                {saving ? 'Saving...' : selectedAssignment ? 'Save changes' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AssignMonitorModal
+        isOpen={showCreateModal}
+        onClose={closeModal}
+        onSuccess={loadAssignments}
+        selectedCompany={selectedCompany}
+        selectedAssignment={selectedAssignment}
+      />
 
       {selectedHistoryReview && (
-        <div className="admin-modal-backdrop" role="presentation" onMouseDown={() => setSelectedHistoryReview(null)}>
-          <div
-            className="admin-modal"
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(event) => event.stopPropagation()}
-            style={{ width: '85vw', maxWidth: '1200px', maxHeight: '90vh', padding: 0, display: 'flex', flexDirection: 'column' }}
-          >
-            <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--workspace-muted-border, #e2e8f0)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1.35rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Monitoring Review
-                </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                    {selectedHistoryReview.companyName || selectedHistoryReview.companyProfileId}
-                  </span>
-                  <span className={`workspace-badge ${reviewResultTone(selectedHistoryReview.result)}`}>
-                    {reviewResultLabel(selectedHistoryReview.result)}
-                  </span>
-                </div>
-              </div>
-              <button type="button" className="workspace-icon-btn" onClick={() => setSelectedHistoryReview(null)} aria-label="Close monitoring review detail">
-                <XCircle size={24} color="var(--text-secondary)" />
-              </button>
-            </div>
-
-            <div style={{ padding: '32px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '32px', flex: 1 }}>
-              
-              {/* SECTION A: REVIEW SUMMARY */}
-              <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Review Summary</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', background: 'var(--cds-layer-01, #f8fafc)', padding: '16px', borderRadius: '8px', border: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Reviewed by</div>
-                    <strong style={{ color: 'var(--text-primary)' }}>
-                      {selectedHistoryReview.reviewedByName || selectedHistoryReview.reviewedByEmail || '-'}
-                    </strong>
-                    {selectedHistoryReview.reviewedByEmail && selectedHistoryReview.reviewedByEmail !== selectedHistoryReview.reviewedByName && (
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        {selectedHistoryReview.reviewedByEmail}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Reviewed at</div>
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedHistoryReview.reviewedAt)}</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION B: REVIEW RESULT / CHANGES */}
-              <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  {selectedHistoryReview.result === 'NO_CHANGE' ? 'Review Result' : 'Changes'}
-                </h4>
-                
-                {selectedHistoryReview.result === 'NO_CHANGE' ? (
-                  <div>
-                    <span className={`workspace-badge ${reviewResultTone(selectedHistoryReview.result)}`} style={{ marginBottom: '12px', display: 'inline-block' }}>
-                      {reviewResultLabel(selectedHistoryReview.result)}
-                    </span>
-                    <p style={{ margin: '0 0 16px 0', color: 'var(--text-primary)' }}>
-                      No company information changes were found during this review.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: '16px' }}>
-                      <span className={`workspace-badge ${reviewResultTone(selectedHistoryReview.result)}`} style={{ marginRight: '12px' }}>
-                        {reviewResultLabel(selectedHistoryReview.result)}
-                      </span>
-                      <strong style={{ color: 'var(--role-accent, #2563eb)' }}>{historyProposalChanges.length} field{historyProposalChanges.length !== 1 ? 's' : ''} changed</strong>
-                    </div>
-                    
-                    {selectedHistoryReview.updateProposalId && !historyProposalBundle ? (
-                      <div className="workspace-empty" style={{ padding: '24px', background: 'var(--cds-layer-01, #f8fafc)', borderRadius: '8px' }}>
-                        Loading proposal changes...
-                      </div>
-                    ) : historyProposalChanges.length > 0 ? (
-                      Object.entries(historyGroupedProposalChanges).map(([section, changes]) => (
-                        <div key={section} style={{ marginBottom: '24px', background: 'var(--bg-surface, #fff)', border: '1px solid var(--workspace-muted-border, #e2e8f0)', borderRadius: '8px', overflow: 'hidden' }}>
-                          <div style={{ padding: '12px 16px', background: 'var(--cds-layer-01, #f8fafc)', borderBottom: '1px solid var(--workspace-muted-border, #e2e8f0)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <h5 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{section}</h5>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--cds-layer-02, #e0e0e0)', padding: '2px 8px', borderRadius: '12px' }}>
-                              {changes.length} change{changes.length !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                          
-                          <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
-                              <thead>
-                                <tr>
-                                  <th style={{ width: '25%', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', borderBottom: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>Field</th>
-                                  <th style={{ width: '37.5%', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', borderBottom: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>Current Value</th>
-                                  <th style={{ width: '37.5%', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--role-accent, #2563eb)', textTransform: 'uppercase', borderBottom: '1px solid var(--workspace-muted-border, #e2e8f0)', background: 'var(--cds-layer-selected, #eff6ff)' }}>Proposed Value</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {changes.map((change, index) => (
-                                  <tr key={change.key} style={{ borderBottom: index < changes.length - 1 ? '1px solid var(--workspace-muted-border, #e2e8f0)' : 'none' }}>
-                                    <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{change.label}</div>
-                                    </td>
-                                    <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                                      <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                        <ValueDisplay value={change.currentValue} />
-                                      </div>
-                                    </td>
-                                    <td style={{ padding: '16px', verticalAlign: 'top', background: 'var(--cds-layer-selected, #eff6ff)' }}>
-                                      <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                                        <ValueDisplay value={change.proposedValue} isProposed />
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="workspace-empty" style={{ padding: '24px', background: 'var(--cds-layer-01, #f8fafc)', borderRadius: '8px' }}>
-                        No changed fields were found.
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* SECTION C: MANAGER DECISION */}
-              {selectedHistoryReview.result === 'UPDATE_PROPOSED' && selectedHistoryReview.proposalStatus && (
-                <div>
-                  <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Manager Decision</h4>
-                  <div style={{ background: 'var(--cds-layer-01, #f8fafc)', border: '1px solid var(--workspace-muted-border, #e2e8f0)', borderRadius: '8px', padding: '16px' }}>
-                    <span className={`workspace-badge ${proposalTone(selectedHistoryReview.proposalStatus)}`}>
-                      {proposalStatusLabel(selectedHistoryReview.proposalStatus)}
-                    </span>
-                    
-                    {historyProposalBundle && historyProposalBundle.proposal.status !== 'PENDING' && (
-                      <>
-                        <div style={{ display: 'flex', gap: '48px', marginTop: '16px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Reviewed by</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>{historyProposalBundle.proposal.reviewedBy || 'Manager'}</strong>
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Reviewed at</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>{formatDate(historyProposalBundle.proposal.updatedAt)}</strong>
-                          </div>
-                        </div>
-
-                        {(historyProposalBundle.proposal.reviewComment || historyProposalBundle.proposal.reviewComment) && (
-                          <div style={{ marginTop: '16px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Decision Note</span>
-                            <p style={{ margin: '4px 0 0 0', color: 'var(--text-primary)' }}>
-                              {historyProposalBundle.proposal.reviewComment || historyProposalBundle.proposal.reviewComment}
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* SECTION D: SCHEDULE */}
-              <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Schedule</h4>
-                <div style={{ display: 'flex', gap: '48px', background: 'var(--cds-layer-01, #f8fafc)', padding: '16px', borderRadius: '8px', border: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Completed</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{formatDate(selectedHistoryReview.reviewedAt)}</strong>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            <div style={{ padding: '18px 32px', borderTop: '1px solid var(--workspace-muted-border, #e2e8f0)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setSelectedHistoryReview(null)}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <MonitoringReviewDetailsModal 
+          review={selectedHistoryReview} 
+          bundle={historyProposalBundle} 
+          onClose={() => setSelectedHistoryReview(null)} 
+        />
       )}
 
       {selectedProposalId && (
@@ -2056,21 +1735,78 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                             </thead>
                             <tbody>
                               {changes.map((change, index) => (
-                                <tr key={change.key} style={{ borderBottom: index < changes.length - 1 ? '1px solid var(--workspace-muted-border, #e2e8f0)' : 'none' }}>
-                                  <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{change.label}</div>
-                                  </td>
-                                  <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                      <ValueDisplay value={change.currentValue} />
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '16px', verticalAlign: 'top', background: 'var(--cds-layer-selected, #eff6ff)' }}>
-                                    <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                                      <ValueDisplay value={change.proposedValue} isProposed />
-                                    </div>
-                                  </td>
-                                </tr>
+                                <React.Fragment key={change.key}>
+                                  <tr style={{ borderBottom: change.evidence ? 'none' : (index < changes.length - 1 ? '1px solid var(--workspace-muted-border, #e2e8f0)' : 'none') }}>
+                                    <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
+                                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{change.label}</div>
+                                    </td>
+                                    <td style={{ padding: '16px', verticalAlign: 'top', borderRight: '1px solid var(--workspace-muted-border, #e2e8f0)' }}>
+                                      <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                        <ValueDisplay value={change.currentValue} />
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '16px', verticalAlign: 'top', background: 'var(--cds-layer-selected, #eff6ff)' }}>
+                                      <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                                        <ValueDisplay value={change.proposedValue} isProposed />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  {change.evidence && (
+                                    <tr style={{ borderBottom: index < changes.length - 1 ? '1px solid var(--workspace-muted-border, #e2e8f0)' : 'none' }}>
+                                      <td colSpan={3} style={{ padding: '0 16px 16px 16px', background: 'var(--cds-layer-selected, #eff6ff)' }}>
+                                        <div style={{ marginTop: '12px', padding: '12px', background: '#e0f2fe', borderRadius: '6px', border: '1px solid #bae6fd', fontSize: '0.85rem' }}>
+                                          <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: '8px' }}>Supporting Evidence</div>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {change.evidence.evidenceSource && (
+                                              <div>
+                                                <strong style={{ color: '#075985' }}>Source:</strong>{' '}
+                                                <a href={change.evidence.evidenceSource} target="_blank" rel="noreferrer" style={{ color: '#0284c7' }}>
+                                                  {change.evidence.evidenceSource}
+                                                </a>
+                                              </div>
+                                            )}
+                                            {change.evidence.evidenceScript && (
+                                              <div>
+                                                <strong style={{ color: '#075985' }}>Explanation:</strong>{' '}
+                                                <span style={{ color: '#0c4a6e' }}>{change.evidence.evidenceScript}</span>
+                                              </div>
+                                            )}
+                                            {change.evidence.evidenceImageId && (
+                                               <div>
+                                                 <strong style={{ color: '#075985' }}>Image Attached:</strong>{' '}
+                                                 <span style={{ color: '#059669' }}>
+                                                   <button
+                                                     type="button"
+                                                     onClick={(e) => {
+                                                       e.preventDefault();
+                                                       e.stopPropagation();
+                                                       setEvidencePreviewImageId(change.evidence?.evidenceImageId || null);
+                                                     }}
+                                                     style={{
+                                                       background: 'none',
+                                                       border: 'none',
+                                                       padding: 0,
+                                                       color: '#0284c7',
+                                                       textDecoration: 'underline',
+                                                       cursor: 'pointer',
+                                                       fontSize: 'inherit',
+                                                       fontFamily: 'inherit'
+                                                     }}
+                                                   >
+                                                     [ View Image ]
+                                                   </button>
+                                                 </span>
+                                               </div>
+                                             )}
+                                            {!change.evidence?.evidenceSource && !change.evidence?.evidenceScript && !change.evidence?.evidenceImageId && (
+                                              <div style={{ color: '#0c4a6e' }}>No supporting evidence provided.</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
                               ))}
                             </tbody>
                           </table>
@@ -2103,7 +1839,27 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                           ? 'The proposed values will update the official company profile.'
                           : 'This proposal will be rejected.'}
                       </p>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Reason / Decision Note (optional)</label>
+                        <textarea
+                          value={decisionNote}
+                          onChange={(e) => setDecisionNote(e.target.value)}
+                          placeholder={confirmAction === 'approve' ? 'Add an optional note to this approval...' : 'Add an optional note for why this was rejected...'}
+                          style={{
+                            width: '100%',
+                            minHeight: '80px',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--workspace-muted-border, #e2e8f0)',
+                            fontSize: '0.9rem',
+                            resize: 'vertical',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
                         <button type="button" className="btn btn-secondary" onClick={() => setConfirmAction(null)} disabled={decisionLoading}>Cancel</button>
                         <button type="button" className={confirmAction === 'approve' ? 'btn btn-primary' : 'btn btn-danger'} onClick={handleProposalDecision} disabled={decisionLoading}>
                           {decisionLoading ? 'Submitting...' : confirmAction === 'approve' ? 'Approve' : 'Reject'}
@@ -2139,6 +1895,10 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           </div>
         </div>
       )}
-    </main>
+      <EvidenceImagePreviewModal
+        imageId={evidencePreviewImageId}
+        onClose={() => setEvidencePreviewImageId(null)}
+      />
+    </div>
   );
 };

@@ -315,7 +315,7 @@ const MainApp: React.FC = () => {
       case 'search-companies':    return <SearchCompanies setActivePage={navigateToPage} />;
       case 'ai-training-mode':    return <AITrainingMode />;
       case 'learning-center':     return <LearningCenter />;
-      case 'staff-monitoring':    return <StaffMonitoringDashboard />;
+      case 'staff-monitoring':    return <StaffMonitoringDashboard setActivePage={navigateToPage} />;
 
       default:
         return (

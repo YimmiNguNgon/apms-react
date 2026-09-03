@@ -1,5 +1,15 @@
 import type { PageResponse } from '../services/api';
 
+export interface FieldEvidence {
+  fieldPath: string;
+  fieldLabel?: string;
+  existingValue?: string;
+  proposedValue?: string;
+  evidenceImageId?: string;
+  evidenceSource?: string;
+  evidenceScript?: string;
+}
+
 export type Role =
   | 'ROLE_ADMIN'
   | 'ROLE_BUSINESS_OWNER'
@@ -143,7 +153,67 @@ export interface ProfileResponse {
   stockExchange?: string;
   metadata?: CompanyProfileMetadata;
   version?: string;
+  majorVersion?: number;
+  revision?: number;
+  versionLabel?: string;
   responsibleManagerId?: number;
+  canEditProfile?: boolean;
+}
+
+export type CompanyProfileChangeSource =
+  | 'INITIAL_PROFILE_CREATION'
+  | 'MONITORING_PROPOSAL_APPROVED'
+  | 'PROJECT_PROFILE_UPDATE'
+  | 'MANAGER_MANUAL_EDIT';
+
+export interface CompanyProfileVersionResponse {
+  id: string;
+  companyProfileId: string;
+  companyId: string;
+  majorVersion: number;
+  revision: number;
+  version: string;
+  versionLabel: string;
+  changeSource?: CompanyProfileChangeSource;
+  changedFieldPaths?: string[];
+  beforeValues?: Record<string, unknown>;
+  afterValues?: Record<string, unknown>;
+  changeNote?: string;
+  snapshot?: Record<string, unknown>;
+  createdFromProposalId?: string;
+  createdFromProjectId?: number;
+  projectName?: string;
+  createdFromTaskId?: number;
+  sourceDocumentIds?: string[];
+  changeSummary?: string;
+  createdBy?: number;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export interface UpdateCompanyProfileRequest {
+  legalName?: string;
+  tradeName?: string;
+  taxCode?: string;
+  registrationNumber?: string;
+  website?: string;
+  emails?: string[];
+  phones?: string[];
+  headOfficeAddress?: string;
+  employeeTier?: string;
+  employeeCount?: number;
+  revenueTier?: string;
+  industries?: string[];
+  markets?: string[];
+  targetCustomers?: string[];
+  productsServices?: string[];
+  description?: string;
+  businessModel?: string;
+  companyMembers?: CompanyProfileMember[];
+  tags?: string[];
+  expectedMajorVersion?: number;
+  expectedRevision?: number;
+  changeNote?: string;
 }
 
 export interface CompanyProfileMember {
@@ -392,6 +462,8 @@ export interface CandidateResponse {
   sourceDocumentIds?: string[];
   candidateOrder?: number;
   revisionNumber?: number;
+  draftName?: string | null;
+  draftSequence?: number | null;
   documentVersion?: number;
   status: CandidateStatus;
   extractionSource?: { extractionMethod: string; providerName?: string };
@@ -511,6 +583,8 @@ export interface WorkbenchDocumentResponse extends ImportJobResponse {
 export interface CandidateDraftSummary {
   candidateId: string;
   candidateName?: string | null;
+  draftName?: string | null;
+  draftSequence?: number | null;
   candidateIndustry?: string | null;
   status: CandidateStatus;
   taskId?: number | null;
@@ -529,6 +603,8 @@ export interface ProjectTaskSubmissionResponse {
   projectTaskId: number;
   projectId: number;
   submittedByUserId?: number | null;
+  submittedByName?: string | null;
+  submittedRevisionNumber?: number | null;
   submissionType: SubmissionType;
   targetEntityType?: string | null;
   targetEntityId?: string | null;
@@ -1333,15 +1409,15 @@ export interface CompanyMonitoringAssignmentResponse {
   assignedStaffEmail: string;
   assignedByManagerId: number;
   frequency: MonitoringFrequency;
-  assignmentStatus: 'ACTIVE' | 'PAUSED';
-  displayStatus: 'UP_TO_DATE' | 'DUE' | 'OVERDUE' | 'PAUSED';
-  latestReviewResult: 'NO_CHANGE' | 'UPDATE_PROPOSED' | 'RELATIONSHIP_CHANGE_PROPOSED' | null;
-  latestProposalStatus: string | null;
-  latestProposalId: string | null;
-  lastReviewedAt: string | null;
-  nextReviewAt: string;
-  createdAt: string;
-  updatedAt: string;
+  assignmentStatus: MonitoringStatus;
+  displayStatus: string;
+  latestReviewResult?: string | null;
+  latestProposalStatus?: string | null;
+  latestProposalId?: string | null;
+  lastReviewedAt?: string | null;
+  nextReviewAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface CompanyMonitoringReviewResponse {
@@ -1410,6 +1486,8 @@ export interface CompanyProfileUpdateProposalResponse {
   status: string;
   origin?: string;
   changeSummary?: string;
+  changedFieldPaths?: string[] | null;
+  fieldEvidence?: FieldEvidence[] | null;
   proposedIdentity?: Record<string, unknown> | null;
   proposedContact?: Record<string, unknown> | null;
   proposedCompanySize?: Record<string, unknown> | null;
@@ -1426,6 +1504,7 @@ export interface CompanyProfileUpdateProposalResponse {
   extractionId?: string | null;
   submittedBy?: number | null;
   reviewedBy?: number | null;
+  reviewedByName?: string | null;
   reviewComment?: string | null;
   createdAt?: string;
   updatedAt?: string;

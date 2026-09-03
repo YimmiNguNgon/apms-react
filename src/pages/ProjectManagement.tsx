@@ -562,13 +562,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
     const selectedKRs = projectForm.keyResults.filter((kr) => kr.weight > 0);
     if (selectedKRs.length === 0) {
-      setFeedback({ kind: 'error', message: 'At least one Key Result must be selected.' });
+      setFeedback({ kind: 'error', message: 'At least one Project Deliverable must be selected.' });
       return;
     }
 
     const totalWeight = selectedKRs.reduce((sum, kr) => sum + kr.weight, 0);
     if (totalWeight !== 100) {
-      setFeedback({ kind: 'error', message: 'Total weight of Key Results must be exactly 100.' });
+      setFeedback({ kind: 'error', message: 'Total Progress Weight of Project Deliverables must be exactly 100.' });
       return;
     }
 
@@ -739,7 +739,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               <div>
                 <span className="workspace-side-eyebrow">{t('create.eyebrow')}</span>
                 <h3 id="create-project-title">{t('create.title')}</h3>
-                <p>Define the project objective, target company, and key results.</p>
+                <p>Define the project goal, target company, and deliverables.</p>
               </div>
               <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => setShowCreateForm(false)}>&times;</button>
             </div>
@@ -906,12 +906,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               </div>
 
               <div style={{ marginTop: '32px' }}>
-                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Objective</h4>
+                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Goal</h4>
                 <label style={{ display: 'block' }}>
                   <textarea
                     className="search-input"
                     style={{ minHeight: '60px', padding: '12px', width: '100%', resize: 'vertical' }}
-                    placeholder="Describe the main business outcome this project should achieve."
+                    placeholder="Describe the main outcome this project should deliver."
                     value={projectForm.objective}
                     onChange={(event) => setProjectForm((current) => ({ ...current, objective: event.target.value }))}
                   />
@@ -920,7 +920,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
               <div style={{ marginTop: '32px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Key Results</h4>
+                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Project Deliverables</h4>
                   {(() => {
                     const totalWeight = projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0);
                     const is100 = totalWeight === 100;
@@ -928,7 +928,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     return (
                       <div style={{ fontSize: '0.9rem', textAlign: 'right' }}>
                         <div style={{ fontWeight: '600', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : 'inherit' }}>
-                          Total Weight {totalWeight} / 100
+                          Total Progress Weight: {totalWeight} / 100
                         </div>
                         {!is100 && !isOver && (
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -946,7 +946,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 </div>
 
                 {krReferenceLoading ? (
-                  <div>Loading Key Results...</div>
+                  <div>Loading Project Deliverables...</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {krReference.map((kr) => {
@@ -1008,6 +1008,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                               <input
                                 type="number"
+                                title="Progress Weight"
                                 className="search-input"
                                 style={{ width: '70px', padding: '6px 10px', textAlign: 'center' }}
                                 value={selectedKr.weight}

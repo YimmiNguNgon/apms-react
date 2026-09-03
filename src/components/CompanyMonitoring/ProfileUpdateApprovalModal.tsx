@@ -15,6 +15,7 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
+  const [reviewComment, setReviewComment] = useState('');
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -38,9 +39,9 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
     setIsSubmitting(true);
     try {
       if (confirmAction === 'approve') {
-        await api.patch('/profile-update-proposals/' + proposal.id + '/approve', { note: 'Approved via Monitoring Dashboard' });
+        await api.patch('/profile-update-proposals/' + proposal.id + '/approve', { reviewComment });
       } else {
-        await api.patch('/profile-update-proposals/' + proposal.id + '/reject', { note: 'Rejected via Monitoring Dashboard' });
+        await api.patch('/profile-update-proposals/' + proposal.id + '/reject', { reviewComment });
       }
       setToast({ show: true, message: 'Proposal successfully ' + confirmAction + 'd.', type: 'success' });
       setTimeout(() => {
@@ -66,10 +67,15 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
     return String(value);
   };
 
-  const renderDiffField = (label: string, original: any, proposed: any, isFullWidth = false) => {
+  const renderDiffField = (label: string, fieldPath: string, original: any, proposed: any, isFullWidth = false) => {
+    if (proposal.changedFieldPaths?.length && !proposal.changedFieldPaths.includes(fieldPath)) {
+      return null;
+    }
     const origStr = formatValue(original);
     const propStr = formatValue(proposed);
     if (origStr === propStr || (origStr === 'N/A' && proposed === undefined)) return null;
+
+    const evidence = proposal.fieldEvidence?.find(e => e.fieldPath === fieldPath);
 
     return (
       <div key={label} style={{ display: 'flex', flexDirection: 'column' as any, gap: '8px', gridColumn: isFullWidth ? '1 / -1' : 'auto', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -83,11 +89,22 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
             {propStr}
           </div>
         </div>
+        {evidence && (
+          <div style={{ marginTop: '8px', padding: '8px', background: '#eff6ff', borderRadius: '6px', border: '1px solid #bfdbfe', fontSize: '0.85rem' }}>
+            <div style={{ fontWeight: 600, color: '#1e3a8a', marginBottom: '4px' }}>Supporting Evidence provided:</div>
+            {evidence.evidenceSource && <div><strong>Source:</strong> <a href={evidence.evidenceSource} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{evidence.evidenceSource}</a></div>}
+            {evidence.evidenceScript && <div><strong>Explanation:</strong> {evidence.evidenceScript}</div>}
+            {evidence.evidenceImageId && <div><strong>Image Attached:</strong> <span style={{ color: '#15803d' }}>Yes (ID: {evidence.evidenceImageId})</span></div>}
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderBoardMembersDiff = (original: any[], proposed: any[]) => {
+  const renderBoardMembersDiff = (fieldPath: string, original: any[], proposed: any[]) => {
+    if (proposal.changedFieldPaths?.length && !proposal.changedFieldPaths.includes(fieldPath)) {
+      return null;
+    }
     if (!original?.length && !proposed?.length) return null;
     if (JSON.stringify(original) === JSON.stringify(proposed)) return null;
 
@@ -120,6 +137,18 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
             {propMembers.length === 0 ? <div style={{ fontSize: '0.875rem', padding: '8px', background: '#dcfce3', borderRadius: '6px', color: '#166534' }}>N/A</div> : propMembers.map((m: any) => renderMember(m, 'prop'))}
           </div>
         </div>
+        {(() => {
+          const evidence = proposal.fieldEvidence?.find(e => e.fieldPath === fieldPath);
+          if (!evidence) return null;
+          return (
+            <div style={{ marginTop: '12px', padding: '8px', background: '#eff6ff', borderRadius: '6px', border: '1px solid #bfdbfe', fontSize: '0.85rem' }}>
+              <div style={{ fontWeight: 600, color: '#1e3a8a', marginBottom: '4px' }}>Supporting Evidence provided:</div>
+              {evidence.evidenceSource && <div><strong>Source:</strong> <a href={evidence.evidenceSource} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{evidence.evidenceSource}</a></div>}
+              {evidence.evidenceScript && <div><strong>Explanation:</strong> {evidence.evidenceScript}</div>}
+              {evidence.evidenceImageId && <div><strong>Image Attached:</strong> <span style={{ color: '#15803d' }}>Yes (ID: {evidence.evidenceImageId})</span></div>}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -181,38 +210,38 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
 
           {/* Diffs */}
           {renderDiffSection('Legal & Identity', [
-            renderDiffField('Trade Name', currentProfile?.identity?.tradeName, proposal.proposedIdentity?.tradeName),
-            renderDiffField('Legal Name', currentProfile?.identity?.legalName, proposal.proposedIdentity?.legalName),
-            renderDiffField('Tax Code', currentProfile?.identity?.taxCode, proposal.proposedIdentity?.taxCode),
-            renderDiffField('Registration No', currentProfile?.identity?.registrationNumber, proposal.proposedIdentity?.registrationNumber),
-            renderDiffField('Stock Ticker', currentProfile?.identity?.stockTicker, proposal.proposedIdentity?.stockTicker),
+            renderDiffField('Trade Name', 'identity.tradeName', currentProfile?.identity?.tradeName, proposal.proposedIdentity?.tradeName),
+            renderDiffField('Legal Name', 'identity.legalName', currentProfile?.identity?.legalName, proposal.proposedIdentity?.legalName),
+            renderDiffField('Tax Code', 'identity.taxCode', currentProfile?.identity?.taxCode, proposal.proposedIdentity?.taxCode),
+            renderDiffField('Registration No', 'identity.registrationNumber', currentProfile?.identity?.registrationNumber, proposal.proposedIdentity?.registrationNumber),
+            renderDiffField('Stock Ticker', 'identity.stockTicker', currentProfile?.identity?.stockTicker, proposal.proposedIdentity?.stockTicker),
           ])}
 
           {renderDiffSection('Contact & Size', [
-            renderDiffField('Website', currentProfile?.contact?.website, proposal.proposedContact?.website),
-            renderDiffField('Contact Email', currentProfile?.contact?.emails, proposal.proposedContact?.emails),
-            renderDiffField('Phone Number', currentProfile?.contact?.phones, proposal.proposedContact?.phones),
-            renderDiffField('Company Size (Tier)', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier),
-            renderDiffField('Head Office', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true),
+            renderDiffField('Website', 'contact.website', currentProfile?.contact?.website, proposal.proposedContact?.website),
+            renderDiffField('Contact Email', 'contact.emails', currentProfile?.contact?.emails, proposal.proposedContact?.emails),
+            renderDiffField('Phone Number', 'contact.phones', currentProfile?.contact?.phones, proposal.proposedContact?.phones),
+            renderDiffField('Company Size (Tier)', 'companySize.employeeTier', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier),
+            renderDiffField('Head Office', 'contact.addresses', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true),
           ])}
 
           {renderDiffSection('Business & Strategy', [
-            renderDiffField('Industries', currentProfile?.business?.industries, proposal.proposedBusiness?.industries),
-            renderDiffField('Markets', currentProfile?.business?.markets, proposal.proposedBusiness?.markets),
-            renderDiffField('Target Customers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers),
-            renderDiffField('Business Model', currentProfile?.business?.businessModel, proposal.proposedBusiness?.businessModel),
-            renderDiffField('Products & Services', currentProfile?.business?.products, proposal.proposedBusiness?.products, true),
+            renderDiffField('Industries', 'business.industries', currentProfile?.business?.industries, proposal.proposedBusiness?.industries),
+            renderDiffField('Markets', 'business.markets', currentProfile?.business?.markets, proposal.proposedBusiness?.markets),
+            renderDiffField('Target Customers', 'business.targetCustomers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers),
+            renderDiffField('Business Model', 'business.businessModel', currentProfile?.business?.businessModel, proposal.proposedBusiness?.businessModel),
+            renderDiffField('Products & Services', 'business.products', currentProfile?.business?.products, proposal.proposedBusiness?.products, true),
           ])}
 
           {renderDiffSection('SWOT Analysis', [
-            renderDiffField('Strengths', currentProfile?.insights?.strengths, proposal.proposedInsights?.strengths, true),
-            renderDiffField('Weaknesses', currentProfile?.insights?.weaknesses, proposal.proposedInsights?.weaknesses, true),
-            renderDiffField('Opportunities', currentProfile?.insights?.opportunities, proposal.proposedInsights?.opportunities, true),
-            renderDiffField('Threats', currentProfile?.insights?.threats, proposal.proposedInsights?.threats, true),
+            renderDiffField('Strengths', 'insights.strengths', currentProfile?.insights?.strengths, proposal.proposedInsights?.strengths, true),
+            renderDiffField('Weaknesses', 'insights.weaknesses', currentProfile?.insights?.weaknesses, proposal.proposedInsights?.weaknesses, true),
+            renderDiffField('Opportunities', 'insights.opportunities', currentProfile?.insights?.opportunities, proposal.proposedInsights?.opportunities, true),
+            renderDiffField('Threats', 'insights.threats', currentProfile?.insights?.threats, proposal.proposedInsights?.threats, true),
           ])}
 
           {renderDiffSection('Board & Management', [
-            renderBoardMembersDiff(currentProfile?.companyMembers || [], proposal.proposedCompanyMembers || []),
+            renderBoardMembersDiff('companyMembers', currentProfile?.companyMembers || [], proposal.proposedCompanyMembers || []),
           ])}
           
         </div>
@@ -241,9 +270,20 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
             <h3 style={{ fontSize: '1.25rem', margin: '0 0 12px 0', color: '#0f172a' }}>
               Confirm {confirmAction === 'approve' ? 'Approval' : 'Rejection'}
             </h3>
-            <p style={{ color: '#475569', margin: '0 0 24px 0', lineHeight: '1.5' }}>
+            <p style={{ color: '#475569', margin: '0 0 16px 0', lineHeight: '1.5' }}>
               Are you sure you want to {confirmAction} this profile update proposal? {confirmAction === 'approve' && 'This will instantly update the public company profile and increment its version.'}
             </p>
+            <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
+                Decision Note (Optional, visible to staff)
+              </label>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder={`Why was this ${confirmAction}d?`}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '80px', fontSize: '0.9rem', resize: 'vertical' }}
+              />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
               <button onClick={() => setConfirmAction(null)} disabled={isSubmitting} style={{ flex: 1, padding: '10px', background: '#f1f5f9', border: 'none', color: '#475569', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
                 Cancel

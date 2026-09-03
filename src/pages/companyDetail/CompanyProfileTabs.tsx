@@ -287,7 +287,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   intelligence,
   activeTab,
   editable = false,
-  editButtonLabel = 'Chỉnh sửa',
+  editButtonLabel = 'Edit',
   overviewAside,
   canEditListing = false,
   listing,
@@ -472,15 +472,15 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const renderOverview = () => {
     const tradeName = profile.identity?.tradeName;
     const legalName = profile.identity?.legalName;
-    const taxCode = profile.identity?.taxCode || 'Chưa cập nhật';
-    const regNo = profile.identity?.registrationNumber || 'Chưa cập nhật';
+    const taxCode = profile.identity?.taxCode || 'Not updated';
+    const regNo = profile.identity?.registrationNumber || 'Not updated';
     const empCount = profile.companySize?.employeeCount || intelligence?.company?.employeeCount;
     const empTier = profile.companySize?.employeeTier;
-    const sizeStr = empCount ? `${empCount} nhân sự ${empTier ? `(${empTier})` : ""}` : (empTier || "Chưa cập nhật");
-    const website = profile.contact?.website || intelligence?.company?.website || 'Chưa cập nhật';
-    const email = profile.contact?.emails?.[0] || 'Chưa cập nhật';
-    const phone = profile.contact?.phones?.[0] || 'Chưa cập nhật';
-    const address = profile.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Chưa cập nhật';
+    const sizeStr = empCount ? `${empCount} personnel ${empTier ? `(${empTier})` : ""}` : (empTier || "Not updated");
+    const website = profile.contact?.website || intelligence?.company?.website || 'Not updated';
+    const email = profile.contact?.emails?.[0] || 'Not updated';
+    const phone = profile.contact?.phones?.[0] || 'Not updated';
+    const address = profile.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Not updated';
 
     const setField = (key: keyof OverviewDraft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
@@ -535,69 +535,58 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           
           <section style={C.card}>
-            <div style={C.cardHeader}><h2 style={C.h2}>Thông tin Pháp lý & Định danh Doanh nghiệp</h2></div>
+            <div style={C.cardHeader}><h2 style={C.h2}>Legal & Identity Information</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('tradeName', 'Tên Thương Mại (Trade Name)', tradeName || 'Chưa cập nhật', !!tradeName, () => (
+              {renderEditableField('tradeName', 'Trade Name', tradeName || 'Not updated', !!tradeName, () => (
                 <input value={overviewDraft!.tradeName} onChange={setField('tradeName')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('legalName', 'Tên Pháp Lý (Legal Name)', legalName || 'Chưa cập nhật', !!legalName, () => (
+              {renderEditableField('legalName', 'Legal Name', legalName || 'Not updated', !!legalName, () => (
                 <input value={overviewDraft!.legalName} onChange={setField('legalName')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('taxCode', 'Mã Số Thuế (Tax Code)', taxCode, taxCode !== 'Chưa cập nhật', () => (
+              {renderEditableField('taxCode', 'Tax Code', taxCode, taxCode !== 'Not updated', () => (
                 <input value={overviewDraft!.taxCode} onChange={setField('taxCode')} style={INPUT_STYLE} />
-              ))}
-              {renderEditableField('registrationNumber', 'Số Giấy Đăng Ký KD', regNo, regNo !== 'Chưa cập nhật', () => (
-                <input value={overviewDraft!.registrationNumber} onChange={setField('registrationNumber')} style={INPUT_STYLE} />
               ))}
             </div>
           </section>
 
           <section style={C.card}>
-            <div style={C.cardHeader}><h2 style={C.h2}>Thông tin Liên hệ & Quy mô</h2></div>
+            <div style={C.cardHeader}><h2 style={C.h2}>Contact & Size Information</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('website', 'Website', website !== 'Chưa cập nhật' ? <a href={website} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>{website}</strong>, website !== 'Chưa cập nhật', () => (
+              {renderEditableField('website', 'Website', website !== 'Not updated' ? <a href={website} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>{website}</strong>, website !== 'Not updated', () => (
                 <input value={overviewDraft!.website} onChange={setField('website')} placeholder="https://..." style={INPUT_STYLE} />
               ))}
-              {renderEditableField('email', 'Email liên hệ', email, email !== 'Chưa cập nhật', () => (
+              {renderEditableField('email', 'Contact Email', email, email !== 'Not updated', () => (
                 <input type="email" value={overviewDraft!.email} onChange={setField('email')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('phone', 'Điện thoại', phone, phone !== 'Chưa cập nhật', () => (
+              {renderEditableField('phone', 'Phone', phone, phone !== 'Not updated', () => (
                 <input value={overviewDraft!.phone} onChange={setField('phone')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('employeeTier', 'Quy mô nhân sự (Tier)', sizeStr, sizeStr !== 'Chưa cập nhật', () => (
-                <select value={overviewDraft!.employeeTier} onChange={setField('employeeTier')} style={INPUT_STYLE}>
-                  <option value="">-- Chọn --</option>
-                  <option value="1-10 employees">1-10 nhân sự</option>
-                  <option value="11-50 employees">11-50 nhân sự</option>
-                  <option value="51-200 employees">51-200 nhân sự</option>
-                  <option value="201-500 employees">201-500 nhân sự</option>
-                  <option value="501-1,000 employees">501-1,000 nhân sự</option>
-                  <option value="1,001-5,000 employees">1,001-5,000 nhân sự</option>
-                  <option value="5,001-10,000 employees">5,001-10,000 nhân sự</option>
-                  <option value="10,000+ employees">10,000+ nhân sự</option>
-                </select>
+              {renderEditableField('employeeCount', 'Company Size', sizeStr, sizeStr !== 'Not updated', () => (
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={{ ...INPUT_STYLE, flex: 1 }} placeholder="Count (e.g. 150)" />
+                  <select value={overviewDraft!.employeeTier} onChange={setField('employeeTier')} style={{ ...INPUT_STYLE, flex: 1 }}>
+                    <option value="">-- Tier --</option>
+                    <option value="1-10 employees">1-10 employees</option>
+                    <option value="11-50 employees">11-50 employees</option>
+                    <option value="51-200 employees">51-200 employees</option>
+                    <option value="201-500 employees">201-500 employees</option>
+                    <option value="501-1,000 employees">501-1,000 employees</option>
+                    <option value="1,001-5,000 employees">1,001-5,000 employees</option>
+                    <option value="5,001-10,000 employees">5,001-10,000 employees</option>
+                    <option value="10,000+ employees">10,000+ employees</option>
+                  </select>
+                </div>
               ))}
-              {renderEditableField('employeeCount', 'Số lượng nhân sự (Count)', empCount ? String(empCount) : 'Chưa cập nhật', !!empCount, () => (
-                <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} />
-              ))}
-              {renderEditableField('address', 'Địa chỉ trụ sở chính', address, address !== 'Chưa cập nhật', () => (
+              {renderEditableField('address', 'Head Office Address', address, address !== 'Not updated', () => (
                 <input value={overviewDraft!.address} onChange={setField('address')} style={INPUT_STYLE} />
               ), true)}
             </div>
           </section>
 
           <section style={C.card}>
-            <div style={C.cardHeader}><h2 style={C.h2}>Giới thiệu & Mô hình kinh doanh</h2></div>
+            <div style={C.cardHeader}><h2 style={C.h2}>Introduction & Business Model</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('industries', 'Ngành nghề', profile.business?.industries && profile.business.industries.length > 0 ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {profile.business.industries.map((ind, i) => <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>{ind}</span>)}
-                </div>
-              ) : 'Chưa cập nhật', !!profile.business?.industries?.length, () => (
-                <input value={overviewDraft!.industries} onChange={setField('industries')} placeholder="VD: Công nghệ, Dịch vụ phần mềm" style={INPUT_STYLE} />
-              ), true)}
-
-              {renderEditableField('businessModel', 'Mô hình kinh doanh', profile.business?.businessModel || 'Chưa cập nhật', !!profile.business?.businessModel, () => (
+              {renderEditableField('businessModel', 'Introduction / Business Model', profile.business?.businessModel || 'Not updated', !!profile.business?.businessModel, () => (
                 <textarea rows={4} value={overviewDraft!.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} />
               ), true)}
             </div>
@@ -771,21 +760,16 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '14px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-          <h2 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', margin: '0 0 4px' }}>Lĩnh vực & Hoạt động Kinh doanh</h2>
-          <p style={{ fontSize: '0.72rem', color: '#64748B', margin: 0 }}>Thông tin chi tiết về các sản phẩm/dịch vụ cung cấp, phân khúc thị trường và đối tượng khách hàng mục tiêu.</p>
-        </div>
-
         {!hasData ? (
           <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>Chưa có dữ liệu lĩnh vực kinh doanh.</p>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>No business field data available.</p>
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <section style={C.card}>
                 <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Sản phẩm & Dịch vụ (Products & Services)</h2>
+                  <h2 style={C.h2}>Products & Services</h2>
                 </div>
                 {products.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -817,12 +801,29 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                           textAlign: 'left'
                         }}
                       >
-                        {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
+                        {showAllProducts ? 'Show less' : `Show ${products.length - 5} more products`}
                       </button>
                     )}
                   </div>
                 ) : (
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Chưa ghi nhận danh mục sản phẩm/dịch vụ.</p>
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Not updated</p>
+                )}
+              </section>
+
+              <section style={C.card}>
+                <div style={C.cardHeader}>
+                  <h2 style={C.h2}>Industry</h2>
+                </div>
+                {industries.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {industries.map((ind, i) => (
+                      <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Not updated</p>
                 )}
               </section>
             </div>
@@ -830,11 +831,11 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <section style={C.card}>
                 <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Thị trường & Khách hàng (Markets & Customers)</h2>
+                  <h2 style={C.h2}>Markets & Customers</h2>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Thị trường hoạt động</span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
                     {markets.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                         {markets.map((m, idx) => (
@@ -843,10 +844,10 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                           </span>
                         ))}
                       </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Chưa cập nhật</span>}
+                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not updated</span>}
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Khách hàng mục tiêu</span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
                     {targetCustomers.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                         {targetCustomers.map((c, idx) => (
@@ -855,7 +856,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                           </span>
                         ))}
                       </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Chưa cập nhật</span>}
+                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not updated</span>}
                   </div>
                 </div>
               </section>
@@ -953,8 +954,8 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     const toolbar = editable && !editingThis
       ? (
         <TabToolbar
-          title="Lĩnh vực & Hoạt động Kinh doanh"
-          subtitle="Sản phẩm & dịch vụ, thị trường hoạt động và khách hàng mục tiêu."
+          title="Business Fields"
+          subtitle="Products & services, active markets, and target customers."
           onEdit={() => startEditing('business-fields')}
           editButtonLabel={editButtonLabel}
         />

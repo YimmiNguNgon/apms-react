@@ -106,7 +106,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
           <div>
             <span className="workspace-side-eyebrow">EDIT PROJECT</span>
             <h3>Update Draft Project</h3>
-            <p>Update the project objective, target company, and key results.</p>
+            <p>Update the project goal, target company, and deliverables.</p>
           </div>
           <button className="project-modal-close" onClick={() => !loading && onClose()}><X size={20} /></button>
         </div>
@@ -158,10 +158,10 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
           </div>
           
           <div style={{ marginTop: '32px' }}>
-            <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OBJECTIVE & NOTES</h4>
+            <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT GOAL & NOTES</h4>
             <div className="workspace-form-grid">
               <label style={{ gridColumn: '1 / -1' }}>
-                <span>Objective</span>
+                <span>Project Goal</span>
                 <textarea className="search-input" style={{ minHeight: '80px', resize: 'vertical' }} value={projectForm.objective} onChange={e => setProjectForm(prev => ({ ...prev, objective: e.target.value }))} />
               </label>
               <label style={{ gridColumn: '1 / -1' }}>
@@ -173,10 +173,10 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
 
           <div style={{ marginTop: '32px', marginBottom: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KEY RESULTS</h4>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT DELIVERABLES</h4>
               <div style={{ fontSize: '0.9rem', textAlign: 'right' }}>
                 <div style={{ fontWeight: '600', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : 'inherit' }}>
-                  Total Weight {totalWeight} / 100
+                  Total Progress Weight: {totalWeight} / 100
                 </div>
                 {!is100 && !isOver && (
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -192,7 +192,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
             </div>
             
             {krLoading ? (
-              <div>Loading Key Results...</div>
+              <div>Loading Project Deliverables...</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {krOptions.map((kr) => {
@@ -260,6 +260,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                           <input
                             type="number"
+                            title="Progress Weight"
                             className="search-input"
                             style={{ width: '80px', padding: '6px 10px', textAlign: 'center' }}
                             value={selectedKr?.weight || ''}

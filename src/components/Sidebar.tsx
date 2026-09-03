@@ -127,7 +127,6 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'menu.data',
     items: [
       { id: 'companies', label: 'menu.companyProfiles' },
-      { id: 'my-companies', label: 'My Companies' },
       { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'news',      label: 'News' },
     ],
