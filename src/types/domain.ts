@@ -1441,3 +1441,5 @@ export interface CreateFinancialReportRequest { title: string; documentId: strin
 export interface CreateFinancialMetricRequest { reportId?: string | null; label: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
 export interface UpdateFinancialMetricRequest { label?: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
 
+export * from './contractResearch';
+

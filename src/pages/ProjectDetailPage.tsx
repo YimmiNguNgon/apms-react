@@ -68,6 +68,8 @@ import { ManagerNewsReviewWorkspace } from '../components/CompanyNewsResearch/Ma
 import { ProjectProgressOverview } from '../components/ProjectProgressOverview/ProjectProgressOverview';
 import FinancialResearchWorkbench from '../components/FinancialResearch/FinancialResearchWorkbench';
 import ManagerFinancialResearchReviewWorkspace from '../components/FinancialResearch/ManagerFinancialResearchReviewWorkspace';
+import { ContractResearchWorkbench } from '../components/ContractResearch/ContractResearchWorkbench';
+import { ManagerContractResearchReviewWorkspace } from '../components/ContractResearch/ManagerContractResearchReviewWorkspace';
 import type {
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
@@ -6964,7 +6966,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             onClick={() => setSelectedStaffTask(null)}
           >
             <motion.div
-              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchModal : ''}`}
+              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchModal : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="staff-workbench-title"
@@ -7011,7 +7013,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       setSelectedTask(mockMapped as any);
                     }}
                   >
-                    <Activity size={14} style={{ marginRight: '6px' }} /> View Details
+                    <Activity size={14} style={{ marginRight: '6px' }} /> Xem chi tiết
                   </button>
                   <button className={styles.iconButton} type="button" aria-label="Close staff workbench" onClick={() => setSelectedStaffTask(null)}>
                     <X size={18} />
@@ -7034,7 +7036,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 // ) : null;
               })()}
 
-              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && (
+              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION' && (
                 <div className={styles.workbenchStatusRow}>
                   <div>
                     <span>Status</span>
@@ -7071,7 +7073,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && (
+              {selectedStaffTask.taskType !== 'FINANCIAL_RESEARCH' && selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION' && (
                 <div className={styles.workbenchFlow}>
                   {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
                     <div
@@ -7085,7 +7087,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain}>
                   {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                   <>
@@ -7388,6 +7390,28 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       setSelectedStaffTask(null);
                     }}
                   />
+                  ) : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? (
+                  <ContractResearchWorkbench
+                    projectId={selectedStaffTask.projectId}
+                    taskId={selectedStaffTask.id}
+                    taskTitle={selectedStaffTask.title}
+                    taskStatus={workbench?.taskStatus || selectedStaffTask.status}
+                    taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
+                    dueDate={selectedStaffTask.dueDate}
+                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                    canEdit={canUseStaffWorkbench}
+                    onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
+                    onRecallSuccess={() => {
+                      void loadStaffWorkbench(selectedStaffTask);
+                      setTaskRefreshTick((current) => current + 1);
+                    }}
+                    onSubmitSuccess={() => {
+                      void loadStaffWorkbench(selectedStaffTask);
+                      setTaskRefreshTick((current) => current + 1);
+                      setSelectedStaffTask(null);
+                    }}
+                    onClose={() => setSelectedStaffTask(null)}
+                  />
                   ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
@@ -7557,13 +7581,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div>
                         <h3>
                           {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Document package'}
-                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' && 'Contract package'}
                           {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Evaluation result'}
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Task result'}
                         </h3>
                         <p>
                           {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit them directly to the project.'}
-                          {selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' && 'Upload the partner contract files, then submit them to manager for approval and profile storage.'}
                           {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Write your evaluation notes and attach evidence before sending it for manager review.'}
                           {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Add a clear result note so the manager knows what has been completed.'}
                         </p>
@@ -7642,7 +7664,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <div className={styles.workbenchResultGrid}>
                       <div className={styles.workbenchResultCard}>
                         <FileText size={22} />
-                        <span>{selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Contracts' : 'Evidence files'}</span>
+                        <span>Evidence files</span>
                         <strong>{workbench?.documents?.length ?? 0}</strong>
                       </div>
                       <div className={styles.workbenchResultCard}>
@@ -7666,8 +7688,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         placeholder={
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Example: Uploaded annual report and registration evidence. Ready to add to project documents.'
-                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                              ? 'Example: Uploaded signed partner contract for manager approval.'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Example: Based on the uploaded evidence, this company fits the partner role because...'
                               : 'Example: Completed the assigned work and attached supporting evidence.'
@@ -7685,8 +7705,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' ? 'DOCUMENT_COLLECTION' : 'OTHER',
                           selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Documents submitted for manager review.'
-                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                              ? 'Partner contracts submitted for manager review.'
                             : 'Task result submitted for manager review.'
                         )}
                         disabled={!canUseStaffWorkbench || staffSubmitLoading || selectedStaffTask.taskType === 'ROLE_EVALUATION'}
@@ -7696,8 +7714,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           ? 'Submitting...'
                           : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
                             ? 'Submit for manager review'
-                            : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                              ? 'Submit contracts for review'
                             : selectedStaffTask.taskType === 'ROLE_EVALUATION'
                               ? 'Use evaluation submit'
                               : 'Submit to manager'}
@@ -7804,7 +7820,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
 
                     </>
-                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType) ? null : (
+                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) ? null : (
                     <section className={styles.workbenchPanel}>
                       <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
                       <div className={styles.workbenchHintList}>
@@ -8082,7 +8098,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             onClick={() => setSelectedManagerReviewTask(null)}
           >
             <motion.div
-              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchModal : ''}`}
+              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchModal : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="manager-task-review-title"
@@ -8130,6 +8146,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     setToast({ kind: isSuccess ? 'success' : 'error', message });
                   }}
                 />
+              ) : selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? (
+                <ManagerContractResearchReviewWorkspace
+                  projectId={currentProjectId}
+                  taskId={selectedManagerReviewTask.id}
+                  taskTitle={selectedManagerReviewTask.title}
+                  taskDescription={selectedManagerReviewTask.description || taskTypeText[selectedManagerReviewTask.taskType]?.description}
+                  taskStatus={workbench?.taskStatus || selectedManagerReviewTask.status}
+                  dueDate={selectedManagerReviewTask.dueDate}
+                  targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                  assignedToName={selectedManagerReviewTask.assignedToName}
+                  workbenchSubmissions={workbench?.submissions}
+                  submissionId={workbench?.submissions?.[0]?.id || 0}
+                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onReviewCompleted={() => {
+                    void loadManagerWorkbench(selectedManagerReviewTask);
+                    setTaskRefreshTick((current) => current + 1);
+                    setSelectedManagerReviewTask(null);
+                    setToast({ kind: 'success', message: 'Contract review submitted successfully.' });
+                  }}
+                />
               ) : (
                 <>
               <div className={styles.inviteHead}>
@@ -8165,11 +8201,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
-                        <h3>{selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? 'Submitted contracts' : 'Uploaded evidence'}</h3>
+                        <h3>Uploaded evidence</h3>
                         <p>
-                          {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                            ? 'These are the partner contract files submitted by staff for approval.'
-                            : 'These are the files uploaded by staff for this task.'}
+                          These are the files uploaded by staff for this task.
                         </p>
                       </div>
                       <span className={styles.taskTypeBadge}>{managerReviewDocuments.length} file(s)</span>
@@ -8187,9 +8221,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <strong>{document.fileName || `Import job #${document.id}`}</strong>
                             <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
                             <small>
-                              {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                                ? `Raw document: ${document.rawDocumentId || 'N/A'}`
-                                : `Raw document: ${document.rawDocumentId || 'N/A'} | Extraction: ${document.latestExtractionId || 'Not generated'}`}
+                              {`Raw document: ${document.rawDocumentId || 'N/A'} | Extraction: ${document.latestExtractionId || 'Not generated'}`}
                             </small>
                           </div>
                           <div className={styles.documentActions}>
@@ -8222,7 +8254,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <div>
                           <h3>Company member research</h3>
                         </div>
-                        {/* <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span> */}
                       </div>
                       {managerCompanyMemberLoading ? (
                         <div className={styles.empty}>Loading submitted members...</div>
@@ -8277,8 +8308,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-
-
                   {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
@@ -8288,8 +8317,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             {selectedManagerReviewTask.status === 'DONE'
                               ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
                                 ? 'This document collection has been approved. The submitted documents remain available in the project.'
-                                : selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                                  ? 'This contract package has been approved. The contracts were linked to the target Company Profile.'
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'This company member research has been approved. The members were applied to the Company Profile.'
                                 : 'This task has already been approved. The submitted evidence remains available for audit.'
@@ -8302,11 +8329,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </div>
                     </div>
 
-                    {['DOCUMENT_COLLECTION', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status === 'DONE' ? (
+                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
                       <div className={styles.inlineSuccess}>
-                        {selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION'
-                          ? 'Contracts were approved and are available from the target Company Profile.'
-                          : 'Documents were approved and are available in the project Documents tab.'}
+                        Documents were approved and are available in the project Documents tab.
                       </div>
                     ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>

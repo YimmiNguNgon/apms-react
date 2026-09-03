@@ -16,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -224,7 +225,7 @@ function FinancialResearchMetaBar({
   );
 }
 
-function FinancialReportsEmptyState({ onCreate, disabled }: { onCreate: () => void; disabled: boolean }) {
+function FinancialReportsEmptyState() {
   return (
     <div className={styles.emptyCard}>
       <div className={styles.emptyIcon}>
@@ -232,10 +233,6 @@ function FinancialReportsEmptyState({ onCreate, disabled }: { onCreate: () => vo
       </div>
       <h3>No financial reports yet</h3>
       <p>Create your first financial report to begin this research task.</p>
-      <button className={styles.primaryButton} type="button" onClick={onCreate} disabled={disabled}>
-        <Plus size={16} />
-        Create Financial Report
-      </button>
     </div>
   );
 }
@@ -379,6 +376,10 @@ function ExtractedMetricsPanel({
     { key: 'MANUAL', label: 'Manual', count: manual },
   ];
 
+  const totalMetrics = metrics.length;
+  const verifiedCount = verified;
+  const percentVerified = totalMetrics > 0 ? Math.round((verifiedCount / totalMetrics) * 100) : 0;
+
   return (
     <div className={styles.metricsPanel}>
       <div className={styles.reportDetailHead}>
@@ -418,6 +419,61 @@ function ExtractedMetricsPanel({
           </div>
         </div>
       )}
+
+      {/* Verification Progress Banner (matching Contract Workbench) */}
+      <div
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 8,
+          padding: '10px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginTop: 10,
+          marginBottom: 4,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', fontWeight: 600 }}>
+          <ShieldCheck size={18} color={percentVerified === 100 ? '#16a34a' : '#2563eb'} />
+          <span>
+            Tiến độ thẩm định: <strong>{verifiedCount}/{totalMetrics}</strong> chỉ số ({percentVerified}%)
+          </span>
+        </div>
+
+        <div style={{ flex: '1 1 180px', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${percentVerified}%`,
+                background: percentVerified === 100 ? '#16a34a' : '#2563eb',
+                borderRadius: 3,
+                transition: 'width 200ms ease',
+              }}
+            />
+          </div>
+        </div>
+
+        {canEditThisReport && totalMetrics > 0 && percentVerified < 100 && (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 600 }}
+            onClick={async () => {
+              const unverified = metrics.filter(m => m.verificationStatus !== 'VERIFIED');
+              for (const m of unverified) {
+                await onVerifyMetric(m.id);
+              }
+            }}
+          >
+            <CheckCircle2 size={13} color="#2563eb" />
+            Xác thực tất cả
+          </button>
+        )}
+      </div>
 
       <div className={styles.reportToolbar}>
         <div className={styles.filterSegment} role="tablist">
@@ -655,7 +711,7 @@ function FinancialReportsPanel({
       </div>
 
       {reports.length === 0 ? (
-        <FinancialReportsEmptyState onCreate={onCreate} disabled={canEdit === false} />
+        <FinancialReportsEmptyState />
       ) : (
         <div className={styles.reportGroups}>
           {Object.entries(groupedReports).map(([group, groupReports]) => (
@@ -957,9 +1013,9 @@ export default function FinancialResearchWorkbench({
     refetchInterval: (query) => {
       const data = query.state.data?.data;
       const anyExtracting = (data?.reports || []).some(
-        (report: FinancialReportEntry) => report.extractionStatus === 'EXTRACTING',
+        (report: FinancialReportEntry) => report.extractionStatus === 'EXTRACTING' || report.extractionStatus === 'PROCESSING',
       );
-      return anyExtracting ? 2000 : false;
+      return anyExtracting ? 1500 : false;
     },
   });
 

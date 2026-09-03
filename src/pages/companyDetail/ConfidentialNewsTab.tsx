@@ -21,6 +21,7 @@ import type { StepUpVerifyResponse } from '../../API/totpApi';
 interface ConfidentialNewsTabProps {
   companyId: string;
   userRole?: string | null;
+  currentUserId?: number | string | null;
 }
 
 type AuthState = SecureTotpGateState | 'VERIFIED';
@@ -79,7 +80,7 @@ const NewsImage: React.FC<{ article: CompanyIntelligenceArticleResponse; large?:
   );
 };
 
-const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, userRole }) => {
+const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, userRole, currentUserId }) => {
   const [authState, setAuthState] = useState<AuthState>('CHECKING');
   const [stepUpToken, setStepUpToken] = useState<string | null>(null);
   const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
@@ -101,18 +102,26 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
   );
 
   const checkInitialState = async () => {
-    if (userRole !== 'ROLE_BUSINESS_OWNER' && userRole !== 'BUSINESS_OWNER') {
+    const isOwner = userRole === 'ROLE_BUSINESS_OWNER' || userRole === 'BUSINESS_OWNER' || userRole === 'ROLE_OWNER' || userRole === 'OWNER' || userRole === 'ROLE_SYSTEM_ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'ROLE_ADMIN' || userRole === 'ADMIN';
+    const isManager = userRole === 'ROLE_MANAGER' || userRole === 'MANAGER' || userRole === 'ROLE_BUSINESS_DEVELOPMENT_MANAGER' || userRole === 'BUSINESS_DEVELOPMENT_MANAGER';
+
+    if (!isOwner && !isManager) {
       setAuthState('FORBIDDEN');
       return;
     }
 
     try {
       setAuthState('CHECKING');
-      const storedSession = ownerSecureAccess.get();
+      const storedSession = ownerSecureAccess.get(currentUserId);
       let secureStatus;
       try {
         secureStatus = await totpApi.getStepUpStatus(INTERNAL_NEWS_SCOPE, companyId, storedSession?.token);
-      } catch (err) {
+      } catch (err: unknown) {
+        const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
+        if (status === 403) {
+          setAuthState('FORBIDDEN');
+          return;
+        }
         console.warn('getStepUpStatus failed', err);
       }
 
@@ -156,7 +165,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
     const checkExpiry = window.setInterval(() => {
       if (Date.now() > expiryTime) {
         setStepUpToken(null);
-        ownerSecureAccess.clear();
+        ownerSecureAccess.clear(currentUserId);
         setArticles([]);
         setSelectedArticle(null);
         void checkInitialState();
@@ -179,7 +188,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
       setError(errorObj);
       if (errorObj?.status === 401 || errorObj?.status === 403) {
         setStepUpToken(null);
-        ownerSecureAccess.clear();
+        ownerSecureAccess.clear(currentUserId);
         setSelectedArticle(null);
         void checkInitialState();
       }
@@ -194,7 +203,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
   }, [stepUpToken, companyId]);
 
   const handleVerified = (secureSession: StepUpVerifyResponse) => {
-    const savedSession = ownerSecureAccess.save(secureSession);
+    const savedSession = ownerSecureAccess.save(secureSession, currentUserId);
     setStepUpToken(savedSession.token);
     setTokenExpiry(resolveExpiresInSeconds(savedSession.expiresAt, savedSession.expiresInSeconds));
     setAuthState('VERIFIED');
@@ -216,7 +225,7 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
       setError(errorObj);
       if (errorObj.status === 401 || errorObj.status === 403) {
         setStepUpToken(null);
-        ownerSecureAccess.clear();
+        ownerSecureAccess.clear(currentUserId);
         setSelectedArticle(null);
         void checkInitialState();
       }
@@ -239,8 +248,8 @@ const ConfidentialNewsTab: React.FC<ConfidentialNewsTabProps> = ({ companyId, us
         verifyOpen={isVerifyModalOpen}
         scope={INTERNAL_NEWS_SCOPE}
         resourceId={companyId}
-        forbiddenText={'Tin t\u1ee9c n\u1ed9i b\u1ed9 l\u00e0 d\u1eef li\u1ec7u b\u1ea3o m\u1eadt cao. Ch\u1ec9 BUSINESS_OWNER m\u1edbi c\u00f3 quy\u1ec1n truy c\u1eadp.'}
-        requiredText={'B\u1ea1n \u0111ang truy c\u1eadp d\u1eef li\u1ec7u t\u00ecnh b\u00e1o doanh nghi\u1ec7p nh\u1ea1y c\u1ea3m. Vui l\u00f2ng x\u00e1c th\u1ef1c \u0111\u1ec3 ti\u1ebfp t\u1ee5c.'}
+        forbiddenText={'Bạn không có quyền truy cập dữ liệu bảo mật của doanh nghiệp này. Chỉ Quản lý phụ trách doanh nghiệp hoặc Business Owner mới có quyền truy cập.'}
+        requiredText={'Bạn đang truy cập dữ liệu tình báo doanh nghiệp nhạy cảm. Vui lòng xác thực để tiếp tục.'}
         onOpenSetup={() => setIsSetupModalOpen(true)}
         onCloseSetup={() => setIsSetupModalOpen(false)}
         onSetupSuccess={handleVerified}

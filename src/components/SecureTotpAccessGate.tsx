@@ -66,6 +66,7 @@ export const SecureTotpAccessGate: React.FC<SecureTotpAccessGateProps> = ({
           <Shield size={48} color="#ef4444" />
         </div>
         <h3 style={styles.title}>Access Denied</h3>
+        <p style={styles.text}>{forbiddenText}</p>
       </div>
     );
   }

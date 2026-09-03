@@ -10,8 +10,6 @@ interface Props {
 
 export default function AddFinancialReportModal({ open, onClose, onSubmit }: Props) {
   const [title, setTitle] = useState('');
-  const [publicationDate, setPublicationDate] = useState('');
-  const [year, setYear] = useState<number>(new Date().getFullYear());
   const [period, setPeriod] = useState('Q1');
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,25 +18,32 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !publicationDate || !year || !period || !file) return;
+    if (!title.trim() || !period || !file) return;
+
+    // Tự động lấy ngày hiện tại và năm hiện tại theo giờ địa phương
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${currentYear}-${month}-${day}`;
 
     setIsSubmitting(true);
     try {
       await onSubmit({
-        title,
-        publicationDate,
+        title: title.trim(),
+        publicationDate: todayStr,
         documentId: '', 
         reportType: 'FINANCIAL_STATEMENT',
         statementScope: 'CONSOLIDATED',
         reportingPeriod: {
-          year,
+          year: currentYear,
           periodType: 'QUARTER',
           period,
         },
       }, file);
       
       setTitle('');
-      setPublicationDate('');
+      setPeriod('Q1');
       setFile(null);
     } finally {
       setIsSubmitting(false);
@@ -142,41 +147,18 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
         </label>
         
         <label style={labelStyle}>
-          Publication Date
-          <input
-            type="date"
-            required
+          Quarter
+          <select
             style={inputStyle}
-            value={publicationDate}
-            onChange={(e) => setPublicationDate(e.target.value)}
-          />
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            <option value="Q1">Q1</option>
+            <option value="Q2">Q2</option>
+            <option value="Q3">Q3</option>
+            <option value="Q4">Q4</option>
+          </select>
         </label>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <label style={labelStyle}>
-            Year
-            <input
-              type="number"
-              required
-              style={inputStyle}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            />
-          </label>
-          <label style={labelStyle}>
-            Quarter
-            <select
-              style={inputStyle}
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            >
-              <option value="Q1">Q1</option>
-              <option value="Q2">Q2</option>
-              <option value="Q3">Q3</option>
-              <option value="Q4">Q4</option>
-            </select>
-          </label>
-        </div>
 
         <label style={labelStyle}>
           Source Document (PDF)
@@ -212,17 +194,17 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
           </button>
           <button
             type="submit"
-            disabled={!title || !publicationDate || !file || isSubmitting}
+            disabled={!title.trim() || !file || isSubmitting}
             style={{
               padding: '8px 18px',
               background: '#2563eb',
               color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
-              cursor: isSubmitting || !title || !publicationDate || !file ? 'not-allowed' : 'pointer',
+              cursor: isSubmitting || !title.trim() || !file ? 'not-allowed' : 'pointer',
               fontWeight: 600,
               fontSize: '13px',
-              opacity: isSubmitting || !title || !publicationDate || !file ? 0.6 : 1,
+              opacity: isSubmitting || !title.trim() || !file ? 0.6 : 1,
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',

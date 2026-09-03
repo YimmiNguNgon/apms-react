@@ -965,11 +965,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         if (currentUser?.role === ROLES.STAFF) return null;
         return (
           <div style={{ padding: '4px 0' }}>
-            <ConfidentialNewsTab companyId={resolvedId} userRole={currentUser?.role} />
+            <ConfidentialNewsTab companyId={resolvedId} userRole={currentUser?.role} currentUserId={currentUser?.id} />
           </div>
         );
       case 'documents':
-        return <div style={{ padding: '4px 0' }}><DocumentsTab companyProfileId={relationshipClosenessProfileId} userRole={currentUser?.role} /></div>;
+        if (currentUser?.role === ROLES.STAFF) return null;
+        return (
+          <div style={{ padding: '4px 0' }}>
+            <DocumentsTab companyProfileId={relationshipClosenessProfileId} userRole={currentUser?.role} currentUserId={currentUser?.id} />
+          </div>
+        );
       default:
         return null;
     }

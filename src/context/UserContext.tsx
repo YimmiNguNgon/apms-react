@@ -3,6 +3,7 @@ import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../servic
 import type { PageResponse } from '../services/api';
 import { loginApi, type VerificationPayload } from '../API/loginApi';
 import { queryClient } from '../main';
+import { ownerSecureAccess } from '../utils/ownerSecureAccess';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLES = {
@@ -162,6 +163,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const applyLoginPayload = async (payload: LoginPayload): Promise<boolean> => {
     if (!payload?.accessToken) return false;
+    ownerSecureAccess.clearAll();
     storeAuthSession({ accessToken: payload.accessToken, refreshToken: payload.refreshToken });
     try {
       const projRes = await api.get<PageResponse<{ id: number }>>('/projects', { params: { page: 0, size: 1 } });
@@ -186,6 +188,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     clearAuthSession();
     sessionStorage.clear();
+    ownerSecureAccess.clearAll();
     queryClient.clear();
   };
 

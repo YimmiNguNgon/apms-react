@@ -1,222 +1,243 @@
-import React, { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
+  Calendar,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Eye,
+  ExternalLink,
+  FileSearch,
   FileText,
+  Loader2,
   RefreshCw,
+  Search,
+  ShieldCheck,
 } from 'lucide-react';
-import { companyDocumentApi } from '../../API/companyDocumentApi';
-import totpApi from '../../API/totpApi';
-import type { CompanyDocumentResponse } from '../../types/domain';
-import { formatDateTime } from './utils';
+import { contractResearchApi } from '../../API/contractResearchApi';
+import { API_BASE_URL } from '../../services/api';
+import type { ContractEntry, ExtractedContractField, ContractValue } from '../../types/contractResearch';
 import { SecureTotpAccessGate, type SecureTotpGateState } from '../../components/SecureTotpAccessGate';
+import totpApi, { type StepUpVerifyResponse } from '../../API/totpApi';
 import { ownerSecureAccess } from '../../utils/ownerSecureAccess';
-import type { StepUpVerifyResponse } from '../../API/totpApi';
-import styles from '../CompanyDetail.module.css';
+import styles from './DocumentsTab.module.css';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 5;
 const DOCUMENTS_SCOPE = 'COMPANY_PROFILE_DOCUMENTS';
 
 interface DocumentsTabProps {
   companyProfileId: string;
   userRole?: string | null;
+  currentUserId?: number | string | null;
 }
 
-type AuthState = SecureTotpGateState | 'VERIFIED';
+type StatusFilter = 'ALL' | 'ACTIVE' | 'EXPIRED';
 
-const formatFileSize = (bytes?: number | null) => {
-  if (!bytes || bytes <= 0) return null;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+const formatContractValue = (cv?: ExtractedContractField<ContractValue> | null): string => {
+  if (!cv || !cv.value) return '—';
+  if (typeof cv.value === 'string') return cv.value;
+  if (cv.value.rawAmountText) return cv.value.rawAmountText;
+  if (cv.value.amount != null && cv.value.amount !== '') {
+    const num = Number(cv.value.amount);
+    if (!Number.isNaN(num)) {
+      return `${num.toLocaleString('vi-VN')} ${cv.value.currency || ''}`.trim();
+    }
+    return `${cv.value.amount} ${cv.value.currency || ''}`.trim();
+  }
+  return '—';
 };
 
-const fileTypeLabel = (doc: CompanyDocumentResponse) => {
-  const name = (doc.originalFileName || doc.displayName || '').toLowerCase();
-  if (doc.mimeType?.includes('pdf') || name.endsWith('.pdf')) return 'PDF';
-  if (doc.mimeType?.includes('spreadsheet') || name.endsWith('.xlsx') || name.endsWith('.csv')) return 'DATA';
-  if (doc.mimeType?.includes('word') || name.endsWith('.docx')) return 'DOC';
-  return 'FILE';
-};
-
-const statusLabel = (doc: CompanyDocumentResponse) => {
-  return doc.documentType === 'PARTNER_CONTRACT' ? 'Approved Contract' : 'Approved Contract';
-};
-
-const errorStatus = (err: unknown) => (err as { status?: number } | null)?.status;
-
-const resolveExpiresInSeconds = (expiresAt?: string, fallback?: number) => {
-  if (!expiresAt) return fallback ?? 0;
-  return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-};
-
-const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole }) => {
-  const [page, setPage] = useState(0);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [authState, setAuthState] = useState<AuthState>('CHECKING');
-  const [stepUpToken, setStepUpToken] = useState<string | null>(null);
-  const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
+export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole, currentUserId }) => {
+  const [authState, setAuthState] = useState<SecureTotpGateState | 'VERIFIED'>('CHECKING');
+  const [lockedUntil, setLockedUntil] = useState<string | null>(null);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [lockedUntil, setLockedUntil] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const [stepUpToken, setStepUpToken] = useState<string | null>(null);
 
-  const isOwner = userRole === 'ROLE_BUSINESS_OWNER' || userRole === 'BUSINESS_OWNER';
-  const baseQueryKey = ['company-profile-documents', companyProfileId];
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [openingPdfId, setOpeningPdfId] = useState<string | null>(null);
 
-  const clearSecureDocumentState = () => {
-    setStepUpToken(null);
-    setTokenExpiry(null);
-    setBusyId(null);
-    queryClient.removeQueries({ queryKey: baseQueryKey });
-  };
+  const checkInitialState = async () => {
+    const isOwner = userRole === 'ROLE_BUSINESS_OWNER' || userRole === 'BUSINESS_OWNER' || userRole === 'ROLE_OWNER' || userRole === 'OWNER' || userRole === 'ROLE_SYSTEM_ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'ROLE_ADMIN' || userRole === 'ADMIN';
+    const isManager = userRole === 'ROLE_MANAGER' || userRole === 'MANAGER' || userRole === 'ROLE_BUSINESS_DEVELOPMENT_MANAGER' || userRole === 'BUSINESS_DEVELOPMENT_MANAGER';
 
-  const checkInitialState = async (expired = false) => {
-    if (!isOwner) {
-      clearSecureDocumentState();
+    if (!isOwner && !isManager) {
       setAuthState('FORBIDDEN');
       return;
     }
 
     try {
       setAuthState('CHECKING');
-      const storedSession = ownerSecureAccess.get();
+      const storedSession = ownerSecureAccess.get(currentUserId);
       let secureStatus;
       try {
         secureStatus = await totpApi.getStepUpStatus(DOCUMENTS_SCOPE, companyProfileId, storedSession?.token);
-      } catch (err) {
+      } catch (err: unknown) {
+        const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
+        if (status === 403) {
+          setAuthState('FORBIDDEN');
+          return;
+        }
         console.warn('getStepUpStatus failed', err);
       }
+
       if (storedSession?.token && secureStatus?.data?.secureAccessActive) {
         setStepUpToken(storedSession.token);
-        setTokenExpiry(resolveExpiresInSeconds(secureStatus.data.expiresAt, storedSession.expiresInSeconds));
         setAuthState('VERIFIED');
         return;
       }
 
       const statusRes = await totpApi.getStatus();
+
       if (!statusRes.data.enrolled || !statusRes.data.enabled) {
         setAuthState('NOT_ENROLLED');
       } else if (statusRes.data.locked) {
-        setLockedUntil(statusRes.data.lockedUntil || 'A few minutes');
+        setLockedUntil(statusRes.data.lockedUntil || 'Vài phút nữa');
         setAuthState('LOCKED');
       } else {
-        setAuthState(expired ? 'SESSION_EXPIRED' : 'TOTP_REQUIRED');
+        setAuthState('TOTP_REQUIRED');
       }
     } catch (err) {
-      console.error('Failed to check TOTP status for documents', err);
-      setAuthState(expired ? 'SESSION_EXPIRED' : 'TOTP_REQUIRED');
+      console.error('Failed to check TOTP status', err);
+      setAuthState('TOTP_REQUIRED');
     }
   };
 
   useEffect(() => {
-    setPage(0);
-    clearSecureDocumentState();
     void checkInitialState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyProfileId, userRole]);
-
-  useEffect(() => {
-    if (!stepUpToken || !tokenExpiry) return;
-
-    const expiryTime = Date.now() + tokenExpiry * 1000;
-    const timer = window.setInterval(() => {
-      if (Date.now() > expiryTime) {
-        clearSecureDocumentState();
-        ownerSecureAccess.clear();
-        void checkInitialState(true);
-      }
-    }, 5000);
-
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepUpToken, tokenExpiry, companyProfileId]);
-
-  const query = useQuery({
-    queryKey: [...baseQueryKey, page],
-    queryFn: async () => {
-      const res = await companyDocumentApi.getCompanyDocuments(
-        companyProfileId,
-        { page, size: PAGE_SIZE },
-        stepUpToken || undefined,
-      );
-      return res.data;
-    },
-    enabled: Boolean(companyProfileId && isOwner && stepUpToken && authState === 'VERIFIED'),
-    staleTime: 30_000,
-  });
-
-  useEffect(() => {
-    if (!query.error) return;
-    const status = errorStatus(query.error);
-    if (status === 401 || status === 403) {
-      clearSecureDocumentState();
-      ownerSecureAccess.clear();
-      void checkInitialState(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query.error]);
-
-  const docs = query.data?.content ?? [];
-  const totalPages = query.data?.totalPages ?? 0;
-  const totalElements = query.data?.totalElements ?? 0;
+  }, [companyProfileId, userRole, currentUserId]);
 
   const handleVerified = (secureSession: StepUpVerifyResponse) => {
-    const savedSession = ownerSecureAccess.save(secureSession);
+    const savedSession = ownerSecureAccess.save(secureSession, currentUserId);
     setStepUpToken(savedSession.token);
-    setTokenExpiry(resolveExpiresInSeconds(savedSession.expiresAt, savedSession.expiresInSeconds));
     setAuthState('VERIFIED');
     setIsVerifyModalOpen(false);
     setIsSetupModalOpen(false);
   };
 
-  const handleProtectedError = (err: unknown) => {
-    console.error('Protected document action failed:', err);
-    const status = errorStatus(err);
-    if (status === 401 || status === 403) {
-      clearSecureDocumentState();
-      ownerSecureAccess.clear();
-      void checkInitialState(true);
-      return;
-    }
-    window.alert('Unable to complete this document action. Please try again.');
-  };
+  // Fetch approved contracts from research API
+  const {
+    data: contracts = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ['approved-contracts', companyProfileId],
+    queryFn: () => contractResearchApi.getApprovedContracts(companyProfileId),
+    enabled: Boolean(companyProfileId) && authState === 'VERIFIED',
+    staleTime: 30_000,
+  });
 
-  const handlePreview = async (doc: CompanyDocumentResponse) => {
-    if (!stepUpToken || (!doc.previewAvailable && !doc.downloadAvailable)) return;
-    setBusyId(doc.id);
-    try {
-      const blob = await companyDocumentApi.downloadCompanyDocument(companyProfileId, doc.id, false, stepUpToken);
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      handleProtectedError(err);
-    } finally {
-      setBusyId(null);
-    }
-  };
+  // Filtered list based on search and status
+  const filteredContracts = useMemo(() => {
+    return contracts.filter((contract) => {
+      // Status filter
+      if (statusFilter === 'ACTIVE' && contract.derivedContractStatus !== 'ACTIVE') {
+        return false;
+      }
+      if (statusFilter === 'EXPIRED' && contract.derivedContractStatus !== 'EXPIRED') {
+        return false;
+      }
 
-  const handleDownload = async (doc: CompanyDocumentResponse) => {
-    if (!stepUpToken || !doc.downloadAvailable) return;
-    setBusyId(doc.id);
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const titleMatch = (contract.title || '').toLowerCase().includes(query);
+        const docNameMatch = (contract.documentName || '').toLowerCase().includes(query);
+        const numberMatch = (contract.commonData?.contractNumber?.value || '').toLowerCase().includes(query);
+        const partiesMatch = (contract.commonData?.parties || []).some(
+          (p) =>
+            (p.legalName || '').toLowerCase().includes(query) ||
+            (p.taxCode || '').toLowerCase().includes(query) ||
+            (p.representative || '').toLowerCase().includes(query),
+        );
+        return titleMatch || docNameMatch || numberMatch || partiesMatch;
+      }
+
+      return true;
+    });
+  }, [contracts, statusFilter, searchQuery]);
+
+  // Total pages and paginated items for left column
+  const totalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
+  const paginatedContracts = useMemo(() => {
+    const start = currentPage * PAGE_SIZE;
+    return filteredContracts.slice(start, start + PAGE_SIZE);
+  }, [filteredContracts, currentPage]);
+
+  // Reset page to 0 when filter/search changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, statusFilter]);
+
+  // Auto-select first contract on page if current selection is invalid
+  useEffect(() => {
+    if (paginatedContracts.length > 0) {
+      const isStillInPage = paginatedContracts.some((c) => c.id === selectedContractId);
+      if (!isStillInPage) {
+        setSelectedContractId(paginatedContracts[0].id);
+      }
+    } else {
+      setSelectedContractId(null);
+    }
+  }, [paginatedContracts, selectedContractId]);
+
+  // Currently selected contract
+  const selectedContract = useMemo(() => {
+    if (!selectedContractId) return paginatedContracts[0] || null;
+    return contracts.find((c) => c.id === selectedContractId) || paginatedContracts[0] || null;
+  }, [contracts, selectedContractId, paginatedContracts]);
+
+  // Open PDF file handler
+  const handleViewPdf = async (contract: ContractEntry) => {
+    if (!contract.documentId) return;
+    setOpeningPdfId(contract.id);
     try {
-      const blob = await companyDocumentApi.downloadCompanyDocument(companyProfileId, doc.id, true, stepUpToken);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.originalFileName || doc.displayName || 'document';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
+      const token =
+        localStorage.getItem('apms-token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('token');
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      let res: Response | null = null;
+      if (contract.projectId) {
+        try {
+          res = await fetch(
+            `${API_BASE_URL}/projects/${contract.projectId}/documents/${encodeURIComponent(contract.documentId)}/download?download=false`,
+            { headers },
+          );
+        } catch (e) {
+          console.warn('Project document fetch failed, trying direct endpoint', e);
+        }
+      }
+
+      if (!res || !res.ok) {
+        res = await fetch(
+          `${API_BASE_URL}/documents/${encodeURIComponent(contract.documentId)}/download?download=false`,
+          { headers },
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load document (${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+      const fileUrl = window.URL.createObjectURL(pdfBlob);
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => window.URL.revokeObjectURL(fileUrl), 120_000);
     } catch (err) {
-      handleProtectedError(err);
+      console.error('Error opening PDF:', err);
+      window.alert('Không thể tải tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.');
     } finally {
-      setBusyId(null);
+      setOpeningPdfId(null);
     }
   };
 
@@ -229,8 +250,8 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole 
         verifyOpen={isVerifyModalOpen}
         scope={DOCUMENTS_SCOPE}
         resourceId={companyProfileId}
-        forbiddenText={'T\u00e0i li\u1ec7u h\u1ed3 s\u01a1 doanh nghi\u1ec7p l\u00e0 d\u1eef li\u1ec7u b\u1ea3o m\u1eadt. Ch\u1ec9 BUSINESS_OWNER m\u1edbi c\u00f3 quy\u1ec1n truy c\u1eadp.'}
-        requiredText={'B\u1ea1n \u0111ang truy c\u1eadp t\u00e0i li\u1ec7u h\u1ed3 s\u01a1 doanh nghi\u1ec7p nh\u1ea1y c\u1ea3m. Vui l\u00f2ng x\u00e1c th\u1ef1c \u0111\u1ec3 ti\u1ebfp t\u1ee5c.'}
+        forbiddenText={'Bạn không có quyền truy cập hợp đồng của doanh nghiệp này. Chỉ Quản lý phụ trách doanh nghiệp hoặc Business Owner mới có quyền truy cập.'}
+        requiredText={'Bạn đang truy cập tài liệu hợp đồng đối tác bảo mật. Vui lòng xác thực Authenticator để tiếp tục.'}
         onOpenSetup={() => setIsSetupModalOpen(true)}
         onCloseSetup={() => setIsSetupModalOpen(false)}
         onSetupSuccess={handleVerified}
@@ -241,138 +262,460 @@ const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole 
     );
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div className={styles.cardHeaderLeft}>
-            <FileText size={20} style={{ color: '#2563EB' }} />
-            <div>
-              <h2>Tài liệu</h2>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748B', fontWeight: 600 }}>
-                Tài liệu hợp đồng đối tác đã được Manager phê duyệt.
-              </p>
-            </div>
+  // 1. Loading State
+  if (isLoading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Hợp đồng đối tác</h2>
           </div>
-          <span style={{ fontSize: '13px', color: '#64748B', fontWeight: 700 }}>
-            {query.isLoading ? 'Đang tải' : `${totalElements} hợp đồng`}
-          </span>
+          <p className={styles.subtitle}>Danh mục hợp đồng đã được thẩm định & phê duyệt.</p>
+        </div>
+        <div className={styles.emptyStateContainer}>
+          <div className={styles.spinner} />
+          <p className={styles.emptyTitle} style={{ marginTop: 10 }}>Đang tải hợp đồng đối tác...</p>
+          <p className={styles.emptyDesc}>Đang truy xuất các hợp đồng chính thức đã được Manager phê duyệt.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Error State
+  if (isError) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Hợp đồng đối tác</h2>
+          </div>
+          <p className={styles.subtitle}>Danh mục hợp đồng đã được thẩm định & phê duyệt.</p>
+        </div>
+        <div className={styles.emptyStateContainer}>
+          <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
+          <p className={styles.emptyTitle}>Không thể tải danh sách hợp đồng</p>
+          <p className={styles.emptyDesc}>Đã xảy ra lỗi khi tải dữ liệu hợp đồng. Vui lòng thử lại.</p>
+          <button
+            type="button"
+            className={styles.paginationBtn}
+            onClick={() => void refetch()}
+            style={{ marginTop: 12, padding: '6px 14px' }}
+          >
+            <RefreshCw size={13} /> Thử lại
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Global Empty State (No approved contracts yet)
+  if (contracts.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.headerSection}>
+          <div className={styles.titleRow}>
+            <h2 className={styles.title}>Hợp đồng đối tác</h2>
+            <span className={styles.countBadge}>0 hợp đồng</span>
+          </div>
+          <p className={styles.subtitle}>Tài liệu hợp đồng đối tác đã được Manager phê duyệt.</p>
+        </div>
+        <div className={styles.emptyStateContainer}>
+          <div className={styles.emptyIcon}>
+            <FileText size={22} />
+          </div>
+          <p className={styles.emptyTitle}>Chưa có hợp đồng được phê duyệt</p>
+          <p className={styles.emptyDesc}>
+            Các hợp đồng đối tác sau khi được trích xuất bằng AI và Manager phê duyệt từ Partner Contract Collection sẽ tự động xuất hiện tại đây.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.headerSection}>
+        <div className={styles.titleRow}>
+          <h2 className={styles.title}>Hợp đồng đối tác</h2>
+          <span className={styles.countBadge}>{contracts.length} hợp đồng</span>
+        </div>
+        <p className={styles.subtitle}>
+          Danh mục hợp đồng và các điều khoản pháp lý đã được thẩm định & phê duyệt cho doanh nghiệp này.
+        </p>
+      </div>
+
+      {/* Toolbar: Search & Status Filter */}
+      <div className={styles.toolbar}>
+        <div className={styles.searchWrapper}>
+          <Search size={14} className={styles.searchIcon} />
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="Tìm theo tên HĐ, số hiệu, đối tác..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
 
-        {query.isLoading ? (
-          <div className={styles.stateBox} style={{ padding: '40px 16px' }}>
-            <div className={styles.spinner} />
-            <p className={styles.stateText}>Đang tải hợp đồng bảo mật...</p>
+        <div className={styles.filterGroup}>
+          <button
+            type="button"
+            className={`${styles.filterBtn} ${statusFilter === 'ALL' ? styles.filterBtnActive : ''}`}
+            onClick={() => setStatusFilter('ALL')}
+          >
+            Tất cả ({contracts.length})
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterBtn} ${statusFilter === 'ACTIVE' ? styles.filterBtnActive : ''}`}
+            onClick={() => setStatusFilter('ACTIVE')}
+          >
+            Đang hiệu lực ({contracts.filter((c) => c.derivedContractStatus === 'ACTIVE').length})
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterBtn} ${statusFilter === 'EXPIRED' ? styles.filterBtnActive : ''}`}
+            onClick={() => setStatusFilter('EXPIRED')}
+          >
+            Hết hiệu lực ({contracts.filter((c) => c.derivedContractStatus === 'EXPIRED').length})
+          </button>
+        </div>
+      </div>
+
+      {/* Master-Detail Layout */}
+      <div className={styles.masterDetailLayout}>
+        {/* Left Column: Master List */}
+        <div className={styles.masterColumn}>
+          <div className={styles.masterHeader}>
+            <span>Danh sách ({filteredContracts.length})</span>
+            <span>Trang {currentPage + 1}/{totalPages}</span>
           </div>
-        ) : query.error ? (
-          <div className={styles.stateBox} style={{ padding: '40px 16px' }}>
-            <AlertCircle size={22} color="#DC2626" style={{ marginBottom: 8 }} />
-            <p className={styles.stateTitle}>Không thể tải hợp đồng</p>
-            <p className={styles.stateText} style={{ marginBottom: '16px' }}>
-              Yêu cầu tải hợp đồng bảo mật thất bại. Vui lòng xác thực lại hoặc thử sau.
-            </p>
-            <button className={styles.retryButton} onClick={() => void query.refetch()}>
-              <RefreshCw size={14} /> Thử lại
-            </button>
-          </div>
-        ) : docs.length === 0 ? (
-          <div className={styles.stateBox} style={{ padding: '40px 16px' }}>
-            <FileText size={24} color="#94A3B8" style={{ marginBottom: 8 }} />
-            <p className={styles.stateTitle}>Chưa có hợp đồng được phê duyệt.</p>
-            <p className={styles.stateText}>
-              Các hợp đồng được phê duyệt từ Partner Contract Collection sẽ xuất hiện tại đây.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className={styles.newsList}>
-              {docs.map((doc) => {
-                const title = doc.displayName || doc.originalFileName || 'Hợp đồng chưa có tên';
-                const fileSize = formatFileSize(doc.fileSize);
-                const disabled = busyId === doc.id;
+
+          <div className={styles.masterList}>
+            {paginatedContracts.length === 0 ? (
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                <FileSearch size={24} style={{ margin: '0 auto 8px', opacity: 0.7 }} />
+                <p style={{ margin: 0, fontWeight: 600 }}>Không tìm thấy hợp đồng</p>
+                <p style={{ margin: '4px 0 0', fontSize: '11px' }}>Thử thay đổi từ khóa hoặc bộ lọc</p>
+              </div>
+            ) : (
+              paginatedContracts.map((contract) => {
+                const isActive = selectedContract?.id === contract.id;
+                const status = contract.derivedContractStatus;
+                const contractNumber = contract.commonData?.contractNumber?.value;
+                const signDate = contract.commonData?.signingDate?.value || contract.documentDate;
+                const valueText = formatContractValue(contract.commonData?.contractValue);
+                const term = contract.commonData?.term?.value;
 
                 return (
-                  <article key={doc.id} className={styles.docRow} style={{ alignItems: 'flex-start' }}>
-                    <div className={styles.docIcon} aria-hidden="true">
-                      <FileText size={20} />
+                  <div
+                    key={contract.id}
+                    className={`${styles.contractCard} ${isActive ? styles.contractCardActive : ''}`}
+                    onClick={() => setSelectedContractId(contract.id)}
+                  >
+                    <div className={styles.cardTopRow}>
+                      {status === 'ACTIVE' ? (
+                        <span className={styles.statusChipActive}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />
+                          Đang hiệu lực
+                        </span>
+                      ) : status === 'EXPIRED' ? (
+                        <span className={styles.statusChipExpired}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
+                          Hết hiệu lực
+                        </span>
+                      ) : (
+                        <span className={styles.statusChipOther}>
+                          {status || 'Đã duyệt'}
+                        </span>
+                      )}
+
+                      {signDate && <span className={styles.cardDate}>{signDate}</span>}
                     </div>
 
-                    <div className={styles.docBody}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                        <span className={styles.docBadge}>{fileTypeLabel(doc)}</span>
-                        <span className={styles.newsBadgeNew}>{statusLabel(doc)}</span>
+                    <h4 className={styles.cardTitle} title={contract.title || contract.documentName}>
+                      {contract.title || contract.documentName || 'Hợp đồng chưa đặt tên'}
+                    </h4>
+
+                    {contractNumber && (
+                      <div className={styles.cardNumber}>
+                        Số HĐ: <strong>{contractNumber}</strong>
                       </div>
+                    )}
 
-                      <h3 className={styles.docTitle}>{title}</h3>
-                      {doc.originalFileName && doc.originalFileName !== title ? (
-                        <div className={styles.docMeta}>{doc.originalFileName}</div>
-                      ) : null}
-
-                      <div className={styles.docMeta} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                        {fileSize ? <span>{fileSize}</span> : null}
-                        {doc.uploadedAt ? <span>Uploaded {formatDateTime(doc.uploadedAt)}</span> : null}
-                        {doc.approvedAt ? <span>Approved {formatDateTime(doc.approvedAt)}</span> : null}
-                        <span>Source: Partner Contract Collection</span>
-                        {doc.sourceProjectName || doc.sourceProjectId ? (
-                          <span>Project: {doc.sourceProjectName || `#${doc.sourceProjectId}`}</span>
-                        ) : null}
-                      </div>
-
-                      <p className={styles.newsSummary} style={{ marginTop: 8, marginBottom: 0 }}>
-                        Approved from Partner Contract Collection.
-                      </p>
+                    <div className={styles.cardBottomRow}>
+                      <span className={styles.cardValue}>
+                        {valueText !== '—' ? valueText : 'Thỏa thuận nguyên tắc'}
+                      </span>
+                      {term && <span className={styles.cardTerm}>{term}</span>}
                     </div>
-
-                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <button
-                        type="button"
-                        className={styles.pageBtn}
-                        onClick={() => void handlePreview(doc)}
-                        disabled={disabled || (!doc.previewAvailable && !doc.downloadAvailable)}
-                        title="Preview"
-                      >
-                        <Eye size={14} /> Preview
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.pageBtn}
-                        onClick={() => void handleDownload(doc)}
-                        disabled={disabled || !doc.downloadAvailable}
-                        title="Download"
-                      >
-                        <Download size={14} /> Download
-                      </button>
-                    </div>
-                  </article>
+                  </div>
                 );
-              })}
-            </div>
-
-            {totalPages > 1 && (
-              <div className={styles.pagination}>
-                <button
-                  type="button"
-                  className={styles.pageBtn}
-                  disabled={page <= 0 || query.isFetching}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  <ChevronLeft size={14} /> Previous
-                </button>
-                <span className={styles.pageInfo}>
-                  Page {query.data ? query.data.pageNumber + 1 : '-'} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  className={styles.pageBtn}
-                  disabled={page >= totalPages - 1 || query.isFetching}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next <ChevronRight size={14} />
-                </button>
-              </div>
+              })
             )}
-          </>
-        )}
+          </div>
+
+          {/* Pagination Bar (4-5 items per page) */}
+          <div className={styles.paginationBar}>
+            <button
+              type="button"
+              className={styles.paginationBtn}
+              disabled={currentPage <= 0}
+              onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+            >
+              <ChevronLeft size={13} /> Trước
+            </button>
+            <span className={styles.paginationInfo}>
+              Trang {currentPage + 1} / {totalPages}
+            </span>
+            <button
+              type="button"
+              className={styles.paginationBtn}
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+            >
+              Sau <ChevronRight size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Detail Workspace */}
+        <div className={styles.detailColumn}>
+          {selectedContract ? (
+            <>
+              {/* Detail Header */}
+              <div className={styles.detailHeader}>
+                <div className={styles.detailHeaderLeft}>
+                  <div className={styles.detailBadges}>
+                    {selectedContract.derivedContractStatus === 'ACTIVE' ? (
+                      <span className={styles.statusChipActive}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />
+                        Đang hiệu lực
+                      </span>
+                    ) : selectedContract.derivedContractStatus === 'EXPIRED' ? (
+                      <span className={styles.statusChipExpired}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
+                        Hết hiệu lực
+                      </span>
+                    ) : (
+                      <span className={styles.statusChipOther}>
+                        {selectedContract.derivedContractStatus || 'Đã duyệt'}
+                      </span>
+                    )}
+
+                    <span className={styles.approvedBadge}>
+                      <ShieldCheck size={11} /> Manager Approved
+                    </span>
+                  </div>
+
+                  <h3 className={styles.detailTitle}>
+                    {selectedContract.title || selectedContract.documentName || 'Hợp đồng đối tác'}
+                  </h3>
+
+                  <div className={styles.detailSubtitle}>
+                    {selectedContract.documentName && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <FileText size={12} /> {selectedContract.documentName}
+                      </span>
+                    )}
+                    {selectedContract.documentDate && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        • <Calendar size={12} /> Ngày ký: {selectedContract.documentDate}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {selectedContract.documentId && (
+                  <button
+                    type="button"
+                    className={styles.pdfBtn}
+                    onClick={() => void handleViewPdf(selectedContract)}
+                    disabled={openingPdfId === selectedContract.id}
+                    title="Mở toàn văn file PDF gốc"
+                  >
+                    {openingPdfId === selectedContract.id ? (
+                      <>
+                        <Loader2 size={13} className={styles.spinner} style={{ width: 13, height: 13, borderWidth: 2 }} />
+                        <span>Đang mở PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink size={13} />
+                        <span>Xem PDF gốc</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* Detail Body */}
+              <div className={styles.detailContent}>
+                {/* 1. Legal & General Terms */}
+                <div className={styles.sectionBlock}>
+                  <div className={styles.sectionHeader}>
+                    <span className={styles.sectionNumber}>1</span>
+                    Thông tin điều khoản chung & Pháp lý
+                  </div>
+
+                  <div className={styles.termsGrid}>
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Số hiệu hợp đồng</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.contractNumber?.value || '—'}
+                      </span>
+                      {selectedContract.commonData?.contractNumber?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.contractNumber.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Ngày ký (Signing Date)</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.signingDate?.value || selectedContract.documentDate || '—'}
+                      </span>
+                      {selectedContract.commonData?.signingDate?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.signingDate.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Ngày hiệu lực</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.effectiveDate?.value || '—'}
+                      </span>
+                      {selectedContract.commonData?.effectiveDate?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.effectiveDate.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Ngày hết hạn</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.expiryDate?.value || '—'}
+                      </span>
+                      {selectedContract.commonData?.expiryDate?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.expiryDate.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Giá trị hợp đồng</span>
+                      <span className={styles.termValue} style={{ color: '#059669' }}>
+                        {formatContractValue(selectedContract.commonData?.contractValue)}
+                      </span>
+                      {selectedContract.commonData?.contractValue?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.contractValue.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Luật áp dụng</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.governingLaw?.value || '—'}
+                      </span>
+                      {selectedContract.commonData?.governingLaw?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.governingLaw.sourcePage}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.termCard}>
+                      <span className={styles.termLabel}>Mục đích hợp tác</span>
+                      <span className={styles.termValue}>
+                        {selectedContract.commonData?.purpose?.value || '—'}
+                      </span>
+                      {selectedContract.commonData?.purpose?.sourcePage && (
+                        <span className={styles.termEvidence}>
+                          Trang {selectedContract.commonData.purpose.sourcePage}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Contracting Parties & Responsibilities */}
+                <div className={styles.sectionBlock}>
+                  <div className={styles.sectionHeader}>
+                    <span className={styles.sectionNumber}>2</span>
+                    Các bên tham gia ký kết & Cam kết pháp lý
+                  </div>
+
+                  {selectedContract.commonData?.parties && selectedContract.commonData.parties.length > 0 ? (
+                    <div className={styles.partiesList}>
+                      {selectedContract.commonData.parties.map((party, pIdx) => {
+                        const roleLabel = party.role || `BÊN ${String.fromCharCode(65 + pIdx)}`;
+                        const name = party.legalName || 'Đối tác chưa xác định';
+
+                        // Check if party has specific responsibilities in cooperationAgreementData
+                        const matchedResp = selectedContract.cooperationAgreementData?.responsibilities?.find(
+                          (r) => r.party && (r.party.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(r.party.toLowerCase())),
+                        );
+
+                        return (
+                          <div key={party.id || pIdx} className={styles.partyCard}>
+                            <div className={styles.partyHeader}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span className={styles.partyRoleBadge}>{roleLabel}</span>
+                                <span className={styles.partyName}>{name}</span>
+                              </div>
+                              {party.taxCode && (
+                                <span className={styles.partyTaxCode}>MST: {party.taxCode}</span>
+                              )}
+                            </div>
+
+                            <div className={styles.partyDetails}>
+                              {party.representative && (
+                                <div>
+                                  <span style={{ color: '#94a3b8' }}>Đại diện: </span>
+                                  <strong>{party.representative}</strong>
+                                </div>
+                              )}
+                              {party.address && (
+                                <div>
+                                  <span style={{ color: '#94a3b8' }}>Địa chỉ: </span>
+                                  <span>{party.address}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {(matchedResp?.responsibility || party.evidence) && (
+                              <div className={styles.partyQuote}>
+                                <strong>Cam kết / Trách nhiệm: </strong>
+                                {matchedResp?.responsibility || party.evidence}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '14px', background: '#f8fafc', borderRadius: 8, color: '#94a3b8', fontSize: 12 }}>
+                      Chưa ghi nhận thông tin chi tiết các bên ký kết.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={styles.emptyDetailPrompt}>
+              <FileText size={32} />
+              <span>Chọn một hợp đồng từ danh sách bên trái để xem chi tiết</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
