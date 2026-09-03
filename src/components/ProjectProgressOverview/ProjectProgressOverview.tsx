@@ -75,9 +75,8 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
 
       <div className={styles.mainProgressArea}>
         <div className={styles.progressTextHeader}>
-          <span className={styles.percentage}>{safeProgress}%</span>
           {isOkrProject ? (
-            <span className={styles.taskCount}>Overall OKR Progress</span>
+            <span className={styles.taskCount}>Overall Progress</span>
           ) : isZeroTasks ? (
             <span className={styles.taskCount}>No tasks yet</span>
           ) : (
@@ -99,6 +98,7 @@ export const ProjectProgressOverview: React.FC<ProjectProgressOverviewProps> = (
             className={`${styles.progressBarFill} ${isCompleted ? styles.fillCompleted : isOverdue ? styles.fillOverdue : ''}`}
             style={{ width: `${safeProgress}%` }}
           />
+          <span className={styles.progressBarLabel}>{safeProgress}%</span>
         </div>
       </div>
 

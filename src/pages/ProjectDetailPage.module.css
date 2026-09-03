@@ -2074,6 +2074,21 @@
   pointer-events: auto;
 }
 
+.confirmModalContent {
+  position: relative;
+  z-index: 1;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.26);
+  padding: 24px;
+  outline: none;
+  pointer-events: auto;
+}
+
 .nestedConfirmHead {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -2723,7 +2738,7 @@
 }
 
 .companyMemberWorkbenchGrid {
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .financialResearchWorkbenchGrid,

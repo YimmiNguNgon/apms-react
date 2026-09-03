@@ -50,10 +50,11 @@ interface CandidateReviewWorkspaceProps {
   submitLoading?: boolean;
   readOnly?: boolean;
   isResearchNewCompany?: boolean;
+  onDraftRenamed?: (candidate: CandidateResponse) => void;
 }
 
 type TabType = 'Identity' | 'Business' | 'Markets' | 'Products';
-type ReviewFilter = 'ALL' | 'RETURNED' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE';
+type ReviewFilter = 'ALL' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE';
 
 const TAB_FIELD_GROUPS: Record<TabType, Array<{ key: string; label: string }>> = {
   Identity: [
@@ -121,7 +122,8 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   onSubmit,
   submitLoading,
   readOnly,
-  isResearchNewCompany
+  isResearchNewCompany,
+  onDraftRenamed
 }) => {
   const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
   const [pendingUpdates, setPendingUpdates] = useState<Record<string, { reviewedValue: any, reviewStatus: string }>>({});
@@ -129,9 +131,43 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const [activeFilter, setActiveFilter] = useState<ReviewFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleInputValue, setTitleInputValue] = useState('');
+  const [isEditingDraftName, setIsEditingDraftName] = useState(false);
+  const [draftNameInput, setDraftNameInput] = useState('');
+  const [isRenamingDraft, setIsRenamingDraft] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const handleSaveDraftName = async () => {
+    if (!serverCandidate) return;
+    const trimmed = draftNameInput.trim();
+    if (!trimmed) {
+      setRenameError('Draft name cannot be blank');
+      return;
+    }
+    if (trimmed.length > 200) {
+      setRenameError('Draft name cannot exceed 200 characters');
+      return;
+    }
+    try {
+      setIsRenamingDraft(true);
+      setRenameError(null);
+      const res = await candidateApi.renameCandidateDraft(serverCandidate.id, trimmed);
+      const updated = (res as any)?.data || res;
+      setServerCandidate(prev => prev ? ({
+        ...prev,
+        draftName: updated.draftName || trimmed,
+        draftSequence: updated.draftSequence ?? prev.draftSequence,
+      }) : null);
+      setIsEditingDraftName(false);
+      queryClient.invalidateQueries({ queryKey: ["candidate", candidateId] });
+      queryClient.invalidateQueries({ queryKey: ["projectTaskWorkbench", taskId] });
+      if (onDraftRenamed) onDraftRenamed(updated);
+    } catch (err: any) {
+      setRenameError(err.response?.data?.message || err.message || 'Failed to rename draft');
+    } finally {
+      setIsRenamingDraft(false);
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: (flatUpdates: Record<string, any>) => candidateApi.reviewCandidateFields(projectId, candidateId, flatUpdates),
@@ -285,7 +321,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
   const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = [
     { id: 'ALL', label: 'All', count: tabTotalFields },
-    { id: 'RETURNED', label: 'Changes', count: tabReturnedFields },
     { id: 'PENDING', label: 'Pending', count: tabPendingFields },
     { id: 'EDITED', label: 'Edited', count: tabEditedFields },
     { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
@@ -306,7 +341,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     const isPending = !isConfirmed && !isEdited;
     const confidence = field?.confidence;
 
-    if (filterId === 'RETURNED') return isReturnedByManager(field);
     if (filterId === 'PENDING') return isPending;
     if (filterId === 'EDITED') return isEdited;
     if (filterId === 'ISSUES') return field?.validationStatus === 'FAIL';
@@ -349,60 +383,81 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
       <div className={styles.candidateHeader}>
         <div className={styles.candidateHeaderLeft}>
           <span className={styles.candidateEyebrow}>{isRevision ? 'CANDIDATE REVISION' : (isManual ? 'MANUAL CANDIDATE DRAFT' : 'CANDIDATE DRAFT')}</span>
-          {isEditingTitle ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isEditingDraftName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
               <input 
                 autoFocus
-                style={{ fontSize: '1.5rem', fontWeight: 'bold', padding: '4px 8px', margin: '-4px -8px', border: '1px solid #ccc', borderRadius: '4px', width: '300px' }}
-                value={titleInputValue}
-                onChange={(e) => setTitleInputValue(e.target.value)}
+                style={{ fontSize: '1.25rem', fontWeight: 600, padding: '4px 8px', border: '1px solid #3b82f6', borderRadius: '4px', width: '280px' }}
+                value={draftNameInput}
+                onChange={(e) => setDraftNameInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setPendingUpdates(prev => ({
-                      ...prev,
-                      'identity.legalName': {
-                        reviewedValue: titleInputValue,
-                        reviewStatus: 'DRAFT'
-                      }
-                    }));
-                    setIsEditingTitle(false);
-                  } else if (e.key === 'Escape') {
-                    setIsEditingTitle(false);
+                  if (e.key === 'Enter') void handleSaveDraftName();
+                  else if (e.key === 'Escape') {
+                    setIsEditingDraftName(false);
+                    setRenameError(null);
                   }
                 }}
-                onBlur={() => {
-                  setPendingUpdates(prev => ({
-                    ...prev,
-                    'identity.legalName': {
-                      reviewedValue: titleInputValue,
-                      reviewStatus: 'DRAFT'
-                    }
-                  }));
-                  setIsEditingTitle(false);
-                }}
+                disabled={isRenamingDraft}
               />
+              <button
+                className={styles.primaryButton}
+                type="button"
+                onClick={() => void handleSaveDraftName()}
+                disabled={isRenamingDraft || !draftNameInput.trim()}
+                style={{ padding: '4px 10px', fontSize: '13px' }}
+              >
+                {isRenamingDraft ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => {
+                  setIsEditingDraftName(false);
+                  setRenameError(null);
+                }}
+                disabled={isRenamingDraft}
+                style={{ padding: '4px 10px', fontSize: '13px' }}
+              >
+                Cancel
+              </button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2>{(pendingUpdates['identity.legalName']?.reviewedValue !== undefined ? pendingUpdates['identity.legalName']?.reviewedValue : serverCandidate.identity?.legalName) || (isManual ? 'New Company' : 'Unknown Company')}</h2>
-              {isManual && (
+              <h2>{serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft')}</h2>
+              {!readOnly && (serverCandidate.status === 'DRAFT' || serverCandidate.status === 'REVISION_REQUIRED') && (
                 <button 
                   type="button"
-                  title="Edit Company Name"
+                  title="Rename Draft"
                   onClick={() => {
-                    const currentVal = pendingUpdates['identity.legalName']?.reviewedValue !== undefined ? pendingUpdates['identity.legalName']?.reviewedValue : serverCandidate.identity?.legalName;
-                    setTitleInputValue(currentVal || '');
-                    setIsEditingTitle(true);
+                    setDraftNameInput(serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft'));
+                    setRenameError(null);
+                    setIsEditingDraftName(true);
                   }}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}
+                  style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  <Edit2 size={18} />
+                  <Edit2 size={13} />
+                  <span>Rename</span>
                 </button>
               )}
             </div>
           )}
+          {renameError && (
+            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
+              {renameError}
+            </div>
+          )}
           <div className={styles.candidateSubline}>
             ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''}{!isManual && ` \u00B7 ${totalFieldsGlobal} fields extracted`}
+            {serverCandidate.identity?.legalName && (
+              <span style={{ marginLeft: '8px', color: '#475569' }}>
+                &middot; Legal Name: <strong style={{ color: '#1e293b' }}>{serverCandidate.identity.legalName}</strong>
+              </span>
+            )}
+            {serverCandidate.identity?.tradeName && (
+              <span style={{ marginLeft: '8px', color: '#475569' }}>
+                &middot; Trade Name: <strong style={{ color: '#1e293b' }}>{serverCandidate.identity.tradeName}</strong>
+              </span>
+            )}
           </div>
         </div>
         <div className={styles.candidateHeaderRight}>
@@ -498,9 +553,9 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
           <div className={styles.tabContent}>
             {activeTab === 'Identity' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('identity.legalName', 'Legal Name', <EditableScalarField disabled={readOnly || isResearchNewCompany || isManagerAccepted(fieldResults['identity.legalName'])} label="Legal Name" fieldKey="identity.legalName" fieldResult={fieldResults['identity.legalName']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.legalName', 'Legal Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.legalName'])} label="Legal Name" fieldKey="identity.legalName" fieldResult={fieldResults['identity.legalName']} onChange={handleFieldChange} />)}
                 {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
-                {renderReviewField('identity.taxCode', 'Tax Code', <EditableScalarField disabled={readOnly || isResearchNewCompany || isManagerAccepted(fieldResults['identity.taxCode'])} label="Tax Code" fieldKey="identity.taxCode" fieldResult={fieldResults['identity.taxCode']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.taxCode', 'Tax Code', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.taxCode'])} label="Tax Code" fieldKey="identity.taxCode" fieldResult={fieldResults['identity.taxCode']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
                 {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
@@ -541,18 +596,18 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
         <div className={styles.sidebar}>
           <div className={styles.staffReviewPanel}>
-            <h3>Staff Review</h3>
+            <h3>Review</h3>
             
             <div className={styles.staffProgressBlock}>
               <div className={styles.staffProgressTopline}>
                 <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
-                <strong>{progressPercent}%</strong>
               </div>
               <div className={styles.progressBarTrack}>
                 <div 
                   className={styles.progressBarFill} 
                   style={{ width: `${progressPercent}%`, backgroundColor: progressPercent === 100 ? '#16a34a' : '#2563eb' }}
                 />
+                <span className={styles.progressBarLabel}>{progressPercent}%</span>
               </div>
             </div>
 
@@ -562,15 +617,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                   <i className={styles.dotConfirmed}></i>
                   Confirmed
                 </span>
-                <strong>{tabConfirmedFields}</strong>
-              </div>
-              
-              <div className={styles.staffReviewStat}>
-                <span>
-                  <i className={styles.dotEdited}></i>
-                  Edited
-                </span>
-                <strong>{tabEditedFields}</strong>
+                <strong>{resolvedFields}</strong>
               </div>
               
               <div className={styles.staffReviewStat}>
@@ -578,7 +625,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                   <i className={styles.dotPending}></i>
                   Pending
                 </span>
-                <strong>{tabPendingFields}</strong>
+                <strong>{totalFieldsGlobal - resolvedFields}</strong>
               </div>
 
               {tabIssueFields > 0 && (
@@ -601,41 +648,21 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                 </div>
               )}
             </div>
-
-            <div className={styles.sidebarSection}>
-              <h3>
-                Submission Readiness
-              </h3>
-              <p className={isSubmitEnabled ? styles.readyText : ''}>
-                {isSubmitEnabled 
-                  ? '✓ Ready for Manager Review. All required fields have been reviewed.' 
-                  : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still need confirmation.`}
-              </p>
-            </div>
-
-            <div className={styles.sidebarSection}>
-              <h3>
-                Review History
-              </h3>
-              <div className={styles.reviewHistoryEmpty}>
-                <p>No submissions yet.</p>
-                <p>Your first Manager review submission will appear here.</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
 
       <div className={styles.actionBar}>
         <div className={styles.actionBarLeft}>
-          <span className={styles.progressTitle} style={{ fontWeight: '600', color: isSubmitEnabled ? '#16a34a' : '#0f172a' }}>
-            {isSubmitEnabled ? '✓ Ready to submit' : `${resolvedFields} / ${totalFieldsGlobal} resolved`}
-          </span>
-          {unsavedCount > 0 && (
-            <span className={styles.actionBarDirty}>
-              &middot; {unsavedCount} unsaved change{unsavedCount !== 1 ? 's' : ''}
+          {isSubmitEnabled ? (
+            <span className={styles.progressTitle} style={{ fontWeight: '600', color: '#16a34a' }}>
+              ✓ Ready to submit
             </span>
-          )}
+          ) : unsavedCount > 0 ? (
+            <span className={styles.actionBarDirty}>
+              {unsavedCount} unsaved change{unsavedCount !== 1 ? 's' : ''}
+            </span>
+          ) : null}
         </div>
         
         <div className={styles.actionBarRight}>

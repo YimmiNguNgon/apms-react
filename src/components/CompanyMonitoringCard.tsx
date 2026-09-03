@@ -23,6 +23,7 @@ import type {
 } from '../types/domain';
 import { useUser, ROLES } from '../context/UserContext';
 import { CompanyRelationshipChangeModal } from './CompanyMonitoring/CompanyRelationshipChangeModal';
+import { AssignMonitorModal } from './CompanyMonitoring/AssignMonitorModal';
 import { PendingProposalsList } from './CompanyMonitoring/PendingProposalsList';
 import { PendingProfileUpdatesList } from './CompanyMonitoring/PendingProfileUpdatesList';
 import { CompanyRelationshipHistoryList } from './CompanyMonitoring/CompanyRelationshipHistoryList';
@@ -42,9 +43,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [editFrequency, setEditFrequency] = useState<MonitoringFrequency>('MONTHLY');
-  const [editStaffEmail, setEditStaffEmail] = useState<string>('');
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<MonitoringReviewResult>('NO_CHANGE');
@@ -78,68 +77,11 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
   const [staffUsers, setStaffUsers] = useState<any[]>([]);
   const [isSearchingStaff, setIsSearchingStaff] = useState(false);
 
-  useEffect(() => {
-    if (!isEditing) return;
-
-    const timeoutId = setTimeout(async () => {
-        setIsSearchingStaff(true);
-        try {
-          const res = await accountApi.searchAccountsByEmail(editStaffEmail);
-          setStaffUsers(res.data || []);
-        } catch (err) {
-        console.error('Failed to load staff users', err);
-      } finally {
-        setIsSearchingStaff(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [editStaffEmail, isEditing]);
-
-  const canManage = currentUser?.role === ROLES.ADMIN || (currentUser?.role === ROLES.MANAGER && currentUser?.id === responsibleManagerId);
+  const canManage = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.MANAGER;
   const canReview = currentUser?.role === ROLES.ADMIN || 
                    (currentUser?.role === ROLES.STAFF && assignment?.assignedStaffId === currentUser.id);
 
-  const handleAssignOrUpdate = async () => {
-    if (!editStaffEmail) return;
-    try {
-      // The user might have typed a full email or picked from datalist.
-      // We can search locally in staffUsers if we loaded them all.
-      let targetUser = staffUsers.find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
-      
-      // If not found locally, try to query backend just in case
-      if (!targetUser) {
-        const res = await accountApi.searchAccountsByEmail(editStaffEmail);
-        targetUser = (res.data || []).find(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase());
-      }
 
-      if (!targetUser) {
-        setError(t('error_staff_not_found', 'No STAFF found with this email.'));
-        return;
-      }
-      
-      const finalStaffId = targetUser.id;
-
-      if (assignment) {
-        await companyMonitoringApi.updateAssignment(assignment.id, {
-          assignedStaffId: finalStaffId,
-          frequency: editFrequency
-        });
-      } else {
-        await companyMonitoringApi.assignMonitor({
-          companyProfileId,
-          assignedStaffId: finalStaffId,
-          frequency: editFrequency
-        });
-      }
-      setIsEditing(false);
-      fetchAssignment();
-    } catch (err: any) {
-      console.error(err);
-      const errorMessage = err?.message || 'Failed to save assignment.';
-      setError(t('error_saving_assignment', { defaultValue: errorMessage }) as string);
-    }
-  };
 
   const handleToggleStatus = async () => {
     if (!assignment) return;
@@ -185,6 +127,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'ON_SCHEDULE':
       case 'UP_TO_DATE': return 'var(--color-success-dark, #059669)';
       case 'DUE': return 'var(--color-warning-dark, #D97706)';
       case 'OVERDUE': return 'var(--color-error-dark, #DC2626)';
@@ -195,6 +138,7 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
   const getStatusBg = (status: string) => {
     switch (status) {
+      case 'ON_SCHEDULE':
       case 'UP_TO_DATE': return 'var(--color-success-light, #ECFDF5)';
       case 'DUE': return 'var(--color-warning-light, #FFFBEB)';
       case 'OVERDUE': return 'var(--color-error-light, #FEF2F2)';
@@ -214,16 +158,12 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
           <Bell className={styles.titleIcon} size={18} />
           <h3 className={styles.title}>{t('monitoring_title', 'Continuous Monitoring')}</h3>
         </div>
-        {assignment && canManage && !isEditing && (
+        {assignment && canManage && (
           <div className={styles.actions}>
             <button onClick={handleToggleStatus} className={styles.iconButton} title={assignment.assignmentStatus === 'ACTIVE' ? 'Pause' : 'Resume'}>
               {assignment.assignmentStatus === 'ACTIVE' ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
             </button>
-            <button onClick={() => {
-              setIsEditing(true);
-              setEditFrequency(assignment.frequency);
-              setEditStaffEmail(assignment.assignedStaffEmail || '');
-            }} className={styles.iconButton} title="Edit">
+            <button onClick={() => setIsAssignModalOpen(true)} className={styles.iconButton} title="Edit">
               <Edit2 size={16} />
             </button>
           </div>
@@ -232,111 +172,53 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
       {error && <div className={styles.errorBanner}>{error}</div>}
 
-      {!assignment && !isEditing && (
+      {!assignment && (
         <div className={styles.emptyState}>
           <p className={styles.emptyText}>{t('no_assignment', 'This company is not currently being monitored.')}</p>
           {canManage && (
-            <button onClick={() => setIsEditing(true)} className={styles.primaryButton}>
+            <button onClick={() => setIsAssignModalOpen(true)} className={styles.primaryButton}>
               {t('assign_monitor', 'Assign Monitor')}
             </button>
           )}
         </div>
       )}
 
-      {isEditing && (
-        <div className={styles.editForm}>
-          <div className={styles.formGroup} style={{ position: 'relative' }}>
-            <label>{t('staff_email', 'Staff Email')}</label>
-            <input 
-              type="email"
-              value={editStaffEmail} 
-              onChange={e => setEditStaffEmail(e.target.value)}
-              onFocus={() => {
-                if (staffUsers.length > 0) {
-                  // Only show if there's something to suggest
-                  // We'll manage visibility via css
-                }
-              }}
-              placeholder="e.g. staff@apms.com"
-              className={styles.input}
-            />
-            {isEditing && editStaffEmail.trim().length > 0 && staffUsers.filter(u => u.email.toLowerCase() === editStaffEmail.trim().toLowerCase()).length === 0 && (
-              <div className={styles.suggestionPanel}>
-                <div className={styles.suggestionHead}>
-                  <span>Suggestions</span>
-                  {isSearchingStaff && <small>Loading...</small>}
-                </div>
-                {!isSearchingStaff && staffUsers.filter(u => u.email.toLowerCase().includes(editStaffEmail.toLowerCase()) || (u.fullName && u.fullName.toLowerCase().includes(editStaffEmail.toLowerCase()))).length === 0 && (
-                  <div className={styles.suggestionEmpty}>No account found for this email.</div>
-                )}
-                {staffUsers
-                  .filter(u => u.email.toLowerCase().includes(editStaffEmail.toLowerCase()) || (u.fullName && u.fullName.toLowerCase().includes(editStaffEmail.toLowerCase())))
-                  .map((account) => (
-                    <button
-                      key={account.id}
-                      type="button"
-                      className={styles.suggestionItem}
-                      onMouseDown={() => setEditStaffEmail(account.email)}
-                    >
-                      <span className={styles.suggestionAvatar}>{(account.fullName || 'No').slice(0, 2).toUpperCase()}</span>
-                      <span>
-                        <strong>{account.fullName || 'No Name'}</strong>
-                        <small>{account.email} - {account.roles?.[0] || 'BUSINESS_DEVELOPMENT_STAFF'}</small>
-                      </span>
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-          <div className={styles.formGroup}>
-            <label>{t('frequency', 'Frequency')}</label>
-            <select 
-              value={editFrequency} 
-              onChange={e => setEditFrequency(e.target.value as MonitoringFrequency)}
-              className={styles.input}
-            >
-              <option value="MONTHLY">{t('monthly', 'Monthly')}</option>
-              <option value="QUARTERLY">{t('quarterly', 'Quarterly')}</option>
-              <option value="SEMI_ANNUALLY">{t('semi_annually', 'Semi-Annually')}</option>
-            </select>
-          </div>
-          <div className={styles.formActions}>
-            <button onClick={handleAssignOrUpdate} className={styles.primaryButton} disabled={!editStaffEmail}>
-              <Save size={14} /> {t('save', 'Save')}
-            </button>
-            <button onClick={() => setIsEditing(false)} className={styles.secondaryButton}>
-              <X size={14} /> {t('cancel', 'Cancel')}
-            </button>
-          </div>
-        </div>
+      {isAssignModalOpen && (
+        <AssignMonitorModal
+          isOpen={isAssignModalOpen}
+          onClose={() => setIsAssignModalOpen(false)}
+          onSuccess={fetchAssignment}
+          selectedCompany={{ id: companyProfileId } as any}
+          selectedAssignment={assignment}
+        />
       )}
 
-      {assignment && !isEditing && (
+      {assignment && (
         <div className={styles.assignmentDetails}>
           <div className={styles.statusBadge} style={{ 
             color: getStatusColor(assignment.displayStatus), 
             backgroundColor: getStatusBg(assignment.displayStatus) 
           }}>
-            {assignment.displayStatus === 'UP_TO_DATE' && <CheckCircle size={14} />}
+            {(assignment.displayStatus === 'ON_SCHEDULE' || assignment.displayStatus === 'UP_TO_DATE') && <CheckCircle size={14} />}
             {assignment.displayStatus === 'DUE' && <AlertCircle size={14} />}
             {assignment.displayStatus === 'OVERDUE' && <AlertCircle size={14} />}
             {assignment.displayStatus === 'PAUSED' && <PauseCircle size={14} />}
-            <span>{assignment.displayStatus.replace(/_/g, ' ')}</span>
+            <span>{assignment.displayStatus === 'ON_SCHEDULE' || assignment.displayStatus === 'UP_TO_DATE' ? 'On Schedule' : assignment.displayStatus === 'DUE' ? 'Due' : assignment.displayStatus === 'OVERDUE' ? 'Overdue' : assignment.displayStatus === 'PAUSED' ? 'Paused' : assignment.displayStatus.replace(/_/g, ' ')}</span>
           </div>
 
           <div className={styles.infoGrid}>
             <div className={styles.infoItem}>
               <User size={14} className={styles.infoIcon} />
               <div className={styles.infoContent}>
-                <span className={styles.infoLabel}>{t('assignee', 'Assignee')}</span>
+                <span className={styles.infoLabel}>{t('assigned_staff', 'Assigned Staff')}</span>
                 <span className={styles.infoValue}>{assignment.assignedStaffName}</span>
               </div>
             </div>
             <div className={styles.infoItem}>
               <Clock size={14} className={styles.infoIcon} />
               <div className={styles.infoContent}>
-                <span className={styles.infoLabel}>{t('frequency', 'Frequency')}</span>
-                <span className={styles.infoValue}>{assignment.frequency}</span>
+                <span className={styles.infoLabel}>{t('review_cycle', 'Review Cycle')}</span>
+                <span className={styles.infoValue}>{assignment.frequency === 'SEMI_ANNUALLY' ? 'Semi-annually' : assignment.frequency.charAt(0) + assignment.frequency.slice(1).toLowerCase()}</span>
               </div>
             </div>
             <div className={styles.infoItem}>
@@ -344,7 +226,16 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
               <div className={styles.infoContent}>
                 <span className={styles.infoLabel}>{t('next_review', 'Next Review')}</span>
                 <span className={styles.infoValue}>
-                  {new Date(assignment.nextReviewAt).toLocaleDateString()}
+                  {assignment.nextReviewAt ? new Date(assignment.nextReviewAt).toLocaleDateString('en-GB') : '—'}
+                </span>
+              </div>
+            </div>
+            <div className={styles.infoItem}>
+              <AlertCircle size={14} className={styles.infoIcon} style={{ color: getStatusColor(assignment.displayStatus) }} />
+              <div className={styles.infoContent}>
+                <span className={styles.infoLabel}>{t('status', 'Status')}</span>
+                <span className={styles.infoValue} style={{ color: getStatusColor(assignment.displayStatus) }}>
+                  {assignment.assignmentStatus === 'PAUSED' ? 'Paused' : assignment.displayStatus === 'OVERDUE' ? 'Overdue' : 'Active'}
                 </span>
               </div>
             </div>

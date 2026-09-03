@@ -32,6 +32,13 @@ export const candidateApi = {
     );
   },
 
+  renameCandidateDraft: async (candidateId: string, draftName: string) => {
+    return api.patch<CandidateResponse>(
+      `/candidates/${candidateId}/rename`,
+      { draftName }
+    );
+  },
+
   deleteCandidate: async (candidateId: string) => {
     return api.delete<void>(`/candidates/${candidateId}`);
   },

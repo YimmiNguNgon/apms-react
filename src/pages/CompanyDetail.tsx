@@ -5,7 +5,6 @@ import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse } from '../types/domain';
 import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
-import { CompanyMonitoringCard } from '../components/CompanyMonitoringCard';
 import {
   ListingTabBar,
   type ListingTabId,
@@ -15,7 +14,9 @@ import FinancialsTab from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab from './companyDetail/DocumentsTab';
 import ConfidentialNewsTab from './companyDetail/ConfidentialNewsTab';
-import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft } from 'lucide-react';
+import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3 } from 'lucide-react';
+import { ProfileEditModal } from '../components/profile/ProfileEditModal';
+import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
 
 interface CompanyDetailProps {
   companyId?: string;
@@ -106,6 +107,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false);
   const contextProjectIdStr = localStorage.getItem('apms-context-project');
   const contextProjectId = contextProjectIdStr ? parseInt(contextProjectIdStr, 10) : null;
 
@@ -273,12 +276,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const member = contextProject.members?.find(m => m.accountId === currentUser.id);
     return member?.projectRole || null;
   }, [contextProject, currentUser]);
-
-  const canViewMonitoringPanel = useMemo(() => {
-    if (!currentUser) return false;
-    if (currentUser.role === ROLES.OWNER) return false;
-    return currentUser.role === ROLES.ADMIN || currentUser.role === ROLES.MANAGER;
-  }, [currentUser]);
 
   const canToggleVisibility = 
     !!contextProjectId &&
@@ -561,10 +558,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               companyProfileId={relationshipClosenessProfileId}
               currentUserRole={currentUser?.role}
             />
-          )}
-
-          {canViewMonitoringPanel && (
-            <CompanyMonitoringCard companyProfileId={profile?.id || resolvedId} setActivePage={setActivePage} />
           )}
 
           {/* Quick Info Summary */}
@@ -1056,7 +1049,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     setActivePage('project-detail');
                   } else if (isOwnerProfile && currentUser) {
                     setActivePage(`${currentUser.role}-dashboard`);
-                  } else if (currentUser?.role === ROLES.STAFF) {
+                  } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
                     setActivePage('staff-dashboard');
                   } else {
                     const backPage = localStorage.getItem('apms-back-page');
@@ -1085,11 +1078,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <ArrowLeft size={14} />
               {contextProjectIdStr 
                 ? 'Back to Project'
-                : (isOwnerProfile || currentUser?.role === ROLES.STAFF) 
-                  ? 'Back to Dashboard' 
-                  : localStorage.getItem('apms-back-page') === 'my-companies'
-                    ? 'Back to My Companies'
-                    : 'Back to Company Profiles'}
+                : localStorage.getItem('apms-back-page') === 'staff-monitoring'
+                  ? 'Back to Staff Monitoring'
+                  : (isOwnerProfile || (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring')) 
+                    ? 'Back to Dashboard' 
+                    : localStorage.getItem('apms-back-page') === 'company-monitoring'
+                      ? 'Back to Monitoring Management'
+                      : localStorage.getItem('apms-back-page') === 'my-companies'
+                        ? 'Back to My Companies'
+                        : 'Back to Company Profiles'}
             </button>
             <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
             <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1191,8 +1188,76 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {profile.business.industries[0]}
                 </span>
               )}
+              {profile && (
+                <span
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    color: '#15803D',
+                    fontSize: '0.62rem',
+                    fontWeight: 700,
+                    padding: '1px 7px',
+                    borderRadius: '999px',
+                    fontFamily: 'monospace',
+                  }}
+                  title="Official Company Profile Version"
+                >
+                  {profile.versionLabel || (profile.majorVersion ? `v${profile.majorVersion}.${String(profile.revision ?? 0).padStart(2, '0')}` : (profile.version ? `v${profile.version}` : 'v1.00'))}
+                </span>
+              )}
               <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 
+                {/* Version History Button */}
+                {profile && (
+                  <button
+                    type="button"
+                    onClick={() => setIsVersionHistoryModalOpen(true)}
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #CBD5E1',
+                      color: '#334155',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                    title="View Profile Version History"
+                  >
+                    <History size={12} />
+                    Version History
+                  </button>
+                )}
+
+                {/* Direct Edit Button for authorized Manager / Admin */}
+                {profile && Boolean(profile.canEditProfile) && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditModalOpen(true)}
+                    style={{
+                      background: '#2563EB',
+                      border: 'none',
+                      color: '#FFFFFF',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
+                    }}
+                    title="Directly Edit Official Company Profile"
+                  >
+                    <Edit3 size={12} />
+                    Edit Profile
+                  </button>
+                )}
+
                 {(() => {
                   const isHidden = profile.isHidden ?? false;
                   const isApproved = profile.reviewStatus === 'APPROVED';
@@ -1251,6 +1316,30 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     </div>
                   );
                 })()}
+
+                {(() => {
+                  const staffAssignmentIdStr = localStorage.getItem('apms-staff-assignment-id');
+                  const isFromStaffMonitoring = localStorage.getItem('apms-back-page') === 'staff-monitoring';
+                  const showStaffProposeButton = currentUser?.role === ROLES.STAFF && isFromStaffMonitoring && staffAssignmentIdStr;
+
+                  if (!showStaffProposeButton) return null;
+
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      style={{ marginLeft: '12px' }}
+                      onClick={() => {
+                        localStorage.setItem('apms-open-review-assignment', staffAssignmentIdStr!);
+                        if (setActivePage) {
+                          setActivePage('staff-monitoring');
+                        }
+                      }}
+                    >
+                      Edit / Propose Update
+                    </button>
+                  );
+                })()}
               </span>
             </div>
           </div>
@@ -1262,6 +1351,25 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId={resolvedId} userRole={currentUser?.role} isOwnerProfile={isOwnerProfile} isDrawerMode={isDrawerMode} />
 
         {renderTabContent()}
+
+        {profile && (
+          <>
+            <ProfileEditModal
+              profile={profile}
+              isOpen={isEditModalOpen}
+              onClose={() => setIsEditModalOpen(false)}
+              onSuccess={(updated) => {
+                setProfile(updated);
+                setReloadTrigger(prev => prev + 1);
+              }}
+            />
+            <ProfileVersionHistoryModal
+              profile={profile}
+              isOpen={isVersionHistoryModalOpen}
+              onClose={() => setIsVersionHistoryModalOpen(false)}
+            />
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { api } from '../services/api';
+import { api, API_BASE_URL, STORAGE_KEYS } from '../services/api';
 import type { PageResponse } from '../services/api';
 import type {
   CompanyMonitoringAssignmentRequest,
@@ -56,10 +56,52 @@ export const companyMonitoringApi = {
     return response.data;
   },
 
-  createMonitoringProposal: async (companyProfileId: string, changeSummary: string): Promise<{ id: string }> => {
+  uploadEvidenceImage: async (file: File): Promise<{ evidenceImageId: string; originalFileName: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<{ evidenceImageId: string; originalFileName: string }>(
+      '/profile-update-proposals/monitoring/evidence/upload', 
+      formData
+    );
+    return response.data;
+  },
+
+  getMonitoringEvidenceBlob: async (imageId: string): Promise<Blob> => {
+    const token =
+      localStorage.getItem(STORAGE_KEYS.accessToken) ||
+      localStorage.getItem(STORAGE_KEYS.legacyAccessToken);
+
+    const headers = new Headers();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/profile-update-proposals/monitoring/evidence/${imageId}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = new Error(`Failed to load evidence image: ${response.statusText}`) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+
+    return response.blob();
+  },
+
+  createMonitoringProposal: async (companyProfileId: string, changeSummary: string, changedFieldPaths?: string[], fieldEvidence?: any[], proposedIdentity?: any, proposedContact?: any, proposedBusiness?: any, proposedCompanySize?: any, proposedInsights?: any, proposedCompanyMembers?: any[]): Promise<{ id: string }> => {
     const response = await api.post<{ id: string }>('/profile-update-proposals/monitoring', {
       companyProfileId,
-      changeSummary
+      changeSummary,
+      changedFieldPaths,
+      fieldEvidence,
+      proposedIdentity,
+      proposedContact,
+      proposedBusiness,
+      proposedCompanySize,
+      proposedInsights,
+      proposedCompanyMembers
     });
     return response.data;
   },
@@ -81,16 +123,25 @@ export const companyMonitoringApi = {
   },
 
   approveProfileUpdateProposal: async (
-    id: string
+    id: string,
+    reviewComment?: string
   ): Promise<CompanyProfileUpdateProposalResponse> => {
-    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/approve`);
+    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/approve`, { reviewComment });
     return response.data;
   },
 
   rejectProfileUpdateProposal: async (
+    id: string,
+    reviewComment?: string
+  ): Promise<CompanyProfileUpdateProposalResponse> => {
+    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/reject`, { reviewComment });
+    return response.data;
+  },
+
+  withdrawProfileUpdateProposal: async (
     id: string
   ): Promise<CompanyProfileUpdateProposalResponse> => {
-    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/reject`);
+    const response = await api.patch<CompanyProfileUpdateProposalResponse>(`/profile-update-proposals/${id}/withdraw`);
     return response.data;
   },
 

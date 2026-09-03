@@ -695,13 +695,13 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             <div className={styles.progressBarWrap}>
               <div className={styles.managerProgressLabels}>
                 <span>{stats.reviewed} / {stats.total} reviewed</span>
-                <span>{stats.percentage}%</span>
               </div>
               <div className={styles.progressBarTrack}>
                 <div
                   className={styles.progressBarFill}
                   style={{ width: `${stats.percentage}%` }}
                 />
+                <span className={styles.progressBarLabel}>{stats.percentage}%</span>
               </div>
             </div>
 

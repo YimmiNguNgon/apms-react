@@ -1465,9 +1465,9 @@ export const AITrainingMode: React.FC = () => {
                 <div className="workspace-progress">
                   <div className="workspace-progress-bar">
                     <div style={{ width: `${progressPercent}%` }} />
+                    <span className="workspace-progress-label">{progressPercent}%</span>
                   </div>
                   <div className="workspace-progress-meta">
-                    <span>{progressPercent}% through the assessment</span>
                     <span>{questions.length - answeredCount} unanswered</span>
                   </div>
                 </div>
@@ -1640,8 +1640,8 @@ export const LearningCenter: React.FC = () => {
                   <div className="workspace-progress">
                     <div className="workspace-progress-bar compact">
                       <div style={{ width: `${course.progress || 0}%`, background: course.progress === 100 ? '#10B981' : '#2563EB' }} />
+                      <span className="workspace-progress-label">{course.progress || 0}%</span>
                     </div>
-                    <span>{course.progress || 0}%</span>
                   </div>
                   <button className="btn btn-primary" style={{ width: '100%' }}>
                     {!course.progress ? 'Start' : course.progress === 100 ? 'Review' : 'Continue'}
