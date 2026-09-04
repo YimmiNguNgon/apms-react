@@ -95,6 +95,11 @@ export const contractResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/fields/${fieldPath}/items/${itemId}/verify`
     ).then((res) => res.data),
 
+  verifyAllContractFields: (projectId: number, taskId: number, contractId: string): Promise<ContractResearchResponse> =>
+    api.post<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/verify-all`
+    ).then((res) => res.data),
+
   submitResearch: (projectId: number, taskId: number, contractEntryIds: string[], note?: string): Promise<ContractResearchResponse> =>
     api.post<ContractResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/contract-research/submit`,

@@ -18,7 +18,9 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Trash2,
   X,
+  XCircle,
 } from 'lucide-react';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { API_BASE_URL, api } from '../../services/api';
@@ -63,6 +65,7 @@ type PackageCounts = {
   selected: number;
   metrics: number;
   needsReview: number;
+  unverified: number;
 };
 
 type UploadedDocumentResponse = {
@@ -121,9 +124,24 @@ const formatMetricNumber = (value?: number | string | null) => {
   return String(value);
 };
 
-const metricBelongsToReport = (metric: FinancialMetricResponse, report: FinancialReportEntry) =>
-  metric.source?.reportEntryId === report.id ||
-  (!metric.source?.reportEntryId && metric.source?.documentId === report.documentId);
+const metricBelongsToReport = (metric: FinancialMetricResponse, report: FinancialReportEntry) => {
+  if (metric.source?.reportEntryId) {
+    return metric.source.reportEntryId === report.id;
+  }
+  if (metric.source?.documentId && report.documentId) {
+    return metric.source.documentId === report.documentId;
+  }
+  if (metric.period && report.reportingPeriod) {
+    const periodMatch = !metric.period.period || !report.reportingPeriod.period ||
+      metric.period.period.trim().toUpperCase() === report.reportingPeriod.period.trim().toUpperCase();
+    const yearMatch = !metric.period.year || !report.reportingPeriod.year ||
+      String(metric.period.year) === String(report.reportingPeriod.year);
+    if (periodMatch && yearMatch) {
+      return true;
+    }
+  }
+  return false;
+};
 
 const metricValueParts = (metric: FinancialMetricResponse) => {
   const value = metric.normalizedValue ?? metric.rawValue ?? metric.value;
@@ -253,12 +271,22 @@ function SelectedReportSummary({
   report,
   metricsCount,
   canEdit,
+  isAnyExtracting = false,
   onExtract,
+  onCancel,
+  isCancelling = false,
+  onViewPdf,
+  openingPdfId,
 }: {
   report: FinancialReportEntry;
   metricsCount: number;
   canEdit: boolean;
+  isAnyExtracting?: boolean;
   onExtract: (reportId: string) => void;
+  onCancel?: (reportId: string) => void;
+  isCancelling?: boolean;
+  onViewPdf?: (documentId: string) => void;
+  openingPdfId?: string | null;
 }) {
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isFailed = report.extractionStatus === 'FAILED';
@@ -276,9 +304,46 @@ function SelectedReportSummary({
             <span>{formatDate(report.publicationDate)}</span>
           </div>
         </div>
-        <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
-          {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {report.documentId && onViewPdf && (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              disabled={openingPdfId === report.documentId}
+              onClick={() => onViewPdf(report.documentId)}
+            >
+              {openingPdfId === report.documentId ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
+              {openingPdfId === report.documentId ? 'Opening PDF...' : 'View Source PDF'}
+            </button>
+          )}
+          {isExtracting && canEdit && onCancel && (
+            <button
+              type="button"
+              onClick={() => onCancel(report.id)}
+              disabled={isCancelling}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '5px 12px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 6,
+                color: '#b91c1c',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: isCancelling ? 'not-allowed' : 'pointer',
+              }}
+              title="Hủy quá trình trích xuất AI"
+            >
+              {isCancelling ? <Loader2 size={12} className={styles.spinIcon} /> : <XCircle size={13} />}
+              {isCancelling ? 'Đang hủy...' : 'Hủy trích xuất'}
+            </button>
+          )}
+          <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
+            {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
+          </span>
+        </div>
       </div>
 
       {report.reviewStatus === 'CHANGES_REQUESTED' && (
@@ -302,12 +367,21 @@ function SelectedReportSummary({
           progress={report.extractionProgress}
           startedAt={report.extractionStartedAt}
           errorMessage={report.extractionErrorMessage}
+          onCancel={onCancel ? () => onCancel(report.id) : undefined}
+          isCancelling={isCancelling}
         />
       ) : (
         <div className={styles.inlineEmpty} style={{ flexDirection: 'column', gap: 12, minHeight: 180 }}>
           <Sparkles size={24} color="#2563eb" />
           <span>Click below to run AI extraction and generate financial metrics for this report.</span>
-          <button className={styles.primaryButton} type="button" onClick={() => onExtract(report.id)} disabled={!canEdit}>
+          <button
+            className={styles.primaryButton}
+            type="button"
+            onClick={() => onExtract(report.id)}
+            disabled={!canEdit || isAnyExtracting}
+            title={isAnyExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
+            style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+          >
             <Sparkles size={14} />
             {isFailed ? 'Retry Extract' : 'Extract Financial Data'}
           </button>
@@ -334,11 +408,18 @@ function ExtractedMetricsPanel({
   onCloseEvidence,
   onFilterChange,
   canEdit,
+  isAnyExtracting = false,
   onReExtract,
   onVerifyMetric,
+  onUnverifyMetric,
+  onVerifyAll,
+  verifyingAll,
+  unverifyingMetricId,
   onEditMetric,
+  onDeleteMetric,
   onAddManualMetric,
   onViewPdf,
+  openingPdfId,
 }: {
   report: FinancialReportEntry;
   metrics: FinancialMetricResponse[];
@@ -346,15 +427,22 @@ function ExtractedMetricsPanel({
   metricFilter: MetricFilter;
   evidenceOpen: boolean;
   verifyingMetricId?: string | null;
+  unverifyingMetricId?: string | null;
   onSelectMetric: (metricId: string) => void;
   onCloseEvidence: () => void;
   onFilterChange: (filter: MetricFilter) => void;
   canEdit: boolean;
+  isAnyExtracting?: boolean;
   onReExtract: (reportId: string) => void;
   onVerifyMetric: (metricId: string) => void;
+  onUnverifyMetric?: (metricId: string) => void;
+  onVerifyAll?: (reportId: string) => void;
+  verifyingAll?: boolean;
   onEditMetric: (metric: FinancialMetricResponse) => void;
+  onDeleteMetric?: (metric: FinancialMetricResponse) => void;
   onAddManualMetric: () => void;
   onViewPdf: (documentId: string) => void;
+  openingPdfId?: string | null;
 }) {
   const isApproved = report.reviewStatus === 'APPROVED';
   const canEditThisReport = canEdit && !isApproved;
@@ -462,15 +550,15 @@ function ExtractedMetricsPanel({
             type="button"
             className={styles.secondaryButton}
             style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 600 }}
-            onClick={async () => {
-              const unverified = metrics.filter(m => m.verificationStatus !== 'VERIFIED');
-              for (const m of unverified) {
-                await onVerifyMetric(m.id);
-              }
-            }}
+            onClick={() => onVerifyAll?.(report.id)}
+            disabled={verifyingAll}
           >
-            <CheckCircle2 size={13} color="#2563eb" />
-            Xác thực tất cả
+            {verifyingAll ? (
+              <Loader2 size={13} className={styles.spinIcon} />
+            ) : (
+              <CheckCircle2 size={13} color="#2563eb" />
+            )}
+            {verifyingAll ? 'Đang xác thực...' : 'Xác thực tất cả'}
           </button>
         )}
       </div>
@@ -493,14 +581,30 @@ function ExtractedMetricsPanel({
         </div>
 
         <div className={styles.toolbarActions}>
-          <button className={styles.secondaryButton} type="button" onClick={() => onViewPdf(report.documentId)}>
-            <FileText size={14} />
-            View Source PDF
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            disabled={openingPdfId === report.documentId}
+            onClick={() => onViewPdf(report.documentId)}
+          >
+            {openingPdfId === report.documentId ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
+            {openingPdfId === report.documentId ? 'Opening PDF...' : 'View Source PDF'}
           </button>
           {canEditThisReport && (
             <>
-              <button className={styles.secondaryButton} type="button" onClick={() => onReExtract(report.id)}>
-                <RefreshCw size={14} />
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                disabled={isAnyExtracting}
+                title={isAnyExtracting ? 'Đang có tài liệu sử dụng AI trích xuất. Vui lòng đợi hoàn tất.' : undefined}
+                onClick={() => onReExtract(report.id)}
+                style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+              >
+                {report.extractionStatus === 'EXTRACTING' ? (
+                  <Loader2 size={14} className={styles.spinIcon} />
+                ) : (
+                  <RefreshCw size={14} />
+                )}
                 Re-extract
               </button>
               <button
@@ -574,37 +678,67 @@ function ExtractedMetricsPanel({
                           <button
                             className={isVerified ? styles.verifiedActionTag : styles.verifyActionBtn}
                             type="button"
-                            disabled={isVerified || !canEditThisReport || verifyingMetricId === metric.id}
+                            disabled={!canEditThisReport || verifyingMetricId === metric.id || unverifyingMetricId === metric.id}
                             onClick={(event) => {
                               event.stopPropagation();
-                              onVerifyMetric(metric.id);
+                              if (isVerified) {
+                                onUnverifyMetric?.(metric.id);
+                              } else {
+                                onVerifyMetric(metric.id);
+                              }
                             }}
+                            title={isVerified ? 'Hủy xác thực chỉ số này' : 'Xác thực chỉ số này'}
                           >
                             {isVerified ? (
                               <>
-                                <CheckCircle2 size={13} />
-                                Verified
+                                <RotateCcw size={12} />
+                                {unverifyingMetricId === metric.id ? 'Đang hủy...' : 'Hủy xác thực'}
                               </>
                             ) : verifyingMetricId === metric.id ? (
-                              'Saving...'
+                              'Đang lưu...'
                             ) : (
-                              'Verify'
+                              <>
+                                <Check size={12} />
+                                Xác thực
+                              </>
                             )}
                           </button>
                           {canEditThisReport && (
-                            <button
-                              className={styles.secondaryButton}
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onEditMetric(metric);
-                              }}
-                              style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
-                              title="Edit metric values"
-                            >
-                              <Edit3 size={12} />
-                              Edit
-                            </button>
+                            <>
+                              <button
+                                className={styles.secondaryButton}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onEditMetric(metric);
+                                }}
+                                style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                                title="Chỉnh sửa chỉ số"
+                              >
+                                <Edit3 size={12} />
+                                Edit
+                              </button>
+                              <button
+                                className={styles.secondaryButton}
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onDeleteMetric?.(metric);
+                                }}
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
+                                  height: '26px',
+                                  color: '#ef4444',
+                                  borderColor: '#fecaca',
+                                  background: '#fef2f2',
+                                }}
+                                title="Xóa chỉ số này"
+                              >
+                                <Trash2 size={12} />
+                                Xóa
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -643,6 +777,57 @@ function ExtractedMetricsPanel({
                                 <strong>{metric.confidence != null ? `${Math.round(metric.confidence * 100)}%` : 'N/A'}</strong>
                               </div>
                             </div>
+                            {canEditThisReport && (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                                <button
+                                  type="button"
+                                  className={styles.secondaryButton}
+                                  style={{
+                                    color: '#ef4444',
+                                    borderColor: '#fecaca',
+                                    background: '#fef2f2',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '4px 10px',
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                    borderRadius: '6px',
+                                    fontWeight: 600,
+                                  }}
+                                  onClick={() => onDeleteMetric?.(metric)}
+                                  title="Xóa chỉ số này"
+                                >
+                                  <Trash2 size={13} />
+                                  Xóa chỉ số
+                                </button>
+                                <button
+                                  type="button"
+                                  className={isVerified ? styles.verifiedActionTag : styles.verifyActionBtn}
+                                  disabled={verifyingMetricId === metric.id || unverifyingMetricId === metric.id}
+                                  onClick={() => {
+                                    if (isVerified) {
+                                      onUnverifyMetric?.(metric.id);
+                                    } else {
+                                      onVerifyMetric(metric.id);
+                                    }
+                                  }}
+                                  title={isVerified ? 'Hủy xác thực chỉ số này' : 'Xác thực chỉ số này'}
+                                >
+                                  {isVerified ? (
+                                    <>
+                                      <RotateCcw size={12} />
+                                      {unverifyingMetricId === metric.id ? 'Đang hủy...' : 'Hủy xác thực'}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check size={12} />
+                                      {verifyingMetricId === metric.id ? 'Đang lưu...' : 'Xác thực'}
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </aside>
                         </td>
                       </tr>
@@ -663,11 +848,15 @@ function FinancialReportsPanel({
   metrics,
   selectedReportId,
   canEdit,
+  isAnyExtracting = false,
   onCreate,
   onSelect,
   onExtract,
+  onCancelExtract,
+  isCancellingExtract = false,
   onDelete,
   onViewPdf,
+  openingPdfId,
   selectedReportIdsForSubmission,
   eligibleReportIds,
   onToggleSelection,
@@ -676,11 +865,15 @@ function FinancialReportsPanel({
   metrics: FinancialMetricResponse[];
   selectedReportId?: string | null;
   canEdit: boolean;
+  isAnyExtracting?: boolean;
   onCreate: () => void;
   onSelect: (reportId: string) => void;
   onExtract: (reportId: string) => void;
+  onCancelExtract?: (reportId: string) => void;
+  isCancellingExtract?: boolean;
   onDelete: (reportId: string) => void;
   onViewPdf: (documentId: string) => void;
+  openingPdfId?: string | null;
   selectedReportIdsForSubmission: string[];
   eligibleReportIds: string[];
   onToggleSelection: (reportId: string) => void;
@@ -704,7 +897,13 @@ function FinancialReportsPanel({
           </div>
           <p>Add documents & extract data</p>
         </div>
-        <button className={styles.primaryButton} type="button" onClick={onCreate} disabled={!canEdit}>
+        <button
+          className={styles.primaryButton}
+          type="button"
+          onClick={onCreate}
+          disabled={!canEdit || isAnyExtracting}
+          title={isAnyExtracting ? 'Vui lòng đợi quá trình AI hoàn tất' : undefined}
+        >
           <Plus size={14} />
           Create Report
         </button>
@@ -731,11 +930,15 @@ function FinancialReportsPanel({
                       selectedForSubmission={selectedSubmissionSet.has(report.id)}
                       isEligible={eligibleSubmissionSet.has(report.id)}
                       canEdit={canEdit}
+                      isAnyExtracting={isAnyExtracting}
                       onSelect={onSelect}
                       onToggleSelection={onToggleSelection}
                       onExtract={onExtract}
+                      onCancelExtract={onCancelExtract}
+                      isCancellingExtract={isCancellingExtract}
                       onDelete={onDelete}
                       onViewPdf={onViewPdf}
+                      isOpeningPdf={openingPdfId === report.documentId}
                     />
                   );
                 })}
@@ -769,22 +972,22 @@ function FinancialPackageSummary({
   recalling?: boolean;
   onSubmit: () => void;
 }) {
-  const isWarning = counts.needsReview > 0;
+  const isWarning = counts.unverified > 0 || counts.needsReview > 0;
   const isSuccess = !isWarning && counts.selected > 0 && counts.metrics > 0;
 
   const label = submitted
     ? (canRecall
-        ? `Submitted to Manager • ${counts.selected || counts.reports} report(s) waiting for Manager review.`
-        : 'This package has been submitted and is currently under Manager review.')
+        ? `Đã nộp cho Manager • ${counts.selected || counts.reports} báo cáo đang chờ phê duyệt.`
+        : 'Gói nghiên cứu tài chính đã được nộp và đang chờ Manager phê duyệt.')
     : allApproved
-      ? 'All financial reports in this task have been approved by manager.'
+      ? 'Tất cả các báo cáo tài chính đã được Manager phê duyệt.'
     : counts.selected === 0
-      ? 'Select at least one extracted report to submit.'
+      ? 'Chọn ít nhất một báo cáo đã trích xuất để nộp.'
     : counts.metrics === 0
-      ? 'Extract metrics before submitting the selected report(s).'
-    : counts.needsReview > 0
-      ? `${counts.needsReview} selected metric(s) need review before submission.`
-      : `${counts.selected} report(s), ${counts.metrics} metric(s) ready to submit.`;
+      ? 'Trích xuất chỉ số trước khi nộp báo cáo.'
+    : counts.unverified > 0
+      ? `Còn ${counts.unverified} chỉ số chưa được xác thực. Vui lòng xác thực tất cả (100%) trước khi nộp.`
+      : `${counts.selected} báo cáo, ${counts.metrics} chỉ số đã sẵn sàng để nộp.`;
 
   return (
     <footer className={styles.packageSummary}>
@@ -825,12 +1028,12 @@ function FinancialPackageSummary({
               {recalling ? (
                 <>
                   <Loader2 size={14} className={styles.spinIcon} />
-                  Recalling...
+                  Đang thu hồi...
                 </>
               ) : (
                 <>
                   <RotateCcw size={14} />
-                  Recall Submission
+                  Thu hồi nộp
                 </>
               )}
             </button>
@@ -840,10 +1043,10 @@ function FinancialPackageSummary({
             {submitting ? (
               <>
                 <Loader2 size={14} className={styles.spinIcon} />
-                Submitting...
+                Đang nộp...
               </>
             ) : (
-              'Submit to Manager'
+              'Nộp cho Manager'
             )}
           </button>
         )
@@ -992,6 +1195,7 @@ export default function FinancialResearchWorkbench({
   const [isAddMetricModalOpen, setIsAddMetricModalOpen] = useState(false);
   const [editingMetric, setEditingMetric] = useState<FinancialMetricResponse | null>(null);
   const [reportToDelete, setReportToDelete] = useState<FinancialReportEntry | null>(null);
+  const [metricToDelete, setMetricToDelete] = useState<FinancialMetricResponse | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
@@ -999,6 +1203,7 @@ export default function FinancialResearchWorkbench({
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedReportIdsForSubmission, setSelectedReportIdsForSubmission] = useState<string[]>([]);
   const [submissionSelectionTouched, setSubmissionSelectionTouched] = useState(false);
+  const [openingPdfId, setOpeningPdfId] = useState<string | null>(null);
 
   useEffect(() => {
     if (toast) {
@@ -1057,9 +1262,10 @@ export default function FinancialResearchWorkbench({
     selected: selectedReportIdsForSubmission.length,
     metrics: selectedSubmissionMetrics.length,
     needsReview: selectedSubmissionMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length,
+    unverified: selectedSubmissionMetrics.filter(metric => metric.verificationStatus !== 'VERIFIED').length,
   }), [extractedReports.length, reports.length, selectedReportIdsForSubmission.length, selectedSubmissionMetrics]);
 
-  const canSubmit = !allApproved && counts.selected > 0 && counts.metrics > 0 && counts.needsReview === 0;
+  const canSubmit = !allApproved && counts.selected > 0 && counts.metrics > 0 && counts.unverified === 0;
 
   useEffect(() => {
     setSubmissionSelectionTouched(false);
@@ -1132,21 +1338,143 @@ export default function FinancialResearchWorkbench({
 
   const extractMutation = useMutation({
     mutationFn: (reportId: string) => financialResearchApi.extractReport(projectId, taskId, reportId),
-    onMutate: (reportId) => setSelectedReportId(reportId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onMutate: (reportId) => {
+      setSelectedReportId(reportId);
+      setSelectedMetricId(null);
+      setEvidenceOpen(false);
+      queryClient.setQueryData<any>(
+        ['financial-research', projectId, taskId],
+        (old: any) => {
+          if (!old?.data) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              reports: (old.data.reports || []).map((r: FinancialReportEntry) =>
+                r.id === reportId
+                  ? {
+                      ...r,
+                      extractionStatus: 'EXTRACTING',
+                      extractionStage: 'QUEUED',
+                      extractionProgress: 5,
+                    }
+                  : r
+              ),
+            },
+          };
+        }
+      );
+    },
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+    },
     onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setToast({ message: err?.response?.data?.message || 'Extraction failed.', type: 'error' });
     },
   });
 
   const reExtractMutation = useMutation({
     mutationFn: (reportId: string) => financialResearchApi.reExtractReport(projectId, taskId, reportId),
-    onMutate: (reportId) => setSelectedReportId(reportId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onMutate: (reportId) => {
+      setSelectedReportId(reportId);
+      setSelectedMetricId(null);
+      setEvidenceOpen(false);
+      queryClient.setQueryData<any>(
+        ['financial-research', projectId, taskId],
+        (old: any) => {
+          if (!old?.data) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              reports: (old.data.reports || []).map((r: FinancialReportEntry) =>
+                r.id === reportId
+                  ? {
+                      ...r,
+                      extractionStatus: 'EXTRACTING',
+                      extractionStage: 'QUEUED',
+                      extractionProgress: 5,
+                    }
+                  : r
+              ),
+              metrics: (old.data.metrics || []).filter(
+                (m: FinancialMetricResponse) =>
+                  !(m.source?.reportEntryId === reportId && m.inputMethod === 'AI_EXTRACTED')
+              ),
+            },
+          };
+        }
+      );
+    },
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+    },
     onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setToast({ message: err?.response?.data?.message || 'Re-extraction failed.', type: 'error' });
     },
   });
+
+  const cancelExtractMutation = useMutation({
+    mutationFn: (reportId: string) => financialResearchApi.cancelExtractReport(projectId, taskId, reportId),
+    onMutate: (reportId) => {
+      queryClient.setQueryData<any>(
+        ['financial-research', projectId, taskId],
+        (old: any) => {
+          if (!old?.data) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              reports: (old.data.reports || []).map((r: FinancialReportEntry) => {
+                if (r.id !== reportId) return r;
+                const hasMetrics = (old.data.metrics || []).some(
+                  (m: FinancialMetricResponse) => m.source?.reportEntryId === reportId
+                );
+                return {
+                  ...r,
+                  extractionStatus: hasMetrics ? 'EXTRACTED' : 'NOT_EXTRACTED',
+                  extractionStage: null,
+                  extractionProgress: 0,
+                  extractionErrorMessage: null,
+                };
+              }),
+            },
+          };
+        }
+      );
+    },
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: 'Đã hủy quá trình trích xuất AI.', type: 'success' });
+    },
+    onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: err?.response?.data?.message || 'Hủy trích xuất thất bại.', type: 'error' });
+    },
+  });
+
+  const handleCancelExtract = (reportId: string) => {
+    cancelExtractMutation.mutate(reportId);
+  };
+
+  const isAnyExtracting = useMemo(() => {
+    return (
+      reports.some(r => r.extractionStatus === 'EXTRACTING' || r.extractionStatus === 'PROCESSING') ||
+      extractMutation.isPending ||
+      reExtractMutation.isPending
+    );
+  }, [reports, extractMutation.isPending, reExtractMutation.isPending]);
 
   const verifyMetricMutation = useMutation({
     mutationFn: (metricId: string) => financialResearchApi.verifyMetric(projectId, taskId, metricId),
@@ -1156,15 +1484,41 @@ export default function FinancialResearchWorkbench({
     },
   });
 
-  const addMetricMutation = useMutation({
-    mutationFn: (data: CreateFinancialMetricRequest) => financialResearchApi.addMetric(projectId, taskId, data),
-    onSuccess: () => {
+  const unverifyMetricMutation = useMutation({
+    mutationFn: (metricId: string) => financialResearchApi.unverifyMetric(projectId, taskId, metricId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] }),
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to unverify metric.', type: 'error' });
+    },
+  });
+
+  const verifyAllMutation = useMutation({
+    mutationFn: (reportId: string) => financialResearchApi.verifyAllMetrics(projectId, taskId, reportId),
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setIsAddMetricModalOpen(false);
-      setToast({ message: 'Manual financial metric added successfully.', type: 'success' });
+      setToast({ message: 'Đã xác thực thành công toàn bộ chỉ số.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Failed to add manual metric.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Không thể xác thực toàn bộ chỉ số.', type: 'error' });
+    },
+  });
+
+  const addMetricMutation = useMutation({
+    mutationFn: (data: CreateFinancialMetricRequest) => financialResearchApi.addMetric(projectId, taskId, data),
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setIsAddMetricModalOpen(false);
+      setToast({ message: 'Đã thêm chỉ số tài chính thủ công thành công.', type: 'success' });
+      setMetricFilter(prev => prev === 'NEEDS_REVIEW' ? 'ALL' : prev);
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Không thể thêm chỉ số tài chính.', type: 'error' });
     },
   });
 
@@ -1178,6 +1532,25 @@ export default function FinancialResearchWorkbench({
     },
     onError: (err: any) => {
       setToast({ message: err?.response?.data?.message || 'Failed to update metric.', type: 'error' });
+    },
+  });
+
+  const removeMetricMutation = useMutation({
+    mutationFn: (metricId: string) => financialResearchApi.removeMetric(projectId, taskId, metricId),
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setMetricToDelete(null);
+      if (selectedMetricId === metricToDelete?.id) {
+        setSelectedMetricId(null);
+        setEvidenceOpen(false);
+      }
+      setToast({ message: 'Đã xóa chỉ số tài chính thành công.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Không thể xóa chỉ số.', type: 'error' });
     },
   });
 
@@ -1269,6 +1642,13 @@ export default function FinancialResearchWorkbench({
   };
 
   const handleExtract = (reportId: string) => {
+    if (isAnyExtracting) {
+      setToast({
+        message: 'Một tài liệu đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+        type: 'error',
+      });
+      return;
+    }
     const report = reports.find(item => item.id === reportId);
     if (!report || isReadOnly || report.reviewStatus === 'APPROVED') return;
     if (isReportExtracted(report)) {
@@ -1300,8 +1680,75 @@ export default function FinancialResearchWorkbench({
     );
   };
 
-  const handleViewPdf = (documentId: string) => {
-    window.open(`${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`, '_blank', 'noopener,noreferrer');
+  const handleViewPdf = async (documentId?: string | null) => {
+    if (!documentId) {
+      setToast({ message: 'Không tìm thấy ID tài liệu PDF gốc.', type: 'error' });
+      return;
+    }
+
+    setOpeningPdfId(documentId);
+    try {
+      const token =
+        localStorage.getItem('apms-token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('token');
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      let res: Response | null = null;
+      if (projectId) {
+        try {
+          res = await fetch(
+            `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+            { headers }
+          );
+        } catch (e) {
+          console.warn('Project document fetch failed, trying direct endpoint', e);
+        }
+      }
+
+      if (!res || !res.ok) {
+        try {
+          res = await fetch(
+            `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+            { headers }
+          );
+        } catch (e) {
+          console.warn('Direct document fetch failed', e);
+        }
+      }
+
+      if (!res || !res.ok) {
+        throw new Error(`Failed to load document (${res?.status || 'unknown'})`);
+      }
+
+      const blob = await res.blob();
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+      const fileUrl = window.URL.createObjectURL(pdfBlob);
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => window.URL.revokeObjectURL(fileUrl), 120_000);
+    } catch (err) {
+      console.error('Error opening PDF:', err);
+      const token =
+        localStorage.getItem('apms-token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('token');
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+      if (projectId) {
+        window.open(
+          `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false${tokenParam}`,
+          '_blank',
+          'noopener,noreferrer'
+        );
+      } else {
+        setToast({ message: 'Không thể mở tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.', type: 'error' });
+      }
+    } finally {
+      setOpeningPdfId(null);
+    }
   };
 
   if (isLoading) {
@@ -1334,14 +1781,18 @@ export default function FinancialResearchWorkbench({
           metrics={metrics}
           selectedReportId={selectedReportId}
           canEdit={effectiveCanEdit}
+          isAnyExtracting={isAnyExtracting}
           onCreate={() => setIsCreateModalOpen(true)}
           onSelect={handleSelectReport}
           onExtract={handleExtract}
+          onCancelExtract={handleCancelExtract}
+          isCancellingExtract={cancelExtractMutation.isPending}
           onDelete={(reportId) => {
             const r = reports.find(item => item.id === reportId);
             if (r) setReportToDelete(r);
           }}
           onViewPdf={handleViewPdf}
+          openingPdfId={openingPdfId}
           selectedReportIdsForSubmission={selectedReportIdsForSubmission}
           eligibleReportIds={eligibleReportIds}
           onToggleSelection={handleToggleReportSelection}
@@ -1351,7 +1802,19 @@ export default function FinancialResearchWorkbench({
           <div className={styles.rightPanelBody}>
             {!selectedReport ? (
               <FinancialMetricsEmptyState />
-            ) : isReportExtracted(selectedReport) ? (
+            ) : selectedReport.extractionStatus === 'EXTRACTING' ? (
+              <SelectedReportSummary
+                report={selectedReport}
+                metricsCount={selectedReportMetrics.length}
+                canEdit={effectiveCanEdit && selectedReport.reviewStatus !== 'APPROVED'}
+                isAnyExtracting={isAnyExtracting}
+                onExtract={handleExtract}
+                onCancel={handleCancelExtract}
+                isCancelling={cancelExtractMutation.isPending}
+                onViewPdf={handleViewPdf}
+                openingPdfId={openingPdfId}
+              />
+            ) : (isReportExtracted(selectedReport) || selectedReportMetrics.length > 0) ? (
               <ExtractedMetricsPanel
                 report={selectedReport}
                 metrics={selectedReportMetrics}
@@ -1359,22 +1822,43 @@ export default function FinancialResearchWorkbench({
                 metricFilter={metricFilter}
                 evidenceOpen={evidenceOpen}
                 verifyingMetricId={verifyMetricMutation.isPending ? verifyMetricMutation.variables ?? null : null}
+                unverifyingMetricId={unverifyMetricMutation.isPending ? unverifyMetricMutation.variables ?? null : null}
                 onSelectMetric={handleSelectMetric}
                 onCloseEvidence={() => setEvidenceOpen(false)}
                 onFilterChange={setMetricFilter}
                 canEdit={effectiveCanEdit}
-                onReExtract={(reportId) => reExtractMutation.mutate(reportId)}
+                isAnyExtracting={isAnyExtracting}
+                onReExtract={(reportId) => {
+                  if (isAnyExtracting) {
+                    setToast({
+                      message: 'Một tài liệu đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+                      type: 'error',
+                    });
+                    return;
+                  }
+                  reExtractMutation.mutate(reportId);
+                }}
                 onVerifyMetric={(metricId) => verifyMetricMutation.mutate(metricId)}
+                onUnverifyMetric={(metricId) => unverifyMetricMutation.mutate(metricId)}
+                onVerifyAll={(reportId) => verifyAllMutation.mutate(reportId)}
+                verifyingAll={verifyAllMutation.isPending}
                 onEditMetric={(metric) => setEditingMetric(metric)}
+                onDeleteMetric={(metric) => setMetricToDelete(metric)}
                 onAddManualMetric={() => setIsAddMetricModalOpen(true)}
                 onViewPdf={handleViewPdf}
+                openingPdfId={openingPdfId}
               />
             ) : (
               <SelectedReportSummary
                 report={selectedReport}
                 metricsCount={selectedReportMetrics.length}
                 canEdit={effectiveCanEdit && selectedReport.reviewStatus !== 'APPROVED'}
+                isAnyExtracting={isAnyExtracting}
                 onExtract={handleExtract}
+                onCancel={handleCancelExtract}
+                isCancelling={cancelExtractMutation.isPending}
+                onViewPdf={handleViewPdf}
+                openingPdfId={openingPdfId}
               />
             )}
           </div>
@@ -1408,7 +1892,13 @@ export default function FinancialResearchWorkbench({
           canRecall={canRecall}
           onRecall={() => setIsRecallModalOpen(true)}
           recalling={recallMutation.isPending}
-          onSubmit={() => submitTaskMutation.mutate()}
+          onSubmit={() => {
+            if (counts.unverified > 0) {
+              setToast({ message: `Còn ${counts.unverified} chỉ số chưa được xác thực. Vui lòng xác thực tất cả các chỉ số trước khi nộp.`, type: 'error' });
+              return;
+            }
+            submitTaskMutation.mutate();
+          }}
         />
       )}
 
@@ -1629,6 +2119,48 @@ export default function FinancialResearchWorkbench({
                   </>
                 ) : (
                   'Delete Report'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Metric Confirmation Modal */}
+      {metricToDelete && (
+        <div className={styles.modalOverlay} onClick={() => setMetricToDelete(null)}>
+          <div className={styles.deleteConfirmModal} onClick={(e) => e.stopPropagation()} style={{ width: '460px' }}>
+            <div className={styles.deleteModalHead}>
+              <div className={styles.deleteModalIcon} style={{ background: '#fef2f2', color: '#ef4444' }}>
+                <Trash2 size={20} />
+              </div>
+              <h3>Xóa chỉ số tài chính</h3>
+            </div>
+            <p className={styles.deleteModalText}>
+              Bạn có chắc chắn muốn xóa chỉ số <strong>"{metricToDelete.label}"</strong> ({metricValueParts(metricToDelete).value} {metricValueParts(metricToDelete).unit}) không? Hành động này không thể hoàn tác.
+            </p>
+            <div className={styles.deleteModalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setMetricToDelete(null)}
+                disabled={removeMetricMutation.isPending}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                onClick={() => removeMetricMutation.mutate(metricToDelete.id)}
+                disabled={removeMetricMutation.isPending}
+              >
+                {removeMetricMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} />
+                    Đang xóa...
+                  </>
+                ) : (
+                  'Xóa chỉ số'
                 )}
               </button>
             </div>

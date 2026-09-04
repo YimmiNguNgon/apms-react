@@ -717,29 +717,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
     setIsVerifyingAll(true);
     try {
-      let currentResearch: ContractResearchResponse | null = null;
-      for (const row of rowsToProcess) {
-        if (row.isItem && row.itemId) {
-          currentResearch = await contractResearchApi.verifyArrayItem(
-            projectId,
-            taskId,
-            selectedContract.id,
-            row.fieldPath,
-            row.itemId
-          );
-        } else {
-          currentResearch = await contractResearchApi.verifyScalarField(
-            projectId,
-            taskId,
-            selectedContract.id,
-            row.fieldPath
-          );
-        }
+      const updated = await contractResearchApi.verifyAllContractFields(
+        projectId,
+        taskId,
+        selectedContract.id
+      );
+      if (updated) {
+        setResearch(updated);
       }
-      if (currentResearch) {
-        setResearch(currentResearch);
-      }
-      setToast({ message: `Đã xác thực thành công toàn bộ ${rowsToProcess.length} trường thông tin.`, type: 'success' });
+      setToast({ message: `Đã xác thực thành công toàn bộ trường thông tin hợp đồng.`, type: 'success' });
     } catch (err: any) {
       setToast({ message: err?.response?.data?.message || 'Có lỗi khi xác thực các trường.', type: 'error' });
     } finally {

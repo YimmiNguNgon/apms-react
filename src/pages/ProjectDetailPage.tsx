@@ -7130,7 +7130,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 // ) : null;
               })()}
 
-              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH'].includes(selectedStaffTask.taskType) && (
+              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
                 <div className={styles.workbenchStatusRow}>
                   <div>
                     <span>Status</span>
@@ -7167,7 +7167,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH'].includes(selectedStaffTask.taskType) && (
+              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
                 <div className={styles.workbenchFlow}>
                   {taskTypeText[selectedStaffTask.taskType].steps.map((step, index) => (
                     <div
@@ -7181,7 +7181,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain} style={selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW' ? { gridColumn: '1 / -1' } : undefined}>
                   {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW' ? (
                     (() => {
@@ -8047,7 +8047,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   )}
                 </main>
 
-                {!staffCandidate && !(selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW') && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType) && (
+                {!staffCandidate && !(selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW') && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
                 <aside className={styles.workbenchSidebar}>
                   {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                     <>
@@ -8153,7 +8153,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     })()}
 
                     </>
-                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType) ? null : (
+                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) ? null : (
                     <section className={styles.workbenchPanel}>
                       <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
                       <div className={styles.workbenchHintList}>

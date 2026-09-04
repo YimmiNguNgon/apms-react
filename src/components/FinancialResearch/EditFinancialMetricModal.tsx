@@ -100,9 +100,9 @@ export default function EditFinancialMetricModal({
       unit,
       currency: ['VND', 'BILLION_VND', 'MILLION_VND'].includes(unit) ? 'VND' : ['USD', 'MILLION_USD'].includes(unit) ? 'USD' : unit,
       period: {
-        year: Number(year),
-        periodType,
-        period: periodType === 'QUARTER' || periodType === 'HALF_YEAR' ? period : undefined,
+        year: metric.period?.year || year || new Date().getFullYear(),
+        periodType: 'QUARTER',
+        period: period || 'Q1',
       },
       evidence: evidence.trim() || null,
     };
@@ -239,58 +239,19 @@ export default function EditFinancialMetricModal({
           </label>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: periodType === 'QUARTER' || periodType === 'HALF_YEAR' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px' }}>
-          <label style={labelStyle}>
-            Year
-            <input
-              type="number"
-              required
-              style={inputStyle}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            />
-          </label>
-          <label style={labelStyle}>
-            Period Type
-            <select
-              style={inputStyle}
-              value={periodType}
-              onChange={(e) => setPeriodType(e.target.value as ReportingPeriodType)}
-            >
-              <option value="QUARTER">Quarter</option>
-              <option value="HALF_YEAR">Half Year</option>
-              <option value="FULL_YEAR">Full Year</option>
-            </select>
-          </label>
-          {periodType === 'QUARTER' && (
-            <label style={labelStyle}>
-              Quarter
-              <select
-                style={inputStyle}
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-              >
-                <option value="Q1">Q1</option>
-                <option value="Q2">Q2</option>
-                <option value="Q3">Q3</option>
-                <option value="Q4">Q4</option>
-              </select>
-            </label>
-          )}
-          {periodType === 'HALF_YEAR' && (
-            <label style={labelStyle}>
-              Half
-              <select
-                style={inputStyle}
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-              >
-                <option value="H1">H1</option>
-                <option value="H2">H2</option>
-              </select>
-            </label>
-          )}
-        </div>
+        <label style={labelStyle}>
+          Quarter
+          <select
+            style={inputStyle}
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            <option value="Q1">Q1</option>
+            <option value="Q2">Q2</option>
+            <option value="Q3">Q3</option>
+            <option value="Q4">Q4</option>
+          </select>
+        </label>
 
         <label style={labelStyle}>
           Evidence / Document Excerpt

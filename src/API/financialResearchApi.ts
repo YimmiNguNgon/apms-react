@@ -34,6 +34,11 @@ export const financialResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/re-extract`
     ),
 
+  cancelExtractReport: (projectId: number, taskId: number, reportId: string) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/cancel-extract`
+    ),
+
   addMetric: (projectId: number, taskId: number, data: CreateFinancialMetricRequest) =>
     api.post<FinancialResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/financial-research/metrics`,
@@ -54,6 +59,16 @@ export const financialResearchApi = {
   verifyMetric: (projectId: number, taskId: number, metricId: string) =>
     api.post<FinancialResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/financial-research/metrics/${metricId}/verify`
+    ),
+
+  unverifyMetric: (projectId: number, taskId: number, metricId: string) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/metrics/${metricId}/unverify`
+    ),
+
+  verifyAllMetrics: (projectId: number, taskId: number, reportId: string) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/verify-all`
     ),
 
   reviewReport: (projectId: number, taskId: number, reportId: string, status: 'APPROVED' | 'CHANGES_REQUESTED', reason?: string) =>

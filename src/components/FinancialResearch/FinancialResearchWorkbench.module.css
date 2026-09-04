@@ -734,6 +734,19 @@
   padding: 3px 9px;
   border-radius: 6px;
   white-space: nowrap;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.verifiedActionTag:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fecdd3;
+  color: #b91c1c;
+}
+
+.verifiedActionTag:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .editActionBtn {

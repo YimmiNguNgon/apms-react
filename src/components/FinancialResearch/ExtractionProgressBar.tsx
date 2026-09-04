@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, XCircle } from 'lucide-react';
 
 interface Props {
   status: string;
@@ -8,6 +8,8 @@ interface Props {
   startedAt?: string | null;
   errorMessage?: string | null;
   compact?: boolean;
+  onCancel?: () => void;
+  isCancelling?: boolean;
 }
 
 export default function ExtractionProgressBar({
@@ -15,6 +17,8 @@ export default function ExtractionProgressBar({
   stage,
   progress = 0,
   errorMessage,
+  onCancel,
+  isCancelling = false,
 }: Props) {
   const [animatedProgress, setAnimatedProgress] = useState<number>(() =>
     Math.max(progress || 0, getInitialStageProgress(stage))
@@ -97,7 +101,38 @@ export default function ExtractionProgressBar({
             <Loader2 size={15} style={{ animation: 'spin 1.2s linear infinite' }} />
             <span>{stageLabel}</span>
           </span>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>{displayProgress}%</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{displayProgress}%</span>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isCancelling}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 10px',
+                  background: '#fff',
+                  border: '1px solid #fca5a5',
+                  borderRadius: 6,
+                  color: '#dc2626',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: isCancelling ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Hủy quá trình trích xuất AI"
+              >
+                {isCancelling ? (
+                  <Loader2 size={12} style={{ animation: 'spin 1.2s linear infinite' }} />
+                ) : (
+                  <XCircle size={12} />
+                )}
+                {isCancelling ? 'Đang hủy...' : 'Hủy trích xuất'}
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ width: '100%', height: 6, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
           <div

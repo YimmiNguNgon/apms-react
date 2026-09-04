@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, FileText, Loader2, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
 import styles from './FinancialResearchWorkbench.module.css';
 
@@ -8,12 +8,16 @@ interface Props {
   onExtract: (reportId: string) => void;
   onDelete: (reportId: string) => void;
   onViewPdf: (documentId: string) => void;
+  onCancelExtract?: (reportId: string) => void;
+  isCancellingExtract?: boolean;
+  isOpeningPdf?: boolean;
   metricCount: number;
   needsReviewCount: number;
   selected?: boolean;
   selectedForSubmission?: boolean;
   isEligible?: boolean;
   canEdit?: boolean;
+  isAnyExtracting?: boolean;
   onSelect?: (reportId: string) => void;
   onToggleSelection?: (reportId: string) => void;
 }
@@ -46,12 +50,16 @@ export default function FinancialReportCard({
   onExtract,
   onDelete,
   onViewPdf,
+  isOpeningPdf = false,
   metricCount,
   needsReviewCount,
   selected = false,
   selectedForSubmission = false,
   isEligible = false,
   canEdit = true,
+  isAnyExtracting = false,
+  onCancelExtract,
+  isCancellingExtract = false,
   onSelect,
   onToggleSelection,
 }: Props) {
@@ -108,9 +116,9 @@ export default function FinancialReportCard({
             className={styles.cardDeleteBtn}
             type="button"
             onClick={(event) => { stop(event); onDelete(report.id); }}
-            disabled={isExtracting}
+            disabled={isExtracting || isAnyExtracting}
             aria-label={`Delete ${report.title}`}
-            title="Delete report"
+            title={isAnyExtracting ? 'Không thể xóa khi đang có tài liệu trích xuất' : 'Delete report'}
           >
             <Trash2 size={15} />
           </button>
@@ -136,10 +144,20 @@ export default function FinancialReportCard({
         </div>
       )}
 
-      <button className={styles.cardPdfLink} type="button" onClick={(event) => { stop(event); onViewPdf(report.documentId); }}>
-        <FileText size={14} />
-        View Source PDF
-      </button>
+      {report.documentId && (
+        <button
+          className={styles.cardPdfLink}
+          type="button"
+          disabled={isOpeningPdf}
+          onClick={(event) => {
+            stop(event);
+            onViewPdf(report.documentId);
+          }}
+        >
+          {isOpeningPdf ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
+          {isOpeningPdf ? 'Opening PDF...' : 'View Source PDF'}
+        </button>
+      )}
 
       <div className={styles.cardFooter}>
         <div className={`${styles.cardStatus} ${isExtracted ? styles.cardStatusSuccess : isFailed ? styles.cardStatusError : isExtracting ? styles.cardStatusExtracting : ''}`}>
@@ -164,30 +182,69 @@ export default function FinancialReportCard({
         </div>
 
         {canEditCard && (
-          <button
-            className={isExtracted || isFailed ? styles.secondaryButton : styles.primaryButton}
-            type="button"
-            onClick={(event) => { stop(event); onExtract(report.id); }}
-            disabled={isExtracting}
-            style={{ padding: '4px 10px', fontSize: '11px' }}
-          >
-            {isExtracting ? (
-              <>
+          isExtracting && onCancelExtract ? (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={(event) => { stop(event); onCancelExtract(report.id); }}
+              disabled={isCancellingExtract}
+              title="Hủy quá trình trích xuất AI cho báo cáo này"
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                color: '#dc2626',
+                borderColor: '#fca5a5',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                cursor: isCancellingExtract ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isCancellingExtract ? (
                 <Loader2 size={12} className={styles.spinIcon} />
-                Processing
-              </>
-            ) : isExtracted ? (
-              <>
-                <RefreshCw size={12} />
-                Re-extract
-              </>
-            ) : (
-              <>
-                <Play size={12} />
-                {isFailed ? 'Retry' : 'Extract'}
-              </>
-            )}
-          </button>
+              ) : (
+                <XCircle size={12} />
+              )}
+              {isCancellingExtract ? 'Đang hủy...' : 'Hủy AI'}
+            </button>
+          ) : (
+            <button
+              className={isExtracted || isFailed ? styles.secondaryButton : styles.primaryButton}
+              type="button"
+              onClick={(event) => { stop(event); onExtract(report.id); }}
+              disabled={isExtracting || isAnyExtracting}
+              title={
+                isExtracting
+                  ? 'Báo cáo này đang được AI trích xuất...'
+                  : isAnyExtracting
+                  ? 'Một tài liệu khác đang được AI trích xuất. Vui lòng đợi hoàn tất.'
+                  : undefined
+              }
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                opacity: (isExtracting || isAnyExtracting) ? 0.6 : 1,
+                cursor: (isExtracting || isAnyExtracting) ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isExtracting ? (
+                <>
+                  <Loader2 size={12} className={styles.spinIcon} />
+                  Processing
+                </>
+              ) : isExtracted ? (
+                <>
+                  <RefreshCw size={12} />
+                  Re-extract
+                </>
+              ) : (
+                <>
+                  <Play size={12} />
+                  {isFailed ? 'Retry' : 'Extract'}
+                </>
+              )}
+            </button>
+          )
         )}
       </div>
     </article>
