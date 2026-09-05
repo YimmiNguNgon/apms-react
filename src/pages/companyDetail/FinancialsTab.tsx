@@ -103,26 +103,27 @@ const metricValueParts = (metric: FinancialMetricResponse) => {
 };
 
 const formatMetricPeriod = (metric: FinancialMetricResponse, report?: FinancialReportEntry) => {
-  const period = metric.period;
-  if (!period) {
-    if (report) return formatPeriod(report);
-    return '—';
+  const metricPeriod = metric.period;
+  const reportPeriod = report?.reportingPeriod;
+
+  if (metricPeriod?.period && metricPeriod?.year) {
+    return `${metricPeriod.period} ${metricPeriod.year}`;
   }
-  if (period.period && period.year) return `${period.period} ${period.year}`;
-  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
-  if (period.periodType === 'QUARTER' && period.period && period.year) return `${period.period} ${period.year}`;
-  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
-  if (period.periodType === 'AS_OF_DATE' || period.periodType?.includes('AS_OF')) {
-    const pStr = period.period || report?.reportingPeriod?.period;
-    if (pStr && period.year) return `${pStr} ${period.year}`;
-    if (period.year) return `As of ${period.year}`;
+  if (reportPeriod?.period && reportPeriod?.year) {
+    return `${reportPeriod.period} ${reportPeriod.year}`;
   }
-  if (period.periodType && period.year) {
-    const pt = period.periodType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-    return `${pt} ${period.year}`;
+  if (metricPeriod?.asOfDate) {
+    return `As of ${formatDate(metricPeriod.asOfDate)}`;
   }
-  if (period.year) return String(period.year);
-  if (report) return formatPeriod(report);
+  if (reportPeriod?.asOfDate) {
+    return `As of ${formatDate(reportPeriod.asOfDate)}`;
+  }
+  if (metricPeriod?.year) {
+    return String(metricPeriod.year);
+  }
+  if (reportPeriod?.year) {
+    return String(reportPeriod.year);
+  }
   return '—';
 };
 

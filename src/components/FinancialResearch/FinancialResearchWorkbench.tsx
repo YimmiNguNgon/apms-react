@@ -93,22 +93,45 @@ const formatDate = (value?: string | null) => {
 
 const formatPeriod = (report?: FinancialReportEntry | null) => {
   const period = report?.reportingPeriod;
-  if (!period) return 'Not specified';
+  if (!period) return 'N/A';
   if (period.period && period.year) return `${period.period} ${period.year}`;
   if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
-  if (period.periodType && period.year) return `${period.periodType.replace(/_/g, ' ')} ${period.year}`;
   if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
-  return period.year ? String(period.year) : 'Not specified';
+  return period.year ? String(period.year) : 'N/A';
 };
 
-const formatMetricPeriod = (metric: FinancialMetricResponse) => {
-  const period = metric.period;
-  if (!period) return 'Not specified';
-  if (period.period && period.year) return `${period.period} ${period.year}`;
-  if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
-  if (period.periodType && period.year) return `${period.periodType.replace(/_/g, ' ')} ${period.year}`;
-  if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
-  return period.year ? String(period.year) : 'Not specified';
+const formatMetricPeriod = (metric: FinancialMetricResponse, report?: FinancialReportEntry | null) => {
+  const metricPeriod = metric.period;
+  const reportPeriod = report?.reportingPeriod;
+
+  // 1. metric.period + metric.year (e.g. Q2 2026)
+  if (metricPeriod?.period && metricPeriod?.year) {
+    return `${metricPeriod.period} ${metricPeriod.year}`;
+  }
+
+  // 2. report.reportingPeriod.period + report.reportingPeriod.year (Source of Truth fallback)
+  if (reportPeriod?.period && reportPeriod?.year) {
+    return `${reportPeriod.period} ${reportPeriod.year}`;
+  }
+
+  // 3. asOfDate
+  if (metricPeriod?.asOfDate) {
+    return `As of ${formatDate(metricPeriod.asOfDate)}`;
+  }
+  if (reportPeriod?.asOfDate) {
+    return `As of ${formatDate(reportPeriod.asOfDate)}`;
+  }
+
+  // 4. year
+  if (metricPeriod?.year) {
+    return `${metricPeriod.year}`;
+  }
+  if (reportPeriod?.year) {
+    return `${reportPeriod.year}`;
+  }
+
+  // 5. N/A
+  return 'N/A';
 };
 
 const formatStatus = (value?: string | null) =>
@@ -666,7 +689,7 @@ function ExtractedMetricsPanel({
                         {value.value}
                         {value.unit && <span className={styles.metricValueUnit}>{value.unit}</span>}
                       </td>
-                      <td>{formatMetricPeriod(metric)}</td>
+                      <td>{formatMetricPeriod(metric, report)}</td>
                       <td>
                         <span className={styles.sourceTag}>{getMetricSource(metric)}</span>
                       </td>
