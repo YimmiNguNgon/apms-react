@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Edit3, Check, X, Undo2, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import type { AiFieldResult } from '../../types/domain';
+import { EvidenceSection } from './EvidenceSection';
 import styles from './CandidateReview.module.css';
 
 interface EditableFieldCardProps {
@@ -131,21 +132,6 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
         </div>
 
         {(() => {
-          let parsedFileName = '';
-          let parsedEvidenceText = fieldResult?.evidenceText || '';
-          let parsedPage: string | number | undefined = fieldResult?.pageNumber;
-
-          if (parsedEvidenceText.trim()) {
-            const rawMatch = /^(?:"?|)\[([^|]+?)\s*\|\s*([^|\]]+?)(?:\s*\|\s*([^\]]+?))?\]\s*(.*?)(?:"?|)$/s.exec(parsedEvidenceText.trim());
-            if (rawMatch) {
-              parsedFileName = rawMatch[1].trim();
-              if (rawMatch[3]) {
-                parsedPage = rawMatch[3].trim();
-              }
-              parsedEvidenceText = rawMatch[4].trim();
-            }
-          }
-
           return (
             <>
               {!isEditing && (
@@ -167,51 +153,14 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
                     </div>
                   )}
 
-                  {fieldResult?.evidenceText && (
-                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: '#ffffff' }}>
-                      <button 
-                        type="button" 
-                        onClick={() => setExpandedEvidence(!expandedEvidence)}
-                        style={{ 
-                          width: '100%', display: 'flex', alignItems: 'center', gap: '6px', 
-                          padding: '10px 12px', background: '#f8fafc', border: 'none', 
-                          borderBottom: expandedEvidence ? '1px solid #e2e8f0' : 'none',
-                          cursor: 'pointer', color: '#475569', fontSize: '13px', fontWeight: 600 
-                        }}
-                      >
-                        <FileText size={14} color="#3b82f6" /> 
-                        Evidence
-                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-                          {expandedEvidence ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        </div>
-                      </button>
-                      
-                      {expandedEvidence && (
-                        <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <strong style={{ color: '#0f172a', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              📄 {parsedFileName || 'Source Document'}
-                            </strong>
-                            <span style={{ background: '#e0e7ff', color: '#3730a3', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>PDF</span>
-                            {parsedPage ? (
-                              <span style={{ background: '#e2e8f0', color: '#475569', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                                {String(parsedPage).toLowerCase().includes('page') || String(parsedPage).toLowerCase().includes('trang') 
-                                  ? parsedPage 
-                                  : `Page ${parsedPage}`}
-                              </span>
-                            ) : (
-                              <span style={{ background: '#f1f5f9', color: '#94a3b8', fontSize: '11px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Page not identified</span>
-                            )}
-                          </div>
-                          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px', fontSize: '13px', color: '#334155', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
-                            {parsedEvidenceText}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <EvidenceSection
+                    evidenceText={fieldResult?.evidenceText}
+                    pageNumber={fieldResult?.pageNumber}
+                    expanded={expandedEvidence}
+                    onToggle={() => setExpandedEvidence(!expandedEvidence)}
+                  />
 
-                  {!isEditing && isReturned && (
+                  {isReturned && (
                     <div className={styles.managerFeedbackInline}>
                       {previousSubmittedValue !== undefined && (
                         <div>

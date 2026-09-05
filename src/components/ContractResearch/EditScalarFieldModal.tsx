@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ExtractedContractField } from '../../types/contractResearch';
-import { Edit3, Loader2, CheckCircle2, X, FileText, Hash, Quote } from 'lucide-react';
+import { Edit3, Loader2, CheckCircle2, X, FileText, Hash, Quote, Calendar } from 'lucide-react';
 import styles from './EditModal.module.css';
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
 }
 
 export const EditScalarFieldModal: React.FC<Props> = ({
+  fieldPath = '',
   fieldLabel,
   fieldData,
   fieldType = 'text',
@@ -21,13 +22,35 @@ export const EditScalarFieldModal: React.FC<Props> = ({
   onClose,
   onSubmit,
 }) => {
-  const [val, setVal] = useState<string>(
-    fieldData && fieldData.value !== null && fieldData.value !== undefined
-      ? typeof fieldData.value === 'object' && 'amount' in fieldData.value
+  const isDateField =
+    fieldType === 'date' ||
+    fieldPath.toLowerCase().includes('date') ||
+    fieldLabel.toLowerCase().includes('ngày');
+  const isNumberField = fieldType === 'number';
+
+  const formatInitialValue = () => {
+    if (!fieldData || fieldData.value === null || fieldData.value === undefined) {
+      return '';
+    }
+    const raw =
+      typeof fieldData.value === 'object' && 'amount' in fieldData.value
         ? String(fieldData.value.amount || '')
-        : String(fieldData.value)
-      : ''
-  );
+        : String(fieldData.value);
+
+    if (isDateField && raw) {
+      const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
+      if (match) {
+        return match[0];
+      }
+      const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (ddmmyyyy) {
+        return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
+      }
+    }
+    return raw;
+  };
+
+  const [val, setVal] = useState<string>(formatInitialValue);
   const [evidence, setEvidence] = useState<string>(fieldData?.evidence || '');
   const [sourcePage, setSourcePage] = useState<number | string>(fieldData?.sourcePage || 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +60,18 @@ export const EditScalarFieldModal: React.FC<Props> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDateField) {
+      if (!val) {
+        setError('Vui lòng chọn ngày hợp lệ.');
+        return;
+      }
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(val) || isNaN(Date.parse(val))) {
+        setError('Định dạng ngày không hợp lệ. Vui lòng chọn ngày hợp lệ (YYYY-MM-DD).');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setError(null);
     try {
@@ -87,18 +122,25 @@ export const EditScalarFieldModal: React.FC<Props> = ({
 
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>
-                <FileText size={14} className={styles.labelIcon} />
+                {isDateField ? (
+                  <Calendar size={14} className={styles.labelIcon} />
+                ) : (
+                  <FileText size={14} className={styles.labelIcon} />
+                )}
                 <span>Giá trị trường (Field Value)</span>
                 <span className={styles.requiredStar}>*</span>
               </label>
               <input
-                type={fieldType === 'date' ? 'date' : fieldType === 'number' ? 'number' : 'text'}
+                type={isDateField ? 'date' : isNumberField ? 'number' : 'text'}
                 className={styles.inputField}
                 value={val}
-                onChange={(e) => setVal(e.target.value)}
+                onChange={(e) => {
+                  setVal(e.target.value);
+                  if (error) setError(null);
+                }}
                 required
                 disabled={isSubmitting}
-                placeholder="Nhập giá trị chính xác..."
+                placeholder={isDateField ? 'YYYY-MM-DD' : 'Nhập giá trị chính xác...'}
               />
             </div>
 

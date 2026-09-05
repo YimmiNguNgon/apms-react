@@ -97,7 +97,7 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
               color: '#0f172a',
             }}
           >
-            {valueText !== null && valueText !== undefined && valueText !== '' ? String(valueText) : '— Not Extracted —'}
+            {valueText !== null && valueText !== undefined && valueText !== '' ? String(valueText) : 'N/A'}
           </div>
         </div>
 
@@ -164,7 +164,7 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
       </div>
 
       {/* Footer Actions */}
-      {isEditable && onVerify && verificationStatus === 'UNVERIFIED' && (
+      {isEditable && onVerify && (
         <div
           style={{
             padding: '12px 20px',
@@ -176,9 +176,19 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
             background: '#fafafa',
           }}
         >
-          <button className={`${styles.btn} ${styles.btnSuccess}`} onClick={onVerify}>
-            ✓ Verify Field
-          </button>
+          {verificationStatus === 'VERIFIED' ? (
+            <button
+              className={styles.secondaryButton}
+              style={{ background: '#fef2f2', color: '#dc2626', borderColor: '#fca5a5' }}
+              onClick={onVerify}
+            >
+              Hủy xác thực trường này
+            </button>
+          ) : (
+            <button className={`${styles.btn} ${styles.btnSuccess}`} onClick={onVerify}>
+              ✓ Xác thực trường này
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -122,7 +122,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
           )}
         </>
       ) : (
-        <span className={styles.emptyValue}>Not extracted</span>
+        <span className={styles.emptyValue}>N/A</span>
       )}
     </div>
   );

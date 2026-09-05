@@ -243,6 +243,18 @@
   background: #bbf7d0;
 }
 
+.kpiBtnUnverify {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.kpiBtnUnverify:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
 .verificationBanner {
   background: #f8fafc;
   border: 1px solid #e2e8f0;

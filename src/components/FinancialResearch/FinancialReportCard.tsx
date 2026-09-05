@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Clock, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
 import styles from './FinancialResearchWorkbench.module.css';
 
@@ -20,6 +20,7 @@ interface Props {
   isAnyExtracting?: boolean;
   onSelect?: (reportId: string) => void;
   onToggleSelection?: (reportId: string) => void;
+  isManagerMode?: boolean;
 }
 
 const formatReportType = (value?: string | null) =>
@@ -62,6 +63,7 @@ export default function FinancialReportCard({
   isCancellingExtract = false,
   onSelect,
   onToggleSelection,
+  isManagerMode = false,
 }: Props) {
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isExtracted = report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
@@ -89,7 +91,24 @@ export default function FinancialReportCard({
       {isExtracting && <div className={styles.extractingBar} />}
 
       <div className={styles.cardTopRow}>
-        {isApproved ? (
+        {isManagerMode ? (
+          isApproved ? (
+            <span className={`${styles.statusBadge} ${styles.statusApproved}`}>
+              <CheckCircle2 size={12} />
+              Approved
+            </span>
+          ) : report.reviewStatus === 'CHANGES_REQUESTED' ? (
+            <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
+              <AlertTriangle size={12} />
+              Changes Requested
+            </span>
+          ) : (
+            <span className={`${styles.statusBadge} ${styles.statusPendingReview}`}>
+              <Clock size={12} />
+              Pending Review
+            </span>
+          )
+        ) : isApproved ? (
           <span className={`${styles.statusBadge} ${styles.statusApproved}`}>
             <CheckCircle2 size={12} />
             Approved

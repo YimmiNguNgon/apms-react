@@ -161,7 +161,7 @@ const SwotRenderer: React.FC<{ items: any[] }> = ({ items }) => {
 };
 
 const renderValue = (fieldKey: string, val: any): React.ReactNode => {
-  if (isEmpty(val)) return <span className={styles.emptyValue}>Not extracted by AI</span>;
+  if (isEmpty(val)) return <span className={styles.emptyValue}>N/A</span>;
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
   
   if (fieldKey === 'financial' || fieldKey === 'innovation' || fieldKey === 'market' || fieldKey === 'risk' || fieldKey === 'compliance') {

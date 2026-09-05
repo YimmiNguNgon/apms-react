@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { contractResearchApi } from '../../API/contractResearchApi';
 import type { ContractEntry, ContractResearchResponse } from '../../types/contractResearch';
-import { Edit3, Loader2, X, Calendar, FileText } from 'lucide-react';
+import { Edit3, Loader2, X, FileText } from 'lucide-react';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -22,14 +22,12 @@ export const EditContractModal: React.FC<Props> = ({
   onSuccess,
 }) => {
   const [title, setTitle] = useState('');
-  const [documentDate, setDocumentDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (contract && open) {
       setTitle(contract.title || '');
-      setDocumentDate(contract.documentDate ? contract.documentDate.substring(0, 10) : '');
       setErrorMessage(null);
     }
   }, [contract, open]);
@@ -53,7 +51,7 @@ export const EditContractModal: React.FC<Props> = ({
         contract.id,
         {
           title: title.trim(),
-          documentDate: documentDate || null,
+          documentDate: null,
         }
       );
 
@@ -164,32 +162,6 @@ export const EditContractModal: React.FC<Props> = ({
               onChange={(e) => setTitle(e.target.value)}
               placeholder='VD: Hợp đồng hợp tác kinh doanh giữa A và B...'
               required
-              disabled={isSubmitting}
-              style={{ width: '100%', fontSize: 13.5 }}
-            />
-          </div>
-
-          {/* Ngày tài liệu */}
-          <div style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#334155',
-                marginBottom: 6,
-              }}
-            >
-              <Calendar size={14} color='#64748b' />
-              Ngày tài liệu / Ngày lập
-            </label>
-            <input
-              type='date'
-              className={styles.formInput}
-              value={documentDate}
-              onChange={(e) => setDocumentDate(e.target.value)}
               disabled={isSubmitting}
               style={{ width: '100%', fontSize: 13.5 }}
             />

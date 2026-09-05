@@ -29,6 +29,7 @@ import type {
   CreateFinancialReportRequest,
   FinancialMetricResponse,
   FinancialReportEntry,
+  ProjectTaskSubmissionResponse,
   TaskStatus,
   UpdateFinancialMetricRequest,
 } from '../../types/domain';
@@ -49,6 +50,7 @@ type FinancialResearchWorkbenchProps = {
   targetCompanyName?: string | null;
   canEdit?: boolean;
   isManagerMode?: boolean;
+  workbenchSubmissions?: ProjectTaskSubmissionResponse[];
   onClose?: () => void;
   onReviewed?: (message: string, isSuccess: boolean) => void;
   documents?: unknown[];
@@ -860,6 +862,7 @@ function FinancialReportsPanel({
   selectedReportIdsForSubmission,
   eligibleReportIds,
   onToggleSelection,
+  isManagerMode = false,
 }: {
   reports: FinancialReportEntry[];
   metrics: FinancialMetricResponse[];
@@ -877,6 +880,7 @@ function FinancialReportsPanel({
   selectedReportIdsForSubmission: string[];
   eligibleReportIds: string[];
   onToggleSelection: (reportId: string) => void;
+  isManagerMode?: boolean;
 }) {
   const selectedSubmissionSet = useMemo(() => new Set(selectedReportIdsForSubmission), [selectedReportIdsForSubmission]);
   const eligibleSubmissionSet = useMemo(() => new Set(eligibleReportIds), [eligibleReportIds]);
@@ -892,21 +896,23 @@ function FinancialReportsPanel({
       <div className={styles.panelHead}>
         <div className={styles.panelTitleGroup}>
           <div className={styles.panelTitleWithBadge}>
-            <h3>Financial Reports</h3>
+            <h3>{isManagerMode ? 'Submitted Reports' : 'Financial Reports'}</h3>
             <span className={styles.badgeCount}>{reports.length}</span>
           </div>
-          <p>Add documents & extract data</p>
+          <p>{isManagerMode ? 'Reports submitted for approval' : 'Add documents & extract data'}</p>
         </div>
-        <button
-          className={styles.primaryButton}
-          type="button"
-          onClick={onCreate}
-          disabled={!canEdit || isAnyExtracting}
-          title={isAnyExtracting ? 'Vui lòng đợi quá trình AI hoàn tất' : undefined}
-        >
-          <Plus size={14} />
-          Create Report
-        </button>
+        {!isManagerMode && (
+          <button
+            className={styles.primaryButton}
+            type="button"
+            onClick={onCreate}
+            disabled={!canEdit || isAnyExtracting}
+            title={isAnyExtracting ? 'Vui lòng đợi quá trình AI hoàn tất' : undefined}
+          >
+            <Plus size={14} />
+            Create Report
+          </button>
+        )}
       </div>
 
       {reports.length === 0 ? (
@@ -939,6 +945,7 @@ function FinancialReportsPanel({
                       onDelete={onDelete}
                       onViewPdf={onViewPdf}
                       isOpeningPdf={openingPdfId === report.documentId}
+                      isManagerMode={isManagerMode}
                     />
                   );
                 })}
@@ -1061,7 +1068,6 @@ function ManagerReviewSummaryBar({
   isRecalled,
   onApprove,
   onRequestChanges,
-  onApproveAll,
   isProcessing,
 }: {
   selectedReport: FinancialReportEntry | null;
@@ -1069,7 +1075,6 @@ function ManagerReviewSummaryBar({
   isRecalled?: boolean;
   onApprove: (reportId: string) => void;
   onRequestChanges: (reportId: string) => void;
-  onApproveAll: () => void;
   isProcessing: boolean;
 }) {
   if (isRecalled) {
@@ -1115,18 +1120,6 @@ function ManagerReviewSummaryBar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        {pendingReports.length > 1 && (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={onApproveAll}
-            disabled={isProcessing}
-            style={{ padding: '7px 14px', fontSize: '13px', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}
-          >
-            <Check size={14} />
-            Approve All ({pendingReports.length})
-          </button>
-        )}
 
         {selectedReport && !isApproved && (
           <button
@@ -1184,6 +1177,7 @@ export default function FinancialResearchWorkbench({
   targetCompanyName,
   canEdit = true,
   isManagerMode = false,
+  workbenchSubmissions,
   onClose,
   onReviewed,
   onRefreshWorkbench,
@@ -1225,7 +1219,34 @@ export default function FinancialResearchWorkbench({
   });
 
   const research = researchRes?.data;
-  const reports = useMemo(() => research?.reports || [], [research?.reports]);
+  const allReports = useMemo(() => research?.reports || [], [research?.reports]);
+
+  const submittedReportIds = useMemo(() => {
+    const activeSub = workbenchSubmissions?.find(s => s.status === 'IN_REVIEW') || workbenchSubmissions?.[0];
+    if (activeSub?.targetItemIds && activeSub.targetItemIds.length > 0) {
+      return activeSub.targetItemIds;
+    }
+    if (research?.submittedReportIds && research.submittedReportIds.length > 0) {
+      return research.submittedReportIds;
+    }
+    return [];
+  }, [research?.submittedReportIds, workbenchSubmissions]);
+
+  const reports = useMemo(() => {
+    if (!isManagerMode) {
+      return allReports;
+    }
+    if (submittedReportIds.length > 0) {
+      return allReports.filter(report => submittedReportIds.includes(report.id));
+    }
+    const filtered = allReports.filter(
+      report =>
+        report.reviewStatus === 'PENDING_REVIEW' ||
+        report.reviewStatus === 'CHANGES_REQUESTED' ||
+        report.reviewStatus === 'APPROVED'
+    );
+    return filtered.length > 0 ? filtered : allReports;
+  }, [allReports, isManagerMode, submittedReportIds]);
   const metrics = useMemo(() => research?.metrics || [], [research?.metrics]);
   const extractedReports = useMemo(() => reports.filter(isReportExtracted), [reports]);
   const isSubmitted = research?.status === 'SUBMITTED' || research?.status === 'APPROVED';
@@ -1631,16 +1652,6 @@ export default function FinancialResearchWorkbench({
     },
   });
 
-  const handleApproveAllReports = async () => {
-    const unapproved = reports.filter(r => r.reviewStatus !== 'APPROVED');
-    for (const r of unapproved) {
-      await financialResearchApi.reviewReport(projectId, taskId, r.id, 'APPROVED');
-    }
-    queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-    setToast({ message: `All ${unapproved.length} reports approved successfully.`, type: 'success' });
-    onReviewed?.('All financial reports approved. Task completed.', true);
-  };
-
   const handleExtract = (reportId: string) => {
     if (isAnyExtracting) {
       setToast({
@@ -1796,6 +1807,7 @@ export default function FinancialResearchWorkbench({
           selectedReportIdsForSubmission={selectedReportIdsForSubmission}
           eligibleReportIds={eligibleReportIds}
           onToggleSelection={handleToggleReportSelection}
+          isManagerMode={isManagerMode}
         />
 
         <section className={`${styles.panel} ${styles.rightPanel}`}>
@@ -1879,7 +1891,6 @@ export default function FinancialResearchWorkbench({
           isRecalled={research.status !== 'SUBMITTED'}
           onApprove={(reportId) => reviewReportMutation.mutate({ reportId, status: 'APPROVED' })}
           onRequestChanges={() => setIsRequestChangesModalOpen(true)}
-          onApproveAll={handleApproveAllReports}
           isProcessing={reviewReportMutation.isPending}
         />
       ) : (

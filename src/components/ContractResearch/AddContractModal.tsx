@@ -54,11 +54,10 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
         throw new Error('File uploaded successfully, but document ID was not returned.');
       }
 
-      const today = new Date().toISOString().split('T')[0];
       const updated = await contractResearchApi.createContract(projectId, taskId, {
         title: title.trim(),
         documentId: finalDocId,
-        documentDate: today,
+        documentDate: null,
         declaredContractType: 'COOPERATION_AGREEMENT',
       });
 

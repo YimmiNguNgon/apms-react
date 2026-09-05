@@ -128,7 +128,7 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
       onConfirm={handleConfirm}
       onRestore={handleRestore}
       currentValueDisplay={
-        displayValue || <span className={styles.emptyValue}>Not extracted</span>
+        displayValue || <span className={styles.emptyValue}>N/A</span>
       }
       disabled={disabled}
     >

@@ -173,7 +173,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     fieldPath: string;
     fieldName: string;
     rawField?: ExtractedContractField<any> | null;
-  }>({ open: false, contractId: '', fieldPath: '', fieldName: '', rawField: null });
+    fieldType?: 'text' | 'date' | 'number';
+  }>({ open: false, contractId: '', fieldPath: '', fieldName: '', rawField: null, fieldType: 'text' });
 
   const [editArrayItemModal, setEditArrayItemModal] = useState<{
     open: boolean;
@@ -682,28 +683,50 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   }) => {
     if (!selectedContract) return;
     setVerifyingRowId(row.id);
+    const isCurrentlyVerified = row.verificationStatus === 'UNVERIFIED' || row.rawField?.verificationStatus === 'VERIFIED';
     try {
       if (row.isItem && row.itemId) {
-        const updated = await contractResearchApi.verifyArrayItem(
-          projectId,
-          taskId,
-          selectedContract.id,
-          row.fieldPath,
-          row.itemId
-        );
+        const updated = isCurrentlyVerified
+          ? await contractResearchApi.unverifyArrayItem(
+              projectId,
+              taskId,
+              selectedContract.id,
+              row.fieldPath,
+              row.itemId
+            )
+          : await contractResearchApi.verifyArrayItem(
+              projectId,
+              taskId,
+              selectedContract.id,
+              row.fieldPath,
+              row.itemId
+            );
         setResearch(updated);
       } else {
-        const updated = await contractResearchApi.verifyScalarField(
-          projectId,
-          taskId,
-          selectedContract.id,
-          row.fieldPath
-        );
+        const updated = isCurrentlyVerified
+          ? await contractResearchApi.unverifyScalarField(
+              projectId,
+              taskId,
+              selectedContract.id,
+              row.fieldPath
+            )
+          : await contractResearchApi.verifyScalarField(
+              projectId,
+              taskId,
+              selectedContract.id,
+              row.fieldPath
+            );
         setResearch(updated);
       }
-      setToast({ message: 'Đã xác minh điều khoản.', type: 'success' });
+      setToast({
+        message: isCurrentlyVerified ? 'Đã hủy xác thực điều khoản.' : 'Đã xác thực điều khoản.',
+        type: 'success',
+      });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Xác minh thất bại.', type: 'error' });
+      setToast({
+        message: err?.response?.data?.message || (isCurrentlyVerified ? 'Hủy xác thực thất bại.' : 'Xác thực thất bại.'),
+        type: 'error',
+      });
     } finally {
       setVerifyingRowId(null);
     }
@@ -728,6 +751,26 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       setToast({ message: `Đã xác thực thành công toàn bộ trường thông tin hợp đồng.`, type: 'success' });
     } catch (err: any) {
       setToast({ message: err?.response?.data?.message || 'Có lỗi khi xác thực các trường.', type: 'error' });
+    } finally {
+      setIsVerifyingAll(false);
+    }
+  };
+
+  const handleUnverifyAll = async () => {
+    if (!selectedContract || !effectiveCanEdit) return;
+    setIsVerifyingAll(true);
+    try {
+      const updated = await contractResearchApi.unverifyAllContractFields(
+        projectId,
+        taskId,
+        selectedContract.id
+      );
+      if (updated) {
+        setResearch(updated);
+      }
+      setToast({ message: 'Đã hủy xác thực toàn bộ trường thông tin hợp đồng.', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err?.response?.data?.message || 'Có lỗi khi hủy xác thực các trường.', type: 'error' });
     } finally {
       setIsVerifyingAll(false);
     }
@@ -843,6 +886,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     section: 'General Terms' | 'Contracting Parties' | 'Subtype Specific';
     qualityStatus: ContractFieldQualityStatus;
     verificationStatus: 'VERIFIED' | 'UNVERIFIED';
+    fieldType?: 'text' | 'date' | 'number';
     isItem?: boolean;
     itemId?: string;
     rawField?: ExtractedContractField<any> | null;
@@ -869,6 +913,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         fieldPath: row.fieldPath,
         fieldName: row.label,
         rawField: row.rawField,
+        fieldType: row.fieldType,
       });
     }
   };
@@ -1035,6 +1080,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: params.rawField,
         sourcePage: params.sourcePage,
         evidence: params.evidence,
+        fieldType: params.fieldType,
       });
     };
 
@@ -1131,13 +1177,13 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               <button
                 type="button"
                 className={`${contractStyles.kpiBtn} ${
-                  isVerified ? contractStyles.kpiBtnVerified : contractStyles.kpiBtnVerify
+                  isVerified ? contractStyles.kpiBtnUnverify : contractStyles.kpiBtnVerify
                 }`}
                 onClick={handleVerify}
                 title={isVerified ? 'Bấm để hủy xác thực' : 'Bấm để xác thực'}
               >
-                {isVerified ? <CheckCircle2 size={12} /> : <Check size={12} />}
-                {isVerified ? 'Đã duyệt' : 'Xác thực'}
+                {isVerified ? <RotateCcw size={12} /> : <Check size={12} />}
+                {isVerified ? 'Hủy xác thực' : 'Xác thực'}
               </button>
             )}
           </div>
@@ -1750,28 +1796,36 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                               padding: '5px 14px',
                               fontSize: 12.5,
                               fontWeight: 600,
-                              background: percentVerified === 100 ? '#f0fdf4' : '#eff6ff',
-                              color: percentVerified === 100 ? '#15803d' : '#2563eb',
-                              borderColor: percentVerified === 100 ? '#86efac' : '#bfdbfe',
+                              background: percentVerified === 100 ? '#fef2f2' : '#eff6ff',
+                              color: percentVerified === 100 ? '#dc2626' : '#2563eb',
+                              borderColor: percentVerified === 100 ? '#fca5a5' : '#bfdbfe',
                               display: 'flex',
                               alignItems: 'center',
                               gap: 6,
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                             }}
-                            onClick={handleVerifyAllEligible}
+                            onClick={percentVerified === 100 ? handleUnverifyAll : handleVerifyAllEligible}
                             disabled={isVerifyingAll}
-                            title="Xác thực toàn bộ các trường thông tin hợp đồng"
+                            title={
+                              percentVerified === 100
+                                ? 'Hủy xác thực toàn bộ các trường thông tin hợp đồng'
+                                : 'Xác thực toàn bộ các trường thông tin hợp đồng'
+                            }
                           >
                             {isVerifyingAll ? (
                               <Loader2 size={13} className={styles.spinIcon} />
+                            ) : percentVerified === 100 ? (
+                              <RotateCcw size={14} />
                             ) : (
                               <CheckCircle2 size={14} />
                             )}
                             {isVerifyingAll
-                              ? 'Đang xác thực...'
+                              ? percentVerified === 100
+                                ? 'Đang hủy...'
+                                : 'Đang xác thực...'
                               : percentVerified === 100
-                              ? 'Đã xác thực tất cả'
+                              ? 'Hủy xác thực tất cả'
                               : `Xác thực tất cả (${totalCount - verifiedCount} trường)`}
                           </button>
                         )}
@@ -2040,13 +2094,13 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                     <button
                                       type="button"
                                       className={`${contractStyles.kpiBtn} ${
-                                        isVerified ? contractStyles.kpiBtnVerified : contractStyles.kpiBtnVerify
+                                        isVerified ? contractStyles.kpiBtnUnverify : contractStyles.kpiBtnVerify
                                       }`}
                                       onClick={handleVerifyParty}
                                       title={isVerified ? 'Bấm để hủy xác thực' : 'Bấm để xác thực'}
                                     >
-                                      {isVerified ? <CheckCircle2 size={12} /> : <Check size={12} />}
-                                      {isVerified ? 'Đã duyệt' : 'Xác thực'}
+                                      {isVerified ? <RotateCcw size={12} /> : <Check size={12} />}
+                                      {isVerified ? 'Hủy xác thực' : 'Xác thực'}
                                     </button>
                                   )}
                                 </div>
@@ -2179,6 +2233,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           fieldPath={editScalarModal.fieldPath}
           fieldLabel={editScalarModal.fieldName}
           fieldData={editScalarModal.rawField}
+          fieldType={editScalarModal.fieldType}
           onClose={() => setEditScalarModal((prev) => ({ ...prev, open: false }))}
           onSubmit={async (data: { value: any; evidence?: string | null; sourcePage?: number | null }) => {
             const updated = await contractResearchApi.updateScalarField(

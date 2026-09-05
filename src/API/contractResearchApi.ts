@@ -77,6 +77,11 @@ export const contractResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/fields/${fieldPath}/verify`
     ).then((res) => res.data),
 
+  unverifyScalarField: (projectId: number, taskId: number, contractId: string, fieldPath: string): Promise<ContractResearchResponse> =>
+    api.post<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/fields/${fieldPath}/unverify`
+    ).then((res) => res.data),
+
   updateArrayItem: (
     projectId: number,
     taskId: number,
@@ -95,9 +100,19 @@ export const contractResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/fields/${fieldPath}/items/${itemId}/verify`
     ).then((res) => res.data),
 
+  unverifyArrayItem: (projectId: number, taskId: number, contractId: string, fieldPath: string, itemId: string): Promise<ContractResearchResponse> =>
+    api.post<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/fields/${fieldPath}/items/${itemId}/unverify`
+    ).then((res) => res.data),
+
   verifyAllContractFields: (projectId: number, taskId: number, contractId: string): Promise<ContractResearchResponse> =>
     api.post<ContractResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/verify-all`
+    ).then((res) => res.data),
+
+  unverifyAllContractFields: (projectId: number, taskId: number, contractId: string): Promise<ContractResearchResponse> =>
+    api.post<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/unverify-all`
     ).then((res) => res.data),
 
   submitResearch: (projectId: number, taskId: number, contractEntryIds: string[], note?: string): Promise<ContractResearchResponse> =>

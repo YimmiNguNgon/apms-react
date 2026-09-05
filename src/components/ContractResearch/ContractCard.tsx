@@ -184,7 +184,11 @@ export const ContractCard: React.FC<Props> = ({
 
       {/* Meta Row */}
       <div className={styles.cardMetaRow}>
-        <span>{formatDate(contract.documentDate || contract.createdAt)}</span>
+        <span>
+          {contract.commonData?.signingDate?.value
+            ? formatDate(String(contract.commonData.signingDate.value))
+            : formatDate(contract.documentDate || contract.createdAt)}
+        </span>
       </div>
 
       {/* Title */}

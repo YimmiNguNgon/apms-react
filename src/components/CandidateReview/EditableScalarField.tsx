@@ -75,7 +75,7 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
       currentValueDisplay={
         displayValue 
           ? <span>{String(displayValue)}</span> 
-          : <span className={styles.emptyValue}>Not extracted</span>
+          : <span className={styles.emptyValue}>N/A</span>
       }
       disabled={disabled}
     >
