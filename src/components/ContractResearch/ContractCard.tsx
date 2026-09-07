@@ -20,6 +20,7 @@ interface Props {
   onDelete: (contract: ContractEntry) => void;
   onEdit?: (contract: ContractEntry) => void;
   onViewPdf: (documentId: string) => void;
+  isAnyExtracting?: boolean;
 }
 
 const formatContractType = (type?: string | null) => {
@@ -58,8 +59,10 @@ export const ContractCard: React.FC<Props> = ({
   onDelete,
   onEdit,
   onViewPdf,
+  isAnyExtracting = false,
 }) => {
   const isExtracting = contract.extractionStatus === 'PROCESSING';
+  const isOtherExtracting = Boolean(isAnyExtracting && !isExtracting);
   const isExtracted = contract.extractionStatus === 'COMPLETED';
   const isFailed = contract.extractionStatus === 'FAILED';
   const isApproved = contract.reviewStatus === 'APPROVED';
@@ -69,7 +72,7 @@ export const ContractCard: React.FC<Props> = ({
 
   const handleSelectionChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     event.stopPropagation();
-    if (canEdit && isEligible && onToggleSelection) {
+    if (canEdit && isEligible && onToggleSelection && !isOtherExtracting) {
       onToggleSelection(contract.id);
     }
   };
@@ -79,7 +82,12 @@ export const ContractCard: React.FC<Props> = ({
   return (
     <article
       className={`${styles.reportCard} ${selected ? styles.reportCardSelected : ''}`}
-      onClick={() => onSelect(contract.id)}
+      onClick={() => {
+        if (isOtherExtracting) return;
+        onSelect(contract.id);
+      }}
+      style={isOtherExtracting ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
+      title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
       aria-current={selected ? 'true' : undefined}
     >
       {isExtracting && <div className={styles.extractingBar} />}
@@ -131,7 +139,7 @@ export const ContractCard: React.FC<Props> = ({
               <input
                 type="checkbox"
                 checked={selectedForSubmission}
-                disabled={!canEditCard || !isEligible}
+                disabled={!canEditCard || !isEligible || isOtherExtracting}
                 onChange={handleSelectionChange}
                 aria-label={`Chọn ${contract.title} để nộp`}
               />
@@ -153,12 +161,13 @@ export const ContractCard: React.FC<Props> = ({
               type="button"
               onClick={(event) => {
                 stop(event);
+                if (isOtherExtracting) return;
                 onEdit(contract);
               }}
-              disabled={isExtracting}
+              disabled={isExtracting || isOtherExtracting}
               aria-label={`Edit ${contract.title}`}
-              title="Chỉnh sửa thông tin hợp đồng"
-              style={{ color: '#2563eb' }}
+              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý' : 'Chỉnh sửa thông tin hợp đồng'}
+              style={isOtherExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : { color: '#2563eb' }}
             >
               <Edit3 size={14} />
             </button>
@@ -170,11 +179,13 @@ export const ContractCard: React.FC<Props> = ({
               type="button"
               onClick={(event) => {
                 stop(event);
+                if (isOtherExtracting) return;
                 onDelete(contract);
               }}
-              disabled={isExtracting}
+              disabled={isExtracting || isOtherExtracting}
               aria-label={`Delete ${contract.title}`}
-              title="Delete contract"
+              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý' : 'Delete contract'}
+              style={isOtherExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
             >
               <Trash2 size={15} />
             </button>
@@ -185,14 +196,17 @@ export const ContractCard: React.FC<Props> = ({
       {/* Meta Row */}
       <div className={styles.cardMetaRow}>
         <span>
-          {contract.commonData?.signingDate?.value
-            ? formatDate(String(contract.commonData.signingDate.value))
-            : formatDate(contract.documentDate || contract.createdAt)}
+          {typeLabel} • {formatDate(contract.createdAt)}
         </span>
       </div>
 
-      {/* Title */}
+      {/* Contract Title & Number */}
       <h4 className={styles.cardTitle}>{contract.title}</h4>
+      {contract.documentName && (
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#64748b' }}>
+          File: {contract.documentName}
+        </p>
+      )}
 
       {/* Changes Requested Feedback */}
       {contract.reviewStatus === 'CHANGES_REQUESTED' && (
@@ -211,10 +225,14 @@ export const ContractCard: React.FC<Props> = ({
         <button
           className={styles.cardPdfLink}
           type="button"
+          disabled={isOtherExtracting}
           onClick={(event) => {
             stop(event);
+            if (isOtherExtracting) return;
             onViewPdf(contract.documentId);
           }}
+          style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
         >
           <FileText size={14} />
           Xem PDF gốc
@@ -235,10 +253,28 @@ export const ContractCard: React.FC<Props> = ({
           }`}
         >
           {isExtracting ? (
-            <>
-              <Loader2 size={14} className={styles.spinIcon} />
-              <span>Đang trích xuất...</span>
-            </>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
+                  <Loader2 size={12} className={styles.spinIcon} />
+                  <span>Đang trích xuất...</span>
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
+                  {contract.extractionProgress || 35}%
+                </span>
+              </div>
+              <div style={{ width: '100%', height: 4, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${Math.max(contract.extractionProgress || 35, 10)}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
+                    borderRadius: 999,
+                    transition: 'width 0.35s ease',
+                  }}
+                />
+              </div>
+            </div>
           ) : isFailed ? (
             <span>Trích xuất lỗi</span>
           ) : isExtracted ? (
@@ -256,11 +292,15 @@ export const ContractCard: React.FC<Props> = ({
             <button
               className={styles.cardExtractBtn}
               type="button"
+              disabled={isOtherExtracting}
               onClick={(event) => {
                 stop(event);
+                if (isOtherExtracting) return;
+                onSelect(contract.id);
                 onReExtract(contract.id);
               }}
-              title="Trích xuất lại dữ liệu hợp đồng bằng AI"
+              style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : 'Trích xuất lại dữ liệu hợp đồng bằng AI'}
             >
               <RefreshCw size={12} />
               Trích xuất lại
@@ -269,12 +309,15 @@ export const ContractCard: React.FC<Props> = ({
             <button
               className={styles.cardExtractBtn}
               type="button"
+              disabled={isOtherExtracting}
               onClick={(event) => {
                 stop(event);
+                if (isOtherExtracting) return;
+                onSelect(contract.id);
                 onExtract(contract.id);
               }}
-              style={{ color: '#2563eb', fontWeight: 600 }}
-              title="Bóc tách thông tin hợp đồng bằng AI"
+              style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : { color: '#2563eb', fontWeight: 600 }}
+              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : 'Bóc tách thông tin hợp đồng bằng AI'}
             >
               <Sparkles size={12} />
               {isFailed ? 'Thử lại' : 'Bóc tách'}

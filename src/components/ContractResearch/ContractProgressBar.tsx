@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ContractExtractionStage, ContractExtractionStatus } from '../../types/contractResearch';
-import { Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertCircle, AlertTriangle, XCircle } from 'lucide-react';
 
 interface Props {
   status: ContractExtractionStatus;
@@ -8,6 +8,47 @@ interface Props {
   progress?: number | null;
   errorMessage?: string | null;
   compact?: boolean;
+  contractTitle?: string | null;
+  onCancel?: () => void;
+  isCancelling?: boolean;
+}
+
+function getBaseProgressForStage(stage?: ContractExtractionStage | null): number {
+  switch (stage) {
+    case 'QUEUED':
+      return 10;
+    case 'PARSING_DOCUMENT':
+      return 25;
+    case 'CLASSIFYING_CONTRACT':
+      return 45;
+    case 'EXTRACTING_FIELDS':
+      return 60;
+    case 'VALIDATING_RESULTS':
+      return 85;
+    case 'SAVING_RESULTS':
+      return 95;
+    default:
+      return 35;
+  }
+}
+
+function getStageLabel(stage?: ContractExtractionStage | null): string {
+  switch (stage) {
+    case 'QUEUED':
+      return 'Đang xếp hàng chờ xử lý...';
+    case 'PARSING_DOCUMENT':
+      return 'Đang đọc tài liệu PDF...';
+    case 'CLASSIFYING_CONTRACT':
+      return 'Đang phân loại hợp đồng với Gemini AI...';
+    case 'EXTRACTING_FIELDS':
+      return 'Đang trích xuất điều khoản & thông tin các bên...';
+    case 'VALIDATING_RESULTS':
+      return 'Đang đối chiếu dữ liệu trích xuất...';
+    case 'SAVING_RESULTS':
+      return 'Đang hoàn tất kết quả...';
+    default:
+      return 'Đang trích xuất với Gemini AI...';
+  }
 }
 
 export const ContractProgressBar: React.FC<Props> = ({
@@ -15,7 +56,33 @@ export const ContractProgressBar: React.FC<Props> = ({
   stage,
   progress = 0,
   errorMessage,
+  onCancel,
+  isCancelling = false,
 }) => {
+  const [animatedProgress, setAnimatedProgress] = useState<number>(() =>
+    Math.max(progress || 0, getBaseProgressForStage(stage))
+  );
+
+  useEffect(() => {
+    const base = getBaseProgressForStage(stage);
+    const target = Math.max(progress || 0, base);
+    setAnimatedProgress((prev) => Math.max(prev, target));
+  }, [stage, progress]);
+
+  // Smooth progress increment ticker while in PROCESSING
+  useEffect(() => {
+    if (status !== 'PROCESSING') return;
+
+    const interval = setInterval(() => {
+      setAnimatedProgress((prev) => {
+        if (prev >= 94) return prev;
+        return prev + 1;
+      });
+    }, 850);
+
+    return () => clearInterval(interval);
+  }, [status]);
+
   if (status === 'NOT_EXTRACTED') return null;
 
   if (status === 'FAILED') {
@@ -68,7 +135,7 @@ export const ContractProgressBar: React.FC<Props> = ({
 
   if (status === 'PROCESSING') {
     const stageLabel = getStageLabel(stage);
-    const numericProgress = Math.max(progress || 0, 5);
+    const displayProgress = Math.min(Math.max(animatedProgress, 10), 98);
 
     return (
       <div
@@ -97,12 +164,42 @@ export const ContractProgressBar: React.FC<Props> = ({
             <Loader2 size={13} style={{ animation: 'spin 1.2s linear infinite' }} />
             <span>{stageLabel}</span>
           </span>
-          <span style={{ fontWeight: 700 }}>{numericProgress}%</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontWeight: 700 }}>{displayProgress}%</span>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isCancelling}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 8px',
+                  background: '#fff',
+                  border: '1px solid #fca5a5',
+                  borderRadius: 6,
+                  color: '#dc2626',
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: isCancelling ? 'not-allowed' : 'pointer',
+                }}
+                title="Hủy trích xuất"
+              >
+                {isCancelling ? (
+                  <Loader2 size={11} style={{ animation: 'spin 1.2s linear infinite' }} />
+                ) : (
+                  <XCircle size={11} />
+                )}
+                <span>Hủy</span>
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ width: '100%', height: 5, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
           <div
             style={{
-              width: `${numericProgress}%`,
+              width: `${displayProgress}%`,
               height: '100%',
               background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
               borderRadius: 999,
@@ -116,24 +213,5 @@ export const ContractProgressBar: React.FC<Props> = ({
 
   return null;
 };
-
-function getStageLabel(stage?: ContractExtractionStage | null): string {
-  switch (stage) {
-    case 'QUEUED':
-      return 'Đang xếp hàng chờ xử lý...';
-    case 'PARSING_DOCUMENT':
-      return 'Đang đọc tài liệu PDF...';
-    case 'CLASSIFYING_CONTRACT':
-      return 'Đang phân loại hợp đồng với Gemini AI...';
-    case 'EXTRACTING_FIELDS':
-      return 'Đang trích xuất điều khoản & thông tin các bên...';
-    case 'VALIDATING_RESULTS':
-      return 'Đang đối chiếu dữ liệu trích xuất...';
-    case 'SAVING_RESULTS':
-      return 'Đang hoàn tất kết quả...';
-    default:
-      return 'Đang trích xuất với Gemini AI...';
-  }
-}
 
 export default ContractProgressBar;

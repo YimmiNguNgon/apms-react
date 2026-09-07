@@ -95,6 +95,8 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
               fontSize: 13,
               fontWeight: 500,
               color: '#0f172a',
+              lineHeight: 1.55,
+              whiteSpace: 'pre-wrap',
             }}
           >
             {valueText !== null && valueText !== undefined && valueText !== '' ? String(valueText) : 'N/A'}
@@ -141,26 +143,78 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
         </div>
 
         {/* Evidence Excerpt */}
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>
-            Original Document Excerpt
-          </label>
-          <div
-            style={{
-              padding: '12px 14px',
-              background: '#fffbeb',
-              border: '1px solid #fef3c7',
-              borderRadius: 6,
-              fontSize: 12,
-              fontStyle: 'italic',
-              color: '#92400e',
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {evidence ? `"${evidence}"` : 'No verbatim text evidence available.'}
-          </div>
-        </div>
+        {(() => {
+          const evidenceParts = evidence
+            ? evidence.split(/\s*\|\s*|\n+/).map((s) => s.trim()).filter(Boolean)
+            : [];
+          return (
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                Original Document Excerpt {evidenceParts.length > 1 && `(${evidenceParts.length} đoạn trích dẫn)`}
+              </label>
+              {evidenceParts.length > 1 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {evidenceParts.map((part, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '10px 12px',
+                        background: '#fffbeb',
+                        border: '1px solid #fef3c7',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        color: '#92400e',
+                        lineHeight: 1.5,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: 20,
+                          height: 20,
+                          borderRadius: 10,
+                          background: '#fef08a',
+                          color: '#854d0e',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          userSelect: 'none',
+                        }}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span style={{ fontStyle: 'italic', wordBreak: 'break-word', flex: 1 }}>
+                        "{part}"
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    background: '#fffbeb',
+                    border: '1px solid #fef3c7',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontStyle: 'italic',
+                    color: '#92400e',
+                    lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {evidence ? `"${evidence}"` : 'No verbatim text evidence available.'}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Footer Actions */}

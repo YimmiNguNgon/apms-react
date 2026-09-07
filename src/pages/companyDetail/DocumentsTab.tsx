@@ -621,9 +621,24 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, us
                     </div>
 
                     <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Luật áp dụng</span>
+                      <span className={styles.termLabel}>Luật áp dụng & Giải quyết tranh chấp</span>
                       <span className={styles.termValue}>
-                        {selectedContract.commonData?.governingLaw?.value || '—'}
+                        {(() => {
+                          const val = selectedContract.commonData?.governingLaw?.value;
+                          if (!val) return '—';
+                          const parts = val.split('|').map((item: string) => item.trim()).filter(Boolean);
+                          if (parts.length <= 1) return val;
+                          return (
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {parts.map((p: string, idx: number) => (
+                                <span key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                                  <span style={{ color: '#94a3b8' }}>•</span>
+                                  <span>{p}</span>
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })()}
                       </span>
                       {selectedContract.commonData?.governingLaw?.sourcePage && (
                         <span className={styles.termEvidence}>

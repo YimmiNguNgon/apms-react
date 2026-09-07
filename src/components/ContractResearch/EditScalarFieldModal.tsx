@@ -7,7 +7,7 @@ interface Props {
   fieldPath: string;
   fieldLabel: string;
   fieldData?: ExtractedContractField<any> | null;
-  fieldType?: 'text' | 'date' | 'number';
+  fieldType?: 'text' | 'date' | 'number' | 'textarea';
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: { value: any; evidence?: string | null; sourcePage?: number | null }) => Promise<void>;
@@ -27,17 +27,19 @@ export const EditScalarFieldModal: React.FC<Props> = ({
     fieldPath.toLowerCase().includes('date') ||
     fieldLabel.toLowerCase().includes('ngày');
   const isNumberField = fieldType === 'number';
+  const isTextareaField = fieldType === 'textarea';
 
   const formatInitialValue = () => {
     if (!fieldData || fieldData.value === null || fieldData.value === undefined) {
       return '';
     }
     const raw =
-      typeof fieldData.value === 'object' && 'amount' in fieldData.value
-        ? String(fieldData.value.amount || '')
+      typeof fieldData.value === 'object' && fieldData.value !== null && 'amount' in fieldData.value
+        ? String(fieldData.value.amount != null ? fieldData.value.amount : (fieldData.value.rawAmountText || ''))
         : String(fieldData.value);
 
-    if (isDateField && raw) {
+    if (isDateField) {
+      if (!raw || raw.trim().toUpperCase() === 'N/A') return '';
       const match = raw.match(/^\d{4}-\d{2}-\d{2}/);
       if (match) {
         return match[0];
@@ -46,6 +48,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
       if (ddmmyyyy) {
         return `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
       }
+      return '';
     }
     return raw;
   };
@@ -130,18 +133,34 @@ export const EditScalarFieldModal: React.FC<Props> = ({
                 <span>Giá trị trường (Field Value)</span>
                 <span className={styles.requiredStar}>*</span>
               </label>
-              <input
-                type={isDateField ? 'date' : isNumberField ? 'number' : 'text'}
-                className={styles.inputField}
-                value={val}
-                onChange={(e) => {
-                  setVal(e.target.value);
-                  if (error) setError(null);
-                }}
-                required
-                disabled={isSubmitting}
-                placeholder={isDateField ? 'YYYY-MM-DD' : 'Nhập giá trị chính xác...'}
-              />
+              {isTextareaField ? (
+                <textarea
+                  className={styles.inputField}
+                  rows={4}
+                  style={{ resize: 'vertical', minHeight: '88px', lineHeight: 1.45 }}
+                  value={val}
+                  onChange={(e) => {
+                    setVal(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  required
+                  disabled={isSubmitting}
+                  placeholder="Nhập giá trị chính xác..."
+                />
+              ) : (
+                <input
+                  type={isDateField ? 'date' : isNumberField ? 'number' : 'text'}
+                  className={styles.inputField}
+                  value={val}
+                  onChange={(e) => {
+                    setVal(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  required
+                  disabled={isSubmitting}
+                  placeholder={isDateField ? 'YYYY-MM-DD' : 'Nhập giá trị chính xác...'}
+                />
+              )}
             </div>
 
             <div className={styles.formGroup}>
