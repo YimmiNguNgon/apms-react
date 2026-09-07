@@ -150,7 +150,6 @@ export const OwnerCompanyProfilePage: React.FC = () => {
         <CompanyProfileHeader
           displayName={displayName}
           initials={initials}
-          industry={profile.business?.industries?.[0]}
           reviewStatus={profile.reviewStatus || 'APPROVED'}
           version={profile.version}
           isHidden={profile.isHidden}

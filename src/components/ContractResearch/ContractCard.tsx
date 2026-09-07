@@ -25,10 +25,10 @@ interface Props {
 
 const formatContractType = (type?: string | null) => {
   if (!type || type === 'UNKNOWN' || type === 'AUTO_DETECT') return 'Auto Detect';
-  if (type === 'COOPERATION_AGREEMENT') return 'Thỏa thuận hợp tác';
-  if (type === 'PARTNERSHIP_AGREEMENT') return 'Đối tác chiến lược';
-  if (type === 'JOINT_VENTURE_AGREEMENT') return 'Liên doanh (JVA)';
-  if (type === 'BUSINESS_COOPERATION_CONTRACT') return 'Hợp tác KD (BCC)';
+  if (type === 'COOPERATION_AGREEMENT') return 'Cooperation Agreement';
+  if (type === 'PARTNERSHIP_AGREEMENT') return 'Strategic Partnership';
+  if (type === 'JOINT_VENTURE_AGREEMENT') return 'Joint Venture (JVA)';
+  if (type === 'BUSINESS_COOPERATION_CONTRACT') return 'Business Cooperation (BCC)';
   return type.replace(/_/g, ' ');
 };
 
@@ -87,7 +87,7 @@ export const ContractCard: React.FC<Props> = ({
         onSelect(contract.id);
       }}
       style={isOtherExtracting ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
-      title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
+      title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : undefined}
       aria-current={selected ? 'true' : undefined}
     >
       {isExtracting && <div className={styles.extractingBar} />}
@@ -97,31 +97,31 @@ export const ContractCard: React.FC<Props> = ({
         {isApproved ? (
           <span className={`${styles.statusBadge} ${styles.statusApproved}`}>
             <CheckCircle2 size={12} />
-            Đã phê duyệt
+            Approved
           </span>
         ) : contract.reviewStatus === 'PENDING_REVIEW' ? (
           <span className={styles.statusBadge} style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontSize: 11.5 }}>
-            ● Chờ duyệt
+            ● In Review
           </span>
         ) : isManagerMode ? (
           contract.reviewStatus === 'CHANGES_REQUESTED' ? (
             <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
-              ● Cần sửa lại
+              ● Changes Requested
             </span>
           ) : (
             <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
-              ● Bản nháp
+              ● Draft
             </span>
           )
         ) : !hasMultipleContracts ? (
           /* Single contract in project: No checkbox needed! */
           contract.reviewStatus === 'CHANGES_REQUESTED' ? (
             <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
-              ● Cần sửa lại
+              ● Changes Requested
             </span>
           ) : (
             <span className={styles.statusBadge} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontSize: 11.5 }}>
-              ● Sẵn sàng nộp
+              ● Ready to Submit
             </span>
           )
         ) : (
@@ -132,8 +132,8 @@ export const ContractCard: React.FC<Props> = ({
               onClick={stop}
               title={
                 !isEligible
-                  ? 'Bóc tách hợp đồng này trước khi thêm vào danh sách nộp.'
-                  : 'Chọn hợp đồng này để nộp cho Manager'
+                  ? 'Extract this contract before adding to submission package.'
+                  : 'Select this contract for Manager submission'
               }
             >
               <input
@@ -141,14 +141,14 @@ export const ContractCard: React.FC<Props> = ({
                 checked={selectedForSubmission}
                 disabled={!canEditCard || !isEligible || isOtherExtracting}
                 onChange={handleSelectionChange}
-                aria-label={`Chọn ${contract.title} để nộp`}
+                aria-label={`Select ${contract.title} to submit`}
               />
               <span>Submit</span>
             </label>
 
             {contract.reviewStatus === 'CHANGES_REQUESTED' && (
               <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`} style={{ padding: '2px 7px', fontSize: 10.5 }}>
-                ● Cần sửa
+                ● Changes Requested
               </span>
             )}
           </div>
@@ -166,7 +166,7 @@ export const ContractCard: React.FC<Props> = ({
               }}
               disabled={isExtracting || isOtherExtracting}
               aria-label={`Edit ${contract.title}`}
-              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý' : 'Chỉnh sửa thông tin hợp đồng'}
+              title={isOtherExtracting ? 'Another document is being processed by AI' : 'Edit contract details'}
               style={isOtherExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : { color: '#2563eb' }}
             >
               <Edit3 size={14} />
@@ -184,7 +184,7 @@ export const ContractCard: React.FC<Props> = ({
               }}
               disabled={isExtracting || isOtherExtracting}
               aria-label={`Delete ${contract.title}`}
-              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý' : 'Delete contract'}
+              title={isOtherExtracting ? 'Another document is being processed by AI' : 'Delete contract'}
               style={isOtherExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
             >
               <Trash2 size={15} />
@@ -211,8 +211,8 @@ export const ContractCard: React.FC<Props> = ({
       {/* Changes Requested Feedback */}
       {contract.reviewStatus === 'CHANGES_REQUESTED' && (
         <div className={styles.cardFeedbackBox}>
-          <strong>Ý kiến phản hồi từ Manager</strong>
-          <p>{contract.reviewComment || 'Manager yêu cầu chỉnh sửa hợp đồng này.'}</p>
+          <strong>Manager Review Feedback</strong>
+          <p>{contract.reviewComment || 'Manager requested revisions for this contract.'}</p>
           <small>
             {contract.reviewedByName || 'Manager'}
             {contract.reviewedAt ? ` • ${formatDate(contract.reviewedAt)}` : ''}
@@ -232,10 +232,10 @@ export const ContractCard: React.FC<Props> = ({
             onViewPdf(contract.documentId);
           }}
           style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-          title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
+          title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : undefined}
         >
           <FileText size={14} />
-          Xem PDF gốc
+          View Original PDF
         </button>
       )}
 
@@ -257,7 +257,7 @@ export const ContractCard: React.FC<Props> = ({
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
                   <Loader2 size={12} className={styles.spinIcon} />
-                  <span>Đang trích xuất...</span>
+                  <span>Extracting...</span>
                 </span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
                   {contract.extractionProgress || 35}%
@@ -276,14 +276,14 @@ export const ContractCard: React.FC<Props> = ({
               </div>
             </div>
           ) : isFailed ? (
-            <span>Trích xuất lỗi</span>
+            <span>Extraction Failed</span>
           ) : isExtracted ? (
             <>
               <CheckCircle2 size={14} />
-              <span>{clauseCount} trường trích xuất</span>
+              <span>{clauseCount} extracted fields</span>
             </>
           ) : (
-            <span style={{ color: '#64748b' }}>Chưa trích xuất</span>
+            <span style={{ color: '#64748b' }}>Not Extracted</span>
           )}
         </div>
 
@@ -300,10 +300,10 @@ export const ContractCard: React.FC<Props> = ({
                 onReExtract(contract.id);
               }}
               style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : 'Trích xuất lại dữ liệu hợp đồng bằng AI'}
+              title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : 'Re-extract contract data with AI'}
             >
               <RefreshCw size={12} />
-              Trích xuất lại
+              Re-extract
             </button>
           ) : !isExtracting && (
             <button
@@ -317,10 +317,10 @@ export const ContractCard: React.FC<Props> = ({
                 onExtract(contract.id);
               }}
               style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : { color: '#2563eb', fontWeight: 600 }}
-              title={isOtherExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : 'Bóc tách thông tin hợp đồng bằng AI'}
+              title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : 'Extract contract terms with AI'}
             >
               <Sparkles size={12} />
-              {isFailed ? 'Thử lại' : 'Bóc tách'}
+              {isFailed ? 'Retry' : 'Extract'}
             </button>
           )
         )}

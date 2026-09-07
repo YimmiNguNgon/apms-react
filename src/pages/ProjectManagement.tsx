@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../API/projectApi';
 import { ROLES, useUser } from '../context/UserContext';
+import { balanceDeliverableWeights } from '../utils/deliverableUtils';
 import type {
   CreateProjectRequest,
   DuplicateCompanyCheckResponse,
@@ -67,19 +68,22 @@ const profileRoleLabel = (profile: ProfileResponse) => {
 };
 
 const formatProjectDate = (value: string | null) => {
-  if (!value) return 'No date';
+  if (!value) return '—';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'No date';
-  return date.toLocaleDateString('vi-VN');
+  if (Number.isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
-  RESEARCH_NEW_COMPANY: 'New company research',
-  UPDATE_EXISTING_COMPANY: 'Existing company',
+  RESEARCH_NEW_COMPANY: 'New Company Research',
+  UPDATE_EXISTING_COMPANY: 'Existing Company Update',
 };
 
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  DRAFT: 'Inactive',
+  DRAFT: 'Draft',
   ACTIVE: 'Active',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
@@ -646,38 +650,39 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   };
 
   const renderProjectRow = (project: ProjectResponse, index: number) => {
-    const isSelected = selectedProjectId === project.id;
     const tone = PROJECT_STATUS_TONES[project.status];
     const rowNumber = currentPage * pageSize + index + 1;
     const displayStatus = project.status === 'ACTIVE' && project.isOverdue ? 'Overdue' : PROJECT_STATUS_LABELS[project.status];
     const displayTone = project.status === 'ACTIVE' && project.isOverdue ? 'danger' : tone;
     
-    let barColor = 'var(--bg-input)';
-    const pct = Math.max(0, Math.min(100, project.progressPercentage ?? 0));
-    if (pct > 0 && pct < 50) barColor = 'var(--danger, #ef4444)';
-    else if (pct >= 50 && pct < 80) barColor = 'var(--warning, #f59e0b)';
-    else if (pct >= 80 && pct < 100) barColor = 'var(--primary, #3b82f6)';
-    else if (pct === 100) barColor = 'var(--success, #10b981)';
+    const pct = Math.max(0, Math.min(100, Math.round(project.progressPercentage ?? 0)));
+    const barColor = pct === 100 ? 'var(--success, #10b981)' : 'var(--primary, #2563eb)';
 
     return (
       <div
         key={project.id}
-        className={`manager-project-row ${isSelected ? 'selected' : ''}`}
+        className="manager-project-row"
         role="row"
       >
-        <span className="project-list-muted">{rowNumber}</span>
-        <span className="project-list-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}><strong>{project.projectName}</strong></span>
-        <span className="project-list-target" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{project.targetCompanyName}</span>
-        <span className="project-list-muted">{PROJECT_TYPE_LABELS[project.projectType]}</span>
-        <div className="manager-project-progress" title={`${Math.round(pct)}% complete`}>
-          <div className="manager-project-progress-fill" style={{ width: `${pct}%`, background: barColor }} />
-          <span className="manager-project-progress-label">{Math.round(pct)}%</span>
+        <span className="project-list-muted col-center">{rowNumber}</span>
+        <div className="project-col-main" title={project.projectName}>
+          <strong className="project-name-primary">{project.projectName}</strong>
         </div>
-        <span className="project-list-date">{project.plannedEndDate ? formatProjectDate(project.plannedEndDate) : '—'}</span>
-        <span className={`workspace-badge ${displayTone}`}>{displayStatus}</span>
+        <span className="project-list-target" title={project.targetCompanyName}>{project.targetCompanyName}</span>
+        <span className="project-list-type" title={PROJECT_TYPE_LABELS[project.projectType]}>{PROJECT_TYPE_LABELS[project.projectType]}</span>
+        <div className="manager-project-progress" title={`${pct}% complete`}>
+          <div className="manager-project-progress-track">
+            <div className="manager-project-progress-fill" style={{ width: `${pct}%`, background: barColor }} />
+          </div>
+          <span className="manager-project-progress-label">{pct}%</span>
+        </div>
+        <span className="project-list-date col-center">{project.plannedEndDate ? formatProjectDate(project.plannedEndDate) : '—'}</span>
+        <div className="col-center">
+          <span className={`project-status-badge ${displayTone}`}>{displayStatus}</span>
+        </div>
         <span className="manager-project-action">
           <button className="project-detail-btn" type="button" onClick={() => openProjectDetail(project)}>
-            View detail
+            View
           </button>
         </span>
       </div>
@@ -719,14 +724,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       <div className="workspace-main-full">
         <div className="workspace-page-head">
           <div>
-            <div className="workspace-breadcrumbs">{t('breadcrumb.section')} <span>/</span> {t('breadcrumb.current')}</div>
             <h1>Project Management</h1>
-            <p style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Overview of projects you manage</p>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Overview of projects you manage</p>
           </div>
           <div className="workspace-head-actions">
-            {/* <button className="btn btn-outline" onClick={() => void refreshAll()} disabled={projectsLoading || detailLoading}>Refresh</button> */}
             {!isStaffView && (
-              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>{t('create.submit')}</button>
+              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>{t('create.submit') || 'Create project'}</button>
             )}
           </div>
         </div>
@@ -737,8 +740,8 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="project-modal-head" style={{ flexShrink: 0 }}>
               <div>
-                <span className="workspace-side-eyebrow">{t('create.eyebrow')}</span>
-                <h3 id="create-project-title">{t('create.title')}</h3>
+                <span className="workspace-side-eyebrow">CREATE NEW PROJECT</span>
+                <h3 id="create-project-title">Create new project</h3>
                 <p>Define the project goal, target company, and deliverables.</p>
               </div>
               <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => setShowCreateForm(false)}>&times;</button>
@@ -749,11 +752,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 <div className="project-modal-feedback workspace-inline-error" style={{ marginTop: '16px' }}>{feedback.message}</div>
               )}
               
-              <div style={{ marginTop: '24px' }}>
-                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Information</h4>
-                <div className="workspace-form-grid">
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ marginBottom: '14px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT INFORMATION</h4>
+                <div className="workspace-form-grid" style={{ marginBottom: 0 }}>
                   <label>
-                    <span>{t('create.projectNameLabel')}</span>
+                    <span>Project Name</span>
                     <input
                       className="search-input"
                       placeholder={t('create.projectNamePlaceholder')}
@@ -762,7 +765,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     />
                   </label>
                   <label>
-                    <span>{t('create.projectTypeLabel')}</span>
+                    <span>Project Type</span>
                     <select
                       className="search-input"
                       value={projectForm.projectType}
@@ -781,10 +784,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     </select>
                   </label>
                   <label>
-                    <span>Target company</span>
+                    <span>Target Company</span>
                     {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <select
+                      <select
                         className="search-input"
                         value={projectForm.targetCompanyProfileId}
                         onChange={(event) => {
@@ -797,12 +799,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                               const ref = krReference.find((r) => r.type === kr.type);
                               return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
                             });
+                            const rebalancedKrs = validKrs.length !== current.keyResults.length ? balanceDeliverableWeights(validKrs) : validKrs;
                             return {
                               ...current,
                               targetCompanyProfileId: selectedId,
                               targetCompanyName: profile ? profileName(profile) : '',
                               targetRelationshipType: newRelationship,
-                              keyResults: validKrs,
+                              keyResults: rebalancedKrs,
                             };
                           });
                         }}
@@ -814,56 +817,17 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                           </option>
                         ))}
                       </select>
-                      {projectForm.targetCompanyProfileId && (
-                        <input
-                          className="search-input"
-                          placeholder="No tax code available"
-                          value={companyOptions.find(item => item.companyId === projectForm.targetCompanyProfileId || item.id === projectForm.targetCompanyProfileId)?.identity?.taxCode || ''}
-                          readOnly
-                          style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)' }}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <input
-                          className="search-input"
-                          placeholder="Enter target company name"
-                          value={projectForm.targetCompanyName}
-                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyName: event.target.value }))}
-                        />
-                        <input
-                          className="search-input"
-                          placeholder="Enter company tax code"
-                          value={projectForm.targetCompanyTaxCode}
-                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyTaxCode: event.target.value }))}
-                          onBlur={(event) => void handleTaxCodeCheck(event.target.value)}
-                        />
-                        {taxCodeCheck?.loading && <span style={{ fontSize: '0.85rem', color: '#666' }}>Checking tax code...</span>}
-                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'COMPANY_PROFILE' && (
-                          <div style={{ backgroundColor: '#fff3cd', padding: '8px', borderRadius: '4px', fontSize: '0.9rem', color: '#856404', marginTop: '4px' }}>
-                            Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
-                            <button type="button" onClick={() => {
-                              setProjectForm(current => ({
-                                ...current, 
-                                projectType: 'UPDATE_EXISTING_COMPANY',
-                                targetCompanyProfileId: taxCodeCheck.companyProfileId || ''
-                              }));
-                            }} style={{ marginLeft: '8px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                              Use existing company
-                            </button>
-                          </div>
-                        )}
-                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT' && (
-                          <div style={{ backgroundColor: '#f8d7da', padding: '8px', borderRadius: '4px', fontSize: '0.9rem', color: '#721c24', marginTop: '4px' }}>
-                            Company is already being researched in an active project (<strong>{taxCodeCheck.companyName}</strong>). Duplicate creation is blocked.
-                          </div>
-                        )}
-                      </div>
+                    ) : (
+                      <input
+                        className="search-input"
+                        placeholder="Enter target company name"
+                        value={projectForm.targetCompanyName}
+                        onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyName: event.target.value }))}
+                      />
                     )}
                   </label>
                   <label>
-                    <span>{t('create.relationshipLabel')}</span>
+                    <span>Target Relationship</span>
                     <select
                       className="search-input"
                       value={projectForm.targetRelationshipType}
@@ -875,10 +839,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                             const ref = krReference.find((r) => r.type === kr.type);
                             return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
                           });
+                          const rebalancedKrs = validKrs.length !== current.keyResults.length ? balanceDeliverableWeights(validKrs) : validKrs;
                           return {
                             ...current,
                             targetRelationshipType: newRelationship,
-                            keyResults: validKrs,
+                            keyResults: rebalancedKrs,
                           };
                         });
                       }}
@@ -893,7 +858,49 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     </select>
                   </label>
                   <label>
-                    <span>Due date</span>
+                    <span>Tax Code</span>
+                    {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
+                      <input
+                        className="search-input"
+                        placeholder="No tax code available"
+                        value={companyOptions.find(item => item.companyId === projectForm.targetCompanyProfileId || item.id === projectForm.targetCompanyProfileId)?.identity?.taxCode || ''}
+                        readOnly
+                        style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)', cursor: 'default' }}
+                      />
+                    ) : (
+                      <div>
+                        <input
+                          className="search-input"
+                          placeholder="Enter company tax code"
+                          value={projectForm.targetCompanyTaxCode}
+                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyTaxCode: event.target.value }))}
+                          onBlur={(event) => void handleTaxCodeCheck(event.target.value)}
+                        />
+                        {taxCodeCheck?.loading && <span style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px', display: 'block' }}>Checking tax code...</span>}
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'COMPANY_PROFILE' && (
+                          <div style={{ backgroundColor: '#fff3cd', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '4px' }}>
+                            Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
+                            <button type="button" onClick={() => {
+                              setProjectForm(current => ({
+                                ...current, 
+                                projectType: 'UPDATE_EXISTING_COMPANY',
+                                targetCompanyProfileId: taxCodeCheck.companyProfileId || ''
+                              }));
+                            }} style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                              Use existing company
+                            </button>
+                          </div>
+                        )}
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT' && (
+                          <div style={{ backgroundColor: '#f8d7da', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#721c24', marginTop: '4px' }}>
+                            Company is already being researched in an active project (<strong>{taxCodeCheck.companyName}</strong>). Duplicate creation is blocked.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </label>
+                  <label>
+                    <span>Due Date</span>
                     <input
                       className="search-input"
                       type="date"
@@ -905,38 +912,79 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 </div>
               </div>
 
-              <div style={{ marginTop: '32px' }}>
-                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Project Goal</h4>
-                <label style={{ display: 'block' }}>
-                  <textarea
-                    className="search-input"
-                    style={{ minHeight: '60px', padding: '12px', width: '100%', resize: 'vertical' }}
-                    placeholder="Describe the main outcome this project should deliver."
-                    value={projectForm.objective}
-                    onChange={(event) => setProjectForm((current) => ({ ...current, objective: event.target.value }))}
-                  />
-                </label>
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ marginBottom: '14px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT GOAL & NOTES</h4>
+                <div className="workspace-form-grid" style={{ marginBottom: 0 }}>
+                  <label style={{ gridColumn: '1 / -1' }}>
+                    <span>Project Goal</span>
+                    <textarea
+                      className="search-input"
+                      style={{ minHeight: '60px', padding: '10px 12px', resize: 'vertical' }}
+                      placeholder="Describe the main outcome this project should deliver."
+                      value={projectForm.objective}
+                      onChange={(event) => setProjectForm((current) => ({ ...current, objective: event.target.value }))}
+                    />
+                  </label>
+                  <label style={{ gridColumn: '1 / -1' }}>
+                    <span>Additional Notes (Optional)</span>
+                    <textarea
+                      className="search-input"
+                      placeholder="Enter any additional information..."
+                      value={projectForm.description}
+                      onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))}
+                      style={{ minHeight: '50px', padding: '10px 12px', resize: 'vertical' }}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div style={{ marginTop: '32px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-                  <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Project Deliverables</h4>
+              <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT DELIVERABLES</h4>
+                  </div>
                   {(() => {
                     const totalWeight = projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0);
                     const is100 = totalWeight === 100;
                     const isOver = totalWeight > 100;
                     return (
-                      <div style={{ fontSize: '0.9rem', textAlign: 'right' }}>
-                        <div style={{ fontWeight: '600', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : 'inherit' }}>
-                          Total Progress Weight: {totalWeight} / 100
+                      <div style={{ fontSize: '0.88rem', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+                          <div style={{ fontWeight: '700', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : '#b45309' }}>
+                            Total Progress Weight: {totalWeight} / 100
+                          </div>
+                          {projectForm.keyResults.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProjectForm(prev => ({
+                                  ...prev,
+                                  keyResults: balanceDeliverableWeights(prev.keyResults),
+                                }));
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                padding: '2px 7px',
+                                fontSize: '0.75rem',
+                                color: '#475569',
+                                cursor: 'pointer',
+                                lineHeight: 1.2
+                              }}
+                              title="Distribute 100% weight equally across selected deliverables"
+                            >
+                              Balance equally
+                            </button>
+                          )}
                         </div>
                         {!is100 && !isOver && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                             {100 - totalWeight}% remaining
                           </div>
                         )}
                         {isOver && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)', marginTop: '2px' }}>
                             Exceeds 100%
                           </div>
                         )}
@@ -948,7 +996,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 {krReferenceLoading ? (
                   <div>Loading Project Deliverables...</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {krReference.map((kr) => {
                       const isSupported = kr.supportedRelationshipTypes.length === 0 || kr.supportedRelationshipTypes.includes(normalizeRelationshipInput(projectForm.targetRelationshipType) as RelationshipType);
                       const selectedKr = projectForm.keyResults.find((k) => k.type === kr.type);
@@ -961,13 +1009,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '16px',
-                            padding: '16px',
+                            gap: '12px',
+                            padding: '10px 14px',
                             borderRadius: '8px',
                             border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
                             background: isSelected ? 'var(--primary-light)' : 'transparent',
                             opacity: isSupported ? 1 : 0.6,
-                            transition: 'all 0.2s ease',
+                            transition: 'all 0.15s ease',
                           }}
                         >
                           <input
@@ -979,38 +1027,36 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                               if (!isSupported) return;
                               const checked = e.target.checked;
                               setProjectForm((current) => {
-                                const existing = current.keyResults.filter((k) => k.type !== kr.type);
-                                if (checked) {
-                                  return { ...current, keyResults: [...existing, { type: kr.type, weight: 10 }] };
-                                } else {
-                                  return { ...current, keyResults: existing };
-                                }
+                                const withoutCurrent = current.keyResults.filter((k) => k.type !== kr.type);
+                                const updatedList = checked ? [...withoutCurrent, { type: kr.type, weight: 0 }] : withoutCurrent;
+                                const rebalanced = balanceDeliverableWeights(updatedList);
+                                return { ...current, keyResults: rebalanced };
                               });
                             }}
                             style={{
-                              width: '20px',
-                              height: '20px',
+                              width: '18px',
+                              height: '18px',
                               cursor: isSupported ? 'pointer' : 'not-allowed',
                               flexShrink: 0,
                               margin: 0
                             }}
                           />
                           <label htmlFor={`kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
-                            <div style={{ fontWeight: 600, color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{kr.description}</div>
+                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{kr.description}</div>
                             {!isSupported && (
-                              <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)', marginTop: '8px' }}>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--danger-text)', marginTop: '4px' }}>
                                 Available only for {supportedLabels} projects.
                               </div>
                             )}
                           </label>
                           {isSelected && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                               <input
                                 type="number"
                                 title="Progress Weight"
                                 className="search-input"
-                                style={{ width: '70px', padding: '6px 10px', textAlign: 'center' }}
+                                style={{ width: '70px', padding: '5px 8px', textAlign: 'center', height: '32px' }}
                                 value={selectedKr.weight}
                                 min={1}
                                 max={100}
@@ -1022,7 +1068,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                                   }));
                                 }}
                               />
-                              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--primary-dark)' }}>%</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-dark)' }}>%</span>
                             </div>
                           )}
                         </div>
@@ -1030,19 +1076,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     })}
                   </div>
                 )}
-              </div>
-
-              <div style={{ marginTop: '32px', marginBottom: '32px' }}>
-                <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Additional notes (optional)</h4>
-                <label style={{ display: 'block' }}>
-                  <textarea
-                    className="search-input"
-                    placeholder="Enter any additional information..."
-                    value={projectForm.description}
-                    onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))}
-                    style={{ minHeight: '60px', padding: '12px', width: '100%', resize: 'vertical' }}
-                  />
-                </label>
               </div>
             </div>
 
@@ -1053,7 +1086,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 onClick={() => void handleCreateProject()}
                 disabled={createLoading || projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0) !== 100}
               >
-                {createLoading ? t('create.submitting') : t('create.submit')}
+                {createLoading ? t('create.submitting') : 'Create project'}
               </button>
             </div>
           </div>
@@ -1115,13 +1148,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               <input
                 className="search-input"
                 type="text"
-                placeholder="Search by project name, ID, or company..."
+                placeholder="Search by project name or company..."
                 value={projectSearch}
                 onChange={(e) => setProjectSearch(e.target.value)}
               />
               <select className="search-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="ALL">All Status</option>
-                <option value="DRAFT">Inactive</option>
+                <option value="DRAFT">Draft</option>
                 <option value="ACTIVE">Active</option>
                 <option value="OVERDUE">Overdue</option>
                 <option value="CLOSED">Closed</option>
@@ -1133,12 +1166,30 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 <option value="UPDATE_EXISTING_COMPANY">Update Existing Company</option>
               </select>
             </div>
-            <div className="manager-project-header" role="row">
-              <span>STT</span><span>PROJECT</span><span>TARGET COMPANY</span><span>TYPE</span><span>PROGRESS</span><span>END DATE</span><span>STATUS</span><span>ACTION</span>
+            <div className="manager-project-table-scroll">
+              <div className="manager-project-table-inner">
+                <div className="manager-project-header" role="row">
+                  <span className="col-center">#</span>
+                  <span>PROJECT</span>
+                  <span>TARGET COMPANY</span>
+                  <span>TYPE</span>
+                  <span>PROGRESS</span>
+                  <span className="col-center">END DATE</span>
+                  <span className="col-center">STATUS</span>
+                  <span className="col-center">ACTION</span>
+                </div>
+                {filteredProjects.length === 0 ? (
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">No projects found.</p>
+                    <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
+                  </div>
+                ) : (
+                  filteredProjects.map(renderProjectRow)
+                )}
+              </div>
             </div>
-            {filteredProjects.length === 0 ? <div className="workspace-empty">No projects found.</div> : filteredProjects.map(renderProjectRow)}
             <div className="project-table-pagination">
-              <span>Showing {pageStart}-{pageEnd} of {totalElements} projects</span>
+              <span>Showing {pageStart}–{pageEnd} of {totalElements} projects</span>
               <div>
                 <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => setCurrentPage(0)}>First</button>
                 <button className="workspace-page-btn" disabled={currentPage === 0} onClick={() => setCurrentPage((c) => Math.max(c - 1, 0))}>Prev</button>

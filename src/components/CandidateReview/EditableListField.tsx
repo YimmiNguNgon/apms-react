@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { AiFieldResult } from '../../types/domain';
+import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
 import { EditableFieldCard } from './EditableFieldCard';
 import styles from './CandidateReview.module.css';
 
@@ -43,15 +44,14 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
       setDraft('');
       setAdding(false);
     }
-    const isUnchanged = JSON.stringify(finalItems) === JSON.stringify(currentValue);
-    if (isUnchanged) {
-      const currentStatus = fieldResult?.staffReviewStatus ?? 'PENDING';
-      onChange(fieldKey, finalItems, currentStatus);
+    const isEdited = isCandidateFieldEdited(fieldResult?.value, finalItems);
+    if (!isEdited) {
+      onChange(fieldKey, finalItems, 'CONFIRMED');
       return;
     }
 
-    const isAiValEmpty = aiOriginal.length === 0;
-    const isNowEmpty = finalItems.length === 0;
+    const isAiValEmpty = normalizeCandidateFieldValue(fieldResult?.value) === null;
+    const isNowEmpty = normalizeCandidateFieldValue(finalItems) === null;
     const status = isAiValEmpty ? 'ADDED' : (isNowEmpty ? 'REMOVED' : 'EDITED');
     onChange(fieldKey, finalItems, status);
   };

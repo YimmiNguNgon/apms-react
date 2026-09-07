@@ -208,7 +208,7 @@ export const CreateContractEntryModal: React.FC<Props> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Thỏa thuận Hợp tác Đầu tư 2026"
+              placeholder="e.g., Investment Cooperation Agreement 2026"
               style={{
                 width: '100%',
                 padding: '8px 12px',

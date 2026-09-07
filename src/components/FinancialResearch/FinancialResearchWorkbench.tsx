@@ -3,11 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BarChart3,
-  Building2,
-  Calendar,
   Check,
   CheckCircle2,
-  Clock,
   Edit3,
   FileSearch,
   FileText,
@@ -182,91 +179,6 @@ const getMetricSource = (metric: FinancialMetricResponse) => {
   if (metric.source.page) return `Page ${metric.source.page}`;
   return metric.source.documentName || 'Source document';
 };
-
-function FinancialResearchMetaBar({
-  status,
-  taskTypeLabel,
-  dueDate,
-  targetCompanyName,
-  onClose,
-}: {
-  status?: string | null;
-  taskTypeLabel?: string | null;
-  dueDate?: string | null;
-  targetCompanyName?: string | null;
-  onClose?: () => void;
-}) {
-  const statusStr = (status || 'IN_PROGRESS').toUpperCase();
-  const statusClass =
-    statusStr === 'APPROVED' || statusStr === 'COMPLETED'
-      ? styles.statusApproved
-      : statusStr === 'CHANGES_REQUESTED'
-      ? styles.statusChangesRequested
-      : statusStr === 'SUBMITTED' || statusStr === 'IN_REVIEW'
-      ? styles.statusInProgress
-      : statusStr === 'DRAFT'
-      ? styles.statusDraft
-      : styles.statusInProgress;
-
-  return (
-    <div className={styles.metaBar}>
-      <div className={styles.metaGroup}>
-        <div className={styles.metaItem}>
-          <span className={styles.metaLabel}>Status:</span>
-          <span className={`${styles.statusBadge} ${statusClass}`}>
-            ● {formatStatus(status)}
-          </span>
-        </div>
-
-        <div className={styles.metaDivider} />
-
-        <div className={styles.metaItem}>
-          <Building2 size={14} className={styles.metaLabel} />
-          <span className={styles.metaLabel}>Company:</span>
-          <strong>{targetCompanyName || 'No target'}</strong>
-        </div>
-
-        <div className={styles.metaDivider} />
-
-        <div className={styles.metaItem}>
-          <BarChart3 size={14} className={styles.metaLabel} />
-          <span className={styles.metaLabel}>Task:</span>
-          <strong>{taskTypeLabel || 'Financial research'}</strong>
-        </div>
-
-        <div className={styles.metaDivider} />
-
-        <div className={styles.metaItem}>
-          <Calendar size={14} className={styles.metaLabel} />
-          <span className={styles.metaLabel}>Due date:</span>
-          <strong>{formatDate(dueDate)}</strong>
-        </div>
-      </div>
-
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: '#64748b',
-            cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginLeft: 'auto',
-          }}
-          aria-label="Close"
-        >
-          <X size={18} />
-        </button>
-      )}
-    </div>
-  );
-}
 
 function FinancialReportsEmptyState() {
   return (
@@ -982,7 +894,6 @@ function FinancialReportsPanel({
 }
 
 function FinancialPackageSummary({
-  counts,
   allApproved = false,
   disabled,
   submitting,
@@ -992,7 +903,7 @@ function FinancialPackageSummary({
   recalling,
   onSubmit,
 }: {
-  counts: PackageCounts;
+  counts?: PackageCounts;
   allApproved?: boolean;
   disabled: boolean;
   submitting: boolean;
@@ -1002,84 +913,51 @@ function FinancialPackageSummary({
   recalling?: boolean;
   onSubmit: () => void;
 }) {
-  const isWarning = counts.unverified > 0 || counts.needsReview > 0;
-  const isSuccess = !isWarning && counts.selected > 0 && counts.metrics > 0;
-
-  const label = submitted
-    ? (canRecall
-        ? `Đã nộp cho Manager • ${counts.selected || counts.reports} báo cáo đang chờ phê duyệt.`
-        : 'Gói nghiên cứu tài chính đã được nộp và đang chờ Manager phê duyệt.')
-    : allApproved
-      ? 'Tất cả các báo cáo tài chính đã được Manager phê duyệt.'
-    : counts.selected === 0
-      ? 'Chọn ít nhất một báo cáo đã trích xuất để nộp.'
-    : counts.metrics === 0
-      ? 'Trích xuất chỉ số trước khi nộp báo cáo.'
-    : counts.unverified > 0
-      ? `Còn ${counts.unverified} chỉ số chưa được xác thực. Vui lòng xác thực tất cả (100%) trước khi nộp.`
-      : `${counts.selected} báo cáo, ${counts.metrics} chỉ số đã sẵn sàng để nộp.`;
+  if (allApproved) return null;
+  if (submitted && (!canRecall || !onRecall)) return null;
 
   return (
     <footer className={styles.packageSummary}>
-      <div className={`${styles.summaryStatusGroup} ${isWarning ? styles.summaryStatusWarning : isSuccess || allApproved || submitted ? styles.summaryStatusSuccess : styles.summaryStatusNeutral}`}>
-        {isWarning ? (
-          <AlertTriangle size={16} />
-        ) : isSuccess || allApproved ? (
-          <CheckCircle2 size={16} />
-        ) : submitted ? (
-          <Clock size={16} />
-        ) : (
-          <FileText size={16} />
-        )}
-        <span>{label}</span>
-      </div>
-      {!allApproved && (
-        submitted ? (
-          canRecall && onRecall && (
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={onRecall}
-              disabled={recalling}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '7px 14px',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#0f172a',
-                borderColor: '#cbd5e1',
-                background: '#ffffff',
-                borderRadius: '8px',
-                cursor: 'pointer',
-              }}
-            >
-              {recalling ? (
-                <>
-                  <Loader2 size={14} className={styles.spinIcon} />
-                  Đang thu hồi...
-                </>
-              ) : (
-                <>
-                  <RotateCcw size={14} />
-                  Thu hồi nộp
-                </>
-              )}
-            </button>
-          )
-        ) : (
-          <button className={styles.submitBtn} type="button" onClick={onSubmit} disabled={disabled || submitted || submitting}>
-            {submitting ? (
+      {submitted ? (
+        canRecall && onRecall && (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onRecall}
+            disabled={recalling}
+          >
+            {recalling ? (
               <>
-                <Loader2 size={14} className={styles.spinIcon} />
-                Đang nộp...
+                <Loader2 size={16} className={styles.spinIcon} />
+                <span>Recalling...</span>
               </>
             ) : (
-              'Nộp cho Manager'
+              <>
+                <RotateCcw size={16} />
+                <span>Recall Submission</span>
+              </>
             )}
           </button>
         )
+      ) : (
+        <button
+          className={styles.submitBtn}
+          type="button"
+          onClick={onSubmit}
+          disabled={disabled || submitted || submitting}
+        >
+          {submitting ? (
+            <>
+              <Loader2 size={16} className={styles.spinIcon} />
+              <span>Submitting...</span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={16} />
+              <span>Submit for Review</span>
+            </>
+          )}
+        </button>
       )}
     </footer>
   );
@@ -1801,14 +1679,6 @@ export default function FinancialResearchWorkbench({
 
   return (
     <div className={styles.workbench}>
-      <FinancialResearchMetaBar
-        status={research.status === 'SUBMITTED' ? 'IN_REVIEW' : research.status === 'APPROVED' ? 'DONE' : 'IN_PROGRESS'}
-        taskTypeLabel={taskTypeLabel}
-        dueDate={dueDate}
-        targetCompanyName={targetCompanyName}
-        onClose={onClose}
-      />
-
       <div className={styles.mainGrid}>
         <FinancialReportsPanel
           reports={reports}
@@ -1928,7 +1798,7 @@ export default function FinancialResearchWorkbench({
           recalling={recallMutation.isPending}
           onSubmit={() => {
             if (counts.unverified > 0) {
-              setToast({ message: `Còn ${counts.unverified} chỉ số chưa được xác thực. Vui lòng xác thực tất cả các chỉ số trước khi nộp.`, type: 'error' });
+              setToast({ message: `${counts.unverified} unverified metric(s) remaining. Please verify all metrics before submitting.`, type: 'error' });
               return;
             }
             submitTaskMutation.mutate();

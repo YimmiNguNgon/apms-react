@@ -25,4 +25,9 @@ export const companyProfileApi = {
     );
     return res.data;
   },
+
+  updateProfileVisibility: async (companyIdOrProfileId: string, visibility: 'PUBLISHED' | 'HIDDEN') => {
+    const res = await api.patch<ProfileResponse>(`/company-profiles/${companyIdOrProfileId}/visibility`, { visibility });
+    return res.data;
+  },
 };

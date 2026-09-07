@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { AiFieldResult } from '../../types/domain';
+import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
 import { EditableFieldCard } from './EditableFieldCard';
 import styles from './CandidateReview.module.css';
 
@@ -50,15 +51,14 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
   };
 
   const handleSave = () => {
-    const isUnchanged = JSON.stringify(draftValue) === JSON.stringify(currentValue);
-    if (isUnchanged) {
-      const currentStatus = fieldResult?.staffReviewStatus ?? 'PENDING';
-      onChange(fieldKey, draftValue, currentStatus);
+    const isEdited = isCandidateFieldEdited(fieldResult?.value, draftValue);
+    if (!isEdited) {
+      onChange(fieldKey, draftValue, 'CONFIRMED');
       return;
     }
 
-    const isAiValEmpty = Object.keys(aiOriginal).length === 0;
-    const isNowEmpty = Object.keys(draftValue).length === 0 || Object.values(draftValue).every(v => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0));
+    const isAiValEmpty = normalizeCandidateFieldValue(fieldResult?.value) === null;
+    const isNowEmpty = normalizeCandidateFieldValue(draftValue) === null;
     
     const status = isAiValEmpty ? 'ADDED' : (isNowEmpty ? 'REMOVED' : 'EDITED');
     onChange(fieldKey, draftValue, status);

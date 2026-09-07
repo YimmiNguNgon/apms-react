@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { AiFieldResult } from '../../types/domain';
+import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
 import { EditableFieldCard } from './EditableFieldCard';
 import styles from './CandidateReview.module.css';
 
@@ -36,16 +37,15 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   };
 
   const handleSave = () => {
-    const isUnchanged = JSON.stringify(draftValue) === JSON.stringify(currentValue);
-    if (isUnchanged) {
-      const currentStatus = fieldResult?.staffReviewStatus ?? 'PENDING';
-      onChange(fieldKey, draftValue, currentStatus);
+    const isEdited = isCandidateFieldEdited(fieldResult?.value, draftValue);
+    if (!isEdited) {
+      onChange(fieldKey, draftValue, 'CONFIRMED');
       return;
     }
 
-    const aiVal = fieldResult?.value;
-    const isAiValEmpty = aiVal === undefined || aiVal === null || aiVal === '';
-    const status = isAiValEmpty ? 'ADDED' : (!draftValue || draftValue === '') ? 'REMOVED' : 'EDITED';
+    const isAiValEmpty = normalizeCandidateFieldValue(fieldResult?.value) === null;
+    const isDraftEmpty = normalizeCandidateFieldValue(draftValue) === null;
+    const status = isAiValEmpty ? 'ADDED' : isDraftEmpty ? 'REMOVED' : 'EDITED';
     onChange(fieldKey, draftValue, status);
   };
 

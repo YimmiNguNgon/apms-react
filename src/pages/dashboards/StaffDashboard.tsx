@@ -1,18 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle,
   ArrowRight,
   BriefcaseBusiness,
-  CheckCircle2,
   Clock,
   FileText,
-  KanbanSquare,
-  Loader2,
-  RefreshCw,
-  Sparkles,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { useUser } from '../../context/UserContext';
 import type { PageResult, ProjectResponse, ProjectTaskResponse, TaskStatus, TaskType } from '../../types/domain';
 
 interface Props {
@@ -28,7 +21,7 @@ const statusLabel: Record<TaskStatus, string> = {
   AVAILABLE: 'Available',
   TODO: 'To do',
   IN_PROGRESS: 'In progress',
-  IN_REVIEW: 'Waiting manager',
+  IN_REVIEW: 'Waiting review',
   DONE: 'Done',
   BLOCKED: 'Blocked',
   CANCELLED: 'Cancelled',
@@ -70,15 +63,21 @@ const isOverdue = (value?: string | null) => {
   return date.getTime() < new Date().setHours(0, 0, 0, 0);
 };
 
-const statusClass = (status: TaskStatus) => {
+const priorityTone = (priority?: string): 'danger' | 'warning' | 'neutral' => {
+  if (priority === 'HIGH') return 'danger';
+  if (priority === 'MEDIUM') return 'warning';
+  return 'neutral';
+};
+
+const statusClass = (status: TaskStatus): 'success' | 'warning' | 'info' | 'neutral' | 'danger' => {
   if (status === 'DONE') return 'success';
   if (status === 'IN_REVIEW') return 'warning';
   if (status === 'IN_PROGRESS') return 'info';
+  if (status === 'BLOCKED') return 'danger';
   return 'neutral';
 };
 
 export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
-  const { currentUser } = useUser();
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [tasks, setTasks] = useState<StaffTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,20 +156,22 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
     };
   }, []);
 
-  const stats = useMemo(() => {
-    const active = tasks.filter((task) => task.status === 'TODO' || task.status === 'IN_PROGRESS').length;
-    const review = tasks.filter((task) => task.status === 'IN_REVIEW').length;
-    const done = tasks.filter((task) => task.status === 'DONE').length;
-    const overdue = tasks.filter((task) => task.status !== 'DONE' && isOverdue(task.dueDate)).length;
-
-    return [
-      { label: 'My projects', value: projects.length, note: 'Projects you joined', icon: BriefcaseBusiness },
-      { label: 'Active tasks', value: active, note: 'To do and in progress', icon: KanbanSquare },
-      { label: 'Waiting review', value: review, note: 'Submitted to manager', icon: Clock },
-      { label: 'Completed', value: done, note: 'Approved work', icon: CheckCircle2 },
-      { label: 'Overdue', value: overdue, note: 'Needs attention', icon: AlertCircle },
-    ];
-  }, [projects.length, tasks]);
+  const activeTasksCount = useMemo(
+    () => tasks.filter((task) => task.status === 'TODO' || task.status === 'IN_PROGRESS').length,
+    [tasks]
+  );
+  const waitingReviewCount = useMemo(
+    () => tasks.filter((task) => task.status === 'IN_REVIEW').length,
+    [tasks]
+  );
+  const completedTasksCount = useMemo(
+    () => tasks.filter((task) => task.status === 'DONE').length,
+    [tasks]
+  );
+  const overdueTasksCount = useMemo(
+    () => tasks.filter((task) => task.status !== 'DONE' && isOverdue(task.dueDate)).length,
+    [tasks]
+  );
 
   const sortedTasks = useMemo(() => {
     const weight: Record<TaskStatus, number> = {
@@ -203,127 +204,284 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
   };
 
   return (
-    <section className="workspace-page role-dashboard role-dashboard-staff staff-workspace-page" id="page-staff-dashboard">
+    <section className="workspace-page role-dashboard role-dashboard-staff staff-page project-page staff-dashboard-page" id="page-staff-dashboard">
       <div className="workspace-main-full">
-        <div className="workspace-page-head staff-dashboard-head">
+        {/* Page Header */}
+        <div className="workspace-page-head">
           <div>
-            <div className="workspace-breadcrumbs">Execution <span>/</span> Staff workspace</div>
-            <span className="workspace-side-eyebrow">My assigned work</span>
             <h1>Staff Dashboard</h1>
-            {/* <p>
-              {loading
-                ? 'Loading your projects and assigned tasks from APMS.'
-                : `${currentUser?.name || 'Staff'}, you have ${tasks.filter((task) => task.status !== 'DONE').length} open task(s) across ${projects.length} project(s).`}
-            </p> */}
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Overview of your assigned projects, active tasks, and recent progress
+            </p>
           </div>
           <div className="workspace-head-actions">
-            {/* <button className="btn btn-outline" onClick={() => void loadStaffWorkspace()} disabled={loading}>
-              {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
-            </button> */}
-            {/* <button className="btn btn-primary" onClick={() => nextTask && openProject(nextTask.projectId, nextTask.id)} disabled={!nextTask}>
-              Continue work <ArrowRight size={16} />
-            </button> */}
+            <button type="button" className="btn btn-outline" onClick={() => setActivePage?.('my-tasks')}>
+              My Tasks
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => setActivePage?.('project-management')}>
+              Projects
+            </button>
           </div>
         </div>
 
         {error && <div className="workspace-inline-error">{error}</div>}
 
-        <div className="workspace-stats staff-task-stats">
-          {stats.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <article key={stat.label} className="workspace-stat-card">
-                <Icon size={20} />
-                <span className="workspace-stat-label">{stat.label}</span>
-                <strong>{stat.value}</strong>
-                <p>{stat.note}</p>
-              </article>
-            );
-          })}
+        {/* Focus Metrics (5 compact cards) */}
+        <div className="workspace-focus-card">
+          <div className="workspace-focus-metrics staff-focus-metrics">
+            <article>
+              <strong>{loading ? '...' : projects.length}</strong>
+              <span>My Projects</span>
+            </article>
+            <article>
+              <strong>{loading ? '...' : activeTasksCount}</strong>
+              <span>Active Tasks</span>
+            </article>
+            <article>
+              <strong>{loading ? '...' : waitingReviewCount}</strong>
+              <span>Waiting Review</span>
+            </article>
+            <article>
+              <strong>{loading ? '...' : completedTasksCount}</strong>
+              <span>Completed</span>
+            </article>
+            <article>
+              <strong>{loading ? '...' : overdueTasksCount}</strong>
+              <span>Overdue</span>
+            </article>
+          </div>
         </div>
 
-        <div className="staff-dashboard-grid">
-          <main className="workspace-panel staff-task-panel">
-            <div className="workspace-section-head">
+        {/* Lower Section: 2 Columns */}
+        <div className="dashboard-grid cols-main-side role-board-grid staff-dashboard-lower">
+          {/* Left: My Task Queue */}
+          <div className="workspace-panel staff-task-panel">
+            <div className="workspace-section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h3>My task queue</h3>
-                <p>Only tasks assigned to your staff account are shown here.</p>
+                <h3>My Task Queue</h3>
+                <p>Tasks currently assigned to you across all projects</p>
               </div>
-              <button className="workspace-link-btn" onClick={() => nextTask && openProject(nextTask.projectId)} disabled={!nextTask}>
-                Open board
-              </button>
+              {nextTask && (
+                <button
+                  type="button"
+                  className="project-detail-btn"
+                  onClick={() => openProject(nextTask.projectId)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                >
+                  Open board <ArrowRight size={12} />
+                </button>
+              )}
             </div>
 
-            {loading && <div className="workspace-empty">Loading assigned tasks...</div>}
-            {!loading && sortedTasks.length === 0 && (
-              <div className="workspace-empty">No assigned tasks yet. When your manager assigns work, it will appear here.</div>
+            {loading && (
+              <div className="project-table-empty">
+                <p className="project-table-empty-title">Loading assigned tasks...</p>
+              </div>
             )}
 
-            <div className="staff-task-list">
-              {sortedTasks.slice(0, 8).map((task) => (
-                <article key={task.id} className={`staff-task-card ${task.status === 'DONE' ? 'done' : ''}`}>
-                  <div className="staff-task-icon">
-                    {task.taskType === 'COMPANY_DATA_PREPARATION' ? <Sparkles size={18} /> : <FileText size={18} />}
-                  </div>
-                  <div className="staff-task-body">
-                    <div className="staff-task-title">
-                      <strong>{task.title}</strong>
-                      <span className={`workspace-badge ${statusClass(task.status)}`}>{statusLabel[task.status]}</span>
-                    </div>
-                    <p>{taskTypeHint[task.taskType]}</p>
-                    <div className="staff-task-meta">
-                      <span>{task.projectName}</span>
-                      <span>{taskTypeLabel[task.taskType]}</span>
-                      <span className={isOverdue(task.dueDate) && task.status !== 'DONE' ? 'danger-text' : ''}>
-                        {dueLabel(task.dueDate)}
-                      </span>
-                      <span>{task.priority}</span>
-                    </div>
-                  </div>
-                  <button className="workspace-icon-btn" onClick={() => openProject(task.projectId, task.id)}>
-                    Open
-                  </button>
-                </article>
-              ))}
-            </div>
-          </main>
+            {!loading && sortedTasks.length === 0 && (
+              <div className="project-table-empty">
+                <p className="project-table-empty-title">No assigned tasks yet</p>
+                <p className="project-table-empty-desc">When your manager assigns work, it will appear here.</p>
+              </div>
+            )}
 
-          <aside className="staff-side-stack">
-            <section className="workspace-side-card">
-              <span className="workspace-side-eyebrow">Next best action</span>
-              {nextTask ? (
-                <div className="staff-next-task">
-                  <span className={`workspace-badge ${statusClass(nextTask.status)}`}>{statusLabel[nextTask.status]}</span>
-                  <h3>{nextTask.title}</h3>
-                  <p>{taskTypeHint[nextTask.taskType]}</p>
-                  <div className="staff-task-meta compact">
-                    <span>{nextTask.projectName}</span>
-                    <span>{dueLabel(nextTask.dueDate)}</span>
+            {!loading && sortedTasks.length > 0 && (
+              <div className="staff-task-queue-list">
+                {sortedTasks.slice(0, 10).map((task) => {
+                  const overdue = isOverdue(task.dueDate) && task.status !== 'DONE';
+                  return (
+                    <article key={task.id} className={`staff-task-row ${task.status === 'DONE' ? 'done' : ''}`}>
+                      <div className="staff-task-row-main">
+                        <div className="staff-task-row-header">
+                          <span className="staff-task-row-title">{task.title}</span>
+                          <div className="staff-task-row-badges">
+                            <span className={`project-status-badge ${statusClass(task.status)}`}>
+                              {statusLabel[task.status]}
+                            </span>
+                            <span className={`project-status-badge ${priorityTone(task.priority)}`}>
+                              {task.priority}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="staff-task-row-desc">
+                          {task.description || taskTypeHint[task.taskType]}
+                        </p>
+
+                        <div className="staff-task-row-meta">
+                          <span className="staff-task-meta-item">
+                            <BriefcaseBusiness size={12} /> {task.projectName}
+                          </span>
+                          <span className="staff-task-meta-item">
+                            <FileText size={12} /> {taskTypeLabel[task.taskType]}
+                          </span>
+                          <span className={`staff-task-meta-item ${overdue ? 'overdue' : ''}`}>
+                            <Clock size={12} /> {dueLabel(task.dueDate)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="staff-task-row-action">
+                        <button
+                          type="button"
+                          className="project-detail-btn"
+                          onClick={() => openProject(task.projectId, task.id)}
+                        >
+                          Open
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+
+                {sortedTasks.length > 10 && (
+                  <div style={{ textAlign: 'center', paddingTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setActivePage?.('my-tasks')}
+                      style={{ fontSize: '0.82rem', color: 'var(--role-accent, #2563eb)' }}
+                    >
+                      View all tasks ({sortedTasks.length}) →
+                    </button>
                   </div>
-                  <button className="btn btn-primary" onClick={() => openProject(nextTask.projectId, nextTask.id)}>
-                    Start from here
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Next Best Action & My Projects */}
+          <aside className="workspace-sidebar staff-side-stack">
+            {/* Next Best Action Card */}
+            <div className="workspace-side-card staff-next-action-card">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>Next Best Action</h3>
+                  <p>Recommended priority work item</p>
+                </div>
+              </div>
+
+              {nextTask ? (
+                <div className="staff-recommendation-box">
+                  <div className="staff-recommendation-context">
+                    <span className="staff-context-pill">
+                      {nextTask.status === 'IN_PROGRESS'
+                        ? 'Active task in progress'
+                        : isOverdue(nextTask.dueDate)
+                        ? 'Overdue priority task'
+                        : 'Next up in queue'}
+                    </span>
+                    <div className="staff-recommendation-badges">
+                      <span className={`project-status-badge ${statusClass(nextTask.status)}`}>
+                        {statusLabel[nextTask.status]}
+                      </span>
+                      <span className={`project-status-badge ${priorityTone(nextTask.priority)}`}>
+                        {nextTask.priority}
+                      </span>
+                    </div>
+                  </div>
+
+                  <h4 className="staff-recommendation-title">{nextTask.title}</h4>
+                  <p className="staff-recommendation-desc">
+                    {nextTask.description || taskTypeHint[nextTask.taskType]}
+                  </p>
+
+                  <div className="staff-recommendation-meta">
+                    <span className="staff-meta-chip">
+                      <BriefcaseBusiness size={12} /> {nextTask.projectName}
+                    </span>
+                    <span className={`staff-meta-chip ${isOverdue(nextTask.dueDate) && nextTask.status !== 'DONE' ? 'overdue' : ''}`}>
+                      <Clock size={12} /> {dueLabel(nextTask.dueDate)}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="project-detail-btn primary staff-recommendation-btn"
+                    onClick={() => openProject(nextTask.projectId, nextTask.id)}
+                  >
+                    Open task <ArrowRight size={14} style={{ marginLeft: '4px' }} />
                   </button>
                 </div>
               ) : (
-                <div className="workspace-empty">Your queue is clear.</div>
+                <div className="project-table-empty" style={{ padding: '24px 16px' }}>
+                  <p className="project-table-empty-title">Your queue is clear</p>
+                  <p className="project-table-empty-desc">No actionable tasks pending right now.</p>
+                </div>
               )}
-            </section>
+            </div>
 
-            <section className="workspace-side-card">
-              <span className="workspace-side-eyebrow">My projects</span>
-              <div className="staff-project-list">
-                {projects.slice(0, 6).map((project) => {
-                  const openTasks = tasks.filter((task) => task.projectId === project.id && task.status !== 'DONE').length;
-                  return (
-                    <button key={project.id} type="button" onClick={() => openProject(project.id)}>
-                      <strong>{project.projectName}</strong>
-                      <span>{openTasks} open task(s)</span>
-                    </button>
-                  );
-                })}
-                {!loading && projects.length === 0 && <div className="workspace-empty">No joined projects yet.</div>}
+            {/* My Projects Card */}
+            <div className="workspace-side-card staff-projects-card">
+              <div className="workspace-section-head">
+                <div>
+                  <h3>My Projects</h3>
+                  <p>Projects you are participating in</p>
+                </div>
               </div>
-            </section>
+
+              {loading && (
+                <div className="project-table-empty" style={{ padding: '20px 16px' }}>
+                  <p className="project-table-empty-title">Loading projects...</p>
+                </div>
+              )}
+
+              {!loading && projects.length === 0 && (
+                <div className="project-table-empty" style={{ padding: '20px 16px' }}>
+                  <p className="project-table-empty-title">No joined projects yet</p>
+                  <p className="project-table-empty-desc">Projects assigned to you will appear here.</p>
+                </div>
+              )}
+
+              {!loading && projects.length > 0 && (
+                <div className="staff-projects-list">
+                  {projects.slice(0, 5).map((project) => {
+                    const openTasks = tasks.filter(
+                      (task) => task.projectId === project.id && task.status !== 'DONE'
+                    ).length;
+                    return (
+                      <div key={project.id} className="staff-project-item">
+                        <div className="staff-project-item-header">
+                          <strong className="staff-project-name" title={project.projectName}>
+                            {project.projectName}
+                          </strong>
+                          <button
+                            type="button"
+                            className="project-detail-btn"
+                            onClick={() => openProject(project.id)}
+                            style={{ padding: '2px 8px', fontSize: '0.74rem' }}
+                          >
+                            View
+                          </button>
+                        </div>
+                        <div className="staff-project-item-meta">
+                          <span className="staff-project-task-count">
+                            {openTasks} open task{openTasks === 1 ? '' : 's'}
+                          </span>
+                          <span className="staff-project-progress">
+                            {project.progressPercentage ?? 0}% completed
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {projects.length > 5 && (
+                    <div style={{ textAlign: 'center', paddingTop: '8px', borderTop: '1px solid var(--border-color, #e2e8f0)', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setActivePage?.('project-management')}
+                        style={{ fontSize: '0.78rem', color: 'var(--role-accent, #2563eb)' }}
+                      >
+                        View all projects ({projects.length}) →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </aside>
         </div>
       </div>

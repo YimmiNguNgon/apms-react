@@ -35,19 +35,19 @@ function getBaseProgressForStage(stage?: ContractExtractionStage | null): number
 function getStageLabel(stage?: ContractExtractionStage | null): string {
   switch (stage) {
     case 'QUEUED':
-      return 'Đang xếp hàng chờ xử lý...';
+      return 'Queued for processing...';
     case 'PARSING_DOCUMENT':
-      return 'Đang đọc tài liệu PDF...';
+      return 'Reading PDF document...';
     case 'CLASSIFYING_CONTRACT':
-      return 'Đang phân loại hợp đồng với Gemini AI...';
+      return 'Classifying contract with Gemini AI...';
     case 'EXTRACTING_FIELDS':
-      return 'Đang trích xuất điều khoản & thông tin các bên...';
+      return 'Extracting clauses & party information...';
     case 'VALIDATING_RESULTS':
-      return 'Đang đối chiếu dữ liệu trích xuất...';
+      return 'Validating extracted data...';
     case 'SAVING_RESULTS':
-      return 'Đang hoàn tất kết quả...';
+      return 'Finalizing results...';
     default:
-      return 'Đang trích xuất với Gemini AI...';
+      return 'Extracting with Gemini AI...';
   }
 }
 
@@ -103,7 +103,7 @@ export const ContractProgressBar: React.FC<Props> = ({
       >
         <AlertCircle size={16} color="#dc2626" style={{ flexShrink: 0 }} />
         <span>
-          <strong>Lỗi trích xuất:</strong> {errorMessage || 'Đã xảy ra lỗi trong quá trình xử lý AI. Vui lòng thử lại.'}
+          <strong>Extraction error:</strong> {errorMessage || 'An error occurred during AI processing. Please try again.'}
         </span>
       </div>
     );
@@ -127,7 +127,7 @@ export const ContractProgressBar: React.FC<Props> = ({
       >
         <AlertTriangle size={16} color="#ea580c" style={{ flexShrink: 0 }} />
         <span>
-          <strong>Yêu cầu xác nhận:</strong> Cần xác nhận loại hợp đồng để tiếp tục trích xuất.
+          <strong>Confirmation required:</strong> Contract type confirmation needed to continue extraction.
         </span>
       </div>
     );
@@ -184,14 +184,14 @@ export const ContractProgressBar: React.FC<Props> = ({
                   fontWeight: 600,
                   cursor: isCancelling ? 'not-allowed' : 'pointer',
                 }}
-                title="Hủy trích xuất"
+                title="Cancel extraction"
               >
                 {isCancelling ? (
                   <Loader2 size={11} style={{ animation: 'spin 1.2s linear infinite' }} />
                 ) : (
                   <XCircle size={11} />
                 )}
-                <span>Hủy</span>
+                <span>Cancel</span>
               </button>
             )}
           </div>

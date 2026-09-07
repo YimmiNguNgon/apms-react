@@ -1510,6 +1510,132 @@
   color: #0f172a;
 }
 
+.candidateEyebrowRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.candidateEyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #2563eb;
+  text-transform: uppercase;
+}
+
+.taskTitleTag {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.titleWithDraftRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.companyNameSubline {
+  font-size: 13px;
+  color: #475569;
+  margin-top: 8px;
+}
+
+.companyNameSubline strong {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.sourceDocsInline {
+  color: #64748b;
+  margin-left: 6px;
+}
+
+.legacyDraftSelector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.legacyDraftSelector select {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.historySection {
+  margin-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.historyToggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.historyToggle:hover {
+  color: #2563eb;
+}
+
+.historyTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.historyItem {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.historyItemHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.historyItemStatus {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.historyItemDate {
+  color: #94a3b8;
+}
+
+.historyItemNote {
+  color: #475569;
+  margin-top: 2px;
+}
+
 /* --- New Redesign Overrides --- */
 .scalarGrid {
   display: grid;

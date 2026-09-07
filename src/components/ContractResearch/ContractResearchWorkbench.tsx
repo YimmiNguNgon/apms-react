@@ -85,10 +85,10 @@ interface FlattenedContractRow {
 
 const formatContractType = (type?: string | null) => {
   if (!type || type === 'UNKNOWN' || type === 'AUTO_DETECT') return 'Auto Detect';
-  if (type === 'COOPERATION_AGREEMENT') return 'Thỏa thuận hợp tác';
-  if (type === 'PARTNERSHIP_AGREEMENT') return 'Đối tác chiến lược';
-  if (type === 'JOINT_VENTURE_AGREEMENT') return 'Liên doanh (JVA)';
-  if (type === 'BUSINESS_COOPERATION_CONTRACT') return 'Hợp tác KD (BCC)';
+  if (type === 'COOPERATION_AGREEMENT') return 'Cooperation Agreement';
+  if (type === 'PARTNERSHIP_AGREEMENT') return 'Strategic Partnership';
+  if (type === 'JOINT_VENTURE_AGREEMENT') return 'Joint Venture (JVA)';
+  if (type === 'BUSINESS_COOPERATION_CONTRACT') return 'Business Cooperation (BCC)';
   return type.replace(/_/g, ' ');
 };
 
@@ -96,7 +96,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('vi-VN', {
+  return new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -107,7 +107,7 @@ const formatNumericValue = (val?: number | string | null) => {
   if (val === undefined || val === null || val === '') return '—';
   const num = typeof val === 'number' ? val : Number(val);
   if (!Number.isNaN(num) && Number.isFinite(num)) {
-    return new Intl.NumberFormat('vi-VN').format(num);
+    return new Intl.NumberFormat('en-US').format(num);
   }
   return String(val);
 };
@@ -287,11 +287,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
     const common = contract.commonData;
     if (common) {
-      // 1. Số hiệu hợp đồng
+      // 1. Contract Number
       rows.push({
         id: 'gen-contractNumber',
         fieldPath: 'contractNumber',
-        label: 'Số hiệu hợp đồng',
+        label: 'Contract Number',
         value: common.contractNumber?.value || 'N/A',
         section: 'General Terms',
         qualityStatus: common.contractNumber?.qualityStatus || 'VALID',
@@ -299,11 +299,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.contractNumber,
       });
 
-      // 2. Ngày ký
+      // 2. Signing Date
       rows.push({
         id: 'gen-signingDate',
         fieldPath: 'signingDate',
-        label: 'Ngày ký (Signing Date)',
+        label: 'Signing Date',
         value: common.signingDate?.value ? String(common.signingDate.value) : 'N/A',
         section: 'General Terms',
         qualityStatus: (common.signingDate?.value ? common.signingDate?.qualityStatus : 'VALID') || 'VALID',
@@ -311,11 +311,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.signingDate as any,
       });
 
-      // 3. Ngày hiệu lực
+      // 3. Effective Date
       rows.push({
         id: 'gen-effectiveDate',
         fieldPath: 'effectiveDate',
-        label: 'Ngày hiệu lực (Effective Date)',
+        label: 'Effective Date',
         value: common.effectiveDate?.value ? String(common.effectiveDate.value) : 'N/A',
         section: 'General Terms',
         qualityStatus: (common.effectiveDate?.value ? common.effectiveDate?.qualityStatus : 'VALID') || 'VALID',
@@ -323,11 +323,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.effectiveDate as any,
       });
 
-      // 4. Ngày hết hạn
+      // 4. Expiry Date
       rows.push({
         id: 'gen-expiryDate',
         fieldPath: 'expiryDate',
-        label: 'Ngày hết hạn (Expiry Date)',
+        label: 'Expiry Date',
         value: common.expiryDate?.value ? String(common.expiryDate.value) : 'N/A',
         section: 'General Terms',
         qualityStatus: (common.expiryDate?.value ? common.expiryDate?.qualityStatus : 'VALID') || 'VALID',
@@ -335,11 +335,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.expiryDate as any,
       });
 
-      // 5. Thời hạn hợp đồng
+      // 5. Contract Term
       rows.push({
         id: 'gen-term',
         fieldPath: 'term',
-        label: 'Thời hạn hợp đồng (Term)',
+        label: 'Contract Term',
         value: common.term?.value || 'N/A',
         section: 'General Terms',
         qualityStatus: common.term?.qualityStatus || 'VALID',
@@ -347,7 +347,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.term,
       });
 
-      // 6. Giá trị hợp đồng
+      // 6. Contract Value
       const cv = common.contractValue?.value;
       const cvDisplay = cv?.amount != null
         ? formatNumericValue(cv.amount)
@@ -356,7 +356,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       rows.push({
         id: 'gen-contractValue',
         fieldPath: 'contractValue',
-        label: 'Giá trị hợp đồng (Contract Value)',
+        label: 'Contract Value',
         value: cvDisplay,
         unit: cvUnit,
         section: 'General Terms',
@@ -365,11 +365,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.contractValue as any,
       });
 
-      // 7. Luật áp dụng
+      // 7. Governing Law
       rows.push({
         id: 'gen-governingLaw',
         fieldPath: 'governingLaw',
-        label: 'Luật áp dụng & Giải quyết tranh chấp',
+        label: 'Governing Law & Dispute Resolution',
         value: common.governingLaw?.value || 'N/A',
         section: 'General Terms',
         qualityStatus: common.governingLaw?.qualityStatus || 'VALID',
@@ -377,11 +377,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.governingLaw,
       });
 
-      // 8. Mục đích hợp tác
+      // 8. Purpose
       rows.push({
         id: 'gen-purpose',
         fieldPath: 'purpose',
-        label: 'Mục đích hợp tác (Purpose)',
+        label: 'Cooperation Purpose',
         value: common.purpose?.value || 'N/A',
         section: 'General Terms',
         qualityStatus: common.purpose?.qualityStatus || 'VALID',
@@ -389,12 +389,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         rawField: common.purpose,
       });
 
-      // 8. Các bên tham gia ký kết
+      // 9. Contracting Parties
       (common.parties || []).forEach((party, idx) => {
         rows.push({
           id: `party-${party.id || idx}`,
           fieldPath: 'parties',
-          label: `Bên tham gia: ${party.legalName}`,
+          label: `Party: ${party.legalName}`,
           value: party.role || '',
           section: 'Contracting Parties',
           qualityStatus: party.qualityStatus || 'VALID',
@@ -487,7 +487,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   const handleExtract = async (contractId: string) => {
     if (isAnyExtracting) {
       setToast({
-        message: 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+        message: 'Another document is currently being processed by AI. Please wait for completion before proceeding.',
         type: 'error',
       });
       return;
@@ -497,9 +497,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     try {
       const updated = await contractResearchApi.extractContract(projectId, taskId, contractId);
       setResearch(updated);
-      setToast({ message: 'Đã bắt đầu trích xuất dữ liệu hợp đồng bằng AI.', type: 'success' });
+      setToast({ message: 'AI contract data extraction started.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Trích xuất thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Extraction failed.', type: 'error' });
     }
   };
 
@@ -509,7 +509,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     );
     if (isAnyOtherExtracting) {
       setToast({
-        message: 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+        message: 'Another document is currently being processed by AI. Please wait for completion before proceeding.',
         type: 'error',
       });
       return;
@@ -541,9 +541,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     try {
       const updated = await contractResearchApi.reExtractContract(projectId, taskId, contractId);
       setResearch(updated);
-      setToast({ message: 'Đã bắt đầu trích xuất lại dữ liệu hợp đồng bằng AI.', type: 'success' });
+      setToast({ message: 'AI contract re-extraction started.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Trích xuất lại thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Re-extraction failed.', type: 'error' });
       fetchResearch(false);
     } finally {
       setIsReExtractingMap((prev) => ({ ...prev, [contractId]: false }));
@@ -555,9 +555,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     try {
       const updated = await contractResearchApi.cancelExtract(projectId, taskId, contractId);
       setResearch(updated);
-      setToast({ message: 'Đã hủy quá trình trích xuất.', type: 'success' });
+      setToast({ message: 'Extraction process cancelled.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Hủy trích xuất thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to cancel extraction.', type: 'error' });
     } finally {
       setCancellingExtractId(null);
     }
@@ -618,8 +618,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (effectiveSubmissionIds.length === 0) {
       setToast({
         message: contracts.length === 1
-          ? 'Hợp đồng này đã được phê duyệt, không cần nộp lại.'
-          : 'Vui lòng tích chọn ít nhất 1 hợp đồng để nộp cho Manager.',
+          ? 'This contract has already been approved and does not need to be submitted again.'
+          : 'Please select at least one contract to submit for review.',
         type: 'error',
       });
       return;
@@ -631,7 +631,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (notCompletedContract) {
       setSelectedContractId(notCompletedContract.id);
       setToast({
-        message: `Hợp đồng "${notCompletedContract.title}" chưa hoàn tất bóc tách dữ liệu AI. Vui lòng kiểm tra trước khi nộp.`,
+        message: `Contract "${notCompletedContract.title}" has not completed AI extraction. Please wait or inspect before submitting.`,
         type: 'error',
       });
       return;
@@ -643,7 +643,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (unconfirmedMatch) {
       setSelectedContractId(unconfirmedMatch.id);
       setToast({
-        message: `Hợp đồng "${unconfirmedMatch.title}" chưa được xác nhận thuộc doanh nghiệp mục tiêu. Vui lòng bấm "Xác nhận hợp đồng này" ở khung cảnh báo màu vàng trước khi nộp.`,
+        message: `Contract "${unconfirmedMatch.title}" has not been confirmed as matching the target company. Please confirm it in the warning banner before submitting.`,
         type: 'error',
       });
       return;
@@ -655,7 +655,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (typeMismatch) {
       setSelectedContractId(typeMismatch.id);
       setToast({
-        message: `Hợp đồng "${typeMismatch.title}" chưa được giải quyết sự không khớp về loại hợp đồng. Vui lòng kiểm tra lại.`,
+        message: `Contract "${typeMismatch.title}" has an unresolved contract type mismatch. Please resolve it before submitting.`,
         type: 'error',
       });
       return;
@@ -667,7 +667,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (needsReviewContract) {
       setSelectedContractId(needsReviewContract.id);
       setToast({
-        message: `Hợp đồng "${needsReviewContract.title}" có trường dữ liệu được gắn cờ "Cần kiểm tra" chưa được xác thực. Vui lòng kiểm tra và xác thực trước khi nộp.`,
+        message: `Contract "${needsReviewContract.title}" has unverified fields flagged as "Needs Review". Please review and verify before submitting.`,
         type: 'error',
       });
       return;
@@ -683,7 +683,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       const unverifiedCount = rows.filter((r) => r.verificationStatus !== 'VERIFIED').length;
       setSelectedContractId(unverifiedContract.id);
       setToast({
-        message: `Hợp đồng "${unverifiedContract.title}" chưa hoàn tất thẩm định (còn ${unverifiedCount}/${rows.length} trường chưa xác thực). Vui lòng xác thực trước khi nộp cho Manager.`,
+        message: `Contract "${unverifiedContract.title}" has unverified fields (${unverifiedCount}/${rows.length}). Please verify all fields before submitting for review.`,
         type: 'error',
       });
       return;
@@ -692,7 +692,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     setIsSubmittingPackage(true);
     try {
       const noteToSend = selectedContractsForSubmission.some((c) => c.reviewStatus === 'CHANGES_REQUESTED')
-        ? 'Đã hoàn tất chỉnh sửa hợp đồng theo phản hồi của Manager.'
+        ? 'Completed revisions per Manager feedback.'
         : 'Partner contracts submitted for Manager review.';
 
       const updated = await contractResearchApi.submitResearch(
@@ -702,25 +702,25 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         noteToSend
       );
       setResearch(updated);
-      setToast({ message: 'Đã nộp gói hợp đồng cho Manager phê duyệt thành công!', type: 'success' });
+      setToast({ message: 'Contracts submitted for review successfully!', type: 'success' });
       if (onSubmitSuccess) onSubmitSuccess();
     } catch (err: any) {
       const backendMsg = err?.payload?.message || err?.message || err?.response?.data?.message || '';
       const errorCode = err?.payload?.errorCode || '';
 
-      let displayMsg = 'Nộp hồ sơ hợp đồng thất bại.';
+      let displayMsg = 'Failed to submit contracts for review.';
       if (errorCode === 'COMPANY_MATCH_UNCONFIRMED' || backendMsg.includes('requires company match confirmation')) {
-        displayMsg = 'Hợp đồng chưa được xác nhận thuộc phạm vi doanh nghiệp mục tiêu. Vui lòng bấm "Xác nhận hợp đồng này" trước khi nộp.';
-      } else if (errorCode === 'UNVERIFIED_FIELDS' || backendMsg.includes('chưa hoàn tất xác thực')) {
-        displayMsg = 'Hợp đồng chưa hoàn tất xác thực các trường dữ liệu trước khi nộp cho Manager.';
+        displayMsg = 'Contract is not confirmed for the target company. Please confirm before submitting.';
+      } else if (errorCode === 'UNVERIFIED_FIELDS' || backendMsg.includes('chưa hoàn tất xác thực') || backendMsg.includes('unverified')) {
+        displayMsg = 'Contract fields must be fully verified before submitting for review.';
       } else if (errorCode === 'UNRESOLVED_NEEDS_REVIEW' || backendMsg.includes('NEEDS_REVIEW')) {
-        displayMsg = 'Hợp đồng còn trường dữ liệu gắn cờ "Cần kiểm tra" chưa được xác thực.';
+        displayMsg = 'Contract still contains unverified "Needs Review" fields.';
       } else if (errorCode === 'TYPE_MISMATCH_UNRESOLVED' || backendMsg.includes('type mismatch')) {
-        displayMsg = 'Hợp đồng có loại hình chưa khớp cần được xử lý trước khi nộp.';
+        displayMsg = 'Contract has an unresolved contract type mismatch.';
       } else if (errorCode === 'ACTIVE_SUBMISSION_EXISTS' || backendMsg.includes('already active')) {
-        displayMsg = 'Nhiệm vụ này đã có gói nộp đang chờ Manager xét duyệt.';
+        displayMsg = 'This task already has an active submission awaiting Manager review.';
       } else if (errorCode === 'EMPTY_SUBMISSION') {
-        displayMsg = 'Vui lòng chọn ít nhất một hợp đồng để nộp cho Manager.';
+        displayMsg = 'Please select at least one contract to submit for review.';
       } else if (backendMsg && backendMsg !== 'An unexpected error occurred.') {
         displayMsg = backendMsg;
       }
@@ -796,12 +796,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         setResearch(updated);
       }
       setToast({
-        message: isCurrentlyVerified ? 'Đã hủy xác thực điều khoản.' : 'Đã xác thực điều khoản.',
+        message: isCurrentlyVerified ? 'Field unverified successfully.' : 'Field verified successfully.',
         type: 'success',
       });
     } catch (err: any) {
       setToast({
-        message: err?.response?.data?.message || (isCurrentlyVerified ? 'Hủy xác thực thất bại.' : 'Xác thực thất bại.'),
+        message: err?.response?.data?.message || (isCurrentlyVerified ? 'Failed to unverify field.' : 'Failed to verify field.'),
         type: 'error',
       });
     } finally {
@@ -825,9 +825,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       if (updated) {
         setResearch(updated);
       }
-      setToast({ message: `Đã xác thực thành công toàn bộ trường thông tin hợp đồng.`, type: 'success' });
+      setToast({ message: 'All contract fields verified successfully.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Có lỗi khi xác thực các trường.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Error verifying contract fields.', type: 'error' });
     } finally {
       setIsVerifyingAll(false);
     }
@@ -845,9 +845,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       if (updated) {
         setResearch(updated);
       }
-      setToast({ message: 'Đã hủy xác thực toàn bộ trường thông tin hợp đồng.', type: 'success' });
+      setToast({ message: 'All contract fields unverified.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Có lỗi khi hủy xác thực các trường.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Error unverifying contract fields.', type: 'error' });
     } finally {
       setIsVerifyingAll(false);
     }
@@ -858,9 +858,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     try {
       const updated = await contractResearchApi.confirmCompany(projectId, taskId, contractId, confirmed);
       setResearch(updated);
-      setToast({ message: 'Đã xác nhận đối tượng doanh nghiệp cho hợp đồng.', type: 'success' });
+      setToast({ message: 'Target company confirmed for this contract.', type: 'success' });
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Xác nhận doanh nghiệp thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to confirm target company.', type: 'error' });
     } finally {
       setIsConfirmingCompany(false);
     }
@@ -878,7 +878,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         'APPROVED'
       );
       setResearch(updated);
-      setToast({ message: 'Đã phê duyệt hợp đồng thành công.', type: 'success' });
+      setToast({ message: 'Contract approved successfully.', type: 'success' });
       const remainingPending = (updated.contracts || []).filter(
         (c) => (updated.activeSubmittedContractIds?.includes(c.id) || c.reviewStatus === 'PENDING_REVIEW') && c.reviewStatus === 'PENDING_REVIEW'
       );
@@ -886,7 +886,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         onReviewCompleted();
       }
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Phê duyệt hợp đồng thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to approve contract.', type: 'error' });
     } finally {
       setIsManagerProcessing(false);
     }
@@ -894,7 +894,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   const handleManagerRequestChanges = async (contractId: string, reason: string) => {
     if (!reason.trim()) {
-      setToast({ message: 'Vui lòng nhập lý do yêu cầu chỉnh sửa.', type: 'error' });
+      setToast({ message: 'Please provide a reason for requesting changes.', type: 'error' });
       return;
     }
     const effSubId = submissionId || research?.activeSubmissionId || 0;
@@ -911,12 +911,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       setResearch(updated);
       setManagerRequestChangesModalOpen(false);
       setManagerChangesReason('');
-      setToast({ message: 'Đã gửi yêu cầu chỉnh sửa cho Staff thành công.', type: 'success' });
+      setToast({ message: 'Revision request submitted to Staff successfully.', type: 'success' });
       if (onReviewCompleted) {
         onReviewCompleted();
       }
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Yêu cầu chỉnh sửa thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to request changes.', type: 'error' });
     } finally {
       setIsManagerProcessing(false);
     }
@@ -944,12 +944,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       if (currentResearch) {
         setResearch(currentResearch);
       }
-      setToast({ message: `Đã phê duyệt toàn bộ ${pendingContracts.length} hợp đồng.`, type: 'success' });
+      setToast({ message: `Approved all ${pendingContracts.length} pending contract(s).`, type: 'success' });
       if (onReviewCompleted) {
         onReviewCompleted();
       }
     } catch (err: any) {
-      setToast({ message: err?.response?.data?.message || 'Có lỗi khi phê duyệt tất cả hợp đồng.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Error approving contracts.', type: 'error' });
     } finally {
       setIsManagerProcessing(false);
     }
@@ -1014,7 +1014,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   const handleViewPdf = async (documentId?: string | null) => {
     if (!documentId) {
-      setToast({ message: 'Không tìm thấy ID tài liệu PDF gốc.', type: 'error' });
+      setToast({ message: 'Original PDF document ID not found.', type: 'error' });
       return;
     }
 
@@ -1071,7 +1071,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       window.setTimeout(() => window.URL.revokeObjectURL(fileUrl), 120_000);
     } catch (err) {
       console.error('Error opening PDF:', err);
-      setToast({ message: 'Không thể mở tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.', type: 'error' });
+      setToast({ message: 'Unable to open PDF document. Please check permissions or try again later.', type: 'error' });
     } finally {
       setOpeningPdfId(null);
     }
@@ -1081,22 +1081,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 450, color: '#64748b' }}>
         <Loader2 size={28} className={styles.spinIcon} />
-        <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 500 }}>Đang tải dữ liệu hồ sơ hợp đồng...</span>
+        <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 500 }}>Loading contract research data...</span>
       </div>
     );
   }
-
-  const statusStr = (research?.status || taskStatus || 'IN_PROGRESS').toUpperCase();
-  const isDoneOrApproved = statusStr === 'APPROVED' || statusStr === 'DONE' || statusStr === 'COMPLETED';
-  const displayStatus = isDoneOrApproved
-    ? { label: 'Hoàn thành', className: styles.statusApproved }
-    : statusStr === 'CHANGES_REQUESTED'
-    ? { label: 'Cần chỉnh sửa', className: styles.statusChangesRequested }
-    : statusStr === 'SUBMITTED' || statusStr === 'IN_REVIEW' || isManagerMode
-    ? { label: 'Đang chờ duyệt', className: styles.statusPendingReview }
-    : statusStr === 'DRAFT'
-    ? { label: 'Bản nháp', className: styles.statusDraft }
-    : { label: 'Đang thực hiện', className: styles.statusInProgress };
 
   const typeLabel = formatContractType(selectedContract?.confirmedContractType || selectedContract?.declaredContractType);
   const common = selectedContract?.commonData;
@@ -1183,15 +1171,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           >
             {isVerified ? (
               <>
-                <CheckCircle2 size={10} /> Đã xác thực
+                <CheckCircle2 size={10} /> Verified
               </>
             ) : isNeedsReview ? (
               <>
-                <AlertTriangle size={10} /> Cần kiểm tra
+                <AlertTriangle size={10} /> Needs Review
               </>
             ) : (
               <>
-                <Clock size={10} /> Chờ duyệt
+                <Clock size={10} /> Unverified
               </>
             )}
           </span>
@@ -1211,7 +1199,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
         <div className={contractStyles.kpiFooter}>
           {params.sourcePage ? (
-            <span className={styles.sourceTag}>Trang {params.sourcePage}</span>
+            <span className={styles.sourceTag}>Page {params.sourcePage}</span>
           ) : (
             <span />
           )}
@@ -1234,9 +1222,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     onEdit: handleEdit,
                   })
                 }
-                title="Xem trích dẫn từ văn bản gốc"
+                title="View evidence from source document"
               >
-                <Eye size={12} /> Bằng chứng
+                <Eye size={12} /> Evidence
               </button>
             )}
 
@@ -1245,9 +1233,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 type="button"
                 className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnEdit}`}
                 onClick={handleEdit}
-                title="Chỉnh sửa trường này"
+                title="Edit field"
               >
-                <Edit3 size={12} /> Sửa
+                <Edit3 size={12} /> Edit
               </button>
             )}
 
@@ -1258,10 +1246,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   isVerified ? contractStyles.kpiBtnUnverify : contractStyles.kpiBtnVerify
                 }`}
                 onClick={handleVerify}
-                title={isVerified ? 'Bấm để hủy xác thực' : 'Bấm để xác thực'}
+                title={isVerified ? 'Click to unverify' : 'Click to verify'}
               >
                 {isVerified ? <RotateCcw size={12} /> : <Check size={12} />}
-                {isVerified ? 'Hủy xác thực' : 'Xác thực'}
+                {isVerified ? 'Unverify' : 'Verify'}
               </button>
             )}
           </div>
@@ -1272,42 +1260,6 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   return (
     <div className={styles.workbench}>
-      {/* Top Meta Bar */}
-      <div className={styles.metaBar}>
-        <div className={styles.metaGroup} style={{ flex: 1 }}>
-          <div className={styles.metaItem}>
-            <span className={styles.metaLabel}>Trạng thái:</span>
-            <span className={`${styles.statusBadge} ${displayStatus.className}`}>
-              ● {displayStatus.label}
-            </span>
-          </div>
-
-          <div className={styles.metaDivider} />
-
-          <div className={styles.metaItem}>
-            <Building2 size={14} className={styles.metaLabel} />
-            <span className={styles.metaLabel}>Doanh nghiệp:</span>
-            <strong>{targetCompanyName || 'Chưa có mục tiêu'}</strong>
-          </div>
-
-          <div className={styles.metaDivider} />
-
-          <div className={styles.metaItem}>
-            <Layers size={14} className={styles.metaLabel} />
-            <span className={styles.metaLabel}>Nhiệm vụ:</span>
-            <strong>{taskTypeLabel || 'Thu thập hợp đồng đối tác'}</strong>
-          </div>
-
-          <div className={styles.metaDivider} />
-
-          <div className={styles.metaItem}>
-            <Calendar size={14} className={styles.metaLabel} />
-            <span className={styles.metaLabel}>Hạn chót:</span>
-            <strong>{dueDate ? formatDate(dueDate) : 'Không có hạn chót'}</strong>
-          </div>
-        </div>
-      </div>
-
       {/* Floating Toast Notification via Portal */}
       {typeof document !== 'undefined' && toast && createPortal(
         <div
@@ -1353,7 +1305,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.65')}
-            title="Đóng"
+            title="Close"
           >
             <X size={16} />
           </button>
@@ -1368,10 +1320,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           <div className={styles.panelHead}>
             <div className={styles.panelTitleGroup}>
               <div className={styles.panelTitleWithBadge}>
-                <h3>{isManagerMode ? 'Hợp đồng cần thẩm định' : 'Danh sách hợp đồng'}</h3>
+                <h3>{isManagerMode ? 'Submitted Contracts' : 'Contracts'}</h3>
                 <span className={styles.badgeCount}>{contractsToDisplay.length}</span>
               </div>
-              <p>{isManagerMode ? 'Hợp đồng cần thẩm định' : 'Thêm tài liệu & Bóc tách điều khoản'}</p>
+              <p>{isManagerMode ? 'Contracts submitted for review' : 'Add documents & extract terms'}</p>
             </div>
 
             {!isManagerMode ? (
@@ -1380,10 +1332,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 type="button"
                 onClick={() => setIsAddModalOpen(true)}
                 disabled={!effectiveCanEdit || isAnyExtracting}
-                title={isAnyExtracting ? 'Một tài liệu đang được AI trích xuất. Vui lòng đợi hoàn tất.' : undefined}
+                title={isAnyExtracting ? 'A document is currently being extracted. Please wait for completion.' : undefined}
                 style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
               >
-                <Plus size={14} /> Thêm hợp đồng
+                <Plus size={14} /> Add Contract
               </button>
             ) : contractsToDisplay.filter((c) => c.reviewStatus === 'PENDING_REVIEW').length > 1 ? (
               <button
@@ -1392,26 +1344,26 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 onClick={handleManagerApproveAll}
                 disabled={isManagerProcessing}
                 style={{ padding: '5px 12px', fontSize: 12, color: '#15803d', borderColor: '#86efac', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 }}
-                title="Phê duyệt tất cả các hợp đồng đang chờ"
+                title="Approve all pending contracts"
               >
                 <Check size={13} />
-                Duyệt tất cả ({contractsToDisplay.filter((c) => c.reviewStatus === 'PENDING_REVIEW').length})
+                Approve All ({contractsToDisplay.filter((c) => c.reviewStatus === 'PENDING_REVIEW').length})
               </button>
             ) : null}
           </div>
 
-          <div className={styles.reportGroups}>
-            <div className={styles.reportList}>
-              {contractsToDisplay.length === 0 ? (
-                <div className={styles.emptyCard} style={{ margin: '20px 0', padding: '30px 16px' }}>
-                  <div className={styles.emptyIcon}>
-                    <FileText size={24} />
-                  </div>
-                  <h3>Chưa có hợp đồng nào</h3>
-                  <p>Bấm nút "+ Thêm hợp đồng" ở góc trên để bắt đầu trích xuất các điều khoản.</p>
-                </div>
-              ) : (
-                contractsToDisplay.map((contract) => {
+          {contractsToDisplay.length === 0 ? (
+            <div className={styles.emptyCard}>
+              <div className={styles.emptyIcon}>
+                <FileText size={30} />
+              </div>
+              <h3 className={styles.emptyTitle}>No contracts yet</h3>
+              <p className={styles.emptyDesc}>Create your first contract to begin extracting contract terms.</p>
+            </div>
+          ) : (
+            <div className={styles.reportGroups}>
+              <div className={styles.reportList}>
+                {contractsToDisplay.map((contract) => {
                   const isSelected = contract.id === selectedContractId;
                   const isChecked = effectiveSubmissionIds.includes(contract.id);
                   const isEligible = contract.reviewStatus !== 'APPROVED';
@@ -1442,15 +1394,16 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       onViewPdf={handleViewPdf}
                     />
                   );
-                })
-              )}
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </section>
 
         {/* Right Column: Selected Contract Workspace */}
-        <section className={styles.panel} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', padding: 0 }}>
-          {selectedContract ? (
+        <section className={`${styles.panel} ${styles.rightPanel}`} style={selectedContract ? { padding: 0 } : undefined}>
+          <div className={styles.rightPanelBody}>
+            {selectedContract ? (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
               {/* Top Contract Header */}
               <div
@@ -1488,7 +1441,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           alignItems: 'center',
                           borderRadius: 4,
                         }}
-                        title="Chỉnh sửa thông tin hợp đồng"
+                        title="Edit contract details"
                       >
                         <Edit3 size={15} />
                       </button>
@@ -1535,7 +1488,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     >
                       <Calendar size={13} color="#64748b" />
                       <span>
-                        Ngày ký: <strong style={{ color: '#1e293b' }}>{common?.signingDate?.value ? formatDate(String(common.signingDate.value)) : '—'}</strong>
+                        Signing Date: <strong style={{ color: '#1e293b' }}>{common?.signingDate?.value ? formatDate(String(common.signingDate.value)) : '—'}</strong>
                       </span>
                     </div>
 
@@ -1574,9 +1527,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         <span>●</span>
                         <span>
                           {selectedContract.derivedContractStatus === 'ACTIVE'
-                            ? 'Đang hiệu lực'
+                            ? 'Active'
                             : selectedContract.derivedContractStatus === 'EXPIRED'
-                            ? 'Hết hiệu lực'
+                            ? 'Expired'
                             : selectedContract.derivedContractStatus}
                         </span>
                       </div>
@@ -1599,7 +1552,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         }}
                       >
                         <CheckCircle2 size={13} color="#059669" />
-                        <span>Doanh nghiệp hợp lệ</span>
+                        <span>Target Company Confirmed</span>
                       </div>
                     )}
                   </div>
@@ -1612,10 +1565,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       type="button"
                       onClick={() => setEditContractModalContract(selectedContract)}
                       style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                      title="Chỉnh sửa tên và thông tin hợp đồng"
+                      title="Edit contract details"
                     >
                       <Edit3 size={14} />
-                      Sửa hợp đồng
+                      Edit Contract
                     </button>
                   )}
                   {selectedContract.documentId && (
@@ -1631,7 +1584,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       ) : (
                         <FileText size={14} />
                       )}
-                      {openingPdfId === selectedContract.documentId ? 'Đang tải PDF...' : 'Xem PDF gốc'}
+                      {openingPdfId === selectedContract.documentId ? 'Loading PDF...' : 'View Original PDF'}
                     </button>
                   )}
                   {effectiveCanEdit && (selectedContract.extractionStatus === 'COMPLETED' || selectedContract.extractionStatus === 'PROCESSING') && (
@@ -1647,7 +1600,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       }
                       title={
                         isAnyExtracting && selectedContract.extractionStatus !== 'PROCESSING'
-                          ? 'Một tài liệu khác đang được AI trích xuất. Vui lòng đợi hoàn tất.'
+                          ? 'Another document is currently being extracted by AI. Please wait for completion.'
                           : undefined
                       }
                     >
@@ -1657,8 +1610,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         <RefreshCw size={14} />
                       )}
                       {selectedContract.extractionStatus === 'PROCESSING' || isReExtractingMap[selectedContract.id]
-                        ? 'Đang trích xuất lại...'
-                        : 'Trích xuất lại'}
+                        ? 'Re-extracting...'
+                        : 'Re-extract'}
                     </button>
                   )}
 
@@ -1677,7 +1630,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             disabled={isManagerProcessing}
                           >
                             <AlertTriangle size={14} />
-                            Yêu cầu chỉnh sửa
+                            Request Changes
                           </button>
                           <button
                             type="button"
@@ -1687,20 +1640,20 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             disabled={isManagerProcessing}
                           >
                             {isManagerProcessing ? <Loader2 size={14} className={styles.spinIcon} /> : <Check size={14} />}
-                            Phê duyệt hợp đồng
+                            Approve Contract
                           </button>
                         </div>
                       )}
                       {selectedContract.reviewStatus === 'APPROVED' && (
                         <span className={`${styles.statusBadge} ${styles.statusApproved}`} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                           <CheckCircle2 size={14} />
-                          Đã phê duyệt
+                          Approved
                         </span>
                       )}
                       {selectedContract.reviewStatus === 'CHANGES_REQUESTED' && (
                         <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                           <AlertTriangle size={14} />
-                          Đã yêu cầu chỉnh sửa
+                          Changes Requested
                         </span>
                       )}
                     </>
@@ -1711,13 +1664,13 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       {selectedContract.extractionStatus === 'COMPLETED' ? (
                         <span className={`${styles.statusBadge} ${styles.statusExtracted}`}>
                           <CheckCircle2 size={13} />
-                          Đã trích xuất xong
+                          Extracted
                         </span>
                       ) : selectedContract.extractionStatus === 'PROCESSING' ? (
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           <span className={`${styles.statusBadge} ${styles.statusInProgress}`}>
                             <Loader2 size={13} className={styles.spinIcon} />
-                            Đang trích xuất...
+                            Extracting...
                           </span>
                           {effectiveCanEdit && (
                             <button
@@ -1743,16 +1696,16 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.background = '#fef2f2';
                               }}
-                              title="Hủy quá trình trích xuất AI"
+                              title="Cancel AI extraction"
                             >
                               <X size={13} />
-                              Hủy
+                              Cancel
                             </button>
                           )}
                         </div>
                       ) : (
                         <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
-                          ● Chưa trích xuất
+                          ● Unextracted
                         </span>
                       )}
                     </>
@@ -1767,7 +1720,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 <div className={styles.managerFeedbackBanner} style={{ marginTop: 10 }}>
                   <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div className={styles.managerFeedbackContent}>
-                    <strong>Ý kiến phản hồi / Yêu cầu sửa đổi từ Manager</strong>
+                    <strong>Manager Feedback / Revision Request</strong>
                     <p>{selectedContract.reviewComment || 'Manager requested changes to this contract.'}</p>
                     <small>
                       {selectedContract.reviewedByName || 'Manager'}
@@ -1800,13 +1753,13 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <Building2 size={20} color="#d97706" style={{ flexShrink: 0 }} />
                       <div>
-                        <strong style={{ color: '#b45309' }}>Yêu cầu xác nhận doanh nghiệp:</strong>{' '}
-                        Doanh nghiệp mục tiêu của dự án là <strong>"{targetCompanyName || 'N/A'}"</strong>.
-                        Hợp đồng ghi nhận các bên ký kết:{' '}
+                        <strong style={{ color: '#b45309' }}>Target Company Confirmation Required:</strong>{' '}
+                        The target company for this project is <strong>"{targetCompanyName || 'N/A'}"</strong>.
+                        Detected contract signatories:{' '}
                         <strong>
-                          {(common?.parties || []).map((p) => p.legalName).join(', ') || 'Chưa rõ bên ký kết'}
+                          {(common?.parties || []).map((p) => p.legalName).join(', ') || 'Unknown signatories'}
                         </strong>
-                        . Vui lòng xác nhận hợp đồng này thuộc phạm vi thu thập dữ liệu của doanh nghiệp trước khi nộp cho Manager.
+                        . Please confirm that this contract belongs to the target company before submitting for review.
                       </div>
                     </div>
 
@@ -1823,7 +1776,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         ) : (
                           <CheckCircle2 size={14} />
                         )}
-                        {isConfirmingCompany ? 'Đang xác nhận...' : 'Xác nhận hợp đồng này'}
+                        {isConfirmingCompany ? 'Confirming...' : 'Confirm this contract'}
                       </button>
                     )}
                   </div>
@@ -1846,18 +1799,18 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 <div className={styles.inlineEmpty} style={{ flexDirection: 'column', gap: 14, minHeight: 220, padding: 30, margin: 'auto' }}>
                   <Sparkles size={32} color="#2563eb" />
                   <span style={{ maxWidth: 460, textAlign: 'center', color: '#64748b', fontSize: 13, lineHeight: 1.5 }}>
-                    Bấm nút bên dưới để AI tự động phân loại và trích xuất các điều khoản, thông tin các bên ký kết và trách nhiệm pháp lý từ hợp đồng.
+                    Click the button below to allow AI to classify and extract contract terms, parties, and obligations.
                   </span>
                   <button
                     className={styles.primaryButton}
                     type="button"
                     onClick={() => handleExtract(selectedContract.id)}
                     disabled={!effectiveCanEdit || isAnyExtracting}
-                    title={isAnyExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
+                    title={isAnyExtracting ? 'Another document is currently being processed by AI. Please wait for completion.' : undefined}
                     style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
                   >
                     <Sparkles size={14} />
-                    {selectedContract.extractionStatus === 'FAILED' ? 'Thử lại trích xuất' : 'Trích xuất dữ liệu hợp đồng'}
+                    {selectedContract.extractionStatus === 'FAILED' ? 'Retry Extraction' : 'Extract Contract Data'}
                   </button>
 
                   {selectedContract.extractionErrorMessage && (
@@ -1874,7 +1827,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       <div className={contractStyles.verificationStats}>
                         <ShieldCheck size={18} color={percentVerified === 100 ? '#16a34a' : '#2563eb'} />
                         <span>
-                          Tiến độ thẩm định: <strong>{verifiedCount}/{totalCount}</strong> trường ({percentVerified}%)
+                          Verification progress: <strong>{verifiedCount}/{totalCount}</strong> fields ({percentVerified}%)
                         </span>
                       </div>
 
@@ -1912,8 +1865,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             disabled={isVerifyingAll}
                             title={
                               percentVerified === 100
-                                ? 'Hủy xác thực toàn bộ các trường thông tin hợp đồng'
-                                : 'Xác thực toàn bộ các trường thông tin hợp đồng'
+                                ? 'Unverify all contract fields'
+                                : 'Verify all contract fields'
                             }
                           >
                             {isVerifyingAll ? (
@@ -1925,26 +1878,26 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             )}
                             {isVerifyingAll
                               ? percentVerified === 100
-                                ? 'Đang hủy...'
-                                : 'Đang xác thực...'
+                                ? 'Unverifying...'
+                                : 'Verifying...'
                               : percentVerified === 100
-                              ? 'Hủy xác thực tất cả'
-                              : `Xác thực tất cả (${totalCount - verifiedCount} trường)`}
+                              ? 'Unverify All'
+                              : `Verify All (${totalCount - verifiedCount} fields)`}
                           </button>
                         )}
                       </div>
                     </div>
 
-                    {/* Section 1: Thông tin chung & Thời hạn pháp lý */}
+                    {/* Section 1: General Information & Legal Term */}
                     <div className={contractStyles.sectionBox}>
                       <div className={contractStyles.sectionBoxHead}>
                         <div className={contractStyles.sectionBoxTitle}>
                           <Scale size={16} color="#2563eb" />
-                          <span>1. Thông tin chung & Thời hạn pháp lý</span>
+                          <span>1. General Information & Legal Terms</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span className={contractStyles.sectionMeta}>
-                            Trạng thái hợp đồng: <strong style={{ color: '#15803d' }}>{selectedContract.derivedContractStatus || 'ACTIVE'}</strong>
+                            Contract status: <strong style={{ color: '#15803d' }}>{selectedContract.derivedContractStatus || 'ACTIVE'}</strong>
                           </span>
                         </div>
                       </div>
@@ -1953,7 +1906,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-contractNumber',
                           fieldPath: 'contractNumber',
-                          label: 'Số hiệu hợp đồng',
+                          label: 'Contract Number',
                           rawValue: common?.contractNumber?.value,
                           displayValue: common?.contractNumber?.value || 'N/A',
                           rawField: common?.contractNumber,
@@ -1964,7 +1917,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-signingDate',
                           fieldPath: 'signingDate',
-                          label: 'Ngày ký (Signing Date)',
+                          label: 'Signing Date',
                           rawValue: common?.signingDate?.value,
                           displayValue: common?.signingDate?.value ? formatDate(String(common.signingDate.value)) : 'N/A',
                           rawField: common?.signingDate as any,
@@ -1976,7 +1929,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-effectiveDate',
                           fieldPath: 'effectiveDate',
-                          label: 'Ngày hiệu lực (Effective Date)',
+                          label: 'Effective Date',
                           rawValue: common?.effectiveDate?.value ? String(common.effectiveDate.value) : 'N/A',
                           displayValue: common?.effectiveDate?.value ? formatDate(String(common.effectiveDate.value)) : 'N/A',
                           rawField: common?.effectiveDate as any,
@@ -1988,7 +1941,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-expiryDate',
                           fieldPath: 'expiryDate',
-                          label: 'Ngày hết hạn (Expiry Date)',
+                          label: 'Expiry Date',
                           rawValue: common?.expiryDate?.value ? String(common.expiryDate.value) : 'N/A',
                           displayValue: common?.expiryDate?.value ? formatDate(String(common.expiryDate.value)) : 'N/A',
                           rawField: common?.expiryDate as any,
@@ -2000,7 +1953,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-term',
                           fieldPath: 'term',
-                          label: 'Thời hạn hợp đồng (Contract Term)',
+                          label: 'Contract Term',
                           rawValue: common?.term?.value || 'N/A',
                           displayValue: common?.term?.value || 'N/A',
                           rawField: common?.term,
@@ -2020,7 +1973,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           return renderKpiCard({
                             id: 'gen-contractValue',
                             fieldPath: 'contractValue',
-                            label: 'Giá trị hợp đồng (Contract Value)',
+                            label: 'Contract Value',
                             rawValue: cvRaw,
                             displayValue: cvDisplay,
                             rawField: common?.contractValue as any,
@@ -2037,7 +1990,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           return renderKpiCard({
                             id: 'gen-governingLaw',
                             fieldPath: 'governingLaw',
-                            label: 'Luật áp dụng & Giải quyết tranh chấp (Governing Law & Dispute Resolution)',
+                            label: 'Governing Law & Dispute Resolution',
                             rawValue: val,
                             displayValue: parts.length > 1 ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, lineHeight: 1.45, whiteSpace: 'normal', color: '#1e293b' }}>
@@ -2063,7 +2016,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         {renderKpiCard({
                           id: 'gen-purpose',
                           fieldPath: 'purpose',
-                          label: 'Mục đích hợp tác (Purpose)',
+                          label: 'Cooperation Purpose',
                           rawValue: common?.purpose?.value,
                           displayValue: (
                             <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.5, whiteSpace: 'normal', color: '#1e293b' }}>
@@ -2078,12 +2031,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       </div>
                     </div>
 
-                    {/* Section 2: Các bên tham gia ký kết */}
+                    {/* Section 2: Contracting Parties */}
                     <div className={contractStyles.sectionBox}>
                       <div className={contractStyles.sectionBoxHead}>
                         <div className={contractStyles.sectionBoxTitle}>
                           <Users size={16} color="#2563eb" />
-                          <span>2. Các bên tham gia ký kết ({(common?.parties || []).length} bên)</span>
+                          <span>2. Contracting Parties ({(common?.parties || []).length} parties)</span>
                         </div>
                       </div>
 
@@ -2111,7 +2064,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             handleOpenEdit({
                               id: `party-${party.id}`,
                               fieldPath: 'parties',
-                              label: `Bên tham gia: ${party.legalName}`,
+                              label: `Party: ${party.legalName}`,
                               value: party.role || '',
                               section: 'Contracting Parties',
                               qualityStatus: party.qualityStatus,
@@ -2145,7 +2098,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                       {party.legalName}
                                     </div>
                                     <div className={contractStyles.partySubtitle}>
-                                      Bên tham gia ký kết #{idx + 1}
+                                      Contracting Party #{idx + 1}
                                     </div>
                                   </div>
                                 </div>
@@ -2161,15 +2114,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                 >
                                   {isVerified ? (
                                     <>
-                                      <CheckCircle2 size={10} /> Đã xác thực
+                                      <CheckCircle2 size={10} /> Verified
                                     </>
                                   ) : isNeedsReview ? (
                                     <>
-                                      <AlertTriangle size={10} /> Cần kiểm tra
+                                      <AlertTriangle size={10} /> Needs Review
                                     </>
                                   ) : (
                                     <>
-                                      <Clock size={10} /> Chờ duyệt
+                                      <Clock size={10} /> Unverified
                                     </>
                                   )}
                                 </span>
@@ -2178,25 +2131,25 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                               {/* Structured Party Details Grid */}
                               <div className={contractStyles.partyInfoGrid}>
                                 <div className={contractStyles.partyInfoItem}>
-                                  <span className={contractStyles.partyInfoLabel}>Vai trò</span>
+                                  <span className={contractStyles.partyInfoLabel}>Role</span>
                                   <span className={contractStyles.partyInfoValue}>{party.role || 'N/A'}</span>
                                 </div>
                                 <div className={contractStyles.partyInfoItem}>
-                                  <span className={contractStyles.partyInfoLabel}>Mã số thuế</span>
+                                  <span className={contractStyles.partyInfoLabel}>Tax Code</span>
                                   <span className={contractStyles.partyInfoValue}>{party.taxCode || 'N/A'}</span>
                                 </div>
                                 <div className={contractStyles.partyInfoItem} style={{ gridColumn: 'span 2' }}>
-                                  <span className={contractStyles.partyInfoLabel}>Người đại diện</span>
+                                  <span className={contractStyles.partyInfoLabel}>Legal Representative</span>
                                   <span className={contractStyles.partyInfoValue}>{party.representative || 'N/A'}</span>
                                 </div>
                                 <div className={contractStyles.partyInfoItem} style={{ gridColumn: 'span 2' }}>
-                                  <span className={contractStyles.partyInfoLabel}>Địa chỉ trụ sở</span>
+                                  <span className={contractStyles.partyInfoLabel}>Registered Address</span>
                                   <span className={contractStyles.partyInfoValue}>{party.address || 'N/A'}</span>
                                 </div>
                               </div>
 
                               <div className={contractStyles.kpiFooter}>
-                                <span className={styles.sourceTag}>Trang {party.sourcePage || 1}</span>
+                                <span className={styles.sourceTag}>Page {party.sourcePage || 1}</span>
 
                                 <div className={contractStyles.kpiActions}>
                                   {party.evidence && (
@@ -2205,35 +2158,35 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                       className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnSecondary}`}
                                       onClick={() => {
                                         const partySummary = [
-                                          party.role ? `• Vai trò: ${party.role}` : null,
-                                          party.legalName ? `• Tên đơn vị: ${party.legalName}` : null,
-                                          party.taxCode ? `• Mã số thuế: ${party.taxCode}` : '• Mã số thuế: N/A',
-                                          party.representative ? `• Người đại diện: ${party.representative}` : '• Người đại diện: N/A',
-                                          party.address ? `• Địa chỉ trụ sở: ${party.address}` : '• Địa chỉ trụ sở: N/A',
+                                          party.role ? `• Role: ${party.role}` : null,
+                                          party.legalName ? `• Legal Name: ${party.legalName}` : null,
+                                          party.taxCode ? `• Tax Code: ${party.taxCode}` : '• Tax Code: N/A',
+                                          party.representative ? `• Legal Representative: ${party.representative}` : '• Legal Representative: N/A',
+                                          party.address ? `• Registered Address: ${party.address}` : '• Registered Address: N/A',
                                         ].filter(Boolean).join('\n');
 
                                         const rawEv = party.evidence || '';
                                         const evParts = rawEv ? rawEv.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean) : [];
                                         
                                         if (party.taxCode && party.taxCode !== 'N/A' && !evParts.some((p) => p.includes(party.taxCode!))) {
-                                          evParts.push(`Mã số thuế: ${party.taxCode}`);
+                                          evParts.push(`Tax Code: ${party.taxCode}`);
                                         }
                                         if (party.representative && party.representative !== 'N/A') {
                                           const cleanRep = party.representative.replace(/\(.*?\)/g, '').trim();
                                           if (!evParts.some((p) => p.includes(cleanRep))) {
-                                            evParts.push(`Người đại diện: ${party.representative}`);
+                                            evParts.push(`Legal Representative: ${party.representative}`);
                                           }
                                         }
                                         if (party.address && party.address !== 'N/A') {
                                           const addrSnippet = party.address.split(/[,;-]/)[0].trim();
                                           if (!evParts.some((p) => p.includes(addrSnippet))) {
-                                            evParts.push(`Địa chỉ trụ sở: ${party.address}`);
+                                            evParts.push(`Registered Address: ${party.address}`);
                                           }
                                         }
                                         const combinedEvidence = evParts.join(' | ');
 
                                         handleOpenEvidence({
-                                          fieldName: `Bên tham gia: ${party.legalName}`,
+                                          fieldName: `Party: ${party.legalName}`,
                                           valueText: partySummary,
                                           sourcePage: party.sourcePage,
                                           evidence: combinedEvidence,
@@ -2244,9 +2197,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                           onEdit: handleEditParty,
                                         });
                                       }}
-                                      title="Xem trích dẫn từ văn bản gốc"
+                                      title="View evidence from source document"
                                     >
-                                      <Eye size={12} /> Bằng chứng
+                                      <Eye size={12} /> Evidence
                                     </button>
                                   )}
 
@@ -2255,9 +2208,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                       type="button"
                                       className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnEdit}`}
                                       onClick={handleEditParty}
-                                      title="Chỉnh sửa thông tin bên này"
+                                      title="Edit party details"
                                     >
-                                      <Edit3 size={12} /> Sửa
+                                      <Edit3 size={12} /> Edit
                                     </button>
                                   )}
 
@@ -2268,10 +2221,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                         isVerified ? contractStyles.kpiBtnUnverify : contractStyles.kpiBtnVerify
                                       }`}
                                       onClick={handleVerifyParty}
-                                      title={isVerified ? 'Bấm để hủy xác thực' : 'Bấm để xác thực'}
+                                      title={isVerified ? 'Click to unverify' : 'Click to verify'}
                                     >
                                       {isVerified ? <RotateCcw size={12} /> : <Check size={12} />}
-                                      {isVerified ? 'Hủy xác thực' : 'Xác thực'}
+                                      {isVerified ? 'Unverify' : 'Verify'}
                                     </button>
                                   )}
                                 </div>
@@ -2286,61 +2239,69 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               </div>
             </div>
           ) : (
-            <div className={styles.emptyCard} style={{ margin: 'auto' }}>
+            <div className={styles.emptyCard}>
               <div className={styles.emptyIcon}>
                 <Layers size={30} />
               </div>
-              <h3>Chưa chọn hợp đồng</h3>
-              <p>Chọn một hợp đồng từ danh sách bên trái hoặc bấm "+ Thêm hợp đồng" để tạo hợp đồng mới.</p>
+              <h3 className={styles.emptyTitle}>No contract selected</h3>
+              <p className={styles.emptyDesc}>Select a contract from the list or add a new contract.</p>
             </div>
           )}
+          </div>
         </section>
       </div>
 
       {/* Package Summary Footer (Staff Only) */}
       {!isManagerMode && (
-        <div className={styles.packageSummary}>
-          <div className={styles.summaryStats}>
-            <CheckCircle2 size={18} color="#16a34a" />
-            <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>
-              {!hasMultipleContracts
-                ? `${effectiveSubmissionIds.length} hợp đồng sẵn sàng để nộp cho Manager.`
-                : `${packageCounts.selected} hợp đồng đã chọn để nộp cho Manager.`}
-            </span>
-          </div>
-
-          <div className={styles.summaryActions}>
-            {canRecall && (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setIsRecallModalOpen(true)}
-                style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#bfdbfe' }}
-              >
-                <RotateCcw size={14} /> Thu hồi gói nộp
-              </button>
-            )}
-
-            {!isSubmitted && (
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={handleSubmitPackage}
-                disabled={!effectiveCanEdit || isSubmittingPackage || allApproved || isAnyExtracting}
-                title={isAnyExtracting ? 'Đang có hợp đồng được AI trích xuất. Vui lòng đợi hoàn tất trước khi nộp.' : undefined}
-                style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
-              >
-                {isSubmittingPackage ? (
-                  <>
-                    <Loader2 size={14} className={styles.spinIcon} /> Đang nộp...
-                  </>
-                ) : (
-                  'Nộp cho Manager'
-                )}
-              </button>
-            )}
-          </div>
-        </div>
+        <footer className={styles.packageSummary}>
+          {canRecall ? (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setIsRecallModalOpen(true)}
+              disabled={isRecalling}
+              style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#bfdbfe', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {isRecalling ? (
+                <>
+                  <Loader2 size={15} className={styles.spinIcon} />
+                  <span>Recalling...</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw size={15} />
+                  <span>Recall Submission</span>
+                </>
+              )}
+            </button>
+          ) : !isSubmitted && (
+            <button
+              type="button"
+              className={styles.submitBtn}
+              onClick={handleSubmitPackage}
+              disabled={!effectiveCanEdit || isSubmittingPackage || allApproved || isAnyExtracting || effectiveSubmissionIds.length === 0}
+              title={
+                isAnyExtracting
+                  ? 'AI extraction is currently in progress. Please wait for completion before submitting.'
+                  : effectiveSubmissionIds.length === 0
+                  ? 'No eligible contracts ready for submission.'
+                  : undefined
+              }
+            >
+              {isSubmittingPackage ? (
+                <>
+                  <Loader2 size={16} className={styles.spinIcon} />
+                  <span>Submitting...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} />
+                  <span>Submit for Review</span>
+                </>
+              )}
+            </button>
+          )}
+        </footer>
       )}
 
       {/* Add Contract Modal */}
@@ -2356,7 +2317,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             setSelectedContractId(createdContractId);
           }
           setToast({
-            message: 'Đã thêm hợp đồng mới. Bấm "Trích xuất dữ liệu hợp đồng" để trích xuất các điều khoản.',
+            message: 'New contract added. Click "Extract Contract Data" to begin extracting terms.',
             type: 'success',
           });
         }}
@@ -2377,7 +2338,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             );
             setResearch(updated);
             setTypeResolutionModalOpen(false);
-            setToast({ message: 'Đã xác nhận loại hợp đồng thành công.', type: 'success' });
+            setToast({ message: 'Contract type confirmed successfully.', type: 'success' });
           }}
         />
       )}
@@ -2422,7 +2383,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             );
             setResearch(updated);
             setEditScalarModal((prev) => ({ ...prev, open: false }));
-            setToast({ message: 'Đã cập nhật trường thông tin.', type: 'success' });
+            setToast({ message: 'Field updated successfully.', type: 'success' });
           }}
         />
       )}
@@ -2460,7 +2421,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             );
             setResearch(updated);
             setEditArrayItemModal((prev) => ({ ...prev, open: false }));
-            setToast({ message: 'Đã cập nhật mục.', type: 'success' });
+            setToast({ message: 'Item updated successfully.', type: 'success' });
           }}
         />
       )}
@@ -2473,10 +2434,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               <div className={styles.deleteModalIcon}>
                 <AlertTriangle size={20} />
               </div>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Xóa hợp đồng</h3>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Delete Contract</h3>
             </div>
             <p className={styles.deleteModalText}>
-              Bạn có chắc chắn muốn xóa hợp đồng <strong>{contractToDelete.title}</strong>? Toàn bộ dữ liệu trích xuất liên quan sẽ bị xóa.
+              Are you sure you want to delete contract <strong>{contractToDelete.title}</strong>? All associated extracted data will be removed.
             </p>
             <div className={styles.deleteModalActions}>
               <button
@@ -2485,7 +2446,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 onClick={() => setContractToDelete(null)}
                 disabled={isDeleting}
               >
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
@@ -2493,7 +2454,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 onClick={handleDelete}
                 disabled={isDeleting}
               >
-                {isDeleting ? 'Đang xóa...' : 'Xóa hợp đồng'}
+                {isDeleting ? 'Deleting...' : 'Delete Contract'}
               </button>
             </div>
           </div>
@@ -2509,14 +2470,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 <RotateCcw size={20} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Thu hồi gói nộp hợp đồng?</h3>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Recall Contract Submission?</h3>
                 <span style={{ fontSize: 12, color: '#64748b' }}>
-                  Gói nộp hiện tại: {(research?.activeSubmittedContractIds || []).length || packageCounts.selected} hợp đồng
+                  Current submission: {(research?.activeSubmittedContractIds || []).length || packageCounts.selected} contract(s)
                 </span>
               </div>
             </div>
             <p className={styles.deleteModalText}>
-              Gói này đang chờ Manager duyệt. Việc thu hồi sẽ chuyển task về trạng thái Đang thực hiện (In Progress) để bạn có thể chỉnh sửa hoặc trích xuất lại.
+              This package is currently awaiting Manager review. Recalling will return the task to In Progress so you can make edits or re-extract.
             </p>
             <div className={styles.deleteModalActions}>
               <button
@@ -2525,7 +2486,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 onClick={() => setIsRecallModalOpen(false)}
                 disabled={isRecalling}
               >
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
@@ -2534,7 +2495,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 disabled={isRecalling}
                 style={{ background: '#2563eb', borderColor: '#2563eb' }}
               >
-                {isRecalling ? 'Đang thu hồi...' : 'Xác nhận thu hồi'}
+                {isRecalling ? 'Recalling...' : 'Confirm Recall'}
               </button>
             </div>
           </div>
@@ -2550,7 +2511,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         onClose={() => setEditContractModalContract(null)}
         onSuccess={(updatedResearch) => {
           setResearch(updatedResearch);
-          setToast({ message: 'Cập nhật thông tin hợp đồng thành công.', type: 'success' });
+          setToast({ message: 'Contract details updated successfully.', type: 'success' });
         }}
       />
 
@@ -2593,7 +2554,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <AlertTriangle size={18} color="#c2410c" />
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#9a3412' }}>
-                  Yêu cầu nhân viên chỉnh sửa
+                  Request Revisions from Staff
                 </h3>
               </div>
               <button
@@ -2608,14 +2569,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
             <div style={{ padding: '20px 24px' }}>
               <p style={{ margin: '0 0 12px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
-                Vui lòng nêu rõ các nội dung, số liệu hoặc điều khoản cần nhân viên kiểm tra hoặc bổ sung lại trong hợp đồng.
+                Please specify the details, figures, or clauses that need to be reviewed or corrected in this contract.
               </p>
               <textarea
                 className={styles.formInput}
                 rows={4}
                 value={managerChangesReason}
                 onChange={(e) => setManagerChangesReason(e.target.value)}
-                placeholder="VD: Kiểm tra lại người đại diện bên B, ngày hiệu lực trong văn bản gốc là ngày 10/09..."
+                placeholder="e.g., Verify Party B representative, effective date in original document is September 10..."
                 style={{ width: '100%', fontSize: 13.5, resize: 'vertical' }}
                 disabled={isManagerProcessing}
                 autoFocus
@@ -2638,7 +2599,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   onClick={() => setManagerRequestChangesModalOpen(false)}
                   disabled={isManagerProcessing}
                 >
-                  Hủy
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -2652,7 +2613,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   style={{ background: '#c2410c', borderColor: '#c2410c', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   {isManagerProcessing ? <Loader2 size={14} className={styles.spinIcon} /> : <AlertTriangle size={14} />}
-                  {isManagerProcessing ? 'Đang gửi...' : 'Gửi yêu cầu chỉnh sửa'}
+                  {isManagerProcessing ? 'Submitting...' : 'Send Revision Request'}
                 </button>
               </div>
             </div>

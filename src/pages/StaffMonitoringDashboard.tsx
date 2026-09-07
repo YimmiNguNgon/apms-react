@@ -24,12 +24,13 @@ const formatEnum = (value?: string | null) => {
 };
 
 const formatDate = (dateString?: string | null) => {
-  if (!dateString) return '-';
-  return new Date(dateString).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+  if (!dateString) return '—';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 const proposalStatusTone = (status?: string | null) => {
@@ -54,9 +55,9 @@ const proposalStatusTone = (status?: string | null) => {
 const reviewResultTone = (result?: string | null) => {
   switch ((result || '').toUpperCase()) {
     case 'NO_CHANGE':
-      return 'info';
+      return 'success';
     case 'UPDATE_PROPOSED':
-      return 'warning';
+      return 'info';
     case 'RELATIONSHIP_CHANGE_PROPOSED':
       return 'primary';
     default:
@@ -66,23 +67,23 @@ const reviewResultTone = (result?: string | null) => {
 
 const getStatusBadge = (assignment: CompanyMonitoringAssignment) => {
   const status = assignment.displayStatus;
-  let badgeClass = 'neutral';
+  let tone = 'neutral';
   let label = 'On Schedule';
   if (status === 'OVERDUE') {
-    badgeClass = 'danger';
+    tone = 'danger';
     label = 'Overdue';
   } else if (status === 'DUE') {
-    badgeClass = 'warning';
+    tone = 'warning';
     label = 'Due';
   } else if (status === 'ON_SCHEDULE' || status === 'UP_TO_DATE') {
-    badgeClass = 'success';
+    tone = 'success';
     label = 'On Schedule';
   } else if (status === 'PAUSED') {
-    badgeClass = 'neutral';
+    tone = 'neutral';
     label = 'Paused';
   }
   return (
-    <span className={`workspace-badge ${badgeClass}`} style={{ fontSize: 10 }}>
+    <span className={`project-status-badge ${tone}`}>
       {label}
     </span>
   );
@@ -219,17 +220,21 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
     return [];
   }, [activeTab, displayedAssignments, displayedProposals, displayedHistory]);
 
-  const totalPages = Math.max(1, Math.ceil(currentTabData.length / PAGE_SIZE));
+  const totalElements = currentTabData.length;
+  const totalPages = Math.ceil(totalElements / PAGE_SIZE);
+  const pageCount = Math.max(totalPages, 1);
+  const pageStart = totalElements === 0 ? 0 : currentPage * PAGE_SIZE + 1;
+  const pageEnd = Math.min((currentPage + 1) * PAGE_SIZE, totalElements);
   
   useEffect(() => {
     setCurrentPage(0);
   }, [searchQuery, statusFilter, frequencyFilter, activeTab]);
 
   useEffect(() => {
-    if (currentPage >= totalPages && totalPages > 0) {
-      setCurrentPage(totalPages - 1);
+    if (currentPage >= pageCount && pageCount > 0) {
+      setCurrentPage(pageCount - 1);
     }
-  }, [totalPages, currentPage]);
+  }, [pageCount, currentPage]);
 
   const visibleRows = useMemo(() => {
     const startIndex = currentPage * PAGE_SIZE;
@@ -245,14 +250,16 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   };
 
   const navigateToCompany = (profileId: string, assignmentId?: number) => {
+    localStorage.setItem('apms-selected-company', profileId);
     localStorage.setItem('apms-back-page', 'staff-monitoring');
+    localStorage.removeItem('apms-context-project');
     if (assignmentId) {
       localStorage.setItem('apms-staff-assignment-id', assignmentId.toString());
     } else {
       localStorage.removeItem('apms-staff-assignment-id');
     }
     if (setActivePage) {
-      setActivePage('company-detail', { id: profileId });
+      setActivePage(`company-detail?source=staff-monitoring&companyId=${profileId}`);
     }
   };
 
@@ -317,184 +324,207 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   }
 
   return (
-    <div className="workspace-page-container">
-      <div className="workspace-page-head">
-        <div>
-          <div className="workspace-breadcrumbs">Monitoring <span>/</span> My Assignments</div>
-          <h1>Staff Monitoring</h1>
-          <p style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Manage your company monitoring assignments and submit updates
-          </p>
-        </div>
-      </div>
-
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <article className="workspace-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>My Assignments</span>
-          <strong style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{totalCount}</strong>
-        </article>
-        <article className="workspace-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Due Soon</span>
-          <strong style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--warning)', marginTop: '8px' }}>{dueCount}</strong>
-        </article>
-        <article className="workspace-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Overdue</span>
-          <strong style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger)', marginTop: '8px' }}>{overdueCount}</strong>
-        </article>
-        <article className="workspace-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reviewed</span>
-          <strong style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '8px' }}>{reviewedCount}</strong>
-        </article>
-      </section>
-
-      <main className="workspace-panel">
-        <div className="tabs" style={{ marginBottom: '16px' }}>
-          <button 
-            type="button"
-            className={`tab ${activeTab === 'monitoring' ? 'active' : ''}`}
-            onClick={() => handleTabChange('monitoring')}
-          >
-            Monitoring
-            <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'monitoring' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'monitoring' ? '#fff' : 'var(--text-secondary)' }}>
-              {allAssignments.length}
-            </span>
-          </button>
-          <button 
-            type="button"
-            className={`tab ${activeTab === 'proposals' ? 'active' : ''}`}
-            onClick={() => handleTabChange('proposals')}
-          >
-            My Proposals
-            <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'proposals' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'proposals' ? '#fff' : 'var(--text-secondary)' }}>
-              {myProposals.length}
-            </span>
-          </button>
-          <button 
-            type="button"
-            className={`tab ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => handleTabChange('history')}
-          >
-            Monitoring History
-            <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'history' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'history' ? '#fff' : 'var(--text-secondary)' }}>
-              {staffHistory.length}
-            </span>
-          </button>
-        </div>
-
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: activeTab === 'monitoring' ? 'minmax(0, 1fr) 160px 180px' : 'minmax(0, 1fr) 200px', 
-          gap: '12px', 
-          marginBottom: '16px' 
-        }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              className="admin-input"
-              style={{ width: '100%', paddingLeft: 36, margin: 0 }}
-              placeholder="Search by company name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+    <section className="workspace-page role-dashboard role-dashboard-staff staff-page project-page monitoring-page" id="page-staff-monitoring">
+      <div className="workspace-main-full">
+        {/* Page Header */}
+        <div className="workspace-page-head">
+          <div>
+            <h1>Staff Monitoring</h1>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Manage your assigned companies, reviews, and update proposals
+            </p>
           </div>
-          
-          <select 
-            className="admin-select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            {activeTab === 'monitoring' && (
-              <>
+        </div>
+
+        {/* Compact KPI Cards */}
+        <div className="workspace-focus-card">
+          <div className="workspace-focus-metrics">
+            <article>
+              <strong>{totalCount}</strong>
+              <span>My Assignments</span>
+            </article>
+            <article>
+              <strong>{dueCount}</strong>
+              <span>Due Soon</span>
+            </article>
+            <article>
+              <strong>{overdueCount}</strong>
+              <span>Overdue</span>
+            </article>
+            <article>
+              <strong>{reviewedCount}</strong>
+              <span>Reviewed</span>
+            </article>
+          </div>
+        </div>
+
+        {/* Main Data Container */}
+        <div className="manager-project-container">
+          {/* Tabs */}
+          <div className="monitoring-tabs">
+            <button 
+              type="button"
+              className={`monitoring-tab ${activeTab === 'monitoring' ? 'active' : ''}`}
+              onClick={() => handleTabChange('monitoring')}
+            >
+              Monitoring
+              <span className="monitoring-tab-count">
+                {allAssignments.length}
+              </span>
+            </button>
+            <button 
+              type="button"
+              className={`monitoring-tab ${activeTab === 'proposals' ? 'active' : ''}`}
+              onClick={() => handleTabChange('proposals')}
+            >
+              My Proposals
+              <span className="monitoring-tab-count">
+                {myProposals.length}
+              </span>
+            </button>
+            <button 
+              type="button"
+              className={`monitoring-tab ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => handleTabChange('history')}
+            >
+              Monitoring History
+              <span className="monitoring-tab-count">
+                {staffHistory.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Toolbar Filters */}
+          {activeTab === 'monitoring' && (
+            <div className="manager-project-filters">
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search by company name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <select 
+                className="search-input"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
                 <option value="ALL">All Statuses</option>
                 <option value="ON_SCHEDULE">On Schedule</option>
                 <option value="DUE">Due</option>
                 <option value="OVERDUE">Overdue</option>
                 <option value="PAUSED">Paused</option>
-              </>
-            )}
-            {activeTab === 'proposals' && (
-              <>
+              </select>
+              <select 
+                className="search-input"
+                value={frequencyFilter}
+                onChange={(e) => setFrequencyFilter(e.target.value)}
+              >
+                <option value="ALL">All Frequencies</option>
+                <option value="MONTHLY">Monthly</option>
+                <option value="QUARTERLY">Quarterly</option>
+                <option value="SEMI_ANNUALLY">Semi-annually</option>
+              </select>
+            </div>
+          )}
+
+          {activeTab === 'proposals' && (
+            <div className="manager-project-filters" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(180px, 220px)' }}>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search by company name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <select 
+                className="search-input"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
                 <option value="ALL">All Statuses</option>
                 <option value="SUBMITTED">Submitted</option>
                 <option value="APPROVED">Approved</option>
                 <option value="REJECTED">Rejected</option>
                 <option value="WITHDRAWN">Withdrawn</option>
-              </>
-            )}
-            {activeTab === 'history' && (
-              <>
+              </select>
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div className="manager-project-filters" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(180px, 220px)' }}>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search by company name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <select 
+                className="search-input"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
                 <option value="ALL">All Results</option>
                 <option value="NO_CHANGE">No Change</option>
                 <option value="UPDATE_PROPOSED">Update Proposed</option>
                 <option value="RELATIONSHIP_CHANGE_PROPOSED">Relationship Change Proposed</option>
-              </>
-            )}
-          </select>
-          
-          {activeTab === 'monitoring' && (
-            <select 
-              className="admin-select"
-              value={frequencyFilter}
-              onChange={(e) => setFrequencyFilter(e.target.value)}
-            >
-              <option value="ALL">All Frequencies</option>
-              <option value="MONTHLY">Monthly</option>
-              <option value="QUARTERLY">Quarterly</option>
-              <option value="SEMI_ANNUALLY">Semi-annually</option>
-            </select>
+              </select>
+            </div>
           )}
-        </div>
 
-        <div>
+          {/* Data Tables */}
           {isLoading ? (
-            <div className="workspace-empty" style={{ minHeight: 200 }}>
-              Loading data...
+            <div className="project-table-empty">
+              <p className="project-table-empty-desc">Loading data...</p>
             </div>
           ) : (
             <>
               {activeTab === 'monitoring' && (
                 visibleRows.length === 0 ? (
-                  <div className="workspace-empty" style={{ minHeight: 200 }}>
-                    You have no monitoring assignments.
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">No monitoring assignments found.</p>
+                    <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
                   </div>
                 ) : (
-                  <div className="data-table-wrap">
-                    <table className="data-table">
+                  <div className="manager-project-table-scroll">
+                    <table className="monitoring-table">
                       <thead>
                         <tr>
-                          <th style={{ width: 60 }}>STT</th>
+                          <th className="col-center" style={{ width: '44px' }}>#</th>
                           <th>Company</th>
-                          <th>Status</th>
-                          <th>Review Cycle</th>
-                          <th>Last Reviewed</th>
-                          <th>Next Review</th>
-                          <th style={{ width: 180 }}>Actions</th>
+                          <th style={{ width: '130px' }}>Status</th>
+                          <th style={{ width: '130px' }}>Review Cycle</th>
+                          <th style={{ width: '130px' }}>Last Reviewed</th>
+                          <th style={{ width: '130px' }}>Next Review</th>
+                          <th style={{ width: '180px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(visibleRows as CompanyMonitoringAssignment[]).map((assignment, idx) => (
                           <tr key={assignment.id}>
-                            <td className="admin-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
-                            <td><strong>{assignment.companyName}</strong></td>
+                            <td className="col-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
                             <td>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                {getStatusBadge(assignment)}
-                              </div>
+                              <strong className="project-name-primary">{assignment.companyName}</strong>
+                            </td>
+                            <td>
+                              {getStatusBadge(assignment)}
                             </td>
                             <td>{formatEnum(assignment.frequency)}</td>
-                            <td><span style={{ color: 'var(--text-muted)' }}>{formatDate(assignment.lastReviewedAt)}</span></td>
-                            <td><strong>{formatDate(assignment.nextReviewAt)}</strong></td>
+                            <td><span style={{ color: 'var(--text-secondary)' }}>{formatDate(assignment.lastReviewedAt)}</span></td>
+                            <td><strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(assignment.nextReviewAt)}</strong></td>
                             <td>
-                              <div style={{ display: 'flex', gap: '8px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                 <button 
-                                  className="btn btn-sm btn-outline"
+                                  type="button"
+                                  className="project-detail-btn"
                                   onClick={() => navigateToCompany(assignment.companyProfileId, assignment.id)}
                                 >
                                   View Profile
                                 </button>
                                 <button 
-                                  className="btn btn-sm btn-primary"
+                                  type="button"
+                                  className="project-detail-btn primary"
                                   onClick={() => setSelectedAssignmentForReview(assignment)}
                                 >
                                   Review
@@ -511,45 +541,50 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
 
               {activeTab === 'proposals' && (
                 visibleRows.length === 0 ? (
-                  <div className="workspace-empty" style={{ minHeight: 200 }}>
-                    No proposals submitted yet.
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">No proposals found.</p>
+                    <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
                   </div>
                 ) : (
-                  <div className="data-table-wrap">
-                    <table className="data-table">
+                  <div className="manager-project-table-scroll">
+                    <table className="monitoring-table">
                       <thead>
                         <tr>
-                          <th style={{ width: 60 }}>STT</th>
+                          <th className="col-center" style={{ width: '44px' }}>#</th>
                           <th>Company</th>
-                          <th>Submitted At</th>
-                          <th>Proposal Type</th>
-                          <th>Proposal Status</th>
-                          <th style={{ width: 220 }}>Actions</th>
+                          <th style={{ width: '140px' }}>Submitted At</th>
+                          <th style={{ width: '180px' }}>Proposal Type</th>
+                          <th style={{ width: '140px' }}>Proposal Status</th>
+                          <th style={{ width: '220px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(visibleRows as CompanyMonitoringReviewResponse[]).map((proposal, idx) => (
                           <tr key={proposal.id}>
-                            <td className="admin-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
-                            <td><strong>{proposal.companyName}</strong></td>
-                            <td><span style={{ color: 'var(--text-muted)' }}>{formatDate(proposal.reviewedAt)}</span></td>
+                            <td className="col-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
+                            <td>
+                              <strong className="project-name-primary">{proposal.companyName}</strong>
+                            </td>
+                            <td><span style={{ color: 'var(--text-secondary)' }}>{formatDate(proposal.reviewedAt)}</span></td>
                             <td>{formatEnum(proposal.result)}</td>
                             <td>
-                              <span className={`workspace-badge ${proposalStatusTone(proposal.proposalStatus)}`}>
+                              <span className={`project-status-badge ${proposalStatusTone(proposal.proposalStatus)}`}>
                                 {formatEnum(proposal.proposalStatus)}
                               </span>
                             </td>
                             <td>
-                              <div style={{ display: 'flex', gap: '8px' }}>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                 <button 
-                                  className="btn btn-sm btn-outline"
+                                  type="button"
+                                  className="project-detail-btn"
                                   onClick={() => openProposalDetails(proposal)}
                                 >
-                                  <Eye size={14} /> View Details
+                                  <Eye size={12} style={{ marginRight: '4px' }} /> View Details
                                 </button>
                                 {proposal.proposalStatus === 'SUBMITTED' && (
                                   <button
-                                    className="btn btn-sm btn-danger"
+                                    type="button"
+                                    className="project-detail-btn danger"
                                     onClick={() => setProposalToWithdraw(proposal)}
                                   >
                                     Cancel Submission
@@ -567,52 +602,56 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
 
               {activeTab === 'history' && (
                 visibleRows.length === 0 ? (
-                  <div className="workspace-empty" style={{ minHeight: 200 }}>
-                    No monitoring history yet.
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">No monitoring history found.</p>
+                    <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
                   </div>
                 ) : (
-                  <div className="data-table-wrap">
-                    <table className="data-table">
+                  <div className="manager-project-table-scroll">
+                    <table className="monitoring-table">
                       <thead>
                         <tr>
-                          <th style={{ width: 60 }}>STT</th>
+                          <th className="col-center" style={{ width: '44px' }}>#</th>
                           <th>Company</th>
-                          <th>Reviewed At</th>
-                          <th>Review Result</th>
-                          <th>Proposal Decision</th>
+                          <th style={{ width: '140px' }}>Reviewed At</th>
+                          <th style={{ width: '180px' }}>Review Result</th>
+                          <th style={{ width: '150px' }}>Proposal Decision</th>
                           <th>Note</th>
-                          <th style={{ width: 140 }}>Actions</th>
+                          <th style={{ width: '130px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(visibleRows as CompanyMonitoringReviewResponse[]).map((history, idx) => (
                           <tr key={history.id}>
-                            <td className="admin-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
-                            <td><strong>{history.companyName}</strong></td>
-                            <td><span style={{ color: 'var(--text-muted)' }}>{formatDate(history.reviewedAt)}</span></td>
+                            <td className="col-mono">{currentPage * PAGE_SIZE + idx + 1}</td>
                             <td>
-                              <span className={`workspace-badge ${reviewResultTone(history.result)}`}>
+                              <strong className="project-name-primary">{history.companyName}</strong>
+                            </td>
+                            <td><span style={{ color: 'var(--text-secondary)' }}>{formatDate(history.reviewedAt)}</span></td>
+                            <td>
+                              <span className={`project-status-badge ${reviewResultTone(history.result)}`}>
                                 {formatEnum(history.result)}
                               </span>
                             </td>
                             <td>
                               {history.updateProposalId && history.proposalStatus ? (
-                                <span className={`workspace-badge ${proposalStatusTone(history.proposalStatus)}`}>
+                                <span className={`project-status-badge ${proposalStatusTone(history.proposalStatus)}`}>
                                   {formatEnum(history.proposalStatus)}
                                 </span>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)' }}>—</span>
                               )}
                             </td>
-                            <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={history.note || undefined}>
+                            <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={history.note || undefined}>
                               {history.note || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
                             <td>
                               <button 
-                                className="btn btn-sm btn-outline"
+                                type="button"
+                                className="project-detail-btn"
                                 onClick={() => openProposalDetails(history)}
                               >
-                                <Eye size={14} /> View Details
+                                <Eye size={12} style={{ marginRight: '4px' }} /> View Details
                               </button>
                             </td>
                           </tr>
@@ -623,31 +662,54 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                 )
               )}
 
-              {totalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '16px 0', gap: '8px' }}>
+              {/* Pagination */}
+              <div className="project-table-pagination">
+                <span>Showing {pageStart}–{pageEnd} of {totalElements}</span>
+                <div>
                   <button
-                    className="btn btn-sm btn-outline"
-                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                    className="workspace-page-btn"
                     disabled={currentPage === 0}
+                    onClick={() => setCurrentPage(0)}
                   >
-                    Previous
+                    First
                   </button>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Page {currentPage + 1} of {totalPages}
-                  </span>
                   <button
-                    className="btn btn-sm btn-outline"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                    disabled={currentPage >= totalPages - 1}
+                    className="workspace-page-btn"
+                    disabled={currentPage === 0}
+                    onClick={() => setCurrentPage((c) => Math.max(c - 1, 0))}
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: pageCount }, (_, index) => (
+                    <button
+                      key={index}
+                      className={`workspace-page-btn ${currentPage === index ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(index)}
+                      disabled={totalElements === 0}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                  <button
+                    className="workspace-page-btn"
+                    disabled={currentPage >= pageCount - 1}
+                    onClick={() => setCurrentPage((c) => Math.min(c + 1, pageCount - 1))}
                   >
                     Next
                   </button>
+                  <button
+                    className="workspace-page-btn"
+                    disabled={currentPage >= pageCount - 1}
+                    onClick={() => setCurrentPage(pageCount - 1)}
+                  >
+                    Last
+                  </button>
                 </div>
-              )}
+              </div>
             </>
           )}
         </div>
-      </main>
+      </div>
 
       {selectedHistoryReview && (
         <MonitoringReviewDetailsModal
@@ -672,6 +734,6 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
         }}
         onConfirm={handleWithdrawProposalFromDashboard}
       />
-    </div>
+    </section>
   );
 };

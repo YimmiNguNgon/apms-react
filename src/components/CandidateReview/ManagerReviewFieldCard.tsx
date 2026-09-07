@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { Check, X, MessageSquareWarning, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, FileText, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import type { CandidateFieldEvidence } from '../../types/domain';
+import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
 import styles from './ManagerReviewFieldCard.module.css';
 
 interface ManagerReviewFieldCardProps {
@@ -18,10 +19,7 @@ type EvidenceItem = CandidateFieldEvidence & Record<string, unknown>;
 
 /* ── helpers ── */
 
-const isEmpty = (val: any): boolean =>
-  val === null || val === undefined || val === '' ||
-  (Array.isArray(val) && val.length === 0) ||
-  (typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0);
+const isEmpty = (val: any): boolean => normalizeCandidateFieldValue(val) === null;
 
 const hasReviewedValue = (field: any): boolean =>
   field?.reviewedValue !== undefined || field?.staffReviewedValue !== undefined;
@@ -199,10 +197,12 @@ const renderValue = (fieldKey: string, val: any): React.ReactNode => {
 };
 
 const mapStaffStatus = (s: string, isSameAsAi: boolean): { text: string; icon: React.ReactNode } => {
+  if (isSameAsAi) {
+    if (s === 'PENDING') return { text: 'Pending Staff Review', icon: <Clock size={12} /> };
+    return { text: 'Matches AI', icon: <Check size={12} /> };
+  }
   switch (s) {
-    case 'CONFIRMED': return isSameAsAi
-      ? { text: 'Matches AI', icon: <Check size={12} /> }
-      : { text: 'Edited by Staff', icon: <AlertTriangle size={12} /> };
+    case 'CONFIRMED': return { text: 'Edited by Staff', icon: <AlertTriangle size={12} /> };
     case 'EDITED':    return { text: 'Edited by Staff', icon: <AlertTriangle size={12} /> };
     case 'ADDED':     return { text: 'Added by Staff', icon: <AlertTriangle size={12} /> };
     case 'REMOVED':   return { text: 'Removed by Staff', icon: <X size={12} /> };
@@ -308,11 +308,11 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   const status = normalizeManagerStatus(fieldResult?.managerReviewStatus);
   const originalValue = fieldResult?.value;
   const staffValue = getEffectiveReviewedValue(fieldResult);
-  const isChanged = (hasReviewedValue(fieldResult) || fieldResult?.staffReviewStatus !== 'PENDING') && !deepEqual(originalValue, staffValue);
+  const isChanged = isCandidateFieldEdited(originalValue, staffValue);
   const rawStaffStatus = fieldResult?.staffReviewStatus || 'PENDING';
-  const effectiveStaffStatus = rawStaffStatus === 'CONFIRMED' && isChanged
+  const effectiveStaffStatus = isChanged
     ? (isEmpty(originalValue) && !isEmpty(staffValue) ? 'ADDED' : (!isEmpty(originalValue) && isEmpty(staffValue) ? 'REMOVED' : 'EDITED'))
-    : rawStaffStatus;
+    : (rawStaffStatus === 'EDITED' || rawStaffStatus === 'ADDED' || rawStaffStatus === 'REMOVED' ? 'CONFIRMED' : rawStaffStatus);
   const staffInfo = mapStaffStatus(effectiveStaffStatus, !isChanged);
   const managerInfo = mapManagerStatus(status);
   const confidence = fieldResult?.confidence;

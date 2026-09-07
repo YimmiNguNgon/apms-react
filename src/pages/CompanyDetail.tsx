@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
+import { companyProfileApi } from '../API/companyProfileApi';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse } from '../types/domain';
@@ -89,6 +90,64 @@ const C = {
   } as const,
 };
 
+export type CompanyDetailSource =
+  | 'project'
+  | 'company-profiles'
+  | 'monitoring'
+  | 'my-companies'
+  | 'staff-monitoring';
+
+interface NavContext {
+  source: CompanyDetailSource;
+  projectId: number | null;
+  companyId: string | null;
+}
+
+const parseNavContext = (propCompanyId?: string): NavContext => {
+  let sourceParam: string | null = null;
+  let projectIdParam: string | null = null;
+  let companyIdParam: string | null = null;
+
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash;
+    const qIndex = hash.indexOf('?');
+    const searchStr = qIndex !== -1 ? hash.slice(qIndex) : window.location.search;
+    if (searchStr) {
+      const params = new URLSearchParams(searchStr);
+      sourceParam = params.get('source');
+      projectIdParam = params.get('projectId');
+      companyIdParam = params.get('companyId') || params.get('profileId');
+    }
+  }
+
+  let source: CompanyDetailSource = 'company-profiles';
+  let projectId: number | null = null;
+
+  if (sourceParam === 'project' && projectIdParam) {
+    const parsedPid = parseInt(projectIdParam, 10);
+    if (!Number.isNaN(parsedPid) && parsedPid > 0) {
+      source = 'project';
+      projectId = parsedPid;
+    }
+  } else if (sourceParam === 'monitoring' || sourceParam === 'company-monitoring') {
+    source = 'monitoring';
+  } else if (sourceParam === 'staff-monitoring') {
+    source = 'staff-monitoring';
+  } else if (sourceParam === 'my-companies') {
+    source = 'my-companies';
+  } else {
+    source = 'company-profiles';
+  }
+
+  const effectiveCompanyId = propCompanyId || companyIdParam || (typeof window !== 'undefined' ? localStorage.getItem('apms-selected-company') : null) || null;
+
+  return {
+    source,
+    projectId,
+    companyId: effectiveCompanyId,
+  };
+};
+
 export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActivePage, isOwnerProfile, isDrawerMode }) => {
   const { t } = useTranslation('company-list');
   const { currentUser } = useUser();
@@ -109,15 +168,35 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false);
-  const contextProjectIdStr = localStorage.getItem('apms-context-project');
-  const contextProjectId = contextProjectIdStr ? parseInt(contextProjectIdStr, 10) : null;
+
+  const [navContext, setNavContext] = useState<NavContext>(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('apms-context-project');
+    }
+    return parseNavContext(companyId);
+  });
+
+  useEffect(() => {
+    const handleNavChange = () => {
+      setNavContext(parseNavContext(companyId));
+    };
+    handleNavChange();
+    window.addEventListener('hashchange', handleNavChange);
+    window.addEventListener('popstate', handleNavChange);
+    return () => {
+      window.removeEventListener('hashchange', handleNavChange);
+      window.removeEventListener('popstate', handleNavChange);
+    };
+  }, [companyId]);
+
+  const contextProjectId = navContext.source === 'project' ? navContext.projectId : null;
 
   const canEditListing =
     !!currentUser &&
     ([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER] as Role[]).includes(currentUser.role);
 
   const [localStorageId, setLocalStorageId] = useState(() => localStorage.getItem('apms-selected-company') ?? '');
-  const resolvedId = companyId ?? localStorageId;
+  const resolvedId = companyId ?? navContext.companyId ?? localStorageId;
 
   useEffect(() => {
     const handleCompanyChange = (event: Event) => {
@@ -182,8 +261,21 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         }
 
         let projectsRes = null;
+        let singleContextProject: ProjectResponse | null = null;
         try {
-          projectsRes = await api.get<PageResponse<ProjectResponse>>('/projects', { params: { page: 0, size: 100 }, signal: controller.signal });
+          const promises: [Promise<any>, Promise<any>?] = [
+            api.get<PageResponse<ProjectResponse>>('/projects', { params: { page: 0, size: 100 }, signal: controller.signal }),
+          ];
+          if (contextProjectId) {
+            promises.push(
+              api.get<ProjectResponse>(`/projects/${contextProjectId}`, { signal: controller.signal }).catch(() => null)
+            );
+          }
+          const [pListRes, pSingleRes] = await Promise.all(promises);
+          projectsRes = pListRes;
+          if (pSingleRes?.data) {
+            singleContextProject = pSingleRes.data;
+          }
         } catch (err) {
           console.error('Failed to load projects:', err);
         }
@@ -192,7 +284,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         setProfile(profileRes.data ?? null);
         setSources(sourcesRes?.data ?? null);
         setIntelligence(intelRes?.data ?? null);
-        setProjects(projectsRes?.data?.content ?? []);
+        const listProjects = projectsRes?.data?.content ?? [];
+        if (singleContextProject && !listProjects.some((p: ProjectResponse) => p.id === singleContextProject?.id)) {
+          setProjects([singleContextProject, ...listProjects]);
+        } else {
+          setProjects(listProjects);
+        }
       } catch (err) {
         if (!controller.signal.aborted) {
           setProfile(null);
@@ -266,36 +363,32 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     }
   };
 
-  const contextProject = useMemo(() => {
-    if (!contextProjectId) return null;
-    return projects.find(p => p.id === contextProjectId) || null;
-  }, [contextProjectId, projects]);
 
-  const currentUserProjectRole = useMemo(() => {
-    if (!contextProject || !currentUser) return null;
-    const member = contextProject.members?.find(m => m.accountId === currentUser.id);
-    return member?.projectRole || null;
-  }, [contextProject, currentUser]);
-
-  const canToggleVisibility = 
-    !!contextProjectId &&
-    currentUser?.role === ROLES.MANAGER &&
-    currentUserProjectRole === 'LEADER' &&
-    Boolean(contextProject?.targetCompanyProfileId && (contextProject.targetCompanyProfileId === profile?.id || contextProject.targetCompanyProfileId === profile?.companyId));
+  const canManageVisibility = Boolean(
+    profile?.canManageVisibility ??
+    (currentUser && (
+      currentUser.role === ROLES.ADMIN ||
+      (currentUser.role === ROLES.MANAGER && profile?.responsibleManagerId != null && profile.responsibleManagerId === currentUser.id)
+    ))
+  );
 
   const handleToggleVisibility = async () => {
-    if (!profile?.id || !contextProjectId) return;
+    const targetId = profile?.companyId || profile?.id;
+    if (!targetId) return;
     setTogglingVisibility(true);
-    const newVisibility = profile.isHidden ? 'PUBLISHED' : 'HIDDEN';
+    const isCurrentlyHidden = profile.isHidden === true || (profile.isHidden === undefined && profile.visibility === 'HIDDEN');
+    const newVisibility = isCurrentlyHidden ? 'PUBLISHED' : 'HIDDEN';
     try {
-      const response = await api.patch<any>(`/projects/${contextProjectId}/company-profiles/${profile.id}/visibility`, { visibility: newVisibility });
-      const updatedIsHidden = (response as any)?.data?.isHidden ?? (response as any)?.isHidden;
-      if (typeof updatedIsHidden === 'boolean') {
-        setProfile(current => current ? { ...current, isHidden: updatedIsHidden } : current);
-      } else {
-        // Fallback if response format is unexpected
-        setProfile(current => current ? { ...current, isHidden: newVisibility === 'HIDDEN' } : current);
-      }
+      const response = await companyProfileApi.updateProfileVisibility(targetId, newVisibility);
+      const data = (response as any)?.data ?? response;
+      const updatedIsHidden = typeof data?.isHidden === 'boolean'
+        ? data.isHidden
+        : (data?.visibility ? data.visibility === 'HIDDEN' : (newVisibility === 'HIDDEN'));
+      setProfile(current => current ? { 
+        ...current, 
+        isHidden: updatedIsHidden,
+        visibility: updatedIsHidden ? 'HIDDEN' : 'PUBLISHED' 
+      } : current);
     } catch (err) {
       console.error('Failed to toggle visibility', err);
       alert(err instanceof Error ? err.message : 'Failed to toggle visibility');
@@ -317,8 +410,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const address = profile?.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Not updated';
 
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: isDrawerMode ? '1fr' : '2fr 1fr', gap: '10px', alignItems: 'start' }} id="company-detail-2col-grid">
-        {/* Left Column */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', alignItems: 'start' }} id="company-detail-2col-grid">
+        {/* Main Profile Details Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           
           {/* Panel 1: Legal Identity */}
@@ -548,50 +641,14 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
             </section>
           )}
-        </div>
-
-        {/* Right Column */}
-        {!isDrawerMode && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {!isOwnerProfile && profile?.relationshipType?.toUpperCase() === 'PARTNER' && (
+          {/* Partner Relationship Closeness Panel */}
+          {!isOwnerProfile && profile?.relationshipType?.toUpperCase() === 'PARTNER' && (
             <CompanyRelationshipClosenessPanel
               companyProfileId={relationshipClosenessProfileId}
               currentUserRole={currentUser?.role}
             />
           )}
-
-          {/* Quick Info Summary */}
-          {!isDrawerMode && (
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Quick Summary</h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.72rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Industry</span>
-                  <span style={{ fontWeight: 600, color: '#1E293B', background: '#F1F5F9', padding: '1px 6px', borderRadius: '4px' }}>
-                    {profile?.business?.industries?.[0] || 'General'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Verification Status</span>
-                  <span style={{ fontWeight: 600, color: '#15803D', background: '#DCFCE7', padding: '1px 6px', borderRadius: '4px' }}>
-                    {profile?.reviewStatus || 'VERIFIED'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', color: '#64748B' }}>Last Updated</span>
-                  <span style={{ fontWeight: 600, color: '#334155' }}>
-                    {profile?.metadata?.updatedAt ? new Date(profile.metadata.updatedAt).toLocaleDateString() : 'Just now'}
-                  </span>
-                </div>
-              </div>
-            </section>
-          )}
-
-            {/* Evidence Sources */}
-          </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -1046,66 +1103,80 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={() => {
-                if (setActivePage) {
-                  if (contextProjectIdStr) {
-                    localStorage.removeItem('apms-context-project');
-                    setActivePage('project-detail');
-                  } else if (isOwnerProfile && currentUser) {
-                    setActivePage(`${currentUser.role}-dashboard`);
-                  } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
-                    setActivePage('staff-dashboard');
-                  } else {
-                    const backPage = localStorage.getItem('apms-back-page');
-                    setActivePage(backPage ? backPage : 'company-profiles');
-                  }
-                } else {
-                  history.back();
-                }
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#FFFFFF',
-                border: '1px solid #CBD5E1',
-                borderRadius: '6px',
-                color: '#1E293B',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                padding: '4px 10px',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              }}
-              id="btn-back-to-company-list"
-            >
-              <ArrowLeft size={14} />
-              {contextProjectIdStr 
-                ? 'Back to Project'
-                : localStorage.getItem('apms-back-page') === 'staff-monitoring'
-                  ? 'Back to Staff Monitoring'
-                  : (isOwnerProfile || (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring')) 
-                    ? 'Back to Dashboard' 
-                    : localStorage.getItem('apms-back-page') === 'company-monitoring'
+            {!isOwnerProfile && (
+              <>
+                <button
+                  onClick={() => {
+                    if (!setActivePage) {
+                      history.back();
+                      return;
+                    }
+                    if (navContext.source === 'project') {
+                      setActivePage('project-detail');
+                    } else if (navContext.source === 'monitoring') {
+                      setActivePage('company-monitoring');
+                    } else if (navContext.source === 'staff-monitoring') {
+                      setActivePage('staff-monitoring');
+                    } else if (navContext.source === 'my-companies') {
+                      setActivePage('my-companies');
+                    } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
+                      setActivePage('staff-dashboard');
+                    } else {
+                      setActivePage('company-profiles');
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#FFFFFF',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: '6px',
+                    color: '#1E293B',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: '4px 10px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                  id="btn-back-to-company-list"
+                >
+                  <ArrowLeft size={14} />
+                  {navContext.source === 'project' 
+                    ? 'Back to Project'
+                    : navContext.source === 'monitoring'
                       ? 'Back to Monitoring Management'
-                      : localStorage.getItem('apms-back-page') === 'my-companies'
-                        ? 'Back to My Companies'
-                        : 'Back to Company Profiles'}
-            </button>
-            <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
+                      : navContext.source === 'staff-monitoring'
+                        ? 'Back to Staff Monitoring'
+                        : navContext.source === 'my-companies'
+                          ? 'Back to My Companies'
+                          : (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') 
+                            ? 'Back to Dashboard' 
+                            : 'Back to Company Profiles'}
+                </button>
+                <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
+              </>
+            )}
             <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>APMS</span>
-              <span>/</span>
-              <span>
-                {contextProjectIdStr 
-                  ? 'Project' 
-                  : isOwnerProfile 
-                    ? 'My Enterprise' 
-                    : 'Company Detail'}
-              </span>
-              <span>/</span>
-              <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
+              {isOwnerProfile ? (
+                <>
+                  <span>My Enterprise</span>
+                  <span>/</span>
+                  <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
+                </>
+              ) : (
+                <>
+                  <span>APMS</span>
+                  <span>/</span>
+                  <span>
+                    {navContext.source === 'project' 
+                      ? 'Project' 
+                      : 'Company Detail'}
+                  </span>
+                  <span>/</span>
+                  <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1178,7 +1249,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   })()}
                 </span>
               )}
-              {profile.business?.industries?.[0] && (
+              {!isOwnerProfile && profile.business?.industries?.[0] && (
                 <span
                   style={{
                     background: '#F1F5F9',
@@ -1191,6 +1262,24 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   }}
                 >
                   {profile.business.industries[0]}
+                </span>
+              )}
+              {profile.reviewStatus && (
+                <span
+                  style={{
+                    background: '#DCFCE7',
+                    border: '1px solid #BBF7D0',
+                    color: '#15803D',
+                    fontSize: '0.62rem',
+                    fontWeight: 700,
+                    padding: '1px 7px',
+                    borderRadius: '999px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.3px',
+                  }}
+                  title="Verification / Review Status"
+                >
+                  {profile.reviewStatus}
                 </span>
               )}
               {profile && (
@@ -1264,18 +1353,24 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 )}
 
                 {(() => {
-                  const isHidden = profile.isHidden ?? false;
-                  const isApproved = profile.reviewStatus === 'APPROVED';
-                  const isInteractive = canToggleVisibility && isApproved && !togglingVisibility;
+                  const isHidden = profile.isHidden === true 
+                    ? true 
+                    : (profile.isHidden === false 
+                        ? false 
+                        : (profile.isHidden === null 
+                            ? false 
+                            : (profile.visibility === 'HIDDEN')));
+                  const canPublish = profile.canPublish ?? false;
+                  const isPublishInteractive = canManageVisibility && canPublish && !togglingVisibility;
+                  const isHideInteractive = canManageVisibility && !togglingVisibility;
 
-                  // Only render if explicitly associated with the current project and has manager/leader permissions
-                  if (!canToggleVisibility) {
+                  // Render visibility controls only if the current user has management authorization
+                  if (!canManageVisibility) {
                     return null;
                   }
 
                   return (
                     <div
-                      title={!isApproved ? 'Profile can be published after approval.' : undefined}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1283,41 +1378,64 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         opacity: togglingVisibility ? 0.6 : 1,
                       }}
                     >
-                      <span style={{ fontSize: '0.65rem', color: isHidden ? '#ef4444' : '#15803d', fontWeight: 600 }}>
+                      <span style={{ fontSize: '0.72rem', color: isHidden ? '#EF4444' : '#16A34A', fontWeight: 600 }}>
                         Visibility: {isHidden ? 'Hidden' : 'Published'}
                       </span>
 
-                      <button
-                        type="button"
-                        onClick={isInteractive ? handleToggleVisibility : undefined}
-                        disabled={!isInteractive}
-                        style={{
-                          position: 'relative',
-                          width: '42px',
-                          height: '22px',
-                          borderRadius: '999px',
-                          border: 'none',
-                          background: isHidden ? '#ef4444' : '#22c55e',
-                          cursor: isInteractive ? 'pointer' : 'not-allowed',
-                          transition: 'background 0.2s ease',
-                          padding: 0,
-                          opacity: !isApproved ? 0.7 : 1
-                        }}
-                      >
-                        <span
+                      {isHidden ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={isPublishInteractive ? handleToggleVisibility : undefined}
+                            disabled={!isPublishInteractive}
+                            style={{
+                              background: isPublishInteractive ? '#16A34A' : '#E2E8F0',
+                              border: 'none',
+                              color: isPublishInteractive ? '#FFFFFF' : '#94A3B8',
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              cursor: isPublishInteractive ? 'pointer' : 'not-allowed',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: isPublishInteractive ? '0 1px 2px rgba(22, 163, 74, 0.2)' : 'none',
+                            }}
+                            title={!canPublish ? 'Profile requires Legal Name and Tax Code before it can be published.' : 'Publish Profile'}
+                          >
+                            Publish Profile
+                          </button>
+                          {!canPublish && (
+                            <span style={{ fontSize: '0.65rem', color: '#64748B', fontStyle: 'italic' }}>
+                              (Profile requires Legal Name and Tax Code before it can be published.)
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={isHideInteractive ? handleToggleVisibility : undefined}
+                          disabled={!isHideInteractive}
                           style={{
-                            position: 'absolute',
-                            top: '2px',
-                            left: isHidden ? '2px' : '22px',
-                            width: '18px',
-                            height: '18px',
-                            background: '#ffffff',
-                            borderRadius: '50%',
-                            transition: 'left 0.2s ease',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                            background: '#EF4444',
+                            border: 'none',
+                            color: '#FFFFFF',
+                            fontSize: '0.68rem',
+                            fontWeight: 600,
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            cursor: isHideInteractive ? 'pointer' : 'not-allowed',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            boxShadow: '0 1px 2px rgba(239, 68, 68, 0.2)',
                           }}
-                        />
-                      </button>
+                          title="Hide Profile"
+                        >
+                          Hide Profile
+                        </button>
+                      )}
                     </div>
                   );
                 })()}

@@ -158,6 +158,8 @@ export interface ProfileResponse {
   versionLabel?: string;
   responsibleManagerId?: number;
   canEditProfile?: boolean;
+  canManageVisibility?: boolean;
+  canPublish?: boolean;
 }
 
 export type CompanyProfileChangeSource =

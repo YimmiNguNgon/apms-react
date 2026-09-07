@@ -10,6 +10,15 @@ export const companyMemberResearchApi = {
       members,
     }),
 
+  uploadImage: (projectId: number, taskId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ imageUrl: string; filename: string }>(
+      `/projects/${projectId}/tasks/${taskId}/company-members/images`,
+      formData
+    );
+  },
+
   submitDraft: (projectId: number, taskId: number) =>
     api.post<void>(`/projects/${projectId}/tasks/${taskId}/company-members/submit`, {}),
 };

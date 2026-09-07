@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
-import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
   setActivePage: (page: string) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 interface MenuItem {
@@ -184,7 +186,7 @@ const MENU_BY_ROLE = {
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, collapsed = false, onToggleCollapse }) => {
   const { t } = useTranslation('common');
   const { currentUser, logout } = useUser();
   const { totalUnread } = useChatNotifications();
@@ -240,10 +242,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
 
   return (
     <>
-      <aside className={`sidebar role-${roleContext?.accent || 'default'}`} id="sidebar">
+      <aside className={`sidebar role-${roleContext?.accent || 'default'} ${collapsed ? 'collapsed' : ''}`} id="sidebar">
         {/* Logo */}
         <div className="sidebar-logo">
-          <div className="logo-mark">
+          <div
+            className="logo-mark"
+            onClick={collapsed ? onToggleCollapse : undefined}
+            style={{ cursor: collapsed ? 'pointer' : 'default' }}
+            title={collapsed ? 'Expand sidebar' : undefined}
+          >
             <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
               <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="1.5" />
               <circle cx="12" cy="12" r="3.5" fill="white" />
@@ -256,15 +263,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
           <div className="logo-text-block">
             <div className="logo-title">APMS</div>
             <div className="logo-sub">{t('app.businessIntelligence')}</div>
-            {/* <div className="logo-sub">Business Intelligence</div> */}
           </div>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
         <nav className="sidebar-nav">
           {menuSections.map((section, si) => (
             <div className="nav-section" key={si}>
-              {section.title && (
+              {section.title && !collapsed && (
                 <div className="nav-section-title">{t(section.title)}</div>
               )}
               {section.items.map(item => (
@@ -275,11 +292,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
                       key={item.id}
                       className={`nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'system-chat' && badgeValue && badgeValue > 0 ? 'has-unread' : ''}`}
                       onClick={() => setActivePage(item.id)}
-                      title={t(item.label)}
+                      title={collapsed ? t(item.label) : undefined}
                       style={{ cursor: 'pointer' }}
                     >
                       <span className="nav-icon" style={{ display: 'flex', alignItems: 'center' }}>{getIconForId(item.id)}</span>
-                      <span className="nav-label">{t(item.label)}</span>
+                      {!collapsed && <span className="nav-label">{t(item.label)}</span>}
                       {badgeValue !== undefined && badgeValue > 0 && (
                         <span className={`nav-badge ${item.id === 'system-chat' ? 'chat-unread' : item.badgeType || ''}`}>
                           {formatBadge(badgeValue)}
@@ -295,27 +312,60 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage }) =
 
         {/* User Footer */}
         <div className="sidebar-footer">
-          <div className="sidebar-user" onClick={() => setActivePage('profile')}>
-            <div className="user-avatar-sm" style={{ background: currentUser.avatarColor }}>
-              {currentUser.avatar}
+          {collapsed ? (
+            <div className="sidebar-user-collapsed" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+              <div
+                className="user-avatar-sm"
+                style={{ background: currentUser.avatarColor, cursor: 'pointer' }}
+                title={`${currentUser.name} (${currentUser.roleName})`}
+                onClick={() => setActivePage('profile')}
+              >
+                {currentUser.avatar}
+              </div>
+              <button
+                className="sidebar-logout-btn"
+                title={t('logout.button')}
+                onClick={e => { e.stopPropagation(); setShowLogout(true); }}
+                style={{
+                  width: '28px',
+                  height: '26px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(239,68,68,0.1)',
+                  color: '#EF4444',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <LogOut size={14} />
+              </button>
             </div>
-            <div className="user-meta">
-              <div className="user-meta-name">{currentUser.name}</div>
-              <div className="user-meta-role">{currentUser.roleName}</div>
+          ) : (
+            <div className="sidebar-user" onClick={() => setActivePage('profile')}>
+              <div className="user-avatar-sm" style={{ background: currentUser.avatarColor }}>
+                {currentUser.avatar}
+              </div>
+              <div className="user-meta">
+                <div className="user-meta-name">{currentUser.name}</div>
+                <div className="user-meta-role">{currentUser.roleName}</div>
+              </div>
+              <button
+                className="sidebar-logout-btn"
+                title={t('logout.button')}
+                onClick={e => { e.stopPropagation(); setShowLogout(true); }}
+                style={{
+                  fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
+                  background: 'rgba(239,68,68,0.1)', color: '#FCA5A5',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                {t('logout.button')}
+              </button>
             </div>
-            <button
-              className="sidebar-logout-btn"
-              title={t('logout.button')}
-              onClick={e => { e.stopPropagation(); setShowLogout(true); }}
-              style={{
-                fontSize: 'var(--text-caption)', width: 'auto', padding: '4px 8px',
-                background: 'rgba(239,68,68,0.1)', color: '#FCA5A5',
-                borderRadius: 'var(--radius-sm)',
-              }}
-            >
-              {t('logout.button')}
-            </button>
-          </div>
+          )}
         </div>
       </aside>
 

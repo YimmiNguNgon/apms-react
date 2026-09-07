@@ -19,17 +19,22 @@ import { StaffDashboard }     from './pages/dashboards/StaffDashboard';
 
 const ACTIVE_PAGE_STORAGE_KEY = 'apms-active-page';
 
-const readActivePageFromLocation = () => {
-  if (typeof window === 'undefined') return '';
-  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
-  if (hashPage) return hashPage;
-  const queryPage = new URLSearchParams(window.location.search).get('page');
-  return queryPage || '';
+const getBasePage = (pageWithQuery: string): string => {
+  return pageWithQuery.replace(/^#\/?/, '').split('?')[0].trim();
 };
 
-const writeActivePageToLocation = (page: string) => {
-  if (typeof window === 'undefined' || !page) return;
-  const nextHash = `#${page}`;
+const readActivePageFromLocation = () => {
+  if (typeof window === 'undefined') return '';
+  const hash = window.location.hash.replace(/^#\/?/, '').trim();
+  const hashBase = hash ? getBasePage(hash) : '';
+  if (hashBase) return hashBase;
+  const queryPage = new URLSearchParams(window.location.search).get('page');
+  return queryPage ? getBasePage(queryPage) : '';
+};
+
+const writeActivePageToLocation = (pageWithPossibleQuery: string) => {
+  if (typeof window === 'undefined' || !pageWithPossibleQuery) return;
+  const nextHash = `#${pageWithPossibleQuery.replace(/^#\/?/, '')}`;
   if (window.location.hash !== nextHash) {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
   }
@@ -108,6 +113,8 @@ import { ProfilePage } from './pages/ProfilePage';
 // ─────────────────────────────────────────────────────────────
 // INNER APP
 // ─────────────────────────────────────────────────────────────
+const SIDEBAR_COLLAPSED_KEY = 'apms-sidebar-collapsed';
+
 const MainApp: React.FC = () => {
   const { t } = useTranslation('common');
   const { currentUser, loading } = useUser();
@@ -117,11 +124,31 @@ const MainApp: React.FC = () => {
     readActivePageFromLocation() || localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || ''
   );
   const [notificationToast, setNotificationToast] = useState<{ title: string; body: string } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   const navigateToPage = useCallback((page: string) => {
-    setActivePage(page);
-    if (page) {
-      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, page);
+    const basePage = getBasePage(page);
+    setActivePage(basePage);
+    if (basePage) {
+      localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, basePage);
       writeActivePageToLocation(page);
     }
   }, []);
@@ -144,7 +171,10 @@ const MainApp: React.FC = () => {
     if (!currentUser || !activePage) return;
     if (!currentUser.allowedPages.includes(activePage)) return;
     localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, activePage);
-    writeActivePageToLocation(activePage);
+    const currentBase = readActivePageFromLocation();
+    if (currentBase !== activePage) {
+      writeActivePageToLocation(activePage);
+    }
   }, [activePage, currentUser]);
 
   useEffect(() => {
@@ -336,9 +366,14 @@ const MainApp: React.FC = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <ChatNotificationProvider activePage={activePage} navigateToPage={navigateToPage}>
-        <Sidebar activePage={activePage} setActivePage={navigateToPage} />
+        <Sidebar
+          activePage={activePage}
+          setActivePage={navigateToPage}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleSidebar}
+        />
         <div className="main-content">
           <Topbar activePage={activePage} setActivePage={navigateToPage} />
           <div className={`page-container ${activePage === 'project-detail' ? 'full-bleed' : ''}`}>

@@ -153,10 +153,10 @@ export const TypeResolutionModal: React.FC<Props> = ({
                 fontWeight: 600,
               }}
             >
-              <option value="COOPERATION_AGREEMENT">Cooperation Agreement (Thỏa thuận Hợp tác)</option>
-              <option value="PARTNERSHIP_AGREEMENT">Partnership Agreement (Thỏa thuận Đối tác Chiến lược)</option>
-              <option value="JOINT_VENTURE_AGREEMENT">Joint Venture Agreement (Hợp đồng Liên doanh)</option>
-              <option value="BUSINESS_COOPERATION_CONTRACT">Business Cooperation Contract (Hợp đồng BCC)</option>
+              <option value="COOPERATION_AGREEMENT">Cooperation Agreement</option>
+              <option value="PARTNERSHIP_AGREEMENT">Partnership Agreement</option>
+              <option value="JOINT_VENTURE_AGREEMENT">Joint Venture Agreement (JVA)</option>
+              <option value="BUSINESS_COOPERATION_CONTRACT">Business Cooperation Contract (BCC)</option>
             </select>
           </div>
 

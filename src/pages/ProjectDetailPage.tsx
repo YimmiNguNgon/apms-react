@@ -17,6 +17,7 @@ import {
   Download,
   Edit3,
   ExternalLink,
+  Eye,
   FileText,
   Filter,
   Globe2,
@@ -34,6 +35,7 @@ import {
   Trash2,
   TrendingUp,
   type LucideIcon,
+  Upload,
   UserPlus,
   UserX,
   Users,
@@ -67,7 +69,6 @@ import { CandidateReviewWorkspace } from '../components/CandidateReview/Candidat
 import { ManagerCandidateReviewWorkspace } from '../components/CandidateReview/ManagerCandidateReviewWorkspace';
 import { CompanyNewsResearchWorkspace } from '../components/CompanyNewsResearchWorkspace';
 import { ManagerNewsReviewWorkspace } from '../components/CompanyNewsResearch/ManagerNewsReviewWorkspace';
-import { ProjectProgressOverview } from '../components/ProjectProgressOverview/ProjectProgressOverview';
 import FinancialResearchWorkbench from '../components/FinancialResearch/FinancialResearchWorkbench';
 import ManagerFinancialResearchReviewWorkspace from '../components/FinancialResearch/ManagerFinancialResearchReviewWorkspace';
 import { ContractResearchWorkbench } from '../components/ContractResearch/ContractResearchWorkbench';
@@ -1885,7 +1886,7 @@ const staffExtractionGroups: StaffExtractionGroup[] = [
     description: 'Legal identity and contact data extracted from the document.',
     icon: Building2,
     tone: 'blue',
-    fields: ['legalName', 'taxId', 'website', 'email', 'phone', 'address'],
+    fields: ['website', 'email', 'phone', 'address'],
   },
   {
     id: 'business-information',
@@ -3246,60 +3247,10 @@ const emptyCompanyMemberForm: CompanyMemberResearchItem = {
   notes: '',
 };
 
-type CompanyMemberLayerId = 'president' | 'ceo' | 'accountant' | 'other';
-
-const companyMemberLayerMeta: Record<CompanyMemberLayerId, { title: string; description: string }> = {
-  president: {
-    title: 'President',
-    description: '',
-  },
-  ceo: {
-    title: 'CEO',
-    description: '',
-  },
-  accountant: {
-    title: 'Accountant',
-    description: '',
-  },
-  other: {
-    title: 'Other Members',
-    description: '',
-  },
-};
-
 const companyMemberInitials = (name: string) => {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return `${Array.from(words[0])[0] || ''}${Array.from(words[words.length - 1])[0] || ''}`.toUpperCase();
   return Array.from(name.trim()).slice(0, 2).join('').toUpperCase() || 'NA';
-};
-
-const normalizeCompanyMemberPosition = (position: string) =>
-  position
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase();
-
-const companyMemberLayerId = (position: string): CompanyMemberLayerId => {
-  const normalized = normalizeCompanyMemberPosition(position);
-  if (/(president|chủ tịch|chu tich)/i.test(normalized)) return 'president';
-  if (/(ceo|tổng giám đốc|tong giam doc|giám đốc|giam doc|director)/i.test(normalized)) return 'ceo';
-  if (/(accountant|kế toán|ke toan|cfo)/i.test(normalized)) return 'accountant';
-  return 'other';
-};
-
-const groupCompanyMemberLayers = (members: CompanyMemberResearchItem[]) => {
-  const buckets: Record<CompanyMemberLayerId, CompanyMemberResearchItem[]> = {
-    president: [],
-    ceo: [],
-    accountant: [],
-    other: [],
-  };
-  members.forEach((member) => buckets[companyMemberLayerId(member.position || '')].push(member));
-  return (Object.keys(buckets) as CompanyMemberLayerId[])
-    .map((id) => ({ id, ...companyMemberLayerMeta[id], members: buckets[id] }))
-    .filter((layer) => layer.members.length > 0);
 };
 
 const profileMembersToResearchItems = (members: CompanyProfileMember[] = []): CompanyMemberResearchItem[] =>
@@ -3311,38 +3262,40 @@ const profileMembersToResearchItems = (members: CompanyProfileMember[] = []): Co
     notes: member.notes || '',
   }));
 
-const CompanyMemberLayerCard: React.FC<{
-  member: CompanyMemberResearchItem;
-  variant?: 'lead' | 'compact';
-  statusLabel?: string;
-  actions?: React.ReactNode;
-}> = ({ member, variant = 'compact', statusLabel, actions }) => (
-  <article className={`${styles.memberLayerCard} ${variant === 'lead' ? styles.memberLayerLeadCard : ''}`}>
-    <div className={styles.memberLayerAvatar}>
-      {member.imageUrl ? (
-        <img src={member.imageUrl} alt={member.fullName} />
-      ) : (
-        <span>{companyMemberInitials(member.fullName)}</span>
-      )}
-    </div>
-    <div className={styles.memberLayerInfo}>
-      <strong>{member.fullName || 'Unnamed member'}</strong>
-      <span>{member.position || 'Position not provided'}</span>
-      {member.notes && <p>{member.notes}</p>}
-      <div className={styles.memberLayerFooter}>
-        {member.sourceUrl ? (
-          <a href={member.sourceUrl} target="_blank" rel="noreferrer">
-            <ExternalLink size={14} /> Source
-          </a>
-        ) : (
-          <small>No source URL</small>
-        )}
-        {statusLabel && <small>{statusLabel}</small>}
-      </div>
-    </div>
-    {actions && <div className={styles.memberLayerActions}>{actions}</div>}
-  </article>
-);
+const resolveMemberImageUrl = (imageUrl?: string | null): string => {
+  if (!imageUrl) return '';
+  if (
+    imageUrl.startsWith('http://') ||
+    imageUrl.startsWith('https://') ||
+    imageUrl.startsWith('blob:') ||
+    imageUrl.startsWith('data:')
+  ) {
+    return imageUrl;
+  }
+  const cleanBase = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const path = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
+  return `${cleanBase}${path}`;
+};
+
+const CompanyMemberAvatar: React.FC<{ fullName: string; imageUrl?: string | null }> = ({ fullName, imageUrl }) => {
+  const [imgError, setImgError] = useState(false);
+  const resolved = resolveMemberImageUrl(imageUrl);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [imageUrl]);
+
+  if (resolved && !imgError) {
+    return (
+      <img
+        src={resolved}
+        alt={fullName}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return <span>{companyMemberInitials(fullName)}</span>;
+};
 
 const CompanyMemberLayerBoard: React.FC<{
   members: CompanyMemberResearchItem[];
@@ -3350,50 +3303,72 @@ const CompanyMemberLayerBoard: React.FC<{
   statusLabel?: string;
   renderActions?: (member: CompanyMemberResearchItem, index: number) => React.ReactNode;
 }> = ({ members, emptyText, statusLabel, renderActions }) => {
-  const layers = groupCompanyMemberLayers(members);
-  const memberIndex = (target: CompanyMemberResearchItem) => members.findIndex((member) => member === target);
-
-  if (layers.length === 0) return <div className={styles.empty}>{emptyText}</div>;
+  if (!members || members.length === 0) {
+    return (
+      <div
+        className={styles.empty}
+        style={{
+          padding: '36px 16px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px',
+        }}
+      >
+        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>{emptyText}</div>
+        {renderActions && (
+          <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 400 }}>
+            Add a company member using the form.
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className={styles.memberLayerBoard}>
-      {layers.map((layer) => {
-        const [lead, ...rest] = layer.members;
-        return (
-          <section className={styles.memberLayerSection} key={layer.id}>
-            <div className={styles.memberLayerSectionHead}>
-              <div>
-                <h4>{layer.title}</h4>
-                <p>{layer.description}</p>
-              </div>
-              {/* <span>{layer.members.length} member(s)</span> */}
+    <div className={styles.memberResearchCards}>
+      {members.map((member, index) => (
+        <article className={styles.memberResearchCard} key={`${member.fullName}-${member.position}-${index}`}>
+          <div className={styles.memberResearchAvatar}>
+            <CompanyMemberAvatar fullName={member.fullName} imageUrl={member.imageUrl} />
+          </div>
+          <div className={styles.memberResearchBody}>
+            <strong>{member.fullName || 'Unnamed member'}</strong>
+            <span>{member.position || 'Position not provided'}</span>
+            {member.sourceUrl ? (
+              <a href={member.sourceUrl} target="_blank" rel="noreferrer" style={{ marginTop: '2px' }}>
+                <ExternalLink size={12} /> Source
+              </a>
+            ) : null}
+            {statusLabel && statusLabel !== 'Draft' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '1px 7px',
+                  borderRadius: '4px',
+                  background: statusLabel === 'Approved' ? '#dcfce7' : statusLabel === 'Submitted' ? '#dbeafe' : '#f1f5f9',
+                  color: statusLabel === 'Approved' ? '#15803d' : statusLabel === 'Submitted' ? '#1e40af' : '#475569',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  width: 'fit-content',
+                  marginTop: '2px',
+                }}
+              >
+                {statusLabel}
+              </span>
+            )}
+          </div>
+          {renderActions && (
+            <div className={styles.memberResearchActions}>
+              {renderActions(member, index)}
             </div>
-            <div className={styles.memberLayerGrid}>
-              <CompanyMemberLayerCard
-                member={lead}
-                variant="lead"
-                statusLabel={statusLabel}
-                actions={renderActions?.(lead, memberIndex(lead))}
-              />
-              {rest.length > 0 && (
-                <div className={styles.memberLayerCompactGrid}>
-                  {rest.map((member) => {
-                    const index = memberIndex(member);
-                    return (
-                      <CompanyMemberLayerCard
-                        member={member}
-                        key={`${member.fullName}-${member.position}-${index}`}
-                        statusLabel={statusLabel}
-                        actions={renderActions?.(member, index)}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </section>
-        );
-      })}
+          )}
+        </article>
+      ))}
     </div>
   );
 };
@@ -3430,7 +3405,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     projectId: number;
     taskId: number;
     submissionId?: number | null;
+    submission?: ProjectTaskSubmissionResponse | null;
+    allActiveSubmissions?: ProjectTaskSubmissionResponse[];
+    taskDueDate?: string | null;
+    taskTitle?: string | null;
   } | null>(null);
+  const [reviewSubmissionError, setReviewSubmissionError] = useState<{ task: ProjectTaskResponse; message: string } | null>(null);
+  const [resolvingSubmission, setResolvingSubmission] = useState(false);
   const [managerCandidateTab, setManagerCandidateTab] = useState<ManagerCandidateTab>('overview');
   const [workbench, setWorkbench] = useState<ProjectTaskWorkbenchResponse | null>(null);
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
@@ -3557,12 +3538,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   } | null>(null);
   const [staffTaskNote, setStaffTaskNote] = useState('');
   const [submittedCandidateData, setSubmittedCandidateData] = useState<CandidateResponse | null>(null);
+  const [inReviewSelectedCandidateId, setInReviewSelectedCandidateId] = useState<string | null>(null);
   const [showCancelSubmissionModal, setShowCancelSubmissionModal] = useState(false);
   const [cancellingSubmission, setCancellingSubmission] = useState(false);
   const [companyMemberDraft, setCompanyMemberDraft] = useState<CompanyMemberResearchDraftResponse | null>(null);
   const [companyMemberItems, setCompanyMemberItems] = useState<CompanyMemberResearchItem[]>([]);
   const [companyMemberForm, setCompanyMemberForm] = useState<CompanyMemberResearchItem>(emptyCompanyMemberForm);
   const [editingCompanyMemberIndex, setEditingCompanyMemberIndex] = useState<number | null>(null);
+  const [companyMemberFormImageName, setCompanyMemberFormImageName] = useState('');
+  const [companyMemberUploadingImage, setCompanyMemberUploadingImage] = useState(false);
+  const [companyMemberImageError, setCompanyMemberImageError] = useState<string | null>(null);
+  const companyMemberFileInputRef = useRef<HTMLInputElement>(null);
   const [companyMemberLoading, setCompanyMemberLoading] = useState(false);
   const [companyMemberSaving, setCompanyMemberSaving] = useState(false);
   const [companyMemberSubmitting, setCompanyMemberSubmitting] = useState(false);
@@ -3635,6 +3621,27 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isTerminalProject = apiProject?.status === 'CLOSED' || apiProject?.status === 'COMPLETED';
   const staffTaskStatus = workbench?.taskStatus || selectedStaffTask?.status;
   const canUseStaffWorkbench = Boolean(selectedStaffTask && selectedStaffTask.status === 'IN_PROGRESS');
+
+  const isCompanyDataInReview = Boolean(
+    selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW'
+  );
+  const inReviewPendingSub = isCompanyDataInReview
+    ? (workbench?.submissions?.find((s) => s.status === 'IN_REVIEW') ?? workbench?.submissions?.[0])
+    : undefined;
+  const inReviewSubmittedCandId = inReviewPendingSub?.targetEntityId || workbench?.candidateDrafts?.[0]?.candidateId;
+  const inReviewDrafts = isCompanyDataInReview
+    ? [...(workbench?.candidateDrafts || [])].sort((a, b) => {
+        const seqA = a.draftSequence ?? 0;
+        const seqB = b.draftSequence ?? 0;
+        if (seqA !== seqB) return seqB - seqA;
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      })
+    : [];
+  const inReviewActiveCandId = (inReviewSelectedCandidateId && inReviewDrafts.some((d) => d.candidateId === inReviewSelectedCandidateId))
+    ? inReviewSelectedCandidateId
+    : (inReviewSubmittedCandId || inReviewDrafts[0]?.candidateId);
   const isStaffWorkbenchStepActive = (step: string) => {
     const hasSubmittedReview = workbench?.submissions?.some((submission) => submission.status === 'IN_REVIEW' || submission.status === 'APPROVED');
     const hasCandidateDraft = Boolean(staffCandidate) || (workbench?.candidateDrafts?.length ?? 0) > 0;
@@ -4011,6 +4018,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [selectedStaffTask?.id, selectedStaffTask?.projectId, selectedStaffTask?.taskType]);
 
   useEffect(() => {
+    setInReviewSelectedCandidateId(null);
+  }, [selectedStaffTask?.id]);
+
+  useEffect(() => {
     if (activeTab !== 'Documents' || !currentProjectId) return;
 
     let cancelled = false;
@@ -4245,6 +4256,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (!isDraftProject) return true;
     showDraftToast(action);
     return false;
+  };
+
+  const handleViewCompanyProfile = () => {
+    const profileId = apiProject?.targetCompanyProfileId;
+    if (!profileId) {
+      alert('Linked company profile could not be loaded.');
+      return;
+    }
+    localStorage.setItem('apms-selected-company', profileId);
+    localStorage.removeItem('apms-context-project');
+    if (setActivePage) {
+      setActivePage(`company-detail?source=project&projectId=${apiProject.id}&companyId=${profileId}`);
+    }
   };
 
   const handleActivateProject = async () => {
@@ -4505,16 +4529,27 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   );
 
   const openManagerCandidateReview = async (candidateId: string) => {
-    if (!selectedManagerReviewTask) return;
-    const submission = findSubmissionForCandidate(candidateId);
+    const task = selectedManagerReviewTask || (candidateReviewTaskContext ? {
+      projectId: candidateReviewTaskContext.projectId,
+      id: candidateReviewTaskContext.taskId,
+      dueDate: candidateReviewTaskContext.taskDueDate,
+      title: candidateReviewTaskContext.taskTitle,
+    } : null);
 
-    setCandidateReviewTaskContext({
-      projectId: selectedManagerReviewTask.projectId,
-      taskId: selectedManagerReviewTask.id,
-      submissionId: submission?.id ?? null,
-    });
+    const submission = findSubmissionForCandidate(candidateId) || candidateReviewTaskContext?.submission;
+
+    if (task) {
+      setCandidateReviewTaskContext({
+        projectId: task.projectId,
+        taskId: 'id' in task ? task.id : (task as any).taskId,
+        submissionId: submission?.id ?? null,
+        submission: submission ?? null,
+        allActiveSubmissions: candidateReviewTaskContext?.allActiveSubmissions,
+        taskDueDate: task.dueDate ?? null,
+        taskTitle: task.title ?? null,
+      });
+    }
     setSelectedManagerReviewTask(null);
-    setActiveTab('Candidates');
     setCandidateActionMessage(null);
     setCandidateError(null);
 
@@ -4807,10 +4842,61 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const resetCompanyMemberForm = () => {
     setCompanyMemberForm(emptyCompanyMemberForm);
+    setCompanyMemberFormImageName('');
+    setCompanyMemberImageError(null);
     setEditingCompanyMemberIndex(null);
   };
 
-  const handleSaveCompanyMemberItem = () => {
+  const handleCompanyMemberImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selectedStaffTask) return;
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setCompanyMemberImageError('Only JPEG, PNG, and WebP images are allowed.');
+      return;
+    }
+
+    const maxSizeBytes = 2 * 1024 * 1024; // 2 MB
+    if (file.size > maxSizeBytes) {
+      setCompanyMemberImageError('Image must be 2 MB or smaller.');
+      return;
+    }
+
+    setCompanyMemberImageError(null);
+    setCompanyMemberUploadingImage(true);
+    try {
+      const res = await companyMemberResearchApi.uploadImage(
+        selectedStaffTask.projectId,
+        selectedStaffTask.id,
+        file
+      );
+      const uploadedUrl = res.data?.imageUrl;
+      setCompanyMemberForm((prev) => ({
+        ...prev,
+        imageUrl: uploadedUrl || '',
+      }));
+      setCompanyMemberFormImageName(file.name);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Unable to upload image. Please try again.';
+      setCompanyMemberImageError(msg);
+    } finally {
+      setCompanyMemberUploadingImage(false);
+    }
+  };
+
+  const handleRemoveCompanyMemberFormImage = () => {
+    setCompanyMemberForm((prev) => ({
+      ...prev,
+      imageUrl: '',
+    }));
+    setCompanyMemberFormImageName('');
+    setCompanyMemberImageError(null);
+  };
+
+  const handleSaveCompanyMemberItem = async () => {
+    if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before editing company members.');
       return;
@@ -4829,15 +4915,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       position,
       imageUrl: companyMemberForm.imageUrl?.trim() || null,
       sourceUrl,
-      notes: companyMemberForm.notes?.trim() || null,
+      notes: editingCompanyMemberIndex !== null ? (companyMemberItems[editingCompanyMemberIndex]?.notes || null) : null,
     };
 
-    setCompanyMemberItems((current) => {
-      if (editingCompanyMemberIndex === null) return [...current, nextItem];
-      return current.map((item, index) => (index === editingCompanyMemberIndex ? nextItem : item));
-    });
+    const nextItems = editingCompanyMemberIndex === null
+      ? [...companyMemberItems, nextItem]
+      : companyMemberItems.map((item, index) => (index === editingCompanyMemberIndex ? nextItem : item));
+
+    setCompanyMemberSaving(true);
     setWorkbenchError(null);
-    resetCompanyMemberForm();
+    try {
+      const payload = await companyMemberResearchApi.saveDraft(selectedStaffTask.projectId, selectedStaffTask.id, nextItems);
+      setCompanyMemberDraft(payload.data);
+      setCompanyMemberItems(payload.data?.members ?? nextItems);
+      resetCompanyMemberForm();
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot save company member.');
+    } finally {
+      setCompanyMemberSaving(false);
+    }
   };
 
   const handleEditCompanyMemberItem = (index: number) => {
@@ -4850,12 +4946,29 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       sourceUrl: item.sourceUrl || '',
       notes: item.notes || '',
     });
+    setCompanyMemberFormImageName(item.imageUrl ? item.imageUrl.split('/').pop() || 'Uploaded image' : '');
+    setCompanyMemberImageError(null);
     setEditingCompanyMemberIndex(index);
   };
 
-  const handleRemoveCompanyMemberItem = (index: number) => {
-    setCompanyMemberItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  const handleRemoveCompanyMemberItem = async (index: number) => {
+    if (!selectedStaffTask) return;
+    if (!canUseStaffWorkbench) return;
+
+    const nextItems = companyMemberItems.filter((_, itemIndex) => itemIndex !== index);
     if (editingCompanyMemberIndex === index) resetCompanyMemberForm();
+
+    setCompanyMemberSaving(true);
+    setWorkbenchError(null);
+    try {
+      const payload = await companyMemberResearchApi.saveDraft(selectedStaffTask.projectId, selectedStaffTask.id, nextItems);
+      setCompanyMemberDraft(payload.data);
+      setCompanyMemberItems(payload.data?.members ?? nextItems);
+    } catch (error) {
+      setWorkbenchError(error instanceof Error ? error.message : 'Cannot delete company member.');
+    } finally {
+      setCompanyMemberSaving(false);
+    }
   };
 
   const saveCompanyMemberResearchDraft = async () => {
@@ -4877,7 +4990,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await companyMemberResearchApi.saveDraft(selectedStaffTask.projectId, selectedStaffTask.id, companyMemberItems);
       setCompanyMemberDraft(payload.data);
       setCompanyMemberItems(payload.data?.members ?? companyMemberItems);
-      setWorkbenchMessage('Company member research draft saved.');
       return payload.data;
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot save company member research draft.');
@@ -4889,14 +5001,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const submitCompanyMemberResearchDraft = async () => {
     if (!selectedStaffTask) return;
-    const savedDraft = await saveCompanyMemberResearchDraft();
-    if (!savedDraft) return;
+    if (companyMemberItems.length === 0) {
+      setWorkbenchError('Please add at least one company member before submitting.');
+      return;
+    }
 
     setCompanyMemberSubmitting(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
 
     try {
+      await companyMemberResearchApi.saveDraft(selectedStaffTask.projectId, selectedStaffTask.id, companyMemberItems);
       await companyMemberResearchApi.submitDraft(selectedStaffTask.projectId, selectedStaffTask.id);
       const updatedTask: ProjectTaskResponse = { ...selectedStaffTask, status: 'IN_REVIEW' };
       updateTaskInState(updatedTask);
@@ -4911,10 +5026,63 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const openDirectManagerCandidateReview = async (apiTask: ProjectTaskResponse) => {
+    setResolvingSubmission(true);
+    setReviewSubmissionError(null);
+    try {
+      const payload = await taskApi.getSubmissions(apiTask.projectId, apiTask.id, { page: 0, size: 20 });
+      const submissions = 'content' in payload.data ? payload.data.content : payload.data;
+      const submissionList = Array.isArray(submissions) ? submissions : [];
+
+      const activeSub = submissionList.find((s) => s.status === 'IN_REVIEW');
+      if (!activeSub || !activeSub.targetEntityId) {
+        setReviewSubmissionError({
+          task: apiTask,
+          message: 'Review submission could not be loaded.',
+        });
+        return;
+      }
+
+      const candidateRes = await candidateApi.getCandidateById(activeSub.targetEntityId);
+      if (!candidateRes?.data) {
+        setReviewSubmissionError({
+          task: apiTask,
+          message: 'Review submission could not be loaded.',
+        });
+        return;
+      }
+
+      void loadTaskWorkbench(apiTask);
+
+      setCandidateReviewTaskContext({
+        projectId: apiTask.projectId,
+        taskId: apiTask.id,
+        submissionId: activeSub.id,
+        submission: activeSub,
+        allActiveSubmissions: submissionList.filter((s) => s.status === 'IN_REVIEW' && s.targetEntityId),
+        taskDueDate: apiTask.dueDate,
+        taskTitle: apiTask.title,
+      });
+
+      updateCandidateInList(candidateRes.data);
+    } catch {
+      setReviewSubmissionError({
+        task: apiTask,
+        message: 'Review submission could not be loaded.',
+      });
+    } finally {
+      setResolvingSubmission(false);
+    }
+  };
+
   const handleReviewTask = (taskCard: ProjectTask) => {
     const rawId = Number(taskCard.id.replace('APMS-', ''));
     const apiTask = apiTasks.find((t) => t.id === rawId);
     if (apiTask) {
+      if (apiTask.taskType === 'COMPANY_DATA_PREPARATION' && apiTask.status === 'IN_REVIEW') {
+        void openDirectManagerCandidateReview(apiTask);
+        return;
+      }
       setSelectedManagerReviewTask(apiTask);
       void loadManagerWorkbench(apiTask);
     }
@@ -4928,6 +5096,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     if (!isStaffView) {
       if (apiTask && (apiTask.status === 'IN_REVIEW' || apiTask.status === 'DONE')) {
+        if (apiTask.taskType === 'COMPANY_DATA_PREPARATION' && apiTask.status === 'IN_REVIEW') {
+          void openDirectManagerCandidateReview(apiTask);
+          return;
+        }
         setSelectedManagerReviewTask(apiTask);
         setManagerReviewComment('');
         void loadManagerWorkbench(apiTask);
@@ -5022,6 +5194,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setSelectedStaffTask(payload.data);
       setWorkbench((current) => current ? { ...current, taskStatus: 'IN_PROGRESS' } : current);
       setWorkbenchMessage('Task moved to In Progress.');
+      await loadStaffWorkbench(payload.data);
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot start this task.');
     }
@@ -6059,14 +6232,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           </div>
           <motion.header className={styles.header} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <div className={styles.breadcrumb}>
-              Projects <ChevronRight size={14} /> {displayedProject.key}
+              Projects <ChevronRight size={14} /> {displayedProject.name}
             </div>
             {projectError && !/403|denied|forbidden/i.test(projectError) && <div className={styles.inlineError}>{projectError}</div>}
             <div className={styles.headerTop}>
               <div className={styles.titleBlock}>
                 <h1>{projectLoading ? 'Loading project...' : displayedProject.name}</h1>
                 <div className={styles.keyLine}>
-                  <span className={styles.badge}>{displayedProject.key}</span>
                   <span className={`${styles.statusPill} ${apiProject?.status === 'ACTIVE' && apiProject?.isOverdue ? styles.overduePill : ''}`}>
                     {apiProject?.status === 'DRAFT' ? 'Draft' :
                      apiProject?.status === 'ACTIVE' ? (apiProject?.isOverdue ? 'Overdue' : 'Active') :
@@ -6078,6 +6250,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               </div>
               <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.outlineButton}`}
+                  type="button"
+                  onClick={handleViewCompanyProfile}
+                  title="View Company Profile"
+                >
+                  <Eye size={16} />View Profile
+                </button>
                 {isManager && isDraftProject && (
                   <button className={`${styles.button} ${styles.outlineButton}`} type="button" onClick={() => setShowEditModal(true)}>
                     <Edit3 size={16} />Edit Project
@@ -6107,97 +6287,109 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
             </div>
 
-            <div style={{ marginTop: '24px', backgroundColor: 'var(--bg-primary)', padding: '24px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', margin: 0 }}>Project Information</h3>
-                {apiProject?.targetCompanyProfileId && (
-                  <button
-                    className={`${styles.button} ${styles.outlineButton}`}
-                    style={{ padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    type="button"
-                    onClick={() => {
-                      localStorage.setItem('apms-selected-company', apiProject.targetCompanyProfileId!);
-                      localStorage.setItem('apms-context-project', String(currentProjectId));
-                      if (setActivePage) {
-                        setActivePage('company-detail');
-                      } else {
-                        window.location.hash = '#/company-detail';
-                      }
-                    }}
-                  >
-                    <ExternalLink size={14} /> View Profile
-                  </button>
-                )}
+            <div className={styles.summaryMetaGrid}>
+              <div className={styles.summaryMetaItem}>
+                <div className={styles.summaryMetaLabel}>Target Company</div>
+                <div className={styles.summaryMetaValue}>{displayedProject.targetCompanyName || 'N/A'}</div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Target Company</div>
-                  <div style={{ fontWeight: 500 }}>{displayedProject.targetCompanyName || 'N/A'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Tax Code</div>
-                  <div style={{ fontWeight: 500 }}>{apiProject?.targetCompanyTaxCode || 'N/A'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Relationship</div>
-                  <div style={{ fontWeight: 500 }}>{apiProject?.targetRelationshipType || 'N/A'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Created Date</div>
-                  <div style={{ fontWeight: 500 }}>{displayedProject.createdAt || 'N/A'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>Due Date</div>
-                  <div style={{ fontWeight: 500 }}>{displayedProject.dueDate || 'N/A'}</div>
-                </div>
+              <div className={styles.summaryMetaItem}>
+                <div className={styles.summaryMetaLabel}>Tax Code</div>
+                <div className={styles.summaryMetaValue}>{apiProject?.targetCompanyTaxCode || 'N/A'}</div>
               </div>
-
-              <div style={{ marginTop: '24px' }}>
-                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.05em' }}>Project Goal</h3>
-                <p style={{ margin: 0, lineHeight: 1.6 }}>{apiProject?.objective || 'No project goal provided.'}</p>
+              <div className={styles.summaryMetaItem}>
+                <div className={styles.summaryMetaLabel}>Relationship</div>
+                <div className={styles.summaryMetaValue}>{apiProject?.targetRelationshipType || 'N/A'}</div>
               </div>
-
-              <div style={{ marginTop: '24px' }}>
-                <h3 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.05em' }}>Additional Notes</h3>
-                <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{apiProject?.description || 'No additional notes.'}</p>
+              <div className={styles.summaryMetaItem}>
+                <div className={styles.summaryMetaLabel}>Due Date</div>
+                <div className={styles.summaryMetaValue}>{displayedProject.dueDate || 'N/A'}</div>
               </div>
             </div>
+
+            <div className={styles.summaryGoalSection}>
+              <div className={styles.summarySectionLabel}>Project Goal</div>
+              <p className={styles.summaryGoalText}>{apiProject?.objective || 'No project goal provided.'}</p>
+            </div>
+
+            {Boolean(apiProject?.description?.trim()) && (
+              <div className={styles.summaryNotesSection}>
+                <div className={styles.summarySectionLabel}>Additional Notes</div>
+                <p className={styles.summaryNotesText}>{apiProject?.description}</p>
+              </div>
+            )}
+
+            {(() => {
+              const safeProgress = Math.max(0, Math.min(100, Math.round(apiProject?.progressPercentage || 0)));
+              const isCompleted = safeProgress >= 100 || apiProject?.status === 'COMPLETED';
+              const isOverdue = Boolean(apiProject?.isOverdue && !isCompleted);
+              return (
+                <div className={styles.summaryProgressSection}>
+                  <div className={styles.summaryProgressHeader}>
+                    <span className={styles.summaryProgressTitle}>Project Progress</span>
+                    <span className={`${styles.summaryProgressPercent} ${isCompleted ? styles.summaryProgressPercentCompleted : ''}`}>
+                      {safeProgress}%
+                    </span>
+                  </div>
+                  <div
+                    className={styles.summaryProgressBarWrapper}
+                    role="progressbar"
+                    aria-valuenow={safeProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Project progress"
+                  >
+                    <div
+                      className={`${styles.summaryProgressBarFill} ${isCompleted ? styles.summaryProgressBarFillCompleted : isOverdue ? styles.summaryProgressBarFillOverdue : ''}`}
+                      style={{ width: `${safeProgress}%` }}
+                    />
+                  </div>
+                  <div className={styles.summaryProgressFooter}>
+                    <span>
+                      Planned End Date: {apiProject?.plannedEndDate ? new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).format(new Date(apiProject.plannedEndDate)) : (displayedProject.dueDate || 'N/A')}
+                    </span>
+                    {isOverdue && <span className={styles.summaryOverdueText}>Overdue</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </motion.header>
 
-          <ProjectProgressOverview
-            totalTasks={apiProject?.totalTasks}
-            completedTasks={apiProject?.completedTasks}
-            progressPercentage={apiProject?.progressPercentage}
-            isOverdue={apiProject?.isOverdue}
-            plannedEndDate={apiProject?.plannedEndDate}
-            projectStatus={apiProject?.status}
-            isOkrProject={!!apiProject?.keyResults?.length}
-          />
-
           {apiProject?.keyResults && apiProject.keyResults.length > 0 && (
-            <div style={{ marginTop: '32px', marginBottom: '32px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Project Deliverables</h3>
+            <section className={styles.deliverablesSection}>
+              <div className={styles.deliverablesHeader}>
+                <h3 className={styles.deliverablesTitle}>Project Deliverables</h3>
                 <span
-                  title="Project Progress is calculated from completed and Manager-approved project deliverables based on their configured weights."
-                  style={{ cursor: 'help', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center' }}
+                  className={styles.deliverablesInfoIcon}
+                  title="Each deliverable has a progress weight. Its full weight is added to Project Progress only after the related task is approved and completed."
                 >
-                  <Info size={16} />
+                  <Info size={15} />
                 </span>
               </div>
               <div className={styles.krGrid}>
                 {apiProject.keyResults.map(kr => {
-                  const isCompleted = kr.progress === 100;
                   const weight = kr.weight || 0;
-                  const contribution = isCompleted ? weight : 0;
-
                   const linkedTask = apiTasks.find(t => t.keyResult?.id === kr.id) ?? availableTasks.find(t => t.keyResult?.id === kr.id);
-                  let statusText = isCompleted ? 'Completed' : 'Not completed';
-                  if (linkedTask) {
-                    if (linkedTask.status === 'DONE') statusText = 'Completed';
-                    else if (linkedTask.status === 'IN_REVIEW') statusText = 'In Review';
-                    else if (linkedTask.status === 'IN_PROGRESS') statusText = 'In Progress';
-                    else if (linkedTask.status === 'AVAILABLE' || linkedTask.status === 'TODO') statusText = 'Available';
+                  
+                  // Map status based on linked task and kr completion
+                  const isTaskDone = linkedTask?.status === 'DONE' || kr.progress === 100;
+                  let statusLabel = 'Available';
+                  let statusClass = styles.krNotCompleted;
+
+                  if (isTaskDone) {
+                    statusLabel = 'Completed';
+                    statusClass = styles.krCompleted;
+                  } else if (linkedTask?.status === 'IN_REVIEW') {
+                    statusLabel = 'In Review';
+                    statusClass = styles.krInReview;
+                  } else if (linkedTask?.status === 'IN_PROGRESS') {
+                    statusLabel = 'In Progress';
+                    statusClass = styles.krInProgress;
+                  } else if (linkedTask?.status === 'AVAILABLE') {
+                    statusLabel = 'Available';
+                    statusClass = styles.krNotCompleted;
+                  } else if (linkedTask?.status === 'TODO') {
+                    statusLabel = 'Not Started';
+                    statusClass = styles.krNotCompleted;
                   }
 
                   return (
@@ -6206,29 +6398,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <span className={styles.krTitle}>{kr.name}</span>
                         <span className={styles.krWeight}>{weight}%</span>
                       </div>
-                      <div className={styles.krDescription}>{kr.description}</div>
+                      {kr.description && <div className={styles.krDescription}>{kr.description}</div>}
                       <div className={styles.krFooter}>
-                        <div className={styles.krStatusRow}>
-                          <span>Status</span>
-                          <span className={isCompleted ? styles.krCompleted : styles.krNotCompleted}>
-                            {statusText}
-                          </span>
-                        </div>
-                        <div className={styles.krStatusRow} style={{ marginTop: '4px' }}>
-                          <span>Progress contribution</span>
-                          <strong style={{ color: isCompleted ? 'var(--success-text)' : 'inherit' }}>
-                            {contribution} / {weight}%
-                          </strong>
-                        </div>
-                        <div className={styles.krProgressBar}>
-                          <div className={isCompleted ? styles.krProgressFillSuccess : styles.krProgressFill} style={{ width: `${isCompleted ? 100 : 0}%` }} />
-                        </div>
+                        <span className={statusClass}>
+                          {isTaskDone ? `✓ ${statusLabel}` : statusLabel}
+                        </span>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
 
           <nav className={styles.tabs} aria-label="Project navigation tabs">
@@ -7181,114 +7361,113 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
-                <main className={styles.workbenchMain} style={selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW' ? { gridColumn: '1 / -1' } : undefined}>
-                  {selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW' ? (
-                    (() => {
-                      const pendingSub = workbench?.submissions?.find((s) => s.status === 'IN_REVIEW')
-                        ?? workbench?.submissions?.[0];
-                      const candId = pendingSub?.targetEntityId || workbench?.candidateDrafts?.[0]?.candidateId;
-                      const candDraft = workbench?.candidateDrafts?.find((d) => d.candidateId === candId);
-                      const displayDraftTitle = submittedCandidateData?.draftName
-                        || candDraft?.draftName
-                        || (candDraft?.draftSequence ? `Draft ${candDraft.draftSequence}` : 'Draft');
-                      const legalNameDisplay = submittedCandidateData?.identity?.legalName || 'N/A';
-                      const roundLabel = pendingSub?.submittedRevisionNumber
-                        ? `Round ${pendingSub.submittedRevisionNumber}`
-                        : submittedCandidateData?.revisionNumber
-                        ? `Round ${submittedCandidateData.revisionNumber}`
-                        : 'Round 1';
-                      const submittedAtDate = pendingSub?.submittedAt || pendingSub?.createdAt;
-                      const submittedByLabel = pendingSub?.submittedByName || selectedStaffTask.assignedToName || 'Staff';
-                      const sourceDocIds = (submittedCandidateData?.sourceDocumentIds || candDraft?.sourceDocumentIds || []) as string[];
-                      const sourceDocs = projectDocuments.filter((d) =>
-                        sourceDocIds.some((id) => String(id) === String(d.id) || (d.rawDocumentId && String(id) === String(d.rawDocumentId)))
-                      );
+              {isCompanyDataInReview && (
+                (() => {
+                  const candDraft = workbench?.candidateDrafts?.find((d) => d.candidateId === inReviewSubmittedCandId);
+                  const displayDraftTitle = submittedCandidateData?.draftName
+                    || candDraft?.draftName
+                    || (candDraft?.draftSequence ? `Draft ${candDraft.draftSequence}` : 'Draft');
+                  const legalNameDisplay = submittedCandidateData?.identity?.legalName || 'N/A';
+                  const roundLabel = inReviewPendingSub?.submittedRevisionNumber
+                    ? `Round ${inReviewPendingSub.submittedRevisionNumber}`
+                    : submittedCandidateData?.revisionNumber
+                    ? `Round ${submittedCandidateData.revisionNumber}`
+                    : 'Round 1';
+                  const submittedAtDate = inReviewPendingSub?.submittedAt || inReviewPendingSub?.createdAt;
+                  const submittedByLabel = inReviewPendingSub?.submittedByName || selectedStaffTask.assignedToName || 'Staff';
+                  const sourceDocIds = (submittedCandidateData?.sourceDocumentIds || candDraft?.sourceDocumentIds || []) as string[];
+                  const sourceDocs = projectDocuments.filter((d) =>
+                    sourceDocIds.some((id) => String(id) === String(d.id) || (d.rawDocumentId && String(id) === String(d.rawDocumentId)))
+                  );
 
-                      return (
-                        <section className={styles.workbenchPanel} style={{ width: '100%' }}>
-                          <div style={{
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            padding: '20px 24px',
-                            marginBottom: '20px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            gap: '16px',
-                            flexWrap: 'wrap'
+                  return (
+                    <div style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '20px 24px',
+                      marginBottom: '20px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: '16px',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{
+                            background: '#dbeafe',
+                            color: '#1e40af',
+                            fontWeight: 700,
+                            fontSize: '11px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
                           }}>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                                <span style={{
-                                  background: '#dbeafe',
-                                  color: '#1e40af',
-                                  fontWeight: 700,
-                                  fontSize: '11px',
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.5px'
-                                }}>
-                                  Submitted for Review
-                                </span>
-                                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
-                                  {roundLabel}
-                                </span>
-                              </div>
-                              <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#0f172a' }}>
-                                {displayDraftTitle}
-                              </h3>
-                              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '10px' }}>
-                                Company Legal Name: <strong style={{ color: '#1e293b' }}>{legalNameDisplay}</strong>
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
-                                <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
-                                <span><strong>Submitted By:</strong> {submittedByLabel}</span>
-                                {sourceDocs.length > 0 && (
-                                  <span><strong>Source Documents:</strong> {sourceDocs.map((d) => d.fileName || `Doc #${d.id}`).join(', ')}</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {canCancelStaffSubmission && (
-                              <button
-                                className={`${styles.button} ${styles.dangerButton}`}
-                                type="button"
-                                onClick={() => setShowCancelSubmissionModal(true)}
-                                disabled={cancellingSubmission}
-                                style={{ whiteSpace: 'nowrap' }}
-                              >
-                                Cancel Submission
-                              </button>
-                            )}
-                          </div>
-
-                          {candId ? (
-                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-                              <CandidateReviewWorkspace
-                                projectId={String(currentProjectId)}
-                                candidateId={candId}
-                                taskId={selectedStaffTask.id}
-                                role="STAFF"
-                                readOnly={true}
-                                isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
-                              />
-                            </div>
-                          ) : (
-                            <div className={styles.empty}>No active submission details found.</div>
+                            Submitted for Review
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
+                            {roundLabel}
+                          </span>
+                        </div>
+                        <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', color: '#0f172a' }}>
+                          {displayDraftTitle}
+                        </h3>
+                        <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '10px' }}>
+                          Target Company: <strong style={{ color: '#1e293b' }}>{apiProject?.targetCompanyName || legalNameDisplay}</strong>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
+                          <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
+                          <span><strong>Submitted By:</strong> {submittedByLabel}</span>
+                          {sourceDocs.length > 0 && (
+                            <span><strong>Source Documents:</strong> {sourceDocs.map((d) => d.fileName || `Doc #${d.id}`).join(', ')}</span>
                           )}
-                        </section>
-                      );
-                    })()
+                        </div>
+                      </div>
+
+                      {canCancelStaffSubmission && (
+                        <button
+                          className={`${styles.button} ${styles.dangerButton}`}
+                          type="button"
+                          onClick={() => setShowCancelSubmissionModal(true)}
+                          disabled={cancellingSubmission}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          Cancel Submission
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+
+              <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
+                <main className={styles.workbenchMain}>
+                  {isCompanyDataInReview ? (
+                    inReviewActiveCandId ? (
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                        <CandidateReviewWorkspace
+                          key={inReviewActiveCandId}
+                          projectId={String(currentProjectId)}
+                          candidateId={inReviewActiveCandId}
+                          taskId={selectedStaffTask.id}
+                          role="STAFF"
+                          readOnly={true}
+                          isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
+                        />
+                      </div>
+                    ) : (
+                      <div className={styles.empty}>No active submission details found.</div>
+                    )
                   ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
+                  <>
+                  {!staffCandidate && (
                   <>
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
                         <h3>Project document library</h3>
-                        <p>Select one or more existing project documents, run AI extraction, then review the extracted fields before creating a candidate.</p>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
@@ -7495,6 +7674,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         </button>
                       </div>
                     </section>
+                  )}
+                  </>
                   )}
 
                   {staffCandidate && (
@@ -7761,11 +7942,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <>
                             <div className={styles.memberResearchLayout}>
                               <section className={styles.memberResearchForm}>
-                                <div className={styles.taskSpecificHead}>
+                                <div className={styles.taskSpecificHead} style={{ alignItems: 'center' }}>
                                   <UserPlus size={20} />
                                   <div>
-                                    <strong>{editingCompanyMemberIndex === null ? 'Add company member' : 'Edit company member'}</strong>
-                                    <span>Use official website, annual report, LinkedIn, news, or other reliable public source.</span>
+                                    <strong style={{ margin: 0 }}>{editingCompanyMemberIndex === null ? 'Add company member' : 'Edit company member'}</strong>
                                   </div>
                                 </div>
 
@@ -7788,15 +7968,83 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                       disabled={!canUseStaffWorkbench}
                                     />
                                   </label>
-                                  <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
-                                    <span>Image URL</span>
+                                  <div className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
+                                    <span>Profile image</span>
                                     <input
-                                      value={companyMemberForm.imageUrl || ''}
-                                      placeholder="Optional profile image URL"
-                                      onChange={(event) => setCompanyMemberForm((current) => ({ ...current, imageUrl: event.target.value }))}
-                                      disabled={!canUseStaffWorkbench}
+                                      type="file"
+                                      ref={companyMemberFileInputRef}
+                                      onChange={(e) => void handleCompanyMemberImageFileChange(e)}
+                                      accept="image/jpeg,image/png,image/webp"
+                                      style={{ display: 'none' }}
                                     />
-                                  </label>
+                                    {companyMemberForm.imageUrl ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minHeight: '42px', flexWrap: 'wrap' }}>
+                                        <img
+                                          src={resolveMemberImageUrl(companyMemberForm.imageUrl)}
+                                          alt="Profile preview"
+                                          style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '50%',
+                                            objectFit: 'cover',
+                                            border: '1px solid #e2e8f0',
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                        <span
+                                          style={{
+                                            fontSize: '12px',
+                                            color: '#475569',
+                                            maxWidth: '120px',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                          title={companyMemberFormImageName || 'Uploaded image'}
+                                        >
+                                          {companyMemberFormImageName || 'Uploaded image'}
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                                          <button
+                                            type="button"
+                                            className={styles.button}
+                                            onClick={() => companyMemberFileInputRef.current?.click()}
+                                            disabled={!canUseStaffWorkbench || companyMemberUploadingImage || companyMemberSaving}
+                                            style={{ fontSize: '12px', padding: '4px 8px' }}
+                                          >
+                                            Replace
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={`${styles.button} ${styles.dangerButton}`}
+                                            onClick={handleRemoveCompanyMemberFormImage}
+                                            disabled={!canUseStaffWorkbench || companyMemberUploadingImage || companyMemberSaving}
+                                            style={{ fontSize: '12px', padding: '4px 8px' }}
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', alignItems: 'center', minHeight: '42px' }}>
+                                        <button
+                                          type="button"
+                                          className={styles.button}
+                                          onClick={() => companyMemberFileInputRef.current?.click()}
+                                          disabled={!canUseStaffWorkbench || companyMemberUploadingImage || companyMemberSaving}
+                                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '7px 12px' }}
+                                        >
+                                          <Upload size={14} />
+                                          {companyMemberUploadingImage ? 'Uploading...' : 'Upload image'}
+                                        </button>
+                                      </div>
+                                    )}
+                                    {companyMemberImageError && (
+                                      <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '2px' }}>
+                                        {companyMemberImageError}
+                                      </div>
+                                    )}
+                                  </div>
                                   <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
                                     <span>Source URL</span>
                                     <input
@@ -7806,25 +8054,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                       disabled={!canUseStaffWorkbench}
                                     />
                                   </label>
-                                  <label className={`${styles.inviteField} ${styles.fullField}`}>
-                                    <span>Notes</span>
-                                    <textarea
-                                      value={companyMemberForm.notes || ''}
-                                      placeholder="Short note about this person's role or why this source is reliable..."
-                                      onChange={(event) => setCompanyMemberForm((current) => ({ ...current, notes: event.target.value }))}
-                                      disabled={!canUseStaffWorkbench}
-                                    />
-                                  </label>
                                 </div>
 
                                 <div className={styles.modalActions}>
                                   {editingCompanyMemberIndex !== null && (
-                                    <button className={styles.button} type="button" onClick={resetCompanyMemberForm} disabled={!canUseStaffWorkbench}>
+                                    <button className={styles.button} type="button" onClick={resetCompanyMemberForm} disabled={!canUseStaffWorkbench || companyMemberSaving}>
                                       Cancel edit
                                     </button>
                                   )}
-                                  <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={handleSaveCompanyMemberItem} disabled={!canUseStaffWorkbench}>
-                                    <Plus size={16} />{editingCompanyMemberIndex === null ? 'Add member' : 'Update member'}
+                                  <button
+                                    className={`${styles.button} ${styles.primaryButton}`}
+                                    type="button"
+                                    onClick={() => void handleSaveCompanyMemberItem()}
+                                    disabled={!canUseStaffWorkbench || companyMemberSaving}
+                                  >
+                                    <Plus size={16} />{companyMemberSaving ? 'Saving...' : editingCompanyMemberIndex === null ? 'Add member' : 'Update member'}
                                   </button>
                                 </div>
                               </section>
@@ -7837,21 +8081,41 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 </div>
 
                                 {companyMemberItems.length === 0 ? (
-                                  <div className={styles.empty} style={{ padding: '32px 16px', textAlign: 'center' }}>
-                                    <div>No members added yet.</div>
-                                    <small style={{ color: '#64748b', marginTop: '6px', display: 'block' }}>Add a company member using the form.</small>
+                                  <div
+                                    className={styles.empty}
+                                    style={{
+                                      padding: '36px 16px',
+                                      textAlign: 'center',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>No members added yet.</div>
+                                    <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 400 }}>Add a company member using the form.</div>
                                   </div>
                                 ) : (
                                   <CompanyMemberLayerBoard
                                     members={companyMemberItems}
-                                    emptyText="No members added yet. Add a company member using the form."
-                                    statusLabel="Draft"
+                                    emptyText="No members added yet."
                                     renderActions={(_, index) => (
                                       <>
-                                        <button className={styles.button} type="button" onClick={() => handleEditCompanyMemberItem(index)} disabled={!canUseStaffWorkbench}>
+                                        <button
+                                          className={styles.button}
+                                          type="button"
+                                          onClick={() => handleEditCompanyMemberItem(index)}
+                                          disabled={!canUseStaffWorkbench || companyMemberSaving}
+                                        >
                                           <Edit3 size={15} />Edit
                                         </button>
-                                        <button className={`${styles.button} ${styles.dangerButton}`} type="button" onClick={() => handleRemoveCompanyMemberItem(index)} disabled={!canUseStaffWorkbench}>
+                                        <button
+                                          className={`${styles.button} ${styles.dangerButton}`}
+                                          type="button"
+                                          onClick={() => void handleRemoveCompanyMemberItem(index)}
+                                          disabled={!canUseStaffWorkbench || companyMemberSaving}
+                                        >
                                           <Trash2 size={15} />Delete
                                         </button>
                                       </>
@@ -7863,37 +8127,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                             <div style={{
                               display: 'flex',
-                              justifyContent: 'space-between',
+                              justifyContent: 'flex-end',
                               alignItems: 'center',
                               marginTop: '16px',
                               paddingTop: '16px',
                               borderTop: '1px solid #e2e8f0',
-                              flexWrap: 'wrap',
                               gap: '12px'
                             }}>
-                              <div style={{ fontSize: '13px', color: '#64748b' }}>
-                                {companyMemberDraft?.updatedAt ? (
-                                  <span>Last saved: {formatOptionalDate(companyMemberDraft.updatedAt)}</span>
-                                ) : null}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                  className={styles.button}
-                                  type="button"
-                                  onClick={() => void saveCompanyMemberResearchDraft()}
-                                  disabled={!canUseStaffWorkbench || companyMemberSaving || companyMemberItems.length === 0}
-                                >
-                                  <CheckCircle2 size={16} />{companyMemberSaving ? 'Saving...' : 'Save draft'}
-                                </button>
-                                <button
-                                  className={`${styles.button} ${styles.primaryButton}`}
-                                  type="button"
-                                  onClick={() => void submitCompanyMemberResearchDraft()}
-                                  disabled={!canUseStaffWorkbench || companyMemberSubmitting || companyMemberSaving || companyMemberItems.length === 0}
-                                >
-                                  <CheckCircle2 size={16} />{companyMemberSubmitting ? 'Submitting...' : 'Submit for Review'}
-                                </button>
-                              </div>
+                              <button
+                                className={`${styles.button} ${styles.primaryButton}`}
+                                type="button"
+                                onClick={() => void submitCompanyMemberResearchDraft()}
+                                disabled={!canUseStaffWorkbench || companyMemberSubmitting || companyMemberSaving || companyMemberItems.length === 0}
+                              >
+                                <CheckCircle2 size={16} />{companyMemberSubmitting ? 'Submitting...' : 'Submit for Review'}
+                              </button>
                             </div>
                           </>
                         )}
@@ -8047,9 +8295,119 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   )}
                 </main>
 
-                {!staffCandidate && !(selectedStaffTask.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW') && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
+                {(!staffCandidate || isCompanyDataInReview) && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
                 <aside className={styles.workbenchSidebar}>
-                  {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
+                  {isCompanyDataInReview ? (
+                    <section className={styles.workbenchPanel}>
+                      <h3>Drafts {inReviewDrafts.length > 0 ? `(${inReviewDrafts.length})` : ''}</h3>
+                      <div className={styles.draftList}>
+                        {inReviewDrafts.length === 0 ? (
+                          <div className={styles.empty}>No active candidate draft yet.</div>
+                        ) : (
+                          inReviewDrafts.map((draft) => {
+                            const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+                            const isSubmitted = Boolean(inReviewSubmittedCandId && draft.candidateId === inReviewSubmittedCandId);
+                            const isSelected = draft.candidateId === inReviewActiveCandId;
+
+                            return (
+                              <article
+                                className={`${styles.draftItem} ${isSelected ? styles.draftItemActive : ''}`}
+                                key={draft.candidateId}
+                                style={
+                                  isSelected
+                                    ? {
+                                        borderColor: '#2563eb',
+                                        background: '#eff6ff',
+                                        cursor: 'pointer',
+                                      }
+                                    : { cursor: 'pointer' }
+                                }
+                              >
+                                <button
+                                  className={styles.draftItemMain}
+                                  type="button"
+                                  onClick={() => setInReviewSelectedCandidateId(draft.candidateId)}
+                                  style={{
+                                    textAlign: 'left',
+                                    width: '100%',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: '8px',
+                                    }}
+                                  >
+                                    <strong
+                                      style={{
+                                        margin: 0,
+                                        color: isSelected ? '#1d4ed8' : '#1e293b',
+                                        fontSize: '14px',
+                                        fontWeight: isSelected ? 700 : 600,
+                                      }}
+                                    >
+                                      {draftLabel}
+                                    </strong>
+                                    {isSubmitted ? (
+                                      <span
+                                        style={{
+                                          fontSize: '11px',
+                                          fontWeight: 600,
+                                          padding: '2px 8px',
+                                          borderRadius: '9999px',
+                                          background: '#dbeafe',
+                                          color: '#1e40af',
+                                          border: '1px solid #bfdbfe',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        Submitted for Review
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          padding: '2px 8px',
+                                          borderRadius: '9999px',
+                                          background: '#f1f5f9',
+                                          color: '#475569',
+                                          border: '1px solid #e2e8f0',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        Draft
+                                      </span>
+                                    )}
+                                  </div>
+                                  {draft.createdAt && (
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        marginTop: '6px',
+                                        color: '#64748b',
+                                        fontSize: '12px',
+                                      }}
+                                    >
+                                      <span>Created {formatOptionalDate(draft.createdAt)}</span>
+                                    </div>
+                                  )}
+                                </button>
+                              </article>
+                            );
+                          })
+                        )}
+                      </div>
+                    </section>
+                  ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
                     <>
                     <section className={styles.workbenchPanel}>
                       <h3>Drafts</h3>
@@ -8543,7 +8901,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
               <div className={styles.staffWorkbenchGrid}>
                 <main className={styles.workbenchMain}>
-                  {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                  {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
@@ -8600,6 +8958,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <div>
                           <h3>Company member research</h3>
                         </div>
+                        {/* <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span> */}
                       </div>
                       {managerCompanyMemberLoading ? (
                         <div className={styles.empty}>Loading submitted members...</div>
@@ -8622,7 +8981,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <p>
                             {selectedManagerReviewTask.status === 'DONE'
                               ? 'Final candidate decision linked to this completed task.'
-                              : 'Open the candidate from the Candidates tab if you need the full company profile preview and approval workflow.'}
+                              : 'Candidate drafts associated with this task.'}
                           </p>
                         </div>
                         <span className={styles.taskTypeBadge}>
@@ -8654,7 +9013,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     </section>
                   )}
 
-                  {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
+
+
+                  {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH', 'COMPANY_DATA_PREPARATION'].includes(selectedManagerReviewTask.taskType) && (
                   <section className={styles.workbenchPanel}>
                     <div className={styles.workbenchPanelHead}>
                       <div>
@@ -8666,8 +9027,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'This company member research has been approved. The members were applied to the Company Profile.'
                                 : 'This task has already been approved. The submitted evidence remains available for audit.'
-                              : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType)
-                                ? 'Review the submitted candidate before approving. Approval creates the Company Profile and completes this task.'
+                              : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
+                                ? 'Review the submitted documents before approving. Approval completes this task.'
                                 : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
                                   ? 'Review the submitted members and source URLs, then approve to apply them to the Company Profile or reject to return it to staff.'
                                 : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
@@ -8679,7 +9040,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div className={styles.inlineSuccess}>
                         Documents were approved and are available in the project Documents tab.
                       </div>
-                    ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.status !== 'DONE' ? (
+                    ) : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status !== 'DONE' ? (
                       <div className={styles.modalActions}>
                         <button
                           className={`${styles.button} ${styles.primaryButton}`}
@@ -8755,6 +9116,41 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           </motion.div>
         )}
       </AnimatePresence>
+      {reviewSubmissionError && (
+        <div className={styles.modalOverlay} onClick={() => setReviewSubmissionError(null)}>
+          <div className={styles.inviteModal} style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.inviteHead}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>Review submission could not be loaded.</h3>
+                <p style={{ marginTop: 6, color: '#64748b', fontSize: 13 }}>No active submission could be resolved for this task.</p>
+              </div>
+              <button className={styles.iconButton} type="button" aria-label="Close" onClick={() => setReviewSubmissionError(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className={styles.modalActions} style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={() => setReviewSubmissionError(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.button} ${styles.primaryButton}`}
+                type="button"
+                onClick={() => {
+                  const task = reviewSubmissionError.task;
+                  setReviewSubmissionError(null);
+                  void openDirectManagerCandidateReview(task);
+                }}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {selectedCandidate && (() => {
           const identity = selectedCandidate.identity as { legalName?: string; tradeName?: string; taxCode?: string; taxId?: string; country?: string; registrationNumber?: string } | undefined;
@@ -8771,12 +9167,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             ? managerCandidateTabs
             : managerCandidateTabs.filter((tab) => tab.id !== 'decision');
 
-          return isManager && (selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'REVISION_REQUIRED') ? (
+          return isManager && (selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'REVISION_REQUIRED' || Boolean(candidateReviewTaskContext?.submissionId)) ? (
             <ManagerCandidateReviewWorkspace
               projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
               candidateId={selectedCandidate.id}
               taskId={candidateReviewTaskContext?.taskId}
               submissionId={candidateReviewTaskContext?.submissionId || undefined}
+              submission={candidateReviewTaskContext?.submission || undefined}
+              allActiveSubmissions={candidateReviewTaskContext?.allActiveSubmissions}
+              taskDueDate={candidateReviewTaskContext?.taskDueDate || undefined}
+              taskTitle={candidateReviewTaskContext?.taskTitle || undefined}
+              sourceDocuments={workbench?.documents}
+              onSelectCandidate={(newCandidateId) => {
+                void openManagerCandidateReview(newCandidateId);
+              }}
               onReviewed={() => {
                 setSelectedCandidate(null);
                 setCandidateReviewTaskContext(null);

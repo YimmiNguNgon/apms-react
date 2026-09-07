@@ -25,6 +25,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
   const isDateField =
     fieldType === 'date' ||
     fieldPath.toLowerCase().includes('date') ||
+    fieldLabel.toLowerCase().includes('date') ||
     fieldLabel.toLowerCase().includes('ngày');
   const isNumberField = fieldType === 'number';
   const isTextareaField = fieldType === 'textarea';
@@ -65,12 +66,12 @@ export const EditScalarFieldModal: React.FC<Props> = ({
     e.preventDefault();
     if (isDateField) {
       if (!val) {
-        setError('Vui lòng chọn ngày hợp lệ.');
+        setError('Please select a valid date.');
         return;
       }
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(val) || isNaN(Date.parse(val))) {
-        setError('Định dạng ngày không hợp lệ. Vui lòng chọn ngày hợp lệ (YYYY-MM-DD).');
+        setError('Invalid date format. Please select a valid date (YYYY-MM-DD).');
         return;
       }
     }
@@ -100,8 +101,8 @@ export const EditScalarFieldModal: React.FC<Props> = ({
               <Edit3 size={18} />
             </div>
             <div className={styles.titleGroup}>
-              <h3 className={styles.modalTitle}>Chỉnh sửa: {fieldLabel}</h3>
-              <p className={styles.modalSubtitle}>Cập nhật giá trị và trích dẫn bằng chứng từ văn bản</p>
+              <h3 className={styles.modalTitle}>Edit: {fieldLabel}</h3>
+              <p className={styles.modalSubtitle}>Update field value and supporting evidence from source document</p>
             </div>
           </div>
           <button
@@ -109,7 +110,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
             className={styles.closeBtn}
             onClick={onClose}
             disabled={isSubmitting}
-            title="Đóng"
+            title="Close"
           >
             <X size={18} />
           </button>
@@ -130,7 +131,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
                 ) : (
                   <FileText size={14} className={styles.labelIcon} />
                 )}
-                <span>Giá trị trường (Field Value)</span>
+                <span>Field Value</span>
                 <span className={styles.requiredStar}>*</span>
               </label>
               {isTextareaField ? (
@@ -145,7 +146,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
                   }}
                   required
                   disabled={isSubmitting}
-                  placeholder="Nhập giá trị chính xác..."
+                  placeholder="Enter accurate value..."
                 />
               ) : (
                 <input
@@ -158,7 +159,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
                   }}
                   required
                   disabled={isSubmitting}
-                  placeholder={isDateField ? 'YYYY-MM-DD' : 'Nhập giá trị chính xác...'}
+                  placeholder={isDateField ? 'YYYY-MM-DD' : 'Enter accurate value...'}
                 />
               )}
             </div>
@@ -166,7 +167,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>
                 <Hash size={14} className={styles.labelIcon} />
-                <span>Số trang tài liệu gốc (Source Page)</span>
+                <span>Source Page</span>
               </label>
               <input
                 type="number"
@@ -175,25 +176,25 @@ export const EditScalarFieldModal: React.FC<Props> = ({
                 value={sourcePage}
                 onChange={(e) => setSourcePage(e.target.value)}
                 disabled={isSubmitting}
-                placeholder="Ví dụ: 1"
+                placeholder="e.g., 1"
               />
-              <span className={styles.fieldHint}>Trang tài liệu PDF nơi thông tin này xuất hiện</span>
+              <span className={styles.fieldHint}>Page number in the PDF document where this term appears</span>
             </div>
 
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>
                 <Quote size={14} className={styles.labelIcon} />
-                <span>Trích dẫn bằng chứng từ văn bản (Supporting Evidence)</span>
+                <span>Supporting Evidence</span>
               </label>
               <textarea
                 rows={3}
                 className={styles.textareaField}
                 value={evidence}
                 onChange={(e) => setEvidence(e.target.value)}
-                placeholder="Dán câu hoặc đoạn trích nguyên văn từ văn bản hợp đồng..."
+                placeholder="Paste verbatim excerpt or sentence from the contract document..."
                 disabled={isSubmitting}
               />
-              <span className={styles.fieldHint}>Đoạn trích nguyên văn để đối chiếu pháp lý khi kiểm tra</span>
+              <span className={styles.fieldHint}>Verbatim excerpt for verification reference</span>
             </div>
           </div>
 
@@ -204,7 +205,7 @@ export const EditScalarFieldModal: React.FC<Props> = ({
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Hủy
+              Cancel
             </button>
             <button
               type="submit"
@@ -214,12 +215,12 @@ export const EditScalarFieldModal: React.FC<Props> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 size={15} className={styles.spinIcon} />
-                  <span>Đang lưu...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={15} />
-                  <span>Lưu & Xác thực</span>
+                  <span>Save & Verify</span>
                 </>
               )}
             </button>

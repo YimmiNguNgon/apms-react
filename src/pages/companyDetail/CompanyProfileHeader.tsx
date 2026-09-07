@@ -9,6 +9,7 @@ interface CompanyProfileHeaderProps {
   version?: string;
   topRow?: React.ReactNode;
   isHidden?: boolean;
+  canPublish?: boolean;
   onToggleVisibility?: () => void;
   isVisibilityLoading?: boolean;
 }
@@ -25,6 +26,7 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
   version,
   topRow,
   isHidden,
+  canPublish,
   onToggleVisibility,
   isVisibilityLoading,
 }) => {
@@ -115,7 +117,7 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
             )}
             <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{reviewStatus || 'VERIFIED'}</strong></span>
-              {reviewStatus === 'APPROVED' && typeof isHidden === 'boolean' && (
+              {typeof isHidden === 'boolean' && (
                 <span style={{
                   fontSize: '0.65rem',
                   fontWeight: 600,
@@ -129,19 +131,20 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
                 </span>
               )}
               {version && <span style={{ color: '#6366F1' }}>• v{version}</span>}
-              {onToggleVisibility && reviewStatus === 'APPROVED' && (
+              {onToggleVisibility && (
                 <button
                   type="button"
                   onClick={onToggleVisibility}
-                  disabled={isVisibilityLoading}
+                  disabled={isVisibilityLoading || (isHidden && canPublish === false)}
+                  title={isHidden && canPublish === false ? 'Profile requires Legal Name and Tax Code before it can be published.' : undefined}
                   style={{
                     background: '#fff',
                     border: '1px solid #cbd5e1',
                     borderRadius: '4px',
                     padding: '2px 8px',
                     fontSize: '0.65rem',
-                    cursor: isVisibilityLoading ? 'not-allowed' : 'pointer',
-                    color: '#475569',
+                    cursor: (isVisibilityLoading || (isHidden && canPublish === false)) ? 'not-allowed' : 'pointer',
+                    color: (isHidden && canPublish === false) ? '#94a3b8' : '#475569',
                     marginLeft: '8px',
                   }}
                 >

@@ -150,7 +150,7 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
           return (
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
-                Original Document Excerpt {evidenceParts.length > 1 && `(${evidenceParts.length} đoạn trích dẫn)`}
+                Original Document Excerpt {evidenceParts.length > 1 && `(${evidenceParts.length} excerpts)`}
               </label>
               {evidenceParts.length > 1 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -236,11 +236,11 @@ export const ContractEvidenceDrawer: React.FC<Props> = ({
               style={{ background: '#fef2f2', color: '#dc2626', borderColor: '#fca5a5' }}
               onClick={onVerify}
             >
-              Hủy xác thực trường này
+              Unverify this field
             </button>
           ) : (
             <button className={`${styles.btn} ${styles.btnSuccess}`} onClick={onVerify}>
-              ✓ Xác thực trường này
+              ✓ Verify this field
             </button>
           )}
         </div>

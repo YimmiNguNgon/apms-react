@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
-import { api } from '../services/api';
 import { projectApi } from '../API/projectApi';
+import { balanceDeliverableWeights } from '../utils/deliverableUtils';
 import type {
   ProjectResponse,
   UpdateProjectRequest,
-  ProjectType,
-  ProfileResponse,
   KeyResultReferenceResponse,
   RelationshipType,
 } from '../types/domain';
@@ -32,7 +30,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
   // Deduplicate initial key results defensively
   const deduplicatedKRs = Object.values(
     (project.keyResults || []).reduce((acc, kr) => {
-      acc[kr.type] = kr; // Later ones overwrite earlier ones
+      acc[kr.type] = { type: kr.type, weight: kr.weight };
       return acc;
     }, {} as Record<string, { type: string; weight: number }>)
   );
@@ -72,6 +70,13 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
     projectForm.projectName.trim() !== '' &&
     projectForm.targetCompanyName.trim() !== '' &&
     projectForm.targetRelationshipType !== '';
+
+  const handleBalanceEqually = () => {
+    setProjectForm(prev => ({
+      ...prev,
+      keyResults: balanceDeliverableWeights(prev.keyResults),
+    }));
+  };
 
   const handleSubmit = async () => {
     if (!isFormValid) return;
@@ -114,23 +119,28 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
           {error && <div className="workspace-inline-error" style={{ marginTop: '16px' }}>{error}</div>}
           
-          <div style={{ marginTop: '24px' }}>
-            <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT INFORMATION</h4>
-            <div className="workspace-form-grid">
+          <div style={{ marginTop: '20px' }}>
+            <h4 style={{ marginBottom: '14px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT INFORMATION</h4>
+            <div className="workspace-form-grid" style={{ marginBottom: 0 }}>
               <label>
                 <span>Project Name</span>
                 <input className="search-input" value={projectForm.projectName} onChange={e => setProjectForm(prev => ({ ...prev, projectName: e.target.value }))} />
               </label>
               <label>
-                <span>Target Company Name</span>
+                <span>Project Type</span>
+                <input
+                  className="search-input"
+                  value={project.projectType === 'RESEARCH_NEW_COMPANY' ? 'New company research' : 'Existing company update'}
+                  readOnly
+                  style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)', cursor: 'default' }}
+                />
+              </label>
+              <label>
+                <span>Target Company</span>
                 <input className="search-input" value={projectForm.targetCompanyName} onChange={e => setProjectForm(prev => ({ ...prev, targetCompanyName: e.target.value }))} />
               </label>
               <label>
-                <span>Tax Code</span>
-                <input className="search-input" value={projectForm.targetCompanyTaxCode} onChange={e => setProjectForm(prev => ({ ...prev, targetCompanyTaxCode: e.target.value.replace(/[^0-9-]/g, '') }))} />
-              </label>
-              <label>
-                <span>Relationship</span>
+                <span>Target Relationship</span>
                 <select className="search-input" value={projectForm.targetRelationshipType} onChange={e => {
                   const newRelationship = e.target.value as RelationshipType;
                   setProjectForm(prev => {
@@ -139,10 +149,11 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
                       if (!krDef) return true;
                       return krDef.supportedRelationshipTypes.length === 0 || krDef.supportedRelationshipTypes.includes(newRelationship);
                     });
+                    const rebalancedKrs = validKrs.length !== prev.keyResults.length ? balanceDeliverableWeights(validKrs) : validKrs;
                     return {
                       ...prev,
                       targetRelationshipType: newRelationship,
-                      keyResults: validKrs
+                      keyResults: rebalancedKrs,
                     };
                   });
                 }}>
@@ -151,40 +162,67 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
                 </select>
               </label>
               <label>
-                <span>Planned End Date</span>
+                <span>Tax Code</span>
+                <input className="search-input" value={projectForm.targetCompanyTaxCode} onChange={e => setProjectForm(prev => ({ ...prev, targetCompanyTaxCode: e.target.value.replace(/[^0-9-]/g, '') }))} />
+              </label>
+              <label>
+                <span>Due Date</span>
                 <input className="search-input" type="date" value={projectForm.plannedEndDate} onChange={e => setProjectForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
               </label>
             </div>
           </div>
           
-          <div style={{ marginTop: '32px' }}>
-            <h4 style={{ marginBottom: '16px', fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT GOAL & NOTES</h4>
-            <div className="workspace-form-grid">
+          <div style={{ marginTop: '24px' }}>
+            <h4 style={{ marginBottom: '14px', fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT GOAL & NOTES</h4>
+            <div className="workspace-form-grid" style={{ marginBottom: 0 }}>
               <label style={{ gridColumn: '1 / -1' }}>
                 <span>Project Goal</span>
-                <textarea className="search-input" style={{ minHeight: '80px', resize: 'vertical' }} value={projectForm.objective} onChange={e => setProjectForm(prev => ({ ...prev, objective: e.target.value }))} />
+                <textarea className="search-input" style={{ minHeight: '60px', padding: '10px 12px', resize: 'vertical' }} value={projectForm.objective} onChange={e => setProjectForm(prev => ({ ...prev, objective: e.target.value }))} />
               </label>
               <label style={{ gridColumn: '1 / -1' }}>
-                <span>Additional Notes</span>
-                <textarea className="search-input" style={{ minHeight: '80px', resize: 'vertical' }} value={projectForm.description} onChange={e => setProjectForm(prev => ({ ...prev, description: e.target.value }))} />
+                <span>Additional Notes (Optional)</span>
+                <textarea className="search-input" style={{ minHeight: '50px', padding: '10px 12px', resize: 'vertical' }} value={projectForm.description} onChange={e => setProjectForm(prev => ({ ...prev, description: e.target.value }))} />
               </label>
             </div>
           </div>
 
-          <div style={{ marginTop: '32px', marginBottom: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT DELIVERABLES</h4>
-              <div style={{ fontSize: '0.9rem', textAlign: 'right' }}>
-                <div style={{ fontWeight: '600', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : 'inherit' }}>
-                  Total Progress Weight: {totalWeight} / 100
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PROJECT DELIVERABLES</h4>
+              </div>
+              <div style={{ fontSize: '0.88rem', textAlign: 'right' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+                  <div style={{ fontWeight: '700', color: is100 ? 'var(--success-text)' : isOver ? 'var(--danger-text)' : '#b45309' }}>
+                    Total Progress Weight: {totalWeight} / 100
+                  </div>
+                  {projectForm.keyResults.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleBalanceEqually}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        padding: '2px 7px',
+                        fontSize: '0.75rem',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        lineHeight: 1.2
+                      }}
+                      title="Distribute 100% weight equally across selected deliverables"
+                    >
+                      Balance equally
+                    </button>
+                  )}
                 </div>
                 {!is100 && !isOver && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                     {100 - totalWeight}% remaining
                   </div>
                 )}
                 {isOver && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)', marginTop: '2px' }}>
                     Exceeds 100%
                   </div>
                 )}
@@ -194,17 +232,11 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
             {krLoading ? (
               <div>Loading Project Deliverables...</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {krOptions.map((kr) => {
                   const isSupported = kr.supportedRelationshipTypes.length === 0 || kr.supportedRelationshipTypes.includes(projectForm.targetRelationshipType as RelationshipType);
                   const selectedKr = projectForm.keyResults.find((k) => k.type === kr.type);
-                  // Ensure if it's not supported, it's not selected. But defensively we still rely on checking isSelected for render.
-                  // If Relationship changes and makes it unsupported, we should unselect it.
-                  // The user can't select it, but we also proactively ignore its weight in total if it's disabled. 
-                  // Wait, actually `ProjectManagement` doesn't auto-unselect on relationship change immediately, it just makes it disabled.
-                  // Let's mirror `ProjectManagement` logic exactly.
                   const isSelected = !!selectedKr && isSupported; 
-                  
                   const supportedLabels = kr.supportedRelationshipTypes.map(rt => RELATIONSHIP_OPTIONS.find(o => o.value === rt)?.label || rt).join(', ');
 
                   return (
@@ -213,56 +245,54 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '16px',
-                        padding: '16px',
+                        gap: '12px',
+                        padding: '10px 14px',
                         borderRadius: '8px',
                         border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
                         background: isSelected ? 'var(--primary-light)' : 'transparent',
                         opacity: isSupported ? 1 : 0.6,
-                        transition: 'all 0.2s ease',
+                        transition: 'all 0.15s ease',
                       }}
                     >
                       <input
                         type="checkbox"
-                        id={`kr-checkbox-${kr.type}`}
+                        id={`edit-kr-checkbox-${kr.type}`}
                         checked={isSelected}
                         disabled={!isSupported}
                         onChange={(e) => {
                           if (!isSupported) return;
                           const checked = e.target.checked;
                           setProjectForm((current) => {
-                            const existing = current.keyResults.filter((k) => k.type !== kr.type);
-                            if (checked) {
-                              return { ...current, keyResults: [...existing, { type: kr.type, weight: 10 }] };
-                            } else {
-                              return { ...current, keyResults: existing };
-                            }
+                            const withoutCurrent = current.keyResults.filter((k) => k.type !== kr.type);
+                            const updatedList = checked ? [...withoutCurrent, { type: kr.type, weight: 0 }] : withoutCurrent;
+                            const rebalanced = balanceDeliverableWeights(updatedList);
+                            return { ...current, keyResults: rebalanced };
                           });
                         }}
                         style={{
-                          width: '20px',
-                          height: '20px',
+                          width: '18px',
+                          height: '18px',
                           cursor: isSupported ? 'pointer' : 'not-allowed',
                           flexShrink: 0,
                           margin: 0
                         }}
                       />
-                      <label htmlFor={`kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
-                        <div style={{ fontWeight: 600, color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{kr.description}</div>
+                      <label htmlFor={`edit-kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem', color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{kr.description}</div>
                         {!isSupported && (
-                          <div style={{ fontSize: '0.8rem', color: 'var(--danger-text)', marginTop: '8px' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--danger-text)', marginTop: '4px' }}>
                             Available only for {supportedLabels} projects.
                           </div>
                         )}
                       </label>
                       {isSelected && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                           <input
                             type="number"
                             title="Progress Weight"
                             className="search-input"
-                            style={{ width: '80px', padding: '6px 10px', textAlign: 'center' }}
+                            style={{ width: '70px', padding: '5px 8px', textAlign: 'center', height: '32px' }}
                             value={selectedKr?.weight || ''}
                             min={1}
                             max={100}
@@ -274,7 +304,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
                               }));
                             }}
                           />
-                          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--primary-dark)' }}>%</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-dark)' }}>%</span>
                         </div>
                       )}
                     </div>
@@ -285,7 +315,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
           </div>
         </div>
         
-        <div className="project-modal-foot" style={{ flexShrink: 0, padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+        <div className="project-modal-foot" style={{ flexShrink: 0, padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button className="btn btn-outline" onClick={() => onClose()} disabled={loading}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={loading || !isFormValid}>{loading ? 'Saving...' : 'Save Changes'}</button>
         </div>

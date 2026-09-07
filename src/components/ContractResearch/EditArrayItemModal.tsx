@@ -63,7 +63,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
             </div>
             <div className={styles.titleGroup}>
               <h3 className={styles.modalTitle}>{title}</h3>
-              <p className={styles.modalSubtitle}>Cập nhật thông tin chi tiết và bằng chứng trích dẫn</p>
+              <p className={styles.modalSubtitle}>Update details and supporting evidence from source document</p>
             </div>
           </div>
           <button
@@ -71,7 +71,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
             className={styles.closeBtn}
             onClick={onClose}
             disabled={isSubmitting}
-            title="Đóng"
+            title="Close"
           >
             <X size={18} />
           </button>
@@ -91,7 +91,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <Building size={14} className={styles.labelIcon} />
-                    <span>Tên pháp nhân (Party Legal Name)</span>
+                    <span>Party Legal Name</span>
                     <span className={styles.requiredStar}>*</span>
                   </label>
                   <input
@@ -99,7 +99,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                     className={styles.inputField}
                     value={payload.legalName || ''}
                     onChange={(e) => handleChange('legalName', e.target.value)}
-                    placeholder="Ví dụ: Công ty Cổ phần FPT"
+                    placeholder="e.g., FPT Corporation"
                     required
                     disabled={isSubmitting}
                   />
@@ -109,7 +109,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>
                       <Hash size={14} className={styles.labelIcon} />
-                      <span>Mã số thuế (Tax Code)</span>
+                      <span>Tax Code</span>
                     </label>
                     <input
                       type="text"
@@ -123,14 +123,14 @@ export const EditArrayItemModal: React.FC<Props> = ({
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>
                       <FileText size={14} className={styles.labelIcon} />
-                      <span>Vai trò (Role)</span>
+                      <span>Role</span>
                     </label>
                     <input
                       type="text"
                       className={styles.inputField}
                       value={payload.role || ''}
                       onChange={(e) => handleChange('role', e.target.value)}
-                      placeholder="Ví dụ: Bên hợp tác / Bên A"
+                      placeholder="e.g., Partner / Party A"
                       disabled={isSubmitting}
                     />
                   </div>
@@ -139,14 +139,14 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <User size={14} className={styles.labelIcon} />
-                    <span>Người đại diện pháp luật (Representative)</span>
+                    <span>Legal Representative</span>
                   </label>
                   <input
                     type="text"
                     className={styles.inputField}
                     value={payload.representative || ''}
                     onChange={(e) => handleChange('representative', e.target.value)}
-                    placeholder="Ví dụ: Ông Nguyễn Văn A - Tổng giám đốc"
+                    placeholder="e.g., Mr. John Doe - General Director"
                     disabled={isSubmitting}
                   />
                 </div>
@@ -154,14 +154,14 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <MapPin size={14} className={styles.labelIcon} />
-                    <span>Địa chỉ trụ sở chính (Address)</span>
+                    <span>Registered Address</span>
                   </label>
                   <input
                     type="text"
                     className={styles.inputField}
                     value={payload.address || ''}
                     onChange={(e) => handleChange('address', e.target.value)}
-                    placeholder="Địa chỉ đăng ký doanh nghiệp..."
+                    placeholder="Registered business address..."
                     disabled={isSubmitting}
                   />
                 </div>
@@ -174,7 +174,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <Building size={14} className={styles.labelIcon} />
-                    <span>Tên bên phân chia (Party Name)</span>
+                    <span>Party Name</span>
                     <span className={styles.requiredStar}>*</span>
                   </label>
                   <input
@@ -191,7 +191,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>
                       <Percent size={14} className={styles.labelIcon} />
-                      <span>Tỷ lệ phân chia (%)</span>
+                      <span>Distribution Ratio (%)</span>
                     </label>
                     <input
                       type="number"
@@ -201,21 +201,21 @@ export const EditArrayItemModal: React.FC<Props> = ({
                       className={styles.inputField}
                       value={payload.percentage !== undefined ? payload.percentage : ''}
                       onChange={(e) => handleChange('percentage', e.target.value)}
-                      placeholder="Ví dụ: 50"
+                      placeholder="e.g., 50"
                       disabled={isSubmitting}
                     />
                   </div>
                   <div className={styles.formGroup}>
                     <label className={styles.formLabel}>
                       <DollarSign size={14} className={styles.labelIcon} />
-                      <span>Số tiền cố định (nếu có)</span>
+                      <span>Fixed Amount (if any)</span>
                     </label>
                     <input
                       type="text"
                       className={styles.inputField}
                       value={payload.amount || ''}
                       onChange={(e) => handleChange('amount', e.target.value)}
-                      placeholder="Ví dụ: 1,000,000,000 VND"
+                      placeholder="e.g., 1,000,000,000 VND"
                       disabled={isSubmitting}
                     />
                   </div>
@@ -224,14 +224,14 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <FileText size={14} className={styles.labelIcon} />
-                    <span>Ghi chú phân chia (Condition / Note)</span>
+                    <span>Distribution Terms (Condition / Note)</span>
                   </label>
                   <input
                     type="text"
                     className={styles.inputField}
                     value={payload.condition || payload.note || ''}
                     onChange={(e) => handleChange('condition', e.target.value)}
-                    placeholder="Điều kiện phân chia lợi nhuận/doanh thu..."
+                    placeholder="Conditions for profit/revenue sharing..."
                     disabled={isSubmitting}
                   />
                 </div>
@@ -244,14 +244,14 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <Building size={14} className={styles.labelIcon} />
-                    <span>Bên chịu trách nhiệm / cam kết (Party)</span>
+                    <span>Responsible Party</span>
                   </label>
                   <input
                     type="text"
                     className={styles.inputField}
                     value={payload.party || ''}
                     onChange={(e) => handleChange('party', e.target.value)}
-                    placeholder="Tên bên cam kết (hoặc Tất cả các bên)"
+                    placeholder="Party name (or All Parties)"
                     disabled={isSubmitting}
                   />
                 </div>
@@ -259,7 +259,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>
                     <FileText size={14} className={styles.labelIcon} />
-                    <span>Nội dung cam kết / trách nhiệm</span>
+                    <span>Commitment / Obligation Details</span>
                     <span className={styles.requiredStar}>*</span>
                   </label>
                   <textarea
@@ -271,7 +271,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
                       else if ('commitment' in payload) handleChange('commitment', e.target.value);
                       else handleChange('description', e.target.value);
                     }}
-                    placeholder="Nhập chi tiết nội dung cam kết..."
+                    placeholder="Enter detailed commitment or obligation terms..."
                     required
                     disabled={isSubmitting}
                   />
@@ -284,7 +284,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>
                   <FileText size={14} className={styles.labelIcon} />
-                  <span>Nội dung mục (Content)</span>
+                  <span>Item Content</span>
                 </label>
                 <textarea
                   rows={3}
@@ -300,7 +300,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>
                 <BookOpen size={14} className={styles.labelIcon} />
-                <span>Số trang tài liệu gốc (Source Page)</span>
+                <span>Source Page</span>
               </label>
               <input
                 type="number"
@@ -309,21 +309,21 @@ export const EditArrayItemModal: React.FC<Props> = ({
                 value={sourcePage}
                 onChange={(e) => setSourcePage(e.target.value)}
                 disabled={isSubmitting}
-                placeholder="Ví dụ: 1"
+                placeholder="e.g., 1"
               />
             </div>
 
             <div className={styles.formGroup}>
               <label className={styles.formLabel}>
                 <Quote size={14} className={styles.labelIcon} />
-                <span>Trích dẫn bằng chứng từ văn bản (Supporting Evidence)</span>
+                <span>Supporting Evidence</span>
               </label>
               <textarea
                 rows={2}
                 className={styles.textareaField}
                 value={evidence}
                 onChange={(e) => setEvidence(e.target.value)}
-                placeholder="Dán câu trích dẫn nguyên văn từ tài liệu..."
+                placeholder="Paste verbatim excerpt from document..."
                 disabled={isSubmitting}
               />
             </div>
@@ -336,7 +336,7 @@ export const EditArrayItemModal: React.FC<Props> = ({
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Hủy
+              Cancel
             </button>
             <button
               type="submit"
@@ -346,12 +346,12 @@ export const EditArrayItemModal: React.FC<Props> = ({
               {isSubmitting ? (
                 <>
                   <Loader2 size={15} className={styles.spinIcon} />
-                  <span>Đang lưu...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={15} />
-                  <span>Lưu & Xác thực</span>
+                  <span>Save & Verify</span>
                 </>
               )}
             </button>

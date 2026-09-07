@@ -37,7 +37,7 @@ export const EditContractModal: React.FC<Props> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setErrorMessage('Vui lòng nhập tên / tiêu đề hợp đồng.');
+      setErrorMessage('Please enter the contract title.');
       return;
     }
 
@@ -58,7 +58,7 @@ export const EditContractModal: React.FC<Props> = ({
       onSuccess(updatedResearch);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật hợp đồng.');
+      setErrorMessage(err?.response?.data?.message || 'An error occurred while updating the contract.');
     } finally {
       setIsSubmitting(false);
     }
@@ -100,7 +100,7 @@ export const EditContractModal: React.FC<Props> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Edit3 size={18} color='#2563eb' />
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
-              Chỉnh sửa thông tin hợp đồng
+              Edit Contract Details
             </h3>
           </div>
           <button
@@ -139,7 +139,7 @@ export const EditContractModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Tên hợp đồng */}
+          {/* Contract Title */}
           <div style={{ marginBottom: 16 }}>
             <label
               style={{
@@ -153,14 +153,14 @@ export const EditContractModal: React.FC<Props> = ({
               }}
             >
               <FileText size={14} color='#64748b' />
-              Tên / Tiêu đề hợp đồng <span style={{ color: '#ef4444' }}>*</span>
+              Contract Title <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
               type='text'
               className={styles.formInput}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder='VD: Hợp đồng hợp tác kinh doanh giữa A và B...'
+              placeholder='e.g., Business Cooperation Agreement between A and B...'
               required
               disabled={isSubmitting}
               style={{ width: '100%', fontSize: 13.5 }}
@@ -183,7 +183,7 @@ export const EditContractModal: React.FC<Props> = ({
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Hủy
+              Cancel
             </button>
             <button
               type='submit'
@@ -192,7 +192,7 @@ export const EditContractModal: React.FC<Props> = ({
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
               {isSubmitting ? <Loader2 size={14} className={styles.spinIcon} /> : <Edit3 size={14} />}
-              {isSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>

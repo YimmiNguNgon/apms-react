@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
-import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord } from '../../types/domain';
+import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse } from '../../types/domain';
+import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
 import styles from './CandidateReview.module.css';
 
@@ -13,12 +14,18 @@ interface ManagerCandidateReviewWorkspaceProps {
   candidateId: string;
   taskId?: number;
   submissionId?: number;
+  submission?: ProjectTaskSubmissionResponse | null;
+  allActiveSubmissions?: ProjectTaskSubmissionResponse[];
+  taskDueDate?: string;
+  taskTitle?: string;
+  sourceDocuments?: Array<{ id: string | number; fileName?: string }>;
+  onSelectCandidate?: (candidateId: string) => void;
   onReviewed?: () => void;
   onCancel?: () => void;
   isWorkspaceReadOnly?: boolean;
 }
 
-type TabType = 'Overview' | 'Business';
+type TabType = CandidateCategoryTab;
 type ManagerUiStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED';
 type EvidenceItem = CandidateFieldEvidence & Record<string, unknown>;
 
@@ -55,28 +62,7 @@ const ToastContainer: React.FC<{ toasts: ToastItem[]; onDismiss: (id: number) =>
 };
 
 /* ── Field Definitions ── */
-
-const FIELD_DEFS: Record<TabType, Array<{ label: string; key: string }>> = {
-  Overview: [
-    { label: 'Legal Name', key: 'identity.legalName' },
-    { label: 'Trade Name', key: 'identity.tradeName' },
-    { label: 'Tax Code', key: 'identity.taxCode' },
-    { label: 'Address', key: 'contact.address' },
-    { label: 'Website', key: 'contact.website' },
-    { label: 'Emails', key: 'contact.emails' },
-    { label: 'Phones', key: 'contact.phones' },
-  ],
-  Business: [
-    { label: 'Business Model', key: 'business.businessModel' },
-    { label: 'Industries', key: 'business.industries' },
-    { label: 'Employee Tier', key: 'companySize.employeeTier' },
-    { label: 'Employee Count', key: 'companySize.employeeCount' },
-    { label: 'Revenue Tier', key: 'companySize.revenueTier' },
-    { label: 'Markets', key: 'business.markets' },
-    { label: 'Target Customers', key: 'business.targetCustomers' },
-    { label: 'Products & Services', key: 'business.products' },
-  ],
-};
+const FIELD_DEFS = CANDIDATE_FIELD_GROUPS;
 
 const tabForFieldKey = (fieldKey: string): TabType | undefined => (
   (Object.keys(FIELD_DEFS) as TabType[]).find(tab => FIELD_DEFS[tab].some(field => field.key === fieldKey))
@@ -85,6 +71,18 @@ const tabForFieldKey = (fieldKey: string): TabType | undefined => (
 const labelForFieldKey = (fieldKey: string): string => (
   Object.values(FIELD_DEFS).flat().find(field => field.key === fieldKey)?.label || fieldKey
 );
+
+/* ── Date Formatter ── */
+function formatReviewDate(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  } catch {
+    return String(dateStr);
+  }
+}
 
 /* ── Stats Helper ── */
 
@@ -161,12 +159,9 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
     else if (status === 'CHANGES_REQUESTED') needsReview++;
     else pending++;
 
-    if (
-      field?.staffReviewStatus === 'EDITED'
-      || field?.staffReviewStatus === 'ADDED'
-      || field?.staffReviewStatus === 'REMOVED'
-      || hasReviewedValue(field)
-    ) staffEdited++;
+    const originalValue = field?.value;
+    const staffValue = field?.reviewedValue !== undefined ? field.reviewedValue : field?.staffReviewedValue;
+    if (isCandidateFieldEdited(originalValue, staffValue)) staffEdited++;
     if (field?.confidence && field.confidence < 0.6) lowConfidence++;
   }
   const reviewed = approved + rejected + needsReview;
@@ -277,13 +272,22 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   candidateId,
   taskId,
   submissionId,
+  submission,
+  allActiveSubmissions,
+  taskDueDate,
+  taskTitle,
+  sourceDocuments,
+  onSelectCandidate,
   onReviewed,
   onCancel,
   isWorkspaceReadOnly,
 }) => {
   const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
+  const [currentSubmission, setCurrentSubmission] = useState<ProjectTaskSubmissionResponse | null>(submission ?? null);
+  const [submissionHistory, setSubmissionHistory] = useState<ProjectTaskSubmissionResponse[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabType>('Overview');
+  const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedField, setHighlightedField] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -334,12 +338,32 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       if (res?.data) {
         setServerCandidate(res.data);
       }
+
+      if (taskId) {
+        try {
+          const subRes = await taskApi.getSubmissions(Number(projectId), taskId, { page: 0, size: 20 });
+          const subs = 'content' in subRes.data ? subRes.data.content : subRes.data;
+          const subList = Array.isArray(subs) ? subs : [];
+          setSubmissionHistory(subList);
+          if (!currentSubmission && subList.length > 0) {
+            const matched = subList.find(s => s.targetEntityId === candidateId && s.status === 'IN_REVIEW')
+              || subList.find(s => s.status === 'IN_REVIEW')
+              || subList.find(s => s.targetEntityId === candidateId)
+              || subList[0];
+            if (matched) {
+              setCurrentSubmission(matched);
+            }
+          }
+        } catch {
+          // ignore error fetching submissions for display
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [candidateId]);
+  }, [candidateId, taskId, projectId, currentSubmission]);
 
   useEffect(() => {
     fetchData();
@@ -418,12 +442,14 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   }, [isWorkspaceReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast]);
 
   // ── Complete Review ──
+  const effectiveSubmissionId = submissionId || currentSubmission?.id;
+
   const handleCompleteReview = useCallback(async () => {
     if (!stats.canComplete || completingReview) return;
     setCompletingReview(true);
     try {
-      if (submissionId && taskId) {
-        await taskApi.reviewSubmission(Number(projectId), taskId, submissionId, {
+      if (effectiveSubmissionId && taskId) {
+        await taskApi.reviewSubmission(Number(projectId), taskId, effectiveSubmissionId, {
           decision: 'APPROVE',
           comment: 'Candidate approved and Company Profile created.'
         });
@@ -463,15 +489,15 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     } finally {
       setCompletingReview(false);
     }
-  }, [stats.canComplete, completingReview, projectId, candidateId, taskId, submissionId, addToast, onReviewed, fetchData, invalidateFinalApprovalState]);
+  }, [stats.canComplete, completingReview, effectiveSubmissionId, taskId, projectId, candidateId, addToast, invalidateFinalApprovalState, onReviewed, fetchData]);
 
   // ── Send Back ──
   const handleSendBack = useCallback(async () => {
     if (sendingBack) return;
     setSendingBack(true);
     try {
-      if (submissionId && taskId) {
-        await taskApi.reviewSubmission(Number(projectId), taskId, submissionId, {
+      if (effectiveSubmissionId && taskId) {
+        await taskApi.reviewSubmission(Number(projectId), taskId, effectiveSubmissionId, {
           decision: 'REJECT',
           comment: 'Some fields require revision.'
         });
@@ -491,12 +517,11 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     } finally {
       setSendingBack(false);
     }
-  }, [sendingBack, projectId, candidateId, taskId, submissionId, queryClient, addToast, onReviewed]);
+  }, [sendingBack, effectiveSubmissionId, taskId, projectId, candidateId, queryClient, addToast, onReviewed]);
 
   // ── Next Pending ──
   const handleNextPending = useCallback(() => {
-    const tabs: TabType[] = ['Overview', 'Business'];
-    for (const tab of tabs) {
+    for (const tab of CANDIDATE_TABS) {
       const pendingFields = FIELD_DEFS[tab].filter(f => {
         const field = effectiveFieldForKey(serverCandidate, f.key);
         return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
@@ -586,6 +611,24 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     );
   }
 
+  // ── Header Information ──
+  const draftTitle = serverCandidate.draftName
+    || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : (currentSubmission?.submittedRevisionNumber ? `Draft ${currentSubmission.submittedRevisionNumber}` : 'Draft 1'));
+  const roundNumber = currentSubmission?.submittedRevisionNumber || serverCandidate.revisionNumber || 1;
+  const submittedBy = currentSubmission?.submittedByName || 'Staff';
+  const submittedAt = currentSubmission?.submittedAt || currentSubmission?.createdAt;
+  const companyLegalName = serverCandidate.identity?.legalName || 'Unknown Company';
+
+  // Extract source document info if present
+  const sourceDocNames: string[] = [];
+  if (sourceDocuments && sourceDocuments.length > 0) {
+    sourceDocuments.forEach(doc => {
+      if (doc.fileName && !sourceDocNames.includes(doc.fileName)) {
+        sourceDocNames.push(doc.fileName);
+      }
+    });
+  }
+
   // ── Sidebar status message ──
   let sidebarMessage: React.ReactNode = null;
   if (stats.pending > 0) {
@@ -615,18 +658,62 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       {/* Header */}
       <div className={styles.managerReviewHeader}>
         <div className={styles.headerInfo}>
-          <div className={styles.candidateEyebrow}>REVIEW CANDIDATE</div>
-          <h2 className={styles.managerReviewTitle}>
-            {serverCandidate.identity?.legalName || 'Unknown Company'}
-          </h2>
+          <div className={styles.candidateEyebrowRow}>
+            <span className={styles.candidateEyebrow}>REVIEW CANDIDATE</span>
+            <span className={styles.taskTitleTag}>• {taskTitle || 'Research Basic Company Information'}</span>
+          </div>
+
+          <div className={styles.titleWithDraftRow}>
+            <h2 className={styles.managerReviewTitle}>
+              {draftTitle}
+            </h2>
+            {allActiveSubmissions && allActiveSubmissions.length > 1 && onSelectCandidate && (
+              <div className={styles.legacyDraftSelector}>
+                <label htmlFor="candidate-select">Submitted candidate:</label>
+                <select
+                  id="candidate-select"
+                  value={candidateId}
+                  onChange={(e) => onSelectCandidate(e.target.value)}
+                >
+                  {allActiveSubmissions.map((sub, idx) => (
+                    <option key={sub.id} value={sub.targetEntityId || ''}>
+                      Draft {sub.submittedRevisionNumber || idx + 1} ({sub.submittedByName || 'Staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div className={styles.managerReviewMeta}>
             <span className={styles.managerReviewStatus}>
-              In Review
+              IN REVIEW
             </span>
-            <span>Round {serverCandidate.revisionNumber || 1}</span>
-            <span>{stats.total} fields</span>
-            <span>{stats.reviewed}/{stats.total} reviewed</span>
-            <strong>{stats.percentage}%</strong>
+            <span>•</span>
+            <span>Round {roundNumber}</span>
+            <span>•</span>
+            <span>Submitted by {submittedBy}</span>
+            {submittedAt && (
+              <>
+                <span>•</span>
+                <span>{formatReviewDate(submittedAt)}</span>
+              </>
+            )}
+            {taskDueDate && (
+              <>
+                <span>•</span>
+                <span>Due {formatReviewDate(taskDueDate)}</span>
+              </>
+            )}
+          </div>
+
+          <div className={styles.companyNameSubline}>
+            Target Company: <strong>{companyLegalName}</strong>
+            {sourceDocNames.length > 0 && (
+              <span className={styles.sourceDocsInline}>
+                • Source: {sourceDocNames.join(', ')}
+              </span>
+            )}
           </div>
         </div>
         <button
@@ -634,7 +721,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           onClick={onCancel}
           aria-label="Close review workspace"
         >
-          <XIcon size={24} />
+          <XIcon size={22} />
         </button>
       </div>
 
@@ -643,7 +730,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         {/* Left Column */}
         <div className={styles.mainContent}>
           <div className={styles.tabsContainer}>
-            {(['Overview', 'Business'] as TabType[]).map(tab => {
+            {CANDIDATE_TABS.map(tab => {
               const tabPending = FIELD_DEFS[tab].filter(f => {
                 const field = effectiveFieldForKey(serverCandidate, f.key);
                 return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
@@ -775,6 +862,48 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                   >
                     <CheckCircle size={16} /> Approve Candidate
                   </button>
+                )}
+              </div>
+            )}
+
+            {/* Collapsible submission history (if history exists) */}
+            {submissionHistory.length > 0 && (
+              <div className={styles.historySection}>
+                <button
+                  type="button"
+                  className={styles.historyToggle}
+                  onClick={() => setHistoryOpen(prev => !prev)}
+                >
+                  {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  View submission history ({submissionHistory.length})
+                </button>
+                {historyOpen && (
+                  <div className={styles.historyTimeline}>
+                    {submissionHistory.map((sub) => (
+                      <article key={sub.id} className={styles.historyItem}>
+                        <div className={styles.historyItemHeader}>
+                          <span
+                            className={styles.historyItemStatus}
+                            style={{
+                              backgroundColor: sub.status === 'APPROVED' ? '#dcfce7' : sub.status === 'REJECTED' ? '#fee2e2' : '#dbeafe',
+                              color: sub.status === 'APPROVED' ? '#166534' : sub.status === 'REJECTED' ? '#991b1b' : '#1e40af',
+                            }}
+                          >
+                            {sub.status}
+                          </span>
+                          <span className={styles.historyItemDate}>{formatReviewDate(sub.submittedAt || sub.createdAt)}</span>
+                        </div>
+                        <div className={styles.historyItemNote}>
+                          Round {sub.submittedRevisionNumber || 1} &bull; {sub.submittedByName || 'Staff'}
+                        </div>
+                        {sub.reviewComment && (
+                          <div style={{ marginTop: 4, color: '#64748b', fontStyle: 'italic' }}>
+                            Review: &ldquo;{sub.reviewComment}&rdquo;
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

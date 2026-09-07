@@ -1,36 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
-import { useUser, ROLES, type Role } from '../context/UserContext';
 import i18n from '../i18n';
-import { formatDate as utilFormatDate } from '../utils/format';
-import type { PageResult, ProfileResponse, GraphCompanyDto, DashboardSummaryDto } from '../types/domain';
-import styles from './CompanyProfiles.module.css';
-
-const relationshipLabel = (rel?: string | null) => {
-  if (!rel) return 'Chưa thiết lập';
-  const r = rel.toUpperCase();
-  if (r === 'PARTNER_WITH' || r === 'PARTNER') return 'Đối tác';
-  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return 'Đối thủ';
-  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return 'Nhà cung cấp';
-  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return 'Khách hàng';
-  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return 'Đối tác tiềm năng';
-  return r;
-};
-
-const relationshipStyle = (rel?: string | null): React.CSSProperties => {
-  if (!rel) return { background: '#f1f5f9', color: '#64748b' };
-  const r = rel.toUpperCase();
-  if (r === 'PARTNER_WITH' || r === 'PARTNER') return { background: '#e0f2fe', color: '#0369a1' };
-  if (r === 'COMPETITOR_OF' || r === 'COMPETITOR') return { background: '#fee2e2', color: '#b91c1c' };
-  if (r === 'SUPPLIER_OF' || r === 'SUPPLIER') return { background: '#fef3c7', color: '#d97706' };
-  if (r === 'CUSTOMER_OF' || r === 'CUSTOMER') return { background: '#dcfce7', color: '#15803d' };
-  if (r === 'POTENTIAL_PARTNER_OF' || r === 'POTENTIAL_PARTNER') return { background: '#faf5ff', color: '#7e22ce' };
-  return { background: '#f1f5f9', color: '#64748b' };
-};
+import type { PageResult, ProfileResponse, DashboardSummaryDto } from '../types/domain';
 
 interface CompanyListProps {
   setActivePage: (page: string) => void;
+  createdByMe?: boolean;
+  source?: string;
+  subtitle?: string;
 }
 
 const PAGE_SIZE = 8;
@@ -38,65 +16,49 @@ const PAGE_SIZE = 8;
 const profileName = (profile: ProfileResponse) =>
   profile.identity?.tradeName || profile.identity?.legalName || i18n.t('company-list:profile.nameFallback');
 
-const profileLegalName = (profile: ProfileResponse) =>
-  profile.identity?.legalName || profileName(profile);
-
 const profileIndustry = (profile: ProfileResponse) =>
   profile.business?.industries?.filter(Boolean).join(', ') || i18n.t('company-list:profile.industryFallback');
 
-const profileRelationshipBadge = (profile: ProfileResponse) => {
+const normalizeName = (name?: string | null) =>
+  (name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
+    .replace(/\s+/g, ' ');
+
+const profileRelationshipBadge = (profile: ProfileResponse): { label: string; tone: 'info' | 'danger' | 'warning' | 'success' | 'primary' | 'neutral' } => {
   const rel = (profile as unknown as Record<string, unknown>).relationshipType ||
               (profile as unknown as Record<string, unknown>).relationship ||
               (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
 
-  const baseStyle = { color: '#475569', background: '#FFFFFF', border: '1px solid #CBD5E1' };
-
   if (!rel) {
-    return { label: 'None', style: baseStyle };
+    return { label: 'None', tone: 'neutral' };
   }
 
-  const relStr = String(rel);
+  const relStr = String(rel).toUpperCase();
 
   switch (relStr) {
     case 'PARTNER_WITH':
     case 'PARTNER':
-      return { label: 'Partner', style: baseStyle };
+      return { label: 'Partner', tone: 'info' };
     case 'COMPETITOR_OF':
     case 'COMPETITOR':
-      return { label: 'Competitor', style: baseStyle };
+      return { label: 'Competitor', tone: 'danger' };
     case 'SUPPLIER_OF':
     case 'SUPPLIER':
-      return { label: 'Supplier', style: baseStyle };
+      return { label: 'Supplier', tone: 'warning' };
     case 'CUSTOMER_OF':
     case 'CUSTOMER':
-      return { label: 'Customer', style: baseStyle };
+      return { label: 'Customer', tone: 'success' };
     case 'POTENTIAL_PARTNER_OF':
+    case 'POTENTIAL_PARTNER':
     case 'INVESTOR':
-      return { label: 'Potential Partner', style: baseStyle };
-    default:
+      return { label: 'Potential Partner', tone: 'primary' };
+    default: {
       const defaultLabel = relStr.charAt(0).toUpperCase() + relStr.slice(1).toLowerCase().replace(/_/g, ' ');
-      return { label: defaultLabel, style: baseStyle };
+      return { label: defaultLabel, tone: 'neutral' };
+    }
   }
-};
-
-const formatDate = (value?: string | null) => {
-  if (!value) return i18n.t('company-list:table.notUpdated');
-  const formatted = utilFormatDate(value);
-  return formatted || value;
-};
-
-const statusTone = (status?: string) => {
-  if (status === 'APPROVED' || status === 'VERIFIED') return styles.success;
-  if (status === 'PENDING_REVIEW' || status === 'NEEDS_UPDATE') return styles.warning;
-  if (status === 'REJECTED' || status === 'UNVERIFIED') return styles.danger;
-  return styles.neutral;
-};
-
-const displayReviewStatus = (status?: string | null) => {
-  if (status === 'VERIFIED' || status === 'APPROVED') return i18n.t('company-list:status.verified');
-  if (status === 'PENDING_REVIEW') return i18n.t('company-list:status.pendingReview');
-  if (status === 'NEEDS_UPDATE') return i18n.t('company-list:status.needsUpdate');
-  return status || i18n.t('company-list:status.notVerified');
 };
 
 const profileUpdatedTime = (profile: ProfileResponse) => {
@@ -108,9 +70,13 @@ const profileUpdatedTime = (profile: ProfileResponse) => {
 const newestProfilesFirst = (profiles: ProfileResponse[]) =>
   [...profiles].sort((a, b) => profileUpdatedTime(b) - profileUpdatedTime(a));
 
-export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
+export const CompanyList: React.FC<CompanyListProps> = ({
+  setActivePage,
+  createdByMe,
+  source,
+  subtitle,
+}) => {
   const { t } = useTranslation('company-list');
-  const { currentUser } = useUser();
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -120,30 +86,27 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   const [relationshipFilter, setRelationshipFilter] = useState('');
   const [industryFilter, setIndustryFilter] = useState('');
   const [industriesList, setIndustriesList] = useState<string[]>([]);
+  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
-
-  const [ownerProfile, setOwnerProfile] = useState<ProfileResponse | null>(null);
-  const [relationsMap, setRelationsMap] = useState<Record<string, string>>({});
-  const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
 
   const fetchProfiles = async (page = 0) => {
     setLoading(true);
     setError(null);
 
     try {
-      const [res, ownerRes] = await Promise.allSettled([
+      const [res] = await Promise.allSettled([
         api.get<PageResult<ProfileResponse>>('/profiles', {
           params: {
             keyword: searchQuery.trim() || undefined,
             industry: industryFilter || undefined,
             relationshipType: relationshipFilter || undefined,
             excludeOwner: true,
+            createdByMe: createdByMe ? true : undefined,
             page,
             size: PAGE_SIZE,
           },
         }),
-        api.get<ProfileResponse>('/owner/company-profile'),
       ]);
 
       if (res.status === 'fulfilled') {
@@ -155,10 +118,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
         setProfiles([]);
         setTotalElements(0);
         setError(res.reason instanceof Error ? res.reason.message : t('errors.loadFailed'));
-      }
-
-      if (ownerRes.status === 'fulfilled' && ownerRes.value?.data) {
-        setOwnerProfile(ownerRes.value.data);
       }
     } catch (err) {
       setProfiles([]);
@@ -175,25 +134,6 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
   }, [searchQuery, relationshipFilter, industryFilter]);
 
   useEffect(() => {
-    api.get<GraphCompanyDto[]>('/graph/network').then((res) => {
-      if (res.data) {
-        const map: Record<string, string> = {};
-        res.data.forEach((c) => {
-          if (c.companyId && c.relationshipType) {
-            map[c.companyId] = c.relationshipType;
-          }
-          if (c.relationships && Array.isArray(c.relationships)) {
-            c.relationships.forEach((r: any) => {
-              if (r.targetCompanyId && r.relationshipType) {
-                map[r.targetCompanyId] = r.relationshipType;
-              }
-            });
-          }
-        });
-        setRelationsMap(map);
-      }
-    }).catch(err => console.error('Failed to load graph network', err));
-
     api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
       if (res.data) setSummary(res.data);
     }).catch(err => console.error('Failed to load dashboard summary', err));
@@ -207,153 +147,241 @@ export const CompanyList: React.FC<CompanyListProps> = ({ setActivePage }) => {
 
   const metrics = useMemo(() => {
     return [
-      { label: t('stats.profiles.label'), value: summary?.totalCompanyProfiles || 0, note: t('stats.profiles.note') },
-      { label: 'Relationships', value: (summary?.partnerCount || 0) + (summary?.competitorCount || 0) + (summary?.supplierCount || 0) + (summary?.potentialPartnerCount || 0), note: 'Total network relationships' },
-      { label: t('stats.industries.label'), value: summary?.totalIndustries || 0, note: 'Distribution across sectors' },
+      { label: t('stats.profiles.label') || 'Company Profiles', value: summary?.totalCompanyProfiles || 0 },
+      { label: 'Relationships', value: (summary?.partnerCount || 0) + (summary?.competitorCount || 0) + (summary?.supplierCount || 0) + (summary?.potentialPartnerCount || 0) },
+      { label: t('stats.industries.label') || 'Industries', value: summary?.totalIndustries || 0 },
     ];
   }, [summary, t]);
 
   const openProfile = (profile: ProfileResponse) => {
     const id = profile.companyId || profile.id;
     if (id) localStorage.setItem('apms-selected-company', id);
-    localStorage.setItem('apms-back-page', 'companies');
-    setActivePage('company-detail');
+    localStorage.setItem('apms-back-page', source || 'companies');
+    localStorage.removeItem('apms-context-project');
+    setActivePage(`company-detail?source=${source || 'company-profiles'}&companyId=${id}`);
   };
 
+  const pageStart = totalElements === 0 ? 0 : currentPage * PAGE_SIZE + 1;
+  const pageEnd = Math.min((currentPage + 1) * PAGE_SIZE, totalElements);
+
   return (
-    <div className={styles.page}>
-      {/* ── Header ── */}
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.headerTitle}>{t('title')}</h1>
-          <span className={styles.eyebrow}>{t('subtitle')}</span>
-        </div>
-      </header>
-
-      {error && <div className={styles.error}>{error}</div>}
-
-      {/* ── KPI Row ── */}
-      <section className={styles.metricGrid}>
-        {metrics.map((item) => (
-          <article className={styles.metricCard} key={item.label}>
-            <span>{item.label}</span>
-            <strong>{loading ? '...' : item.value}</strong>
-            <p>{item.note}</p>
-          </article>
-        ))}
-      </section>
-
-      {/* ── Main Panel ── */}
-      <main className={styles.panel}>
-        {/* Toolbar */}
-        <div className={styles.toolbar}>
-          <div className={styles.searchBox}>
-            <input
-              value={searchQuery}
-              placeholder={t('filters.searchPlaceholder')}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void fetchProfiles(0);
-              }}
-            />
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page company-profiles-page" id="page-company-profiles">
+      <div className="workspace-main-full">
+        {/* ── Header ── */}
+        <div className="workspace-page-head">
+          <div>
+            <h1>Company Profiles</h1>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              {subtitle || 'Manage approved company profiles and business information'}
+            </p>
           </div>
-          <select value={industryFilter} onChange={(event) => setIndustryFilter(event.target.value)}>
-            <option value="">All industries</option>
-            {industriesList.map(ind => (
-              <option key={ind} value={ind}>{ind}</option>
-            ))}
-          </select>
-          <select value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
-            <option value="">{t('filters.allRelationships')}</option>
-            <option value="PARTNER_WITH">{t('filters.partner')}</option>
-            <option value="COMPETITOR_OF">{t('filters.competitor')}</option>
-            <option value="SUPPLIER_OF">{t('filters.supplier')}</option>
-            <option value="CUSTOMER_OF">{t('filters.customer')}</option>
-            <option value="POTENTIAL_PARTNER_OF">{t('filters.potentialPartner')}</option>
-          </select>
-
-          <button className={styles.primaryButton} onClick={() => void fetchProfiles(0)} disabled={loading}>
-            {loading ? t('table.loading') : t('filters.searchButton')}
-          </button>
         </div>
 
-        {/* Table */}
-        <div className={`${styles.tableWrap} ${loading ? styles.tableWrapLoading : ''}`}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th style={{ width: '40px', textAlign: 'center' }}>STT</th>
-                <th>{t('table.company')}</th>
-                <th>{t('table.relationship')}</th>
-                <th>{t('table.industry')}</th>
-                <th style={{ textAlign: 'right' }}>{t('table.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5}><div className={styles.empty}>{t('table.loading')}</div></td>
-                </tr>
-              )}
-              {!loading && profiles.length === 0 && (
-                <tr>
-                  <td colSpan={5}><div className={styles.empty}>{t('table.empty')}</div></td>
-                </tr>
-              )}
-              {!loading && profiles.map((profile, index) => (
-                <tr key={profile.companyId || profile.id}>
-                  <td style={{ textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
-                    {(currentPage * PAGE_SIZE) + index + 1}
-                  </td>
-                  <td>
-                    <div className={styles.companyCell}>
-                      <span>{profileName(profile).slice(0, 2).toUpperCase()}</span>
-                      <div>
-                        <strong>{profileName(profile)}</strong>
-                        <small>{profileLegalName(profile)}</small>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    {(() => {
-                      const badge = profileRelationshipBadge(profile);
-                      return (
+        {error && <div className="workspace-inline-error">{error}</div>}
+
+        {/* ── KPI Row ── */}
+        <div className="workspace-focus-card">
+          <div className="workspace-focus-metrics">
+            {metrics.map((item) => (
+              <article key={item.label}>
+                <strong>{loading ? '...' : item.value}</strong>
+                <span>{item.label}</span>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Main Panel ── */}
+        <div className="manager-project-container">
+          <div role="table" aria-label="Company Profiles" style={{ width: '100%', minWidth: 0 }}>
+            {/* Toolbar */}
+            <div className="company-profiles-filters">
+              <input
+                className="search-input"
+                value={searchQuery}
+                placeholder={t('filters.searchPlaceholder') || 'Search by company name, tax code, website...'}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void fetchProfiles(0);
+                }}
+              />
+              <select className="search-input" value={industryFilter} onChange={(event) => setIndustryFilter(event.target.value)}>
+                <option value="">All industries</option>
+                {industriesList.map((ind) => (
+                  <option key={ind} value={ind}>{ind}</option>
+                ))}
+              </select>
+              <select className="search-input" value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
+                <option value="">{t('filters.allRelationships')}</option>
+                <option value="PARTNER_WITH">{t('filters.partner')}</option>
+                <option value="COMPETITOR_OF">{t('filters.competitor')}</option>
+                <option value="SUPPLIER_OF">{t('filters.supplier')}</option>
+                <option value="CUSTOMER_OF">{t('filters.customer')}</option>
+                <option value="POTENTIAL_PARTNER_OF">{t('filters.potentialPartner')}</option>
+              </select>
+            </div>
+
+            {/* Table */}
+            <div className="manager-project-table-scroll">
+              <div className="manager-project-table-inner" style={{ minWidth: '760px' }}>
+                <div className="company-profiles-header" role="row">
+                  <span className="col-center">#</span>
+                  <span>COMPANY</span>
+                  <span>RELATIONSHIP</span>
+                  <span>INDUSTRY</span>
+                  <span className="col-center">ACTION</span>
+                </div>
+                {loading && (
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">{t('table.loading') || 'Loading company profiles...'}</p>
+                  </div>
+                )}
+                {!loading && profiles.length === 0 && (
+                  <div className="project-table-empty">
+                    <p className="project-table-empty-title">No company profiles found.</p>
+                    <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
+                  </div>
+                )}
+                {!loading && profiles.map((profile, index) => {
+                  const primary = profileName(profile);
+                  const legal = profile.identity?.legalName?.trim();
+                  const showSecondary = Boolean(legal && normalizeName(legal) !== normalizeName(primary));
+                  const badge = profileRelationshipBadge(profile);
+                  const industries = profile.business?.industries?.filter(Boolean) || [];
+                  const industryText = industries.length > 0 ? industries.join(', ') : (profileIndustry(profile) || '—');
+
+                  return (
+                    <div key={profile.companyId || profile.id} className="company-profiles-row" role="row">
+                      <span className="col-center" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                        {(currentPage * PAGE_SIZE) + index + 1}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                         <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '3px 9px',
+                          width: '32px',
+                          height: '32px',
                           borderRadius: '6px',
-                          display: 'inline-block',
-                          ...badge.style,
+                          background: 'rgba(37, 99, 235, 0.08)',
+                          color: '#1d4ed8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          flexShrink: 0,
                         }}>
+                          {primary.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                          <strong style={{
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.25,
+                          }}>
+                            {primary}
+                          </strong>
+                          {showSecondary && (
+                            <small style={{
+                              fontSize: '11px',
+                              color: 'var(--text-muted)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              lineHeight: 1.2,
+                              marginTop: '1px',
+                            }}>
+                              {legal}
+                            </small>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className={`project-status-badge ${badge.tone}`}>
                           {badge.label}
                         </span>
-                      );
-                    })()}
-                  </td>
-                  <td>{profileIndustry(profile)}</td>
-                  <td style={{ textAlign: 'right' }}>
+                      </div>
+                      <div
+                        title={industryText}
+                        style={{
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          lineHeight: '1.35',
+                          maxHeight: '2.7em',
+                        }}
+                      >
+                        {industryText}
+                      </div>
+                      <div className="col-center">
+                        <button
+                          className="project-detail-btn"
+                          type="button"
+                          onClick={() => openProfile(profile)}
+                          title={t('table.viewTitle') || 'View company details'}
+                        >
+                          {t('table.viewButton') || 'View'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                    <button className={styles.secondaryButton} type="button" onClick={() => openProfile(profile)} title={t('table.viewTitle')}>
-                      {t('table.viewButton')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className={styles.pagination}>
-          <span>{t('pagination.showing', { shown: profiles.length, total: totalElements })}</span>
-          <div>
-            <button type="button" disabled={currentPage === 0 || loading} onClick={() => void fetchProfiles(currentPage - 1)}>{t('pagination.prev')}</button>
-            <strong>{t('pagination.page', { current: currentPage + 1, total: totalPages })}</strong>
-            <button type="button" disabled={currentPage >= totalPages - 1 || loading} onClick={() => void fetchProfiles(currentPage + 1)}>{t('pagination.next')}</button>
+            {/* Pagination */}
+            <div className="project-table-pagination">
+              <span>Showing {pageStart}–{pageEnd} of {totalElements} profiles</span>
+              <div>
+                <button
+                  className="workspace-page-btn"
+                  disabled={currentPage === 0 || loading}
+                  onClick={() => void fetchProfiles(0)}
+                >
+                  First
+                </button>
+                <button
+                  className="workspace-page-btn"
+                  disabled={currentPage === 0 || loading}
+                  onClick={() => void fetchProfiles(currentPage - 1)}
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => (
+                  <button
+                    key={index}
+                    className={`workspace-page-btn ${currentPage === index ? 'active' : ''}`}
+                    onClick={() => void fetchProfiles(index)}
+                    disabled={loading}
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+                <button
+                  className="workspace-page-btn"
+                  disabled={currentPage >= totalPages - 1 || loading}
+                  onClick={() => void fetchProfiles(currentPage + 1)}
+                >
+                  Next
+                </button>
+                <button
+                  className="workspace-page-btn"
+                  disabled={currentPage >= totalPages - 1 || loading}
+                  onClick={() => void fetchProfiles(totalPages - 1)}
+                >
+                  Last
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </section>
   );
 };

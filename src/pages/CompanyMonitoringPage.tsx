@@ -15,7 +15,6 @@ import type {
   UserSearchResponse,
   FieldEvidence
 } from '../types/domain';
-import styles from './CompanyProfiles.module.css';
 
 type MonitoringTab = 'assignments' | 'pending' | 'history';
 type MonitoringFormState = {
@@ -69,21 +68,25 @@ const initialForm: MonitoringFormState = {
 };
 
 export const formatDate = (value?: string | null) => {
-  if (!value) return '-';
+  if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export const formatDateTime = (value?: string | null) => {
-  if (!value) return '-';
+  if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('vi-VN');
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
 const profileName = (profile: ProfileResponse) =>
@@ -796,7 +799,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const openProfile = (profileId: string) => {
     localStorage.setItem('apms-selected-company', profileId);
     localStorage.setItem('apms-back-page', 'company-monitoring');
-    setActivePage?.('company-detail');
+    localStorage.removeItem('apms-context-project');
+    setActivePage?.(`company-detail?source=monitoring&companyId=${profileId}`);
   };
 
   const openManageModal = (assignment: CompanyMonitoringAssignmentResponse) => {
@@ -1098,13 +1102,14 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const renderProposalBadge = (assignment: CompanyMonitoringAssignmentResponse) => {
     const proposalId = assignment.latestProposalId || assignmentPendingProposalIds[assignment.id]?.[0];
     const status = proposalId ? proposalBundles[proposalId]?.proposal.status || assignment.latestProposalStatus || 'SUBMITTED' : null;
-    if (!proposalId || !status) return <span className="workspace-badge neutral">No proposal</span>;
+    if (!proposalId || !status) return <span className="project-status-badge neutral">No proposal</span>;
 
     if (isPendingProposalStatus(status)) {
       return (
         <button
           type="button"
-          className={`workspace-badge ${proposalTone(status)} monitoring-proposal-badge`}
+          className={`project-status-badge ${proposalTone(status)} monitoring-proposal-badge`}
+          style={{ cursor: 'pointer', borderStyle: 'dashed' }}
           onClick={() => {
             setActiveTab('pending');
             openProposalReview(proposalId);
@@ -1115,30 +1120,30 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       );
     }
 
-    return <span className={`workspace-badge ${proposalTone(status)}`}>{status}</span>;
+    return <span className={`project-status-badge ${proposalTone(status)}`}>{status}</span>;
   };
 
   const renderUnassignedRow = (profile: ProfileResponse, index: number) => (
     <tr key={profile.id}>
-      <td className="admin-mono">{index + 1}</td>
-      <td>
-        <strong>{profileName(profile)}</strong>
+      <td className="col-mono">{index + 1}</td>
+      <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <strong className="project-name-primary" title={profileName(profile)}>{profileName(profile)}</strong>
       </td>
-      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
-      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
-      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
       <td>
-        <span className="workspace-badge danger">Not Assigned</span>
+        <span className="project-status-badge danger">Not Assigned</span>
       </td>
-      <td><span style={{ color: 'var(--text-secondary)' }}>&mdash;</span></td>
+      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
       <td>
-        <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
-          <button type="button" className={styles.secondaryButton} onClick={() => openProfile(profile.id)}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <button type="button" className="project-detail-btn" onClick={() => openProfile(profile.id)}>
             View Profile
           </button>
           <button 
             type="button" 
-            className={styles.primaryButton} 
+            className="project-detail-btn primary" 
             onClick={() => openCreateModal(profile)}
           >
             Assign Monitor
@@ -1150,45 +1155,43 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
   const renderAssignmentRow = (assignment: CompanyMonitoringAssignmentResponse, index: number) => (
     <tr key={assignment.id}>
-      <td className="admin-mono">{index + 1}</td>
-      <td>
-        <strong>{assignment.companyName}</strong>
+      <td className="col-mono">{index + 1}</td>
+      <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <strong className="project-name-primary" title={assignment.companyName}>{assignment.companyName}</strong>
       </td>
       <td>
         {assignment.assignedStaffName && assignment.assignedStaffName !== assignment.assignedStaffEmail ? (
           <>
-            <strong>{assignment.assignedStaffName}</strong>
+            <strong style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{assignment.assignedStaffName}</strong>
             <br />
-            <small style={{ color: 'var(--text-secondary)' }}>{assignment.assignedStaffEmail}</small>
+            <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{assignment.assignedStaffEmail}</small>
           </>
         ) : (
-          <strong>{assignment.assignedStaffEmail}</strong>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{assignment.assignedStaffEmail}</span>
         )}
       </td>
-      <td>{frequencyLabel(assignment.frequency)}</td>
+      <td><span style={{ color: 'var(--text-secondary)' }}>{frequencyLabel(assignment.frequency)}</span></td>
       <td>
-        <strong>{formatDate(assignment.nextReviewAt)}</strong>
+        <span className="project-list-date">{formatDate(assignment.nextReviewAt)}</span>
       </td>
       <td>
-        <span className={`workspace-badge ${statusTone(assignment.assignmentStatus)}`}>
+        <span className={`project-status-badge ${statusTone(assignment.assignmentStatus)}`}>
           {assignment.assignmentStatus}
         </span>
       </td>
       <td>{renderProposalBadge(assignment)}</td>
       <td>
-        <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
-          <button type="button" className={styles.secondaryButton} onClick={() => openProfile(assignment.companyProfileId)}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <button type="button" className="project-detail-btn" onClick={() => openProfile(assignment.companyProfileId)}>
             View Profile
           </button>
-          <button type="button" className={styles.secondaryButton} onClick={() => openManageModal(assignment)}>
+          <button type="button" className="project-detail-btn" onClick={() => openManageModal(assignment)}>
             Manage
           </button>
-
         </div>
       </td>
     </tr>
   );
-
 
   const renderProposalRow = ({ assignment, proposalId }: ProposalReviewRow) => {
     const bundle = proposalBundles[proposalId];
@@ -1197,36 +1200,36 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
     return (
       <tr key={`${assignment.id}-${proposalId}`}>
-        <td>
-          <strong>{assignment.companyName}</strong>
+        <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <strong className="project-name-primary" title={assignment.companyName}>{assignment.companyName}</strong>
         </td>
         <td>
           {assignment.assignedStaffName && assignment.assignedStaffName !== assignment.assignedStaffEmail ? (
             <>
-              <strong>{assignment.assignedStaffName}</strong>
+              <strong style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{assignment.assignedStaffName}</strong>
               <br />
-              <small style={{ color: 'var(--text-secondary)' }}>{assignment.assignedStaffEmail}</small>
+              <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{assignment.assignedStaffEmail}</small>
             </>
           ) : (
-            <span>{assignment.assignedStaffEmail}</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{assignment.assignedStaffEmail}</span>
           )}
         </td>
         <td>
-          <span className={`workspace-badge ${proposalTone(status)}`}>{status}</span>
+          <span className={`project-status-badge ${proposalTone(status)}`}>{status}</span>
         </td>
         <td>
-          <strong>{bundle ? formatDate(bundle.proposal.createdAt) : '-'}</strong>
+          <span className="project-list-date">{bundle ? formatDate(bundle.proposal.createdAt) : '—'}</span>
           <br />
-          <small style={{ color: 'var(--text-secondary)' }}>{changes === null ? 'Loading...' : `${changes} changed fields`}</small>
+          <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{changes === null ? 'Loading...' : `${changes} changed fields`}</small>
         </td>
         <td>
-          <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" className={styles.secondaryButton} onClick={() => openProfile(assignment.companyProfileId)}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <button type="button" className="project-detail-btn" onClick={() => openProfile(assignment.companyProfileId)}>
               View Profile
             </button>
             <button
               type="button"
-              className={styles.primaryButton}
+              className="project-detail-btn primary"
               onClick={() => openProposalReview(proposalId)}
             >
               Review
@@ -1238,51 +1241,51 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   };
 
   const renderHistoryRow = (review: CompanyMonitoringReviewResponse) => {
-    const reviewerName = review.reviewedByName || review.reviewedByEmail || '-';
+    const reviewerName = review.reviewedByName || review.reviewedByEmail || '—';
     const reviewerEmail = review.reviewedByEmail;
     const proposalStatus = review.result === 'NO_CHANGE' ? null : review.proposalStatus;
 
     return (
       <tr key={review.id}>
-        <td>
-          <strong>{review.companyName || review.companyProfileId}</strong>
+        <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <strong className="project-name-primary" title={review.companyName || review.companyProfileId}>{review.companyName || review.companyProfileId}</strong>
         </td>
         <td>
           {reviewerEmail && reviewerEmail !== reviewerName ? (
             <>
-              <strong>{reviewerName}</strong>
+              <strong style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{reviewerName}</strong>
               <br />
-              <small style={{ color: 'var(--text-secondary)' }}>{reviewerEmail}</small>
+              <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{reviewerEmail}</small>
             </>
           ) : (
-            <span>{reviewerName}</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{reviewerName}</span>
           )}
         </td>
         <td>
-          <span className={`workspace-badge ${reviewResultTone(review.result)}`}>
+          <span className={`project-status-badge ${reviewResultTone(review.result)}`}>
             {reviewResultLabel(review.result)}
           </span>
         </td>
         <td>
           {proposalStatus ? (
-            <span className={`workspace-badge ${proposalTone(proposalStatus)}`}>
+            <span className={`project-status-badge ${proposalTone(proposalStatus)}`}>
               {proposalStatusLabel(proposalStatus)}
             </span>
           ) : (
-            <span style={{ color: 'var(--text-secondary)' }}>&mdash;</span>
+            <span style={{ color: 'var(--text-muted)' }}>&mdash;</span>
           )}
         </td>
         <td>
-          <strong>{formatDateTime(review.reviewedAt)}</strong>
+          <span className="project-list-date">{formatDateTime(review.reviewedAt)}</span>
         </td>
         <td>
-          <div className="admin-row-actions" style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" className={styles.secondaryButton} onClick={() => openProfile(review.companyProfileId)}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <button type="button" className="project-detail-btn" onClick={() => openProfile(review.companyProfileId)}>
               View Profile
             </button>
             <button
               type="button"
-              className={styles.secondaryButton}
+              className="project-detail-btn"
               onClick={() => setSelectedHistoryReview(review)}
             >
               View Detail
@@ -1294,323 +1297,392 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   };
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.headerTitle}>Monitoring Management</h1>
-          <span className={styles.eyebrow}>Assign staff to monitored companies, review profile update proposals, and track decisions</span>
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page monitoring-page" id="page-monitoring-management">
+      <div className="workspace-main-full">
+        <div className="workspace-page-head">
+          <div>
+            <h1>Monitoring Management</h1>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Manage company monitoring assignments and reviews
+            </p>
+          </div>
         </div>
-      </header>
 
-      {toast && <div className="admin-toast success">{toast}</div>}
-      {error && <div className="admin-toast danger">{error}</div>}
-      {proposalError && <div className="admin-toast danger">{proposalError}</div>}
-      {historyError && <div className="admin-toast danger">{historyError}</div>}
+        {toast && <div className="admin-toast success">{toast}</div>}
+        {error && <div className="admin-toast danger">{error}</div>}
+        {proposalError && <div className="admin-toast danger">{proposalError}</div>}
+        {historyError && <div className="admin-toast danger">{historyError}</div>}
 
-      <section className={styles.metricGrid} style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-        <article className={styles.metricCard}>
-          <span>Awaiting Assignment</span>
-          <strong>{metrics.unassigned}</strong>
-          <p>Companies without active monitoring</p>
-        </article>
-        <article className={styles.metricCard}>
-          <span>Active Monitoring</span>
-          <strong>{metrics.active}</strong>
-          <p>Assignments currently monitored</p>
-        </article>
-        <article className={styles.metricCard}>
-          <span>Pending Reviews</span>
-          <strong>{pendingReviewRows.length}</strong>
-          <p>Profile proposals awaiting manager decision</p>
-        </article>
-        <article className={styles.metricCard}>
-          <span>Overdue</span>
-          <strong>{metrics.overdue}</strong>
-          <p>Past their scheduled review date</p>
-        </article>
-      </section>
-
-      <main className={styles.panel}>
-
-      <div className="tabs" style={{ marginBottom: '16px' }}>
-        <button
-          type="button"
-          className={`tab ${activeTab === 'assignments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('assignments')}
-        >
-          Monitoring 
-          <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'assignments' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'assignments' ? '#fff' : 'var(--text-secondary)' }}>
-            {monitoringRows.length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`tab ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pending')}
-        >
-          Pending Reviews 
-          <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'pending' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'pending' ? '#fff' : 'var(--text-secondary)' }}>
-            {pendingReviewRows.length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`tab ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          Monitoring History
-          <span className="stat-list-badge" style={{ marginLeft: '6px', backgroundColor: activeTab === 'history' ? 'var(--role-accent, #2563eb)' : 'var(--workspace-muted-border, #e2e8f0)', color: activeTab === 'history' ? '#fff' : 'var(--text-secondary)' }}>
-            {monitoringHistoryTotal}
-          </span>
-        </button>
-      </div>
-
-      {activeTab === 'assignments' && (
-        <section className="workspace-panel">
-          <div className="workspace-section-head">
-            <div>
-              <h3>Company Monitoring</h3>
-              <p>Assign staff, manage review cycles, and track company monitoring.</p>
-            </div>
+        <div className="workspace-focus-card">
+          <div className="workspace-focus-metrics">
+            <article>
+              <strong>{metrics.unassigned}</strong>
+              <span>Awaiting Assignment</span>
+            </article>
+            <article>
+              <strong>{metrics.active}</strong>
+              <span>Active Monitoring</span>
+            </article>
+            <article>
+              <strong>{pendingReviewRows.length}</strong>
+              <span>Pending Reviews</span>
+            </article>
+            <article>
+              <strong>{metrics.overdue}</strong>
+              <span>Overdue</span>
+            </article>
           </div>
+        </div>
 
-          <div className={styles.toolbar} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 160px 180px', gap: '12px' }}>
-            <input
-              className="admin-input"
-              placeholder="Search company or staff"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <select className="admin-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="ALL">All statuses</option>
-              <option value="UNASSIGNED">Not Assigned</option>
-              <option value="ACTIVE">Active</option>
-              <option value="PAUSED">Paused</option>
-              <option value="DUE">Due</option>
-              <option value="OVERDUE">Overdue</option>
-              <option value="ON_SCHEDULE">On Schedule</option>
-            </select>
-            <select
-              className="admin-select"
-              value={frequencyFilter}
-              onChange={(event) => setFrequencyFilter(event.target.value)}
+        <div className="manager-project-container">
+          <div className="monitoring-tabs">
+            <button
+              type="button"
+              className={`monitoring-tab ${activeTab === 'assignments' ? 'active' : ''}`}
+              onClick={() => setActiveTab('assignments')}
             >
-              <option value="ALL">All frequencies</option>
-              <option value="MONTHLY">Monthly</option>
-              <option value="QUARTERLY">Quarterly</option>
-              <option value="SEMI_ANNUALLY">Semi-annually</option>
-            </select>
+              Monitoring
+              <span className="monitoring-tab-count">{monitoringRows.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`monitoring-tab ${activeTab === 'pending' ? 'active' : ''}`}
+              onClick={() => setActiveTab('pending')}
+            >
+              Pending Reviews
+              <span className="monitoring-tab-count">{pendingReviewRows.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`monitoring-tab ${activeTab === 'history' ? 'active' : ''}`}
+              onClick={() => setActiveTab('history')}
+            >
+              Monitoring History
+              <span className="monitoring-tab-count">{monitoringHistoryTotal}</span>
+            </button>
           </div>
 
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Company</th>
-                  <th>Assigned Staff</th>
-                  <th>Review Cycle</th>
-                  <th>Next Review</th>
-                  <th>Status</th>
-                  <th>Proposal</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="workspace-empty monitoring-management-pagination">Loading monitoring assignments...</td>
-                  </tr>
-                ) : currentRows.length ? (
-                  currentRows.map((row, index) =>
-                    row.kind === 'unassigned' 
-                      ? renderUnassignedRow(row.profile, (currentPage - 1) * PAGE_SIZE + index)
-                      : renderAssignmentRow(row.assignment, (currentPage - 1) * PAGE_SIZE + index)
-                  )
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="workspace-empty monitoring-management-pagination">No monitoring assignments found.</td>
-                  </tr>
+          {activeTab === 'assignments' && (
+            <>
+              <div className="manager-project-filters">
+                <input
+                  className="search-input"
+                  placeholder="Search company or staff..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+                <select className="search-input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <option value="ALL">All Statuses</option>
+                  <option value="UNASSIGNED">Not Assigned</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="PAUSED">Paused</option>
+                  <option value="DUE">Due</option>
+                  <option value="OVERDUE">Overdue</option>
+                  <option value="ON_SCHEDULE">On Schedule</option>
+                </select>
+                <select
+                  className="search-input"
+                  value={frequencyFilter}
+                  onChange={(event) => setFrequencyFilter(event.target.value)}
+                >
+                  <option value="ALL">All Frequencies</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="SEMI_ANNUALLY">Semi-annually</option>
+                </select>
+              </div>
+
+              <div className="manager-project-table-scroll">
+                <div className="manager-project-table-inner">
+                  <table className="monitoring-table">
+                    <thead>
+                      <tr>
+                        <th className="col-mono">#</th>
+                        <th>Company</th>
+                        <th>Assigned Staff</th>
+                        <th>Review Cycle</th>
+                        <th>Next Review</th>
+                        <th>Status</th>
+                        <th>Proposal</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={8} className="project-table-empty">
+                            <p className="project-table-empty-title">Loading monitoring assignments...</p>
+                          </td>
+                        </tr>
+                      ) : currentRows.length ? (
+                        currentRows.map((row, index) =>
+                          row.kind === 'unassigned' 
+                            ? renderUnassignedRow(row.profile, (currentPage - 1) * PAGE_SIZE + index)
+                            : renderAssignmentRow(row.assignment, (currentPage - 1) * PAGE_SIZE + index)
+                        )
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="project-table-empty">
+                            <p className="project-table-empty-title">No monitoring assignments found.</p>
+                            <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="project-table-pagination">
+                <span>
+                  Showing {filteredRows.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}–
+                  {Math.min(currentPage * PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(1)}
+                  >
+                    First
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`workspace-page-btn ${currentPage === index + 1 ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(index + 1)}
+                      disabled={filteredRows.length === 0}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(totalPages)}
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'pending' && (
+            <>
+              <div className="manager-project-filters" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
+                <input
+                  className="search-input"
+                  placeholder="Search company, staff, or proposal ID..."
+                  value={proposalSearch}
+                  onChange={(event) => setProposalSearch(event.target.value)}
+                />
+                {proposalLoading && (
+                  <span className="project-status-badge info" style={{ alignSelf: 'center' }}>
+                    Loading proposals...
+                  </span>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </div>
 
-          <div className="project-table-pagination monitoring-management-pagination">
-            <span>
-              Showing {filteredRows.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0}-
-              {Math.min(currentPage * PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
-            </span>
-            <div>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              >
-                Previous
-              </button>
-              <span>
-                Page {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+              <div className="manager-project-table-scroll">
+                <div className="manager-project-table-inner">
+                  <table className="monitoring-table">
+                    <thead>
+                      <tr>
+                        <th>Company / Proposal</th>
+                        <th>Submitted by</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentPending.length ? (
+                        currentPending.map((row) => renderProposalRow(row))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="project-table-empty">
+                            <p className="project-table-empty-title">No pending monitoring proposals found.</p>
+                            <p className="project-table-empty-desc">Proposals submitted by staff will appear here for review.</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-      {activeTab === 'pending' && (
-        <section className="workspace-panel">
-          <div className="workspace-section-head">
-            <div>
-              <h3>Pending Profile Update Reviews</h3>
-              <p>Loaded from monitoring assignments and each company profile's pending proposal endpoint.</p>
-            </div>
-            {proposalLoading && <span className="workspace-badge info">Loading proposals</span>}
-          </div>
+              <div className="project-table-pagination">
+                <span>
+                  Showing {filteredPendingRows.length ? (proposalPage - 1) * PAGE_SIZE + 1 : 0}–
+                  {Math.min(proposalPage * PAGE_SIZE, filteredPendingRows.length)} of {filteredPendingRows.length}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={proposalPage === 1}
+                    onClick={() => setProposalPage(1)}
+                  >
+                    First
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={proposalPage === 1}
+                    onClick={() => setProposalPage((page) => Math.max(1, page - 1))}
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: pendingPages }, (_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`workspace-page-btn ${proposalPage === index + 1 ? 'active' : ''}`}
+                      onClick={() => setProposalPage(index + 1)}
+                      disabled={filteredPendingRows.length === 0}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={proposalPage >= pendingPages}
+                    onClick={() => setProposalPage((page) => Math.min(pendingPages, page + 1))}
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={proposalPage >= pendingPages}
+                    onClick={() => setProposalPage(pendingPages)}
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
-          <div className={styles.toolbar}>
-            <input
-              className="admin-input"
-              placeholder="Search company, staff, or proposal id"
-              value={proposalSearch}
-              onChange={(event) => setProposalSearch(event.target.value)}
-            />
-          </div>
+          {activeTab === 'history' && (
+            <>
+              {historyLoading && (
+                <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                  <span className="project-status-badge info">Loading history...</span>
+                </div>
+              )}
 
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Company / Proposal</th>
-                  <th>Submitted by</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPending.length ? (
-                  currentPending.map((row) => renderProposalRow(row))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="workspace-empty">No pending monitoring proposals found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              <div className="manager-project-table-scroll">
+                <div className="manager-project-table-inner">
+                  <table className="monitoring-table">
+                    <thead>
+                      <tr>
+                        <th>Company</th>
+                        <th>Reviewed By</th>
+                        <th>Review Result</th>
+                        <th>Proposal Status</th>
+                        <th>Reviewed At</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyLoading ? (
+                        <tr>
+                          <td colSpan={6} className="project-table-empty">
+                            <p className="project-table-empty-title">Loading monitoring history...</p>
+                          </td>
+                        </tr>
+                      ) : currentHistory.length ? (
+                        currentHistory.map((row) => renderHistoryRow(row))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="project-table-empty">
+                            <p className="project-table-empty-title">No monitoring history yet.</p>
+                            <p className="project-table-empty-desc">Completed monitoring reviews will appear here.</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-          <div className="project-table-pagination monitoring-proposal-pagination">
-            <span>
-              Showing {filteredPendingRows.length ? (proposalPage - 1) * PAGE_SIZE + 1 : 0}-
-              {Math.min(proposalPage * PAGE_SIZE, filteredPendingRows.length)} of {filteredPendingRows.length}
-            </span>
-            <div>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={proposalPage === 1}
-                onClick={() => setProposalPage((page) => Math.max(1, page - 1))}
-              >
-                Previous
-              </button>
-              <span>
-                Page {proposalPage} / {pendingPages}
-              </span>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={proposalPage === pendingPages}
-                onClick={() => setProposalPage((page) => Math.min(pendingPages, page + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'history' && (
-        <section className="workspace-panel">
-          <div className="workspace-section-head">
-            <div>
-              <h3>Monitoring History</h3>
-              <p>Completed company monitoring reviews, including no-change reviews and proposal outcomes.</p>
-            </div>
-            {historyLoading && <span className="workspace-badge info">Loading history</span>}
-          </div>
-
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Reviewed By</th>
-                  <th>Review Result</th>
-                  <th>Proposal Status</th>
-                  <th>Reviewed At</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyLoading ? (
-                  <tr>
-                    <td colSpan={6} className="workspace-empty">Loading monitoring history...</td>
-                  </tr>
-                ) : currentHistory.length ? (
-                  currentHistory.map((row) => renderHistoryRow(row))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="workspace-empty">
-                      <strong>No monitoring history yet.</strong>
-                      <br />
-                      <span>Completed monitoring reviews will appear here.</span>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="project-table-pagination monitoring-proposal-pagination">
-            <span>
-              Showing {monitoringHistoryTotal ? (historyPage - 1) * PAGE_SIZE + 1 : 0}-
-              {Math.min(historyPage * PAGE_SIZE, monitoringHistoryTotal)} of {monitoringHistoryTotal}
-            </span>
-            <div>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={historyPage === 1}
-                onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
-              >
-                Previous
-              </button>
-              <span>
-                Page {historyPage} / {historyPages}
-              </span>
-              <button
-                type="button"
-                className="workspace-page-btn"
-                disabled={historyPage === historyPages}
-                onClick={() => setHistoryPage((page) => Math.min(historyPages, page + 1))}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      </main>
+              <div className="project-table-pagination">
+                <span>
+                  Showing {monitoringHistoryTotal ? (historyPage - 1) * PAGE_SIZE + 1 : 0}–
+                  {Math.min(historyPage * PAGE_SIZE, monitoringHistoryTotal)} of {monitoringHistoryTotal}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={historyPage === 1}
+                    onClick={() => setHistoryPage(1)}
+                  >
+                    First
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={historyPage === 1}
+                    onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: historyPages }, (_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`workspace-page-btn ${historyPage === index + 1 ? 'active' : ''}`}
+                      onClick={() => setHistoryPage(index + 1)}
+                      disabled={monitoringHistoryTotal === 0}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={historyPage >= historyPages}
+                    onClick={() => setHistoryPage((page) => Math.min(historyPages, page + 1))}
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    className="workspace-page-btn"
+                    disabled={historyPage >= historyPages}
+                    onClick={() => setHistoryPage(historyPages)}
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       <AssignMonitorModal
         isOpen={showCreateModal}
@@ -1899,6 +1971,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         imageId={evidencePreviewImageId}
         onClose={() => setEvidencePreviewImageId(null)}
       />
-    </div>
+    </section>
   );
 };
