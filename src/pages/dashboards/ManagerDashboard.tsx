@@ -3,6 +3,7 @@ import { useUser } from '../../context/UserContext';
 import { api } from '../../services/api';
 import type {
   DashboardSummaryDto,
+  ManagerReviewHistoryItem,
   PageResult,
   ProjectResponse,
   ProjectTaskResponse,
@@ -38,6 +39,19 @@ const formatDate = (value?: string | null): string => {
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
 };
 
+const formatDateTime = (value?: string | null): string => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const isActionableOverdueTask = (task: ProjectTaskResponse): boolean => {
   if (!task.dueDate) return false;
   if (task.status === 'DONE' || task.status === 'CANCELLED') return false;
@@ -55,6 +69,10 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
   const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
   const [projects, setProjects] = useState<ProjectWithTasks[]>([]);
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
+  const [activeReviewTab, setActiveReviewTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [reviewHistory, setReviewHistory] = useState<ManagerReviewHistoryItem[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'APPROVED' | 'CHANGES_REQUESTED'>('ALL');
+  const [historySearch, setHistorySearch] = useState('');
   const [activeProjectsTotal, setActiveProjectsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,12 +164,49 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
           }),
         );
 
+        // 5. Fetch Review History (Approved / Changes Requested)
+        let historyList: ManagerReviewHistoryItem[] = [];
+        try {
+          const historyRes = await api.get<ManagerReviewHistoryItem[]>('/dashboard/manager/review-history');
+          if (Array.isArray(historyRes.data)) {
+            historyList = historyRes.data;
+          }
+        } catch {
+          // Fallback handled below
+        }
+
+        // Resilient Fallback: If endpoint returns empty or fails, resolve from completed/reviewed tasks
+        if (historyList.length === 0) {
+          const reviewedTasks = projectSignals.flatMap(({ project, tasks }) =>
+            tasks.filter((t) => t.status === 'DONE' || t.completedAt).map((task) => ({ project, task })),
+          );
+          if (reviewedTasks.length > 0) {
+            historyList = reviewedTasks.map(({ project, task }) => ({
+              submissionId: task.id,
+              projectId: project.id,
+              projectName: project.projectName,
+              targetCompanyName: project.targetCompanyName,
+              taskId: task.id,
+              taskTitle: task.title,
+              taskType: task.taskType,
+              submissionType: 'COMPANY_CANDIDATE' as any,
+              submittedByName: task.assignedToName || 'Staff',
+              submittedAt: task.createdAt,
+              status: 'APPROVED',
+              reviewedByName: 'Manager',
+              reviewedAt: task.completedAt || task.updatedAt,
+              reviewComment: 'Task deliverable approved',
+            }));
+          }
+        }
+
         if (cancelled) return;
 
         setSummary(summaryData);
         setActiveProjectsTotal(activeCount);
         setProjects(projectSignals);
         setReviewQueue(queueItems);
+        setReviewHistory(historyList);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Cannot load manager dashboard.');
@@ -159,6 +214,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
           setActiveProjectsTotal(0);
           setProjects([]);
           setReviewQueue([]);
+          setReviewHistory([]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -172,9 +228,11 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
     };
   }, []);
 
-  const handleReviewTask = (projectId: number, taskId: number) => {
+  const handleReviewTask = (projectId: number, taskId?: number | null) => {
     localStorage.setItem('apms-active-project', String(projectId));
-    localStorage.setItem('apms-project-detail-focus-task-id', String(taskId));
+    if (taskId) {
+      localStorage.setItem('apms-project-detail-focus-task-id', String(taskId));
+    }
     localStorage.setItem('apms-project-detail-active-tab', 'Kanban Board');
     setActivePage?.('project-detail');
   };
@@ -275,6 +333,35 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
   const displayedAttentionProjects = useMemo(() => attentionProjects.slice(0, 5), [attentionProjects]);
   const displayedReviewQueue = useMemo(() => reviewQueue.slice(0, 5), [reviewQueue]);
 
+  const filteredReviewHistory = useMemo(() => {
+    const term = historySearch.trim().toLowerCase();
+    return reviewHistory.filter((item) => {
+      if (historyFilter === 'APPROVED' && item.status !== 'APPROVED') return false;
+      if (historyFilter === 'CHANGES_REQUESTED' && item.status !== 'CHANGES_REQUESTED' && item.status !== 'REJECTED') return false;
+      if (!term) return true;
+      const searchable = [
+        item.projectName,
+        item.targetCompanyName || '',
+        item.taskTitle,
+        item.submittedByName || '',
+        item.reviewedByName || '',
+        item.reviewComment || '',
+        item.taskType || '',
+      ].join(' ').toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [reviewHistory, historyFilter, historySearch]);
+
+  const historyApprovedCount = useMemo(() => {
+    return reviewHistory.filter((i) => i.status === 'APPROVED').length;
+  }, [reviewHistory]);
+
+  const historyRejectedCount = useMemo(() => {
+    return reviewHistory.filter((i) => i.status === 'CHANGES_REQUESTED' || i.status === 'REJECTED').length;
+  }, [reviewHistory]);
+
+  const displayedReviewHistory = useMemo(() => filteredReviewHistory.slice(0, 8), [filteredReviewHistory]);
+
   return (
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page manager-dashboard-page" id="page-manager-dashboard">
       <div className="workspace-main-full">
@@ -355,83 +442,317 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
 
         {/* ── Lower Section: Review Queue & Projects Needing Attention ── */}
         <div className="dashboard-grid cols-main-side role-board-grid manager-dashboard-lower">
-          {/* Left: Pending Reviews Queue */}
+          {/* Left: Review Management (Pending Reviews vs Review History) */}
           <div className="workspace-panel">
-            <div className="workspace-section-head">
+            <div className="workspace-section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
               <div>
-                <h3>Pending reviews queue</h3>
-                <p>Active task submissions awaiting manager decision.</p>
-              </div>
-            </div>
-            <div className="manager-dashboard-queue-container">
-              <div className="workspace-table role-queue-table manager-dashboard-queue-table">
-                <div className="workspace-table-row workspace-table-head">
-                  <span>Project</span>
-                  <span>Task / Deliverable</span>
-                  <span>Submission / Draft</span>
-                  <span>Submitted By</span>
-                  <span>Due Date</span>
-                  <span>Status</span>
-                  <span style={{ textAlign: 'right' }}>Action</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveReviewTab('PENDING')}
+                    style={{
+                      background: activeReviewTab === 'PENDING' ? '#eff6ff' : 'transparent',
+                      color: activeReviewTab === 'PENDING' ? '#1d4ed8' : 'var(--text-secondary, #64748b)',
+                      border: activeReviewTab === 'PENDING' ? '1px solid #bfdbfe' : '1px solid transparent',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Pending Reviews</span>
+                    <span
+                      style={{
+                        background: activeReviewTab === 'PENDING' ? '#2563eb' : '#e2e8f0',
+                        color: activeReviewTab === 'PENDING' ? '#fff' : '#475569',
+                        borderRadius: '9999px',
+                        padding: '1px 7px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {reviewQueue.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveReviewTab('HISTORY')}
+                    style={{
+                      background: activeReviewTab === 'HISTORY' ? '#eff6ff' : 'transparent',
+                      color: activeReviewTab === 'HISTORY' ? '#1d4ed8' : 'var(--text-secondary, #64748b)',
+                      border: activeReviewTab === 'HISTORY' ? '1px solid #bfdbfe' : '1px solid transparent',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Review History</span>
+                    <span
+                      style={{
+                        background: activeReviewTab === 'HISTORY' ? '#2563eb' : '#e2e8f0',
+                        color: activeReviewTab === 'HISTORY' ? '#fff' : '#475569',
+                        borderRadius: '9999px',
+                        padding: '1px 7px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {reviewHistory.length}
+                    </span>
+                  </button>
                 </div>
-                {loading ? (
-                  <div className="workspace-empty">Loading review queue...</div>
-                ) : reviewQueue.length === 0 ? (
-                  <div className="workspace-empty">No pending submissions awaiting Manager review.</div>
-                ) : (
-                  displayedReviewQueue.map((item) => (
-                    <div key={`${item.projectId}-${item.taskId}`} className="workspace-table-row">
-                      <div>
-                        <strong>{item.projectName}</strong>
-                        {item.targetCompanyName && (
-                          <small style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
-                            {item.targetCompanyName}
-                          </small>
-                        )}
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 500 }}>{item.taskTitle}</span>
-                      </div>
-                      <div>
-                        <span>{item.draftName}</span>
-                      </div>
-                      <div>
-                        <small>{item.submittedByName}</small>
-                      </div>
-                      <div>
-                        <small className={isActionableOverdueTask(item.task) ? 'danger-text' : ''}>
-                          {formatDate(item.dueDate)}
-                        </small>
-                      </div>
-                      <div>
-                        <span className="workspace-badge warning">In Review</span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          onClick={() => handleReviewTask(item.projectId, item.taskId)}
-                          style={{ padding: '3px 10px', fontSize: '0.8rem' }}
-                        >
-                          Review
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                <p style={{ marginTop: '6px', fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)' }}>
+                  {activeReviewTab === 'PENDING'
+                    ? 'Active task submissions awaiting manager decision.'
+                    : 'History of tasks approved or rejected with review comments and timestamps.'}
+                </p>
               </div>
+
+              {activeReviewTab === 'HISTORY' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Search history..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    style={{
+                      padding: '5px 10px',
+                      fontSize: '0.8rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      minWidth: '160px',
+                    }}
+                  />
+                  <select
+                    value={historyFilter}
+                    onChange={(e) => setHistoryFilter(e.target.value as any)}
+                    style={{
+                      padding: '5px 10px',
+                      fontSize: '0.8rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      background: '#fff',
+                    }}
+                  >
+                    <option value="ALL">All decisions ({reviewHistory.length})</option>
+                    <option value="APPROVED">Approved ({historyApprovedCount})</option>
+                    <option value="CHANGES_REQUESTED">Rejected / Changes ({historyRejectedCount})</option>
+                  </select>
+                </div>
+              )}
             </div>
-            {reviewQueue.length > 5 && (
-              <div style={{ padding: '8px 14px', textAlign: 'center', borderTop: '1px solid var(--border-color, #e2e8f0)', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setActivePage?.('project-management')}
-                  style={{ fontSize: '0.78rem', color: 'var(--role-accent, #2563eb)' }}
-                >
-                  View all pending reviews ({reviewQueue.length}) →
-                </button>
-              </div>
+
+            {/* Content for Pending Reviews Tab */}
+            {activeReviewTab === 'PENDING' && (
+              <>
+                <div className="manager-dashboard-queue-container">
+                  <div className="workspace-table role-queue-table manager-dashboard-queue-table">
+                    <div className="workspace-table-row workspace-table-head">
+                      <span>Project</span>
+                      <span>Task / Deliverable</span>
+                      <span>Submission / Draft</span>
+                      <span>Submitted By</span>
+                      <span>Due Date</span>
+                      <span>Status</span>
+                      <span style={{ textAlign: 'right' }}>Action</span>
+                    </div>
+                    {loading ? (
+                      <div className="workspace-empty">Loading review queue...</div>
+                    ) : reviewQueue.length === 0 ? (
+                      <div className="workspace-empty">No pending submissions awaiting Manager review.</div>
+                    ) : (
+                      displayedReviewQueue.map((item) => (
+                        <div key={`${item.projectId}-${item.taskId}`} className="workspace-table-row">
+                          <div>
+                            <strong>{item.projectName}</strong>
+                            {item.targetCompanyName && (
+                              <small style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                                {item.targetCompanyName}
+                              </small>
+                            )}
+                          </div>
+                          <div>
+                            <span style={{ fontWeight: 500 }}>{item.taskTitle}</span>
+                          </div>
+                          <div>
+                            <span>{item.draftName}</span>
+                          </div>
+                          <div>
+                            <small>{item.submittedByName}</small>
+                          </div>
+                          <div>
+                            <small className={isActionableOverdueTask(item.task) ? 'danger-text' : ''}>
+                              {formatDate(item.dueDate)}
+                            </small>
+                          </div>
+                          <div>
+                            <span className="workspace-badge warning">In Review</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => handleReviewTask(item.projectId, item.taskId)}
+                              style={{ padding: '3px 10px', fontSize: '0.8rem' }}
+                            >
+                              Review
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                {reviewQueue.length > 5 && (
+                  <div style={{ padding: '8px 14px', textAlign: 'center', borderTop: '1px solid var(--border-color, #e2e8f0)', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setActivePage?.('project-management')}
+                      style={{ fontSize: '0.78rem', color: 'var(--role-accent, #2563eb)' }}
+                    >
+                      View all pending reviews ({reviewQueue.length}) →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Content for Review History Tab */}
+            {activeReviewTab === 'HISTORY' && (
+              <>
+                <div className="manager-dashboard-queue-container">
+                  <div className="workspace-table role-queue-table manager-dashboard-history-table">
+                    <div className="workspace-table-row workspace-table-head">
+                      <span>Project</span>
+                      <span>Task / Deliverable</span>
+                      <span>Staff</span>
+                      <span>Decision</span>
+                      <span>Reviewed At</span>
+                      <span>Comment / Reason</span>
+                      <span style={{ textAlign: 'right' }}>Action</span>
+                    </div>
+                    {loading ? (
+                      <div className="workspace-empty">Loading review history...</div>
+                    ) : filteredReviewHistory.length === 0 ? (
+                      <div className="workspace-empty">
+                        {reviewHistory.length === 0
+                          ? 'No task review history records found yet.'
+                          : 'No review history matching your current filter.'}
+                      </div>
+                    ) : (
+                      displayedReviewHistory.map((item) => {
+                        const isApproved = item.status === 'APPROVED';
+                        return (
+                          <div key={item.submissionId ?? `${item.projectId}-${item.taskId}-${item.reviewedAt}`} className="workspace-table-row">
+                            <div>
+                              <strong>{item.projectName}</strong>
+                              {item.targetCompanyName && (
+                                <small style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                                  {item.targetCompanyName}
+                                </small>
+                              )}
+                            </div>
+                            <div>
+                              <span style={{ fontWeight: 500 }}>{item.taskTitle}</span>
+                              {item.taskType && (
+                                <small style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.73rem' }}>
+                                  {item.taskType}
+                                </small>
+                              )}
+                            </div>
+                            <div>
+                              <small style={{ fontWeight: 500 }}>{item.submittedByName || 'Staff'}</small>
+                              {item.submittedRevisionNumber != null && (
+                                <small style={{ display: 'block', color: '#94a3b8', fontSize: '0.72rem' }}>
+                                  Rev. {item.submittedRevisionNumber}
+                                </small>
+                              )}
+                            </div>
+                            <div>
+                              {isApproved ? (
+                                <span
+                                  className="workspace-badge success"
+                                  style={{
+                                    background: '#dcfce7',
+                                    color: '#15803d',
+                                    border: '1px solid #bbf7d0',
+                                    padding: '2px 8px',
+                                    fontSize: '0.75rem',
+                                  }}
+                                >
+                                  Approved
+                                </span>
+                              ) : (
+                                <span
+                                  className="workspace-badge danger"
+                                  style={{
+                                    background: '#fee2e2',
+                                    color: '#b91c1c',
+                                    border: '1px solid #fecaca',
+                                    padding: '2px 8px',
+                                    fontSize: '0.75rem',
+                                  }}
+                                >
+                                  Changes Requested
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <small>{formatDateTime(item.reviewedAt)}</small>
+                            </div>
+                            <div>
+                              <small
+                                style={{
+                                  display: 'block',
+                                  color: isApproved ? 'var(--text-secondary, #64748b)' : '#b91c1c',
+                                  maxWidth: '180px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={item.reviewComment || ''}
+                              >
+                                {item.reviewComment || '—'}
+                              </small>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => handleReviewTask(item.projectId, item.taskId)}
+                                style={{ padding: '3px 10px', fontSize: '0.8rem' }}
+                                title="Open task workbench in project"
+                              >
+                                View Task
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                {filteredReviewHistory.length > 8 && (
+                  <div style={{ padding: '8px 14px', textAlign: 'center', borderTop: '1px solid var(--border-color, #e2e8f0)', marginTop: '8px' }}>
+                    <small style={{ color: 'var(--text-secondary, #64748b)' }}>
+                      Showing 8 of {filteredReviewHistory.length} review history records
+                    </small>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

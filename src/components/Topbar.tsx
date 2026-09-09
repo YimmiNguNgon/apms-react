@@ -7,6 +7,7 @@ import { LogoutModal } from './LogoutModal';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { api, type PageResponse } from '../services/api';
 import { resolveNotificationDestination } from '../utils/notificationResolver';
+import { CheckCheck, Loader2 } from 'lucide-react';
 
 interface TopbarProps {
   activePage: string;
@@ -166,6 +167,23 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
   const pageLabelKey = PAGE_LABEL_KEYS[activePage] || 'topbar.dashboard';
   const unreadCount = notifications.filter((item) => !item.isRead).length;
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+
+  const handleMarkAllAsRead = async () => {
+    if (unreadCount === 0 || isMarkingAllRead) return;
+    setIsMarkingAllRead(true);
+    setNotifications((current) =>
+      current.map((notification) => ({ ...notification, isRead: true }))
+    );
+    try {
+      await api.patch('/notifications/read-all', {});
+    } catch (error) {
+      console.warn('Cannot mark all notifications as read:', error);
+      void fetchNotifications();
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
 
   const handleNotificationClick = async (item: NotificationItem) => {
     if (!item.isRead) {
@@ -227,10 +245,44 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
               <div className="notif-panel">
                 <div className="notif-header">
                   <div>
-                    <div className="notif-title-line">{t('topbar.notifications.title')}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="notif-title-line">{t('topbar.notifications.title')}</span>
+                      {unreadCount > 0 && <span className="notif-count">{unreadCount}</span>}
+                    </div>
                     <div className="notif-subtitle">{t('topbar.notifications.subtitle')}</div>
                   </div>
-                  <span className="notif-count">{unreadCount}</span>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void handleMarkAllAsRead()}
+                      disabled={isMarkingAllRead}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--color-primary, #2563eb)',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: isMarkingAllRead ? 'not-allowed' : 'pointer',
+                        padding: '4px 6px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        whiteSpace: 'nowrap',
+                        opacity: isMarkingAllRead ? 0.6 : 1,
+                      }}
+                      title={t('topbar.notifications.markAllRead')}
+                    >
+                      {isMarkingAllRead ? (
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <CheckCheck size={14} />
+                      )}
+                      {isMarkingAllRead
+                        ? t('topbar.notifications.markingAllRead')
+                        : t('topbar.notifications.markAllRead')}
+                    </button>
+                  )}
                 </div>
                 <div className="notif-list">
                   {notificationsLoading && notifications.length === 0 && (
@@ -259,8 +311,47 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                     </button>
                   ))}
                 </div>
-                <div className="notif-footer">
-                  <button className="btn btn-outline btn-sm" style={{ width: '100%', justifyContent: 'center', fontSize: 'var(--text-caption)' }} onClick={() => void fetchNotifications()}>
+                <div className="notif-footer" style={{ display: 'flex', gap: '8px' }}>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{
+                        flex: 1,
+                        justifyContent: 'center',
+                        fontSize: 'var(--text-caption)',
+                        color: '#2563eb',
+                        borderColor: '#bfdbfe',
+                        background: '#eff6ff',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      onClick={() => void handleMarkAllAsRead()}
+                      disabled={isMarkingAllRead}
+                    >
+                      {isMarkingAllRead ? (
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <CheckCheck size={14} />
+                      )}
+                      {isMarkingAllRead
+                        ? t('topbar.notifications.markingAllRead')
+                        : t('topbar.notifications.markAllRead')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{
+                      flex: unreadCount > 0 ? 1 : 'none',
+                      width: unreadCount > 0 ? 'auto' : '100%',
+                      justifyContent: 'center',
+                      fontSize: 'var(--text-caption)',
+                    }}
+                    onClick={() => void fetchNotifications()}
+                  >
                     {t('topbar.notifications.refresh')}
                   </button>
                 </div>

@@ -40,6 +40,7 @@ import {
   UserX,
   Users,
   X,
+  History,
 } from 'lucide-react';
 import styles from './ProjectDetailPage.module.css';
 import {
@@ -95,9 +96,14 @@ import type {
   WorkbenchDocumentResponse,
   ProjectTaskWorkbenchResponse,
   UpdateCandidateRequest,
+  ManagerReviewHistoryItem,
+  SubmissionStatus,
+  StaffWorkHistoryItemResponse,
+  TaskHistoryDetailResponse,
+  TaskTimelineEventResponse,
 } from '../types/domain';
 
-const tabs = ['Kanban Board', 'Candidates', 'Documents', 'Company Members', 'Members'];
+const tabs = ['Kanban Board', 'Review History', 'Members'];
 const SELECTED_PROJECT_STORAGE_KEY = 'apms-selected-project';
 const PROJECT_DETAIL_TAB_STORAGE_KEY = 'apms-project-detail-active-tab';
 
@@ -148,6 +154,28 @@ const formatMemberDate = (value: string | null | undefined) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'No date';
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).format(date);
+};
+
+const formatDeliverableType = (type?: string | null) => {
+  switch (type) {
+    case 'COMPANY_DATA_PREPARATION':
+    case 'COMPANY_CANDIDATE':
+      return 'Company Profile Candidate';
+    case 'FINANCIAL_RESEARCH':
+      return 'Financial Research';
+    case 'COMPANY_MEMBER_RESEARCH':
+      return 'Company Members';
+    case 'PARTNER_CONTRACT_COLLECTION':
+      return 'Contract Information';
+    case 'COMPANY_REPORT':
+      return 'Company Report';
+    case 'COMPANY_NEWS_RESEARCH':
+      return 'News Research';
+    case 'ROLE_EVALUATION':
+      return 'Role Evaluation';
+    default:
+      return type ? type.replace(/_/g, ' ') : 'Deliverable';
+  }
 };
 
 const PROJECT_STATUS_LABELS: Record<ApiProjectStatus, string> = {
@@ -246,8 +274,8 @@ const formatAccountRole = (role: string | undefined | null) => {
 
 const candidateStatusLabel: Record<CandidateStatus, string> = {
   DRAFT: 'Draft',
-  PENDING_REVIEW: 'In Manager Review',
-  REVISION_REQUIRED: 'Changes Requested',
+  PENDING_REVIEW: 'Pending review',
+  REVISION_REQUIRED: 'Revision required',
   REJECTED: 'Rejected',
   CORRECTED: 'Corrected',
   APPROVED: 'Approved',
@@ -262,7 +290,77 @@ const candidateStatusClass: Record<CandidateStatus, string> = {
   APPROVED: styles.candidateAPPROVED,
 };
 
-const visibleCandidateStatuses = new Set<CandidateStatus>(['PENDING_REVIEW', 'REVISION_REQUIRED', 'APPROVED', 'REJECTED']);
+const visibleCandidateStatuses = new Set<CandidateStatus>(['PENDING_REVIEW', 'REVISION_REQUIRED', 'APPROVED', 'REJECTED', 'DRAFT', 'CORRECTED']);
+
+const getCandidateReviewerName = (
+  candidate: CandidateResponse,
+  members: ProjectMemberResponse[],
+  currentUser?: { id?: number; fullName?: string; email?: string } | null
+): string => {
+  const reviewedBy = candidate.review?.reviewedBy
+    || ((candidate.status === 'REVISION_REQUIRED' || candidate.status === 'CORRECTED') ? candidate.metadata?.lastModifiedBy : undefined);
+  if (!reviewedBy) return '—';
+  if (currentUser && String(currentUser.id) === String(reviewedBy)) {
+    return currentUser.fullName || currentUser.email || 'Current User';
+  }
+  const member = members.find((m) => String(m.accountId) === String(reviewedBy));
+  if (member?.fullName) return member.fullName;
+  return `User #${reviewedBy}`;
+};
+
+const getCandidateReviewDate = (candidate: CandidateResponse): string | null => {
+  if (candidate.review?.reviewedAt) {
+    return candidate.review.reviewedAt;
+  }
+  if (candidate.status === 'REVISION_REQUIRED' || candidate.status === 'CORRECTED') {
+    return candidate.metadata?.updatedAt || candidate.lastSubmittedAt || candidate.metadata?.createdAt || null;
+  }
+  return null;
+};
+
+const getCandidateSource = (candidate: CandidateResponse): { fileName: string; method?: string } => {
+  const origin = candidate.extractionSource?.originFileName;
+  if (origin) {
+    return { fileName: origin, method: candidate.extractionSource?.extractionMethod };
+  }
+  const sourceDoc = candidate.sourceDocumentIds?.[0];
+  if (sourceDoc) {
+    return { fileName: `Doc #${sourceDoc}`, method: candidate.extractionSource?.extractionMethod };
+  }
+  if (candidate.extractionSource?.extractionMethod) {
+    return { fileName: candidate.extractionSource.extractionMethod };
+  }
+  return { fileName: '—' };
+};
+
+const getCandidateEmptyStateMessage = (
+  totalCandidates: number,
+  statusFilter: CandidateStatus | 'ALL',
+  hasSearch: boolean
+): { title: string; subtitle?: string } => {
+  if (totalCandidates === 0) {
+    return {
+      title: 'No candidates yet.',
+      subtitle: 'Candidates will appear here after company information is extracted and submitted through the candidate workflow.',
+    };
+  }
+  if (hasSearch) {
+    return { title: 'No candidates match your current search and filters.' };
+  }
+  if (statusFilter === 'APPROVED') {
+    return { title: 'No approved candidates found.' };
+  }
+  if (statusFilter === 'REJECTED') {
+    return { title: 'No rejected candidates found.' };
+  }
+  if (statusFilter === 'PENDING_REVIEW') {
+    return { title: 'No candidates are currently waiting for review.' };
+  }
+  if (statusFilter === 'DRAFT') {
+    return { title: 'No draft candidates found.' };
+  }
+  return { title: 'No candidates match your current review filters.' };
+};
 const isStaffEditableCandidateStatus = (status?: CandidateStatus | null) => status === 'DRAFT' || status === 'REVISION_REQUIRED';
 const selectPreferredStaffCandidateDraft = (drafts: CandidateDraftSummary[] = []) => (
   drafts.find((draft) => draft.status === 'REVISION_REQUIRED')
@@ -3380,6 +3478,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isStaffView = currentUser?.role === ROLES.STAFF;
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem(PROJECT_DETAIL_TAB_STORAGE_KEY);
+    if (saved === 'Candidate History' || saved === 'Candidates') return 'Review History';
+    if (saved === 'Documents' || saved === 'Company Members') return 'Kanban Board';
+    if (saved === 'My Work History') return 'My Work History';
     return (saved === 'Pending Reviews' || saved === 'Available Tasks') ? 'Kanban Board' : (saved || 'Kanban Board');
   });
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -3462,6 +3563,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [lastExtractionReviews, setLastExtractionReviews] = useState<StaffExtractionReview[]>([]);
   const [claimingTaskId, setClaimingTaskId] = useState<number | null>(null);
   const [releasingTaskId, setReleasingTaskId] = useState<number | null>(null);
+
+  // Staff Work History States
+  const [myWorkHistory, setMyWorkHistory] = useState<StaffWorkHistoryItemResponse[]>([]);
+  const [myWorkHistoryLoading, setMyWorkHistoryLoading] = useState(false);
+  const [myWorkHistoryError, setMyWorkHistoryError] = useState<string | null>(null);
+  const [myWorkHistorySearch, setMyWorkHistorySearch] = useState('');
+  const [myWorkHistoryStatusFilter, setMyWorkHistoryStatusFilter] = useState<'ALL' | 'IN_PROGRESS' | 'IN_REVIEW' | 'REVISION_REQUESTED' | 'DONE'>('ALL');
+  const [selectedHistoryTask, setSelectedHistoryTask] = useState<StaffWorkHistoryItemResponse | null>(null);
+  const [taskHistoryDetail, setTaskHistoryDetail] = useState<TaskHistoryDetailResponse | null>(null);
+  const [taskHistoryLoading, setTaskHistoryLoading] = useState(false);
+  const [taskHistoryError, setTaskHistoryError] = useState<string | null>(null);
 
   useEffect(() => {
     cancelTaskLoadingRef.current = cancelTaskLoading;
@@ -3614,8 +3726,40 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [candidateActionMessage, setCandidateActionMessage] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('Insufficient evidence');
   const [candidateSearch, setCandidateSearch] = useState('');
-  const [candidateStatusFilter, setCandidateStatusFilter] = useState<CandidateStatus | 'ALL'>('PENDING_REVIEW');
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState<CandidateStatus | 'ALL'>('ALL');
   const [candidateRelationshipFilter, setCandidateRelationshipFilter] = useState('ALL');
+  const [reviewHistory, setReviewHistory] = useState<ManagerReviewHistoryItem[]>([]);
+  const [reviewHistoryLoading, setReviewHistoryLoading] = useState(false);
+  const [reviewHistoryError, setReviewHistoryError] = useState<string | null>(null);
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewDecisionFilter, setReviewDecisionFilter] = useState<'ALL' | 'APPROVED' | 'CHANGES_REQUESTED' | 'PENDING_REVIEW'>('ALL');
+  const [selectedReviewHistoryItem, setSelectedReviewHistoryItem] = useState<ManagerReviewHistoryItem | null>(null);
+
+  const closeManagerReviewModal = () => {
+    setSelectedManagerReviewTask(null);
+    setSelectedReviewHistoryItem(null);
+  };
+
+  useEffect(() => {
+    if (!selectedManagerReviewTask && !selectedStaffTask) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (selectedManagerReviewTask) {
+          closeManagerReviewModal();
+        } else if (selectedStaffTask) {
+          setSelectedStaffTask(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedManagerReviewTask, selectedStaffTask]);
+
+  const closeCandidateModal = () => {
+    setSelectedCandidate(null);
+    setCandidateReviewTaskContext(null);
+    setSelectedReviewHistoryItem(null);
+  };
   const currentProjectId = apiProject?.id ?? Number(localStorage.getItem('apms-active-project'));
   const isDraftProject = apiProject?.status === 'DRAFT';
   const isTerminalProject = apiProject?.status === 'CLOSED' || apiProject?.status === 'COMPLETED';
@@ -3685,7 +3829,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return false;
   };
   const visibleTabs = useMemo(() => {
-    if (isStaffView) return ['Kanban Board', 'Documents', 'Company Members', 'Members'];
+    if (isStaffView) return ['Kanban Board', 'My Work History', 'Members'];
     return tabs;
   }, [isStaffView, isManager]);
   const staffAccountId = useMemo(() => {
@@ -3840,21 +3984,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     };
   }, [currentProjectId, isStaffView, taskRefreshTick]);
 
-  useEffect(() => {
-    const refreshProjectTasks = () => setTaskRefreshTick((current) => current + 1);
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') refreshProjectTasks();
-    };
-    const interval = window.setInterval(refreshProjectTasks, 8000);
-    window.addEventListener('focus', refreshProjectTasks);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
+  // Automatic polling disabled per user request to prevent screen flickering
 
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', refreshProjectTasks);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, []);
 
   useEffect(() => {
     if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
@@ -3886,6 +4017,30 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       cancelled = true;
     };
   }, [currentProjectId, isStaffView]);
+
+  useEffect(() => {
+    if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
+    let cancelled = false;
+    setReviewHistoryLoading(true);
+    setReviewHistoryError(null);
+
+    projectApi.getProjectReviewHistory(currentProjectId)
+      .then((payload) => {
+        if (!cancelled) setReviewHistory(payload.data || []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setReviewHistory([]);
+        setReviewHistoryError(error instanceof Error ? error.message : 'Cannot load project review history.');
+      })
+      .finally(() => {
+        if (!cancelled) setReviewHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProjectId, taskRefreshTick, projectRefreshTick]);
 
   useEffect(() => {
     if (!showInviteModal) return;
@@ -4128,10 +4283,34 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         if (!cancelled) setCompanyMembersLoading(false);
       });
 
+  }, [activeTab, apiProject?.targetCompanyProfileId]);
+
+  useEffect(() => {
+    if (!currentProjectId || !isStaffView) return;
+    if (activeTab !== 'My Work History') return;
+
+    let cancelled = false;
+    setMyWorkHistoryLoading(true);
+    setMyWorkHistoryError(null);
+
+    taskApi.getMyWorkHistory(currentProjectId)
+      .then((payload) => {
+        if (cancelled) return;
+        setMyWorkHistory(unwrapList<StaffWorkHistoryItemResponse>(payload));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMyWorkHistory([]);
+        setMyWorkHistoryError(error instanceof Error ? error.message : 'Cannot load work history.');
+      })
+      .finally(() => {
+        if (!cancelled) setMyWorkHistoryLoading(false);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, [activeTab, apiProject?.targetCompanyProfileId]);
+  }, [currentProjectId, isStaffView, activeTab, taskRefreshTick]);
 
   const assignableMembers = useMemo(
     () => projectMembers.filter((member) => member.projectRole !== 'LEADER'),
@@ -4151,20 +4330,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const pending = reviewCandidates.filter((candidate) => candidate.status === 'PENDING_REVIEW').length;
     const approved = reviewCandidates.filter((candidate) => candidate.status === 'APPROVED').length;
     const rejected = reviewCandidates.filter((candidate) => candidate.status === 'REJECTED').length;
-    const incomplete = reviewCandidates.filter(isCandidateIncomplete).length;
-    const confidenceScores = reviewCandidates
-      .map(candidateConfidenceScore)
-      .filter((score): score is number => score !== null);
-    const averageConfidence = confidenceScores.length
-      ? Math.round(confidenceScores.reduce((sum, score) => sum + score, 0) / confidenceScores.length)
-      : null;
+    const needsRevision = reviewCandidates.filter((candidate) => candidate.status === 'REVISION_REQUIRED' || candidate.status === 'CORRECTED').length;
+    const draft = reviewCandidates.filter((candidate) => candidate.status === 'DRAFT').length;
 
     return {
-      pending,
+      total: reviewCandidates.length,
       approved,
       rejected,
-      incomplete,
-      averageConfidence,
+      pending,
+      needsRevision,
+      draft,
       totalVisible: reviewCandidates.length,
     };
   }, [candidates]);
@@ -4179,24 +4354,380 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const filteredCandidates = useMemo(() => {
     const term = candidateSearch.trim().toLowerCase();
 
-    return candidates.filter((candidate) => {
-      if (!visibleCandidateStatuses.has(candidate.status)) return false;
-      const effectiveStatusFilter = candidateStatusFilter !== 'ALL' && !visibleCandidateStatuses.has(candidateStatusFilter)
-        ? 'ALL'
-        : candidateStatusFilter;
-      const matchesStatus = effectiveStatusFilter === 'ALL' || candidate.status === effectiveStatusFilter;
-      const relationship = candidate.suggestedRelationshipType || candidate.relationshipTypeOverride || '';
-      const matchesRelationship = candidateRelationshipFilter === 'ALL' || relationship === candidateRelationshipFilter;
-      const searchable = [
-        candidateName(candidate),
-        candidateIndustry(candidate),
-        candidateTaxId(candidate),
-        relationship,
-        candidateCompleteness(candidate),
-      ].join(' ').toLowerCase();
-      return matchesStatus && matchesRelationship && (!term || searchable.includes(term));
+    return candidates
+      .filter((candidate) => {
+        if (!visibleCandidateStatuses.has(candidate.status)) return false;
+        const effectiveStatusFilter = candidateStatusFilter !== 'ALL' && !visibleCandidateStatuses.has(candidateStatusFilter)
+          ? 'ALL'
+          : candidateStatusFilter;
+        const matchesStatus = effectiveStatusFilter === 'ALL' || candidate.status === effectiveStatusFilter;
+        if (!matchesStatus) return false;
+
+        if (!term) return true;
+        const reviewerName = getCandidateReviewerName(candidate, projectMembers, currentUser);
+        const sourceInfo = getCandidateSource(candidate);
+        const searchable = [
+          candidate.identity?.legalName || '',
+          candidate.identity?.tradeName || '',
+          candidate.identity?.taxCode || '',
+          candidateName(candidate),
+          sourceInfo.fileName,
+          reviewerName,
+          candidate.review?.rejectionReason || '',
+        ].join(' ').toLowerCase();
+        return searchable.includes(term);
+      })
+      .sort((a, b) => {
+        const timeA = new Date(getCandidateReviewDate(a) ?? a.lastSubmittedAt ?? a.metadata?.createdAt ?? 0).getTime();
+        const timeB = new Date(getCandidateReviewDate(b) ?? b.lastSubmittedAt ?? b.metadata?.createdAt ?? 0).getTime();
+        return timeB - timeA;
+      });
+  }, [candidateSearch, candidateStatusFilter, candidates, projectMembers, currentUser]);
+
+  const unifiedReviewHistory = useMemo(() => {
+    const list = [...reviewHistory];
+    const existingCandidateIds = new Set(
+      list.map((item) => item.targetEntityId).filter(Boolean)
+    );
+    for (const c of candidates) {
+      if (c.id && !existingCandidateIds.has(c.id)) {
+        const isReviewed = c.status === 'APPROVED' || c.status === 'REVISION_REQUIRED' || c.status === 'REJECTED' || c.status === 'PENDING_REVIEW';
+        if (isReviewed) {
+          const mappedStatus: SubmissionStatus =
+            c.status === 'APPROVED' ? 'APPROVED'
+            : c.status === 'REVISION_REQUIRED' ? 'CHANGES_REQUESTED'
+            : c.status === 'REJECTED' ? 'REJECTED'
+            : c.status === 'PENDING_REVIEW' ? 'IN_REVIEW'
+            : 'DRAFT';
+
+          const candName = c.identity?.legalName || c.draftName || `Candidate #${c.candidateOrder || c.id.slice(-6)}`;
+          list.push({
+            submissionId: null,
+            projectId: currentProjectId,
+            taskId: c.taskId ?? null,
+            taskTitle: 'Basic Company Information',
+            taskType: 'COMPANY_DATA_PREPARATION',
+            submissionType: 'COMPANY_CANDIDATE',
+            targetEntityType: 'CompanyCandidate',
+            targetEntityId: c.id,
+            targetEntityName: candName,
+            submittedRevisionNumber: c.revisionNumber ?? 1,
+            submittedAt: c.lastSubmittedAt || c.metadata?.createdAt,
+            status: mappedStatus,
+            reviewedByName: c.review?.reviewedBy || (c.review?.reviewedAt ? 'Manager' : null),
+            reviewedAt: c.review?.reviewedAt || (c.status === 'APPROVED' ? c.metadata?.updatedAt : null),
+            reviewComment: c.review?.rejectionReason || (c.status === 'APPROVED' ? 'Candidate approved' : null),
+          });
+        }
+      }
+    }
+    return list.sort((a, b) => {
+      const timeA = new Date(a.reviewedAt ?? a.submittedAt ?? 0).getTime();
+      const timeB = new Date(b.reviewedAt ?? b.submittedAt ?? 0).getTime();
+      return timeB - timeA;
     });
-  }, [candidateRelationshipFilter, candidateSearch, candidateStatusFilter, candidates]);
+  }, [reviewHistory, candidates, currentProjectId]);
+
+  const reviewStats = useMemo(() => {
+    const total = unifiedReviewHistory.length;
+    const approved = unifiedReviewHistory.filter((i) => i.status === 'APPROVED').length;
+    const changesRequested = unifiedReviewHistory.filter((i) =>
+      i.status === 'CHANGES_REQUESTED' || i.status === 'REVISION_REQUESTED' || i.status === 'REJECTED'
+    ).length;
+    const pending = unifiedReviewHistory.filter((i) =>
+      i.status === 'IN_REVIEW' || i.status === 'SUBMITTED'
+    ).length;
+    return { total, approved, changesRequested, pending };
+  }, [unifiedReviewHistory]);
+
+  const filteredReviewHistory = useMemo(() => {
+    return unifiedReviewHistory.filter((item) => {
+      if (reviewDecisionFilter === 'APPROVED' && item.status !== 'APPROVED') return false;
+      if (
+        reviewDecisionFilter === 'CHANGES_REQUESTED' &&
+        !(item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED')
+      )
+        return false;
+      if (
+        reviewDecisionFilter === 'PENDING_REVIEW' &&
+        !(item.status === 'IN_REVIEW' || item.status === 'SUBMITTED')
+      )
+        return false;
+
+      const query = reviewSearch.trim().toLowerCase();
+      if (!query) return true;
+
+      const matchTask = item.taskTitle?.toLowerCase().includes(query);
+      const matchTarget = item.targetEntityName?.toLowerCase().includes(query) || item.targetCompanyName?.toLowerCase().includes(query);
+      const matchReviewer = item.reviewedByName?.toLowerCase().includes(query);
+      const matchSubmitter = item.submittedByName?.toLowerCase().includes(query);
+      const matchComment = item.reviewComment?.toLowerCase().includes(query);
+      const matchType = item.submissionType?.toLowerCase().includes(query) || item.taskType?.toLowerCase().includes(query);
+
+      return Boolean(matchTask || matchTarget || matchReviewer || matchSubmitter || matchComment || matchType);
+    });
+  }, [unifiedReviewHistory, reviewDecisionFilter, reviewSearch]);
+
+  const openCandidateDetailById = async (candidateId?: string | null, historyItem?: ManagerReviewHistoryItem | null) => {
+    if (!candidateId) return;
+    setSelectedReviewHistoryItem(historyItem || null);
+    const existing = candidates.find((c) => c.id === candidateId);
+    if (existing) {
+      void openCandidateDetail(existing);
+    } else {
+      try {
+        const payload = await candidateApi.getCandidateById(candidateId);
+        if (payload?.data) {
+          void openCandidateDetail(payload.data);
+        }
+      } catch {
+        setToast({ kind: 'error', message: 'Cannot load candidate details.' });
+      }
+    }
+  };
+
+  const openTaskReviewByTaskId = async (taskId?: number | null, historyItem?: ManagerReviewHistoryItem | null) => {
+    if (!taskId) return;
+    setSelectedReviewHistoryItem(historyItem || null);
+    let target = apiTasks.find((t) => t.id === taskId) ?? availableTasks.find((t) => t.id === taskId);
+    if (!target && currentProjectId) {
+      try {
+        const payload = await taskApi.getProjectTasks(currentProjectId);
+        const rows = unwrapList<ProjectTaskResponse>(payload);
+        setApiTasks(rows);
+        target = rows.find((t) => t.id === taskId);
+      } catch {
+        // ignore
+      }
+    }
+    if (target) {
+      setSelectedManagerReviewTask(target);
+      setManagerReviewComment(historyItem?.reviewComment || '');
+      void loadManagerWorkbench(target);
+    } else {
+      setToast({ kind: 'error', message: 'Task details not found.' });
+    }
+  };
+
+  const renderReviewHistoryBanner = (onClose?: () => void) => {
+    if (!selectedReviewHistoryItem) return null;
+    const item = selectedReviewHistoryItem;
+    const isApproved = item.status === 'APPROVED';
+    const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
+    const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
+
+    // Ẩn banner trên đầu khi đang trong phiên review (Pending Review).
+    // Chỉ hiển thị khi xem lại lịch sử các lần đã yêu cầu sửa đổi (Changes requested) hoặc đã phê duyệt.
+    if (isPending || (!isChangesRequested && !isApproved)) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          flex: '0 0 auto',
+          marginBottom: '16px',
+          padding: '14px 18px',
+          borderRadius: '12px',
+          border: isChangesRequested
+            ? '1px solid #fca5a5'
+            : isApproved
+            ? '1px solid #86efac'
+            : '1px solid #cbd5e1',
+          background: isChangesRequested
+            ? 'linear-gradient(135deg, #fff1f2 0%, #fff7ed 100%)'
+            : isApproved
+            ? 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)'
+            : '#f8fafc',
+          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.06)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {isChangesRequested ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#fee2e2',
+                  color: '#b91c1c',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                <AlertTriangle size={14} />
+                {item.status === 'REVISION_REQUESTED' ? 'Cần chỉnh sửa (Needs revision)' : 'Yêu cầu sửa đổi (Changes requested)'}
+              </span>
+            ) : isApproved ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  border: '1px solid #86efac',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                <CheckCircle2 size={14} />
+                Đã phê duyệt (Approved)
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#e0f2fe',
+                  color: '#0369a1',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  fontWeight: 700,
+                  fontSize: '0.78rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                <Clock size={14} />
+                Đang chờ duyệt (Pending review)
+              </span>
+            )}
+
+            <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>
+              Hồ sơ đánh giá: {item.targetEntityName || item.taskTitle}
+            </span>
+
+            {item.submittedRevisionNumber != null && (
+              <span
+                style={{
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                }}
+              >
+                Lần nộp #{item.submittedRevisionNumber} (Rev. {item.submittedRevisionNumber})
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.8rem', color: '#64748b' }}>
+            {item.submittedByName && (
+              <span>
+                Nhân viên gửi: <strong style={{ color: '#1e293b' }}>{item.submittedByName}</strong>
+                {item.submittedAt ? ` (${formatDateTime(item.submittedAt)})` : ''}
+              </span>
+            )}
+            {item.reviewedByName && (
+              <span>
+                Người đánh giá: <strong style={{ color: '#1e293b' }}>{item.reviewedByName}</strong>
+                {item.reviewedAt ? ` (${formatDateTime(item.reviewedAt)})` : ''}
+              </span>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  color: '#475569',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                }}
+                aria-label="Đóng"
+                title="Đóng cửa sổ chi tiết"
+              >
+                <X size={14} />
+                Đóng
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: '8px',
+            background: '#ffffff',
+            border: isChangesRequested ? '1px solid #fecaca' : isApproved ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+            fontSize: '0.88rem',
+            lineHeight: '1.45',
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: '0.8rem',
+              color: isChangesRequested ? '#b91c1c' : isApproved ? '#15803d' : '#475569',
+              marginBottom: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            {isChangesRequested ? (
+              <>
+                <AlertTriangle size={15} />
+                <span>Nội dung yêu cầu chỉnh sửa / Lý do từ Manager:</span>
+              </>
+            ) : isApproved ? (
+              <>
+                <CheckCircle2 size={15} />
+                <span>Nhận xét phê duyệt từ Manager:</span>
+              </>
+            ) : (
+              <>
+                <FileText size={15} />
+                <span>Ghi chú đánh giá:</span>
+              </>
+            )}
+          </div>
+          <div
+            style={{
+              color: item.reviewComment ? '#0f172a' : '#94a3b8',
+              fontStyle: item.reviewComment ? 'normal' : 'italic',
+              whiteSpace: 'pre-wrap',
+              fontWeight: item.reviewComment ? 500 : 400,
+            }}
+          >
+            {item.reviewComment || '(Không có ghi chú nhận xét)'}
+          </div>
+
+          {item.note && (
+            <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #e2e8f0', fontSize: '0.8rem', color: '#64748b' }}>
+              <strong>Ghi chú từ nhân viên khi nộp bài:</strong> {item.note}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const filteredDocuments = useMemo(() => {
     const term = documentSearch.trim().toLowerCase();
@@ -4259,15 +4790,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const handleViewCompanyProfile = () => {
-    const profileId = apiProject?.targetCompanyProfileId;
+    const profileId = apiProject?.targetCompanyProfileId
+      || candidates.find((c) => c.status === 'APPROVED' && c.lifecycle?.convertedCompanyProfileId)?.lifecycle?.convertedCompanyProfileId;
     if (!profileId) {
-      alert('Linked company profile could not be loaded.');
+      setToast({ kind: 'error', message: 'No official Company Profile linked yet. An official profile is created once a candidate is approved.' });
       return;
     }
     localStorage.setItem('apms-selected-company', profileId);
     localStorage.removeItem('apms-context-project');
     if (setActivePage) {
-      setActivePage(`company-detail?source=project&projectId=${apiProject.id}&companyId=${profileId}`);
+      setActivePage(`company-detail?source=project&projectId=${apiProject?.id}&companyId=${profileId}`);
     }
   };
 
@@ -6220,6 +6752,65 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return Array.from(documentsByKey.values());
   }, [managerCandidateDrafts, projectDocuments, workbench?.documents]);
 
+  const handleViewTaskHistory = async (taskItem: StaffWorkHistoryItemResponse) => {
+    setSelectedHistoryTask(taskItem);
+    setTaskHistoryDetail(null);
+    setTaskHistoryError(null);
+    if (!currentProjectId) return;
+
+    setTaskHistoryLoading(true);
+    try {
+      const payload = await taskApi.getTaskHistory(currentProjectId, taskItem.taskId);
+      const wrapped = payload as { data?: TaskHistoryDetailResponse } | null;
+      const data = (wrapped?.data ?? payload) as TaskHistoryDetailResponse;
+      setTaskHistoryDetail(data);
+    } catch (err) {
+      setTaskHistoryError(err instanceof Error ? err.message : 'Failed to load task history detail.');
+    } finally {
+      setTaskHistoryLoading(false);
+    }
+  };
+
+  const workHistoryStats = useMemo(() => {
+    const total = myWorkHistory.length;
+    const inProgress = myWorkHistory.filter((t) => t.status === 'IN_PROGRESS' && t.latestReviewStatus !== 'CHANGES_REQUESTED').length;
+    const revisionRequested = myWorkHistory.filter((t) => t.latestReviewStatus === 'CHANGES_REQUESTED' || (t.status as string) === 'REVISION_REQUESTED').length;
+    const inReview = myWorkHistory.filter((t) => t.status === 'IN_REVIEW').length;
+    const done = myWorkHistory.filter((t) => t.status === 'DONE').length;
+    return { total, inProgress, revisionRequested, inReview, done };
+  }, [myWorkHistory]);
+
+  const filteredWorkHistory = useMemo(() => {
+    return myWorkHistory.filter((item) => {
+      const isRevision = item.latestReviewStatus === 'CHANGES_REQUESTED' || (item.status as string) === 'REVISION_REQUESTED';
+      if (myWorkHistoryStatusFilter === 'IN_PROGRESS' && (item.status !== 'IN_PROGRESS' || isRevision)) return false;
+      if (myWorkHistoryStatusFilter === 'REVISION_REQUESTED' && !isRevision) return false;
+      if (myWorkHistoryStatusFilter === 'IN_REVIEW' && item.status !== 'IN_REVIEW') return false;
+      if (myWorkHistoryStatusFilter === 'DONE' && item.status !== 'DONE') return false;
+
+      if (myWorkHistorySearch.trim()) {
+        const query = myWorkHistorySearch.toLowerCase().trim();
+        const matchCode = item.taskCode?.toLowerCase().includes(query);
+        const matchTitle = item.title?.toLowerCase().includes(query);
+        const matchDeliverable = item.deliverable?.toLowerCase().includes(query);
+        if (!matchCode && !matchTitle && !matchDeliverable) return false;
+      }
+      return true;
+    });
+  }, [myWorkHistory, myWorkHistoryStatusFilter, myWorkHistorySearch]);
+
+  useEffect(() => {
+    if (!selectedHistoryTask) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedHistoryTask(null);
+        setTaskHistoryDetail(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedHistoryTask]);
+
   return (
     <section className={styles.page}>
       {toast && createPortal(<div className={`apms-toast ${toast.kind}`}>{toast.message}</div>, document.body)}
@@ -6254,7 +6845,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   className={`${styles.button} ${styles.outlineButton}`}
                   type="button"
                   onClick={handleViewCompanyProfile}
-                  title="View Company Profile"
+                  title={
+                    apiProject?.targetCompanyProfileId || candidates.some((c) => c.status === 'APPROVED' && c.lifecycle?.convertedCompanyProfileId)
+                      ? "View Company Profile"
+                      : "Official company profile will be created once a candidate is approved"
+                  }
                 >
                   <Eye size={16} />View Profile
                 </button>
@@ -6481,45 +7076,47 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 })}
               </div>
             </>
-          ) : activeTab === 'Candidates' ? (
+          ) : (activeTab === 'Review History' || activeTab === 'Candidate History' || activeTab === 'Candidates') ? (
             <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className={styles.memberPanelHead}>
                 <div>
-                  <h2>Candidate review</h2>
-                  <p>Review extracted company candidates before approving them into Company Profile records.</p>
+                  <h2>Review History</h2>
+                  <p>Historical records of all manager review actions, task approvals, change requests, and candidate decisions in this project.</p>
                 </div>
-                <span className={styles.count}>{filteredCandidates.length}/{candidateStats.totalVisible}</span>
+                <span className={styles.count}>{filteredReviewHistory.length}/{reviewStats.total}</span>
               </div>
 
-              {candidateError && !/403|denied|forbidden/i.test(candidateError) && <div className={styles.inlineError}>{candidateError}</div>}
+              {reviewHistoryError && !/403|denied|forbidden/i.test(reviewHistoryError) && <div className={styles.inlineError}>{reviewHistoryError}</div>}
               {candidateActionMessage && <div className={styles.inlineSuccess}>{candidateActionMessage}</div>}
 
               <div className={styles.candidateStats}>
-                <div><span>Total candidates</span><strong>{candidateStats.totalVisible}</strong></div>
-                <div><span>Need review</span><strong>{candidateStats.pending}</strong></div>
-                <div><span>Approved</span><strong>{candidateStats.approved}</strong></div>
-                <div><span>Rejected</span><strong>{candidateStats.rejected}</strong></div>
+                <div><span>Total Reviews</span><strong>{reviewStats.total}</strong></div>
+                <div><span>Approved</span><strong>{reviewStats.approved}</strong></div>
+                <div><span>Changes Requested</span><strong>{reviewStats.changesRequested}</strong></div>
+                <div><span>Pending Review</span><strong>{reviewStats.pending}</strong></div>
               </div>
 
               <div className={styles.candidateToolbar}>
                 <label className={styles.candidateSearch}>
                   <Search size={16} />
                   <input
-                    value={candidateSearch}
-                    placeholder="Search company, industry, tax ID..."
-                    onChange={(event) => setCandidateSearch(event.target.value)}
+                    value={reviewSearch}
+                    placeholder="Search task, deliverable, candidate, reviewer, comment..."
+                    onChange={(event) => setReviewSearch(event.target.value)}
                   />
                 </label>
                 <label className={styles.candidateFilter}>
                   <Filter size={16} />
-                  <select value={candidateStatusFilter} onChange={(event) => setCandidateStatusFilter(event.target.value as CandidateStatus | 'ALL')}>
-                    <option value="ALL">All status</option>
-                    <option value="PENDING_REVIEW">Pending review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="REJECTED">Rejected</option>
+                  <select
+                    value={reviewDecisionFilter}
+                    onChange={(event) => setReviewDecisionFilter(event.target.value as any)}
+                  >
+                    <option value="ALL">All decisions ({reviewStats.total})</option>
+                    <option value="APPROVED">Approved ({reviewStats.approved})</option>
+                    <option value="CHANGES_REQUESTED">Changes requested ({reviewStats.changesRequested})</option>
+                    <option value="PENDING_REVIEW">Pending review ({reviewStats.pending})</option>
                   </select>
                 </label>
-
               </div>
 
               <div className={styles.candidateReviewTableWrap}>
@@ -6527,53 +7124,421 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <thead>
                     <tr>
                       <th>No.</th>
-                      <th>Candidate</th>
-                      <th>Project relationship</th>
-                      <th>Status</th>
+                      <th>Task / Deliverable</th>
+                      <th>Target / Item</th>
                       <th>Decision</th>
+                      <th>Staff</th>
+                      <th>Reviewed By</th>
+                      <th>Reviewed At</th>
+                      <th>Comment / Reason</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {candidatesLoading && (
+                    {reviewHistoryLoading && (
                       <tr>
-                        <td colSpan={5}><div className={styles.empty}>Loading candidates...</div></td>
+                        <td colSpan={9}><div className={styles.empty}>Loading review history...</div></td>
                       </tr>
                     )}
-                    {!candidatesLoading && filteredCandidates.length === 0 && (
+                    {!reviewHistoryLoading && filteredReviewHistory.length === 0 && (
                       <tr>
-                        <td colSpan={5}><div className={styles.empty}>No candidate matches your review filters.</div></td>
-                      </tr>
-                    )}
-                    {!candidatesLoading && filteredCandidates.map((candidate, index) => (
-                      <tr key={candidate.id}>
-                        <td>
-                          <span className={styles.candidateOrderCell}>{index + 1}</span>
-                        </td>
-                        <td>
-                          <div className={styles.candidateNameCell}>
-                            <span>
-                              <strong>{candidateName(candidate)}</strong>
+                        <td colSpan={9}>
+                          <div className={styles.empty} style={{ padding: '36px 16px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                            <strong>
+                              {reviewStats.total === 0
+                                ? 'No review history records found yet.'
+                                : 'No review records match your current search and filter.'}
+                            </strong>
+                            <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.85rem' }}>
+                              {reviewStats.total === 0
+                                ? 'Review decisions, approved tasks, and changes requested by Manager will appear here.'
+                                : 'Try changing your keyword or clearing the decision filter.'}
                             </span>
                           </div>
                         </td>
-                        <td>
-                          <div className={styles.relationshipCell}>
-                            <strong>{candidate.suggestedRelationshipType || candidate.relationshipTypeOverride || 'Project default'}</strong>
-                            <small>{displayedProject.type}</small>
+                      </tr>
+                    )}
+                    {!reviewHistoryLoading && filteredReviewHistory.map((item, index) => {
+                      const isApproved = item.status === 'APPROVED';
+                      const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
+                      const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
+                      const isCandidate = item.submissionType === 'COMPANY_CANDIDATE' || item.targetEntityType === 'CompanyCandidate';
+
+                      const statusClass = isApproved
+                        ? styles.candidateAPPROVED
+                        : isChangesRequested
+                        ? styles.candidateREJECTED
+                        : isPending
+                        ? styles.candidatePENDING_REVIEW
+                        : styles.candidateDRAFT;
+
+                      const statusLabel = isApproved
+                        ? 'Approved'
+                        : item.status === 'REVISION_REQUESTED'
+                        ? 'Needs revision'
+                        : isChangesRequested
+                        ? 'Changes requested'
+                        : item.status === 'REJECTED'
+                        ? 'Rejected'
+                        : isPending
+                        ? 'Pending review'
+                        : item.status;
+
+                      const targetDisplayName = item.targetEntityName || item.targetCompanyName || item.taskTitle;
+                      const deliverableLabel = formatDeliverableType(item.submissionType || item.taskType);
+
+                      return (
+                        <tr key={item.submissionId ?? `${item.taskId ?? 't'}-${item.targetEntityId ?? 'e'}-${index}`}>
+                          <td>
+                            <span className={styles.candidateOrderCell}>{index + 1}</span>
+                          </td>
+                          <td>
+                            <div className={styles.candidateNameCell}>
+                              <strong style={{ fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                {item.taskTitle}
+                              </strong>
+                              <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.74rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                {deliverableLabel}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <div className={styles.candidateNameCell}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                <span style={{ fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {targetDisplayName}
+                                </span>
+                                {item.submittedRevisionNumber != null && (
+                                  <span className={styles.candidateRevisionBadge}>
+                                    Rev. {item.submittedRevisionNumber}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div className={styles.decisionCell}>
+                              <span className={`${styles.candidateStatus} ${statusClass}`} style={{ fontSize: '0.74rem', padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {item.submittedByName || 'Staff'}
+                              </span>
+                              {item.submittedAt && (
+                                <small style={{ color: '#94a3b8', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                                  {formatDateTime(item.submittedAt)}
+                                </small>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                {item.reviewedByName || (item.reviewedAt ? 'Manager' : '—')}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                              {item.reviewedAt ? formatDateTime(item.reviewedAt) : '—'}
+                            </span>
+                          </td>
+                          <td style={{ minWidth: 0, textAlign: 'left' }}>
+                            <span
+                              title={item.reviewComment || ''}
+                              style={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                color: isChangesRequested ? '#b91c1c' : '#475569',
+                                fontSize: '0.78rem',
+                                wordBreak: 'break-word',
+                                lineHeight: '1.25',
+                              }}
+                            >
+                              {item.reviewComment || '—'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {isPending ? (
+                              <button
+                                className={`${styles.reviewActionBtn} ${styles.reviewActionBtnPrimary}`}
+                                type="button"
+                                onClick={() => {
+                                  if (isCandidate && item.targetEntityId) {
+                                    void openCandidateDetailById(item.targetEntityId, item);
+                                  } else {
+                                    void openTaskReviewByTaskId(item.taskId, item);
+                                  }
+                                }}
+                              >
+                                Review
+                              </button>
+                            ) : (
+                              <button
+                                className={styles.reviewActionBtn}
+                                type="button"
+                                onClick={() => {
+                                  if (isCandidate && item.targetEntityId) {
+                                    void openCandidateDetailById(item.targetEntityId, item);
+                                  } else {
+                                    void openTaskReviewByTaskId(item.taskId, item);
+                                  }
+                                }}
+                              >
+                                View details
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </motion.section>
+          ) : activeTab === 'My Work History' ? (
+            <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <div className={styles.memberPanelHead}>
+                <div>
+                  <h2>My Work History</h2>
+                  <p>Chronological record of all tasks you have claimed, submitted, and completed across this project.</p>
+                </div>
+                <span className={styles.count}>{filteredWorkHistory.length}/{workHistoryStats.total}</span>
+              </div>
+
+              {myWorkHistoryError && !/403|denied|forbidden/i.test(myWorkHistoryError) && (
+                <div className={styles.inlineError}>{myWorkHistoryError}</div>
+              )}
+
+              <div className={styles.candidateStats}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: myWorkHistoryStatusFilter === 'ALL' ? '#2563eb' : undefined,
+                    boxShadow: myWorkHistoryStatusFilter === 'ALL' ? '0 0 0 2px rgba(37, 99, 235, 0.18)' : undefined,
+                    background: myWorkHistoryStatusFilter === 'ALL' ? '#f8faff' : undefined,
+                  }}
+                  onClick={() => setMyWorkHistoryStatusFilter('ALL')}
+                >
+                  <span>Total Tasks</span>
+                  <strong>{workHistoryStats.total}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: myWorkHistoryStatusFilter === 'IN_PROGRESS' ? '#2563eb' : undefined,
+                    boxShadow: myWorkHistoryStatusFilter === 'IN_PROGRESS' ? '0 0 0 2px rgba(37, 99, 235, 0.18)' : undefined,
+                    background: myWorkHistoryStatusFilter === 'IN_PROGRESS' ? '#f8faff' : undefined,
+                  }}
+                  onClick={() => setMyWorkHistoryStatusFilter('IN_PROGRESS')}
+                >
+                  <span>In Progress</span>
+                  <strong>{workHistoryStats.inProgress}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: myWorkHistoryStatusFilter === 'REVISION_REQUESTED' ? '#ef4444' : undefined,
+                    boxShadow: myWorkHistoryStatusFilter === 'REVISION_REQUESTED' ? '0 0 0 2px rgba(239, 68, 68, 0.18)' : undefined,
+                    background: myWorkHistoryStatusFilter === 'REVISION_REQUESTED' ? '#fff5f5' : undefined,
+                  }}
+                  onClick={() => setMyWorkHistoryStatusFilter('REVISION_REQUESTED')}
+                >
+                  <span>Needs Revision</span>
+                  <strong style={{ color: workHistoryStats.revisionRequested > 0 ? '#b91c1c' : undefined }}>{workHistoryStats.revisionRequested}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: myWorkHistoryStatusFilter === 'IN_REVIEW' ? '#2563eb' : undefined,
+                    boxShadow: myWorkHistoryStatusFilter === 'IN_REVIEW' ? '0 0 0 2px rgba(37, 99, 235, 0.18)' : undefined,
+                    background: myWorkHistoryStatusFilter === 'IN_REVIEW' ? '#f8faff' : undefined,
+                  }}
+                  onClick={() => setMyWorkHistoryStatusFilter('IN_REVIEW')}
+                >
+                  <span>In Review</span>
+                  <strong>{workHistoryStats.inReview}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: myWorkHistoryStatusFilter === 'DONE' ? '#16a34a' : undefined,
+                    boxShadow: myWorkHistoryStatusFilter === 'DONE' ? '0 0 0 2px rgba(22, 163, 74, 0.18)' : undefined,
+                    background: myWorkHistoryStatusFilter === 'DONE' ? '#f0fdf4' : undefined,
+                  }}
+                  onClick={() => setMyWorkHistoryStatusFilter('DONE')}
+                >
+                  <span>Done</span>
+                  <strong style={{ color: '#15803d' }}>{workHistoryStats.done}</strong>
+                </div>
+              </div>
+
+              <div className={styles.workHistoryToolbar}>
+                <label className={styles.candidateSearch}>
+                  <Search size={16} />
+                  <input
+                    value={myWorkHistorySearch}
+                    placeholder="Search task code, title, deliverable..."
+                    onChange={(event) => setMyWorkHistorySearch(event.target.value)}
+                  />
+                </label>
+
+                <label className={styles.candidateFilter}>
+                  <Filter size={16} />
+                  <select
+                    value={myWorkHistoryStatusFilter}
+                    onChange={(event) => setMyWorkHistoryStatusFilter(event.target.value as any)}
+                  >
+                    <option value="ALL">All statuses ({workHistoryStats.total})</option>
+                    <option value="IN_PROGRESS">In Progress ({workHistoryStats.inProgress})</option>
+                    <option value="REVISION_REQUESTED">Needs Revision ({workHistoryStats.revisionRequested})</option>
+                    <option value="IN_REVIEW">In Review ({workHistoryStats.inReview})</option>
+                    <option value="DONE">Done ({workHistoryStats.done})</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className={styles.workHistoryTableWrap}>
+                <table className={styles.workHistoryTable}>
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Task Code</th>
+                      <th>Task / Deliverable</th>
+                      <th>Status</th>
+                      <th>Claimed At</th>
+                      <th>Last Submitted</th>
+                      <th>Revisions</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myWorkHistoryLoading && (
+                      <tr>
+                        <td colSpan={8}><div className={styles.empty}>Loading your work history...</div></td>
+                      </tr>
+                    )}
+                    {!myWorkHistoryLoading && myWorkHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={8}>
+                          <div className={styles.documentEmptyState} style={{ padding: '40px 20px' }}>
+                            <History size={32} style={{ color: '#94a3b8', marginBottom: 8 }} />
+                            <strong>No work history yet</strong>
+                            <span>You haven't taken any tasks in this project. Claim an available task from the Kanban Board to begin.</span>
                           </div>
                         </td>
-                        <td>
-                          <span className={`${styles.candidateStatus} ${candidateStatusClass[candidate.status]}`}>
-                            {candidateStatusLabel[candidate.status]}
-                          </span>
-                        </td>
-                        <td>
-                          <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void openCandidateDetail(candidate)}>
-                            Review
-                          </button>
-                        </td>
                       </tr>
-                    ))}
+                    )}
+                    {!myWorkHistoryLoading && myWorkHistory.length > 0 && filteredWorkHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={8}><div className={styles.empty}>No tasks match your search or filter.</div></td>
+                      </tr>
+                    )}
+                    {!myWorkHistoryLoading && filteredWorkHistory.map((item, index) => {
+                      const isDone = item.status === 'DONE';
+                      const isRevision = item.latestReviewStatus === 'CHANGES_REQUESTED' || (item.status as string) === 'REVISION_REQUESTED';
+                      const isInReview = item.status === 'IN_REVIEW';
+                      const isInProgress = item.status === 'IN_PROGRESS';
+
+                      const statusClass = isDone
+                        ? styles.candidateAPPROVED
+                        : isRevision
+                        ? styles.candidateREJECTED
+                        : isInReview
+                        ? styles.candidatePENDING_REVIEW
+                        : styles.candidateDRAFT;
+
+                      const statusLabel = isDone
+                        ? 'Done'
+                        : isRevision
+                        ? 'Changes Requested'
+                        : isInReview
+                        ? 'In Review'
+                        : isInProgress
+                        ? 'In Progress'
+                        : item.status;
+
+                      return (
+                        <tr key={item.taskId}>
+                          <td style={{ textAlign: 'center' }}>
+                            <span className={styles.candidateOrderCell}>{index + 1}</span>
+                          </td>
+                          <td>
+                            <span className={styles.taskCodePill}>{item.taskCode || `APMS-${item.taskId}`}</span>
+                          </td>
+                          <td>
+                            <div className={styles.candidateNameCell}>
+                              <strong style={{ fontSize: '0.84rem', color: '#0f172a', display: 'block', marginBottom: 2 }}>
+                                {item.title}
+                              </strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.74rem' }}>
+                                  {item.deliverable || 'General Task'}
+                                </span>
+                                {item.priority && (
+                                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>• {item.priority}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`${styles.candidateStatus} ${statusClass}`} style={{ fontSize: '0.74rem', padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                              {statusLabel}
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '0.76rem', whiteSpace: 'nowrap', color: '#475569' }}>
+                              {item.claimedAt ? formatDateTime(item.claimedAt) : '—'}
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '0.76rem', whiteSpace: 'nowrap', color: '#475569' }}>
+                              {item.lastSubmittedAt ? formatDateTime(item.lastSubmittedAt) : '—'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {item.revisionCount > 0 ? (
+                              <span className={styles.revisionCountBadge}>
+                                <AlertTriangle size={12} /> {item.revisionCount} {item.revisionCount === 1 ? 'rev' : 'revs'}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right', paddingRight: 12 }}>
+                            <button
+                              type="button"
+                              className={`${styles.reviewActionBtn} ${styles.reviewActionBtnPrimary}`}
+                              onClick={() => void handleViewTaskHistory(item)}
+                            >
+                              View History
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -7453,6 +8418,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           candidateId={inReviewActiveCandId}
                           taskId={selectedStaffTask.id}
                           role="STAFF"
+                          targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
                           readOnly={true}
                           isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
                         />
@@ -7720,6 +8686,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           candidateId={staffCandidate.id}
                           taskId={selectedStaffTask.id}
                           role="STAFF"
+                          targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
                           readOnly={staffTaskStatus !== 'IN_PROGRESS' || !isStaffEditableCandidateStatus(staffCandidate.status)}
                           isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
                           onDraftRenamed={(updated) => {
@@ -8799,7 +9766,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setSelectedManagerReviewTask(null)}
+            onClick={() => closeManagerReviewModal()}
           >
             <motion.div
               className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchModal : ''}`}
@@ -8812,6 +9779,50 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               transition={{ type: 'spring', stiffness: 360, damping: 30 }}
               onClick={(event) => event.stopPropagation()}
             >
+              {(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') && (
+                <div className={styles.inviteHead} style={{ alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <h2 id="manager-task-review-title" style={{ marginTop: 0, marginBottom: '6px' }}>{selectedManagerReviewTask.title}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: '#64748b', fontSize: '13px' }}>
+                      <span style={{
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        letterSpacing: '0.5px',
+                        backgroundColor: (workbench?.taskStatus || selectedManagerReviewTask.status) === 'IN_PROGRESS' ? '#dbeafe' : '#f1f5f9',
+                        color: (workbench?.taskStatus || selectedManagerReviewTask.status) === 'IN_PROGRESS' ? '#1d4ed8' : '#475569'
+                      }}>
+                        {workbench?.taskStatus || selectedManagerReviewTask.status}
+                      </span>
+                      {selectedManagerReviewTask.dueDate && (
+                        <>
+                          <span>•</span>
+                          <span>Due {formatOptionalDate(selectedManagerReviewTask.dueDate)}</span>
+                        </>
+                      )}
+                      {(workbench?.targetCompanyName || displayedProject.targetCompanyName) && (
+                        <>
+                          <span>•</span>
+                          <span>Target: <strong>{workbench?.targetCompanyName || displayedProject.targetCompanyName}</strong></span>
+                        </>
+                      )}
+                      {selectedManagerReviewTask.assignedToName && (
+                        <>
+                          <span>•</span>
+                          <span>Assigned to: <strong>{selectedManagerReviewTask.assignedToName}</strong></span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selectedReviewHistoryItem && renderReviewHistoryBanner(closeManagerReviewModal)}
               {selectedManagerReviewTask.taskType === 'COMPANY_NEWS_RESEARCH' ? (
                 <ManagerNewsReviewWorkspace
                   projectId={currentProjectId}
@@ -8823,11 +9834,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
-                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onClose={() => closeManagerReviewModal()}
                   onReviewed={(message, isSuccess) => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
                     setTaskRefreshTick((current) => current + 1);
-                    setSelectedManagerReviewTask(null);
+                    closeManagerReviewModal();
                     setToast({ kind: isSuccess ? 'success' : 'error', message });
                   }}
                 />
@@ -8842,11 +9853,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
-                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onClose={() => closeManagerReviewModal()}
                   onReviewed={(message: string, isSuccess: boolean) => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
                     setTaskRefreshTick((current) => current + 1);
-                    setSelectedManagerReviewTask(null);
+                    closeManagerReviewModal();
                     setToast({ kind: isSuccess ? 'success' : 'error', message });
                   }}
                 />
@@ -8862,11 +9873,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
                   submissionId={workbench?.submissions?.[0]?.id || 0}
-                  onClose={() => setSelectedManagerReviewTask(null)}
+                  onClose={() => closeManagerReviewModal()}
                   onReviewCompleted={() => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
                     setTaskRefreshTick((current) => current + 1);
-                    setSelectedManagerReviewTask(null);
+                    closeManagerReviewModal();
                     setToast({ kind: 'success', message: 'Contract review submitted successfully.' });
                   }}
                 />
@@ -8884,7 +9895,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       : 'Review submitted evidence, candidate drafts, and staff notes before approving this task.'}
                   </p>
                 </div>
-                <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => setSelectedManagerReviewTask(null)}>
+                <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
                   <X size={18} />
                 </button>
               </div>
@@ -9168,31 +10179,38 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             : managerCandidateTabs.filter((tab) => tab.id !== 'decision');
 
           return isManager && (selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'REVISION_REQUIRED' || Boolean(candidateReviewTaskContext?.submissionId)) ? (
-            <ManagerCandidateReviewWorkspace
-              projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
-              candidateId={selectedCandidate.id}
-              taskId={candidateReviewTaskContext?.taskId}
-              submissionId={candidateReviewTaskContext?.submissionId || undefined}
-              submission={candidateReviewTaskContext?.submission || undefined}
-              allActiveSubmissions={candidateReviewTaskContext?.allActiveSubmissions}
-              taskDueDate={candidateReviewTaskContext?.taskDueDate || undefined}
-              taskTitle={candidateReviewTaskContext?.taskTitle || undefined}
-              sourceDocuments={workbench?.documents}
-              onSelectCandidate={(newCandidateId) => {
-                void openManagerCandidateReview(newCandidateId);
-              }}
-              onReviewed={() => {
-                setSelectedCandidate(null);
-                setCandidateReviewTaskContext(null);
-                setTaskRefreshTick((current) => current + 1);
-              }}
-              onCancel={() => {
-                setSelectedCandidate(null);
-                setCandidateReviewTaskContext(null);
-              }}
-            />
+            <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f8fafc', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+              {selectedReviewHistoryItem && (
+                <div style={{ padding: '16px 24px 0 24px' }}>
+                  {renderReviewHistoryBanner(closeCandidateModal)}
+                </div>
+              )}
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ManagerCandidateReviewWorkspace
+                  projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
+                  candidateId={selectedCandidate.id}
+                  taskId={candidateReviewTaskContext?.taskId}
+                  submissionId={candidateReviewTaskContext?.submissionId || undefined}
+                  submission={candidateReviewTaskContext?.submission || undefined}
+                  allActiveSubmissions={candidateReviewTaskContext?.allActiveSubmissions}
+                  taskDueDate={candidateReviewTaskContext?.taskDueDate || undefined}
+                  taskTitle={candidateReviewTaskContext?.taskTitle || undefined}
+                  sourceDocuments={workbench?.documents}
+                  onSelectCandidate={(newCandidateId) => {
+                    void openManagerCandidateReview(newCandidateId);
+                  }}
+                  onReviewed={() => {
+                    closeCandidateModal();
+                    setTaskRefreshTick((current) => current + 1);
+                  }}
+                  onCancel={() => {
+                    closeCandidateModal();
+                  }}
+                />
+              </div>
+            </div>
           ) : (
-            <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedCandidate(null)}>
+            <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => closeCandidateModal()}>
               <motion.div
                 className={`${styles.inviteModal} ${styles.candidateModal}`}
                 role="dialog"
@@ -9204,13 +10222,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 transition={{ type: 'spring', stiffness: 360, damping: 30 }}
                 onClick={(event) => event.stopPropagation()}
               >
+                {selectedReviewHistoryItem && renderReviewHistoryBanner(closeCandidateModal)}
                 <div className={styles.inviteHead}>
                   <div>
                     <span className={styles.taskKey}>Candidate #{selectedCandidate.candidateOrder ?? selectedCandidate.id.slice(-6)}</span>
-                    <h2 id="candidate-detail-title">{candidateName(selectedCandidate)}</h2>
-                    <p>Review extracted company data, relationship suggestion, and validation quality before approval.</p>
+                    <h2 id="candidate-detail-title">
+                      {selectedCandidate.status === 'APPROVED' || selectedCandidate.status === 'REJECTED'
+                        ? 'Candidate review details'
+                        : candidateName(selectedCandidate)}
+                    </h2>
+                    <p>
+                      {selectedCandidate.status === 'APPROVED' || selectedCandidate.status === 'REJECTED'
+                        ? 'Review decision, audit metadata, and extracted company profile details.'
+                        : 'Review extracted company data, relationship suggestion, and validation quality before approval.'}
+                    </p>
                   </div>
-                  <button className={styles.iconButton} type="button" aria-label="Close candidate detail modal" onClick={() => setSelectedCandidate(null)}>
+                  <button className={styles.iconButton} type="button" aria-label="Close candidate detail modal" onClick={() => closeCandidateModal()}>
                     <X size={18} />
                   </button>
                 </div>
@@ -9219,18 +10246,68 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {candidateActionMessage && <div className={styles.inlineSuccess}>{candidateActionMessage}</div>}
 
                 <div className={styles.candidateDetailHero}>
-                  <span className={`${styles.candidateStatus} ${candidateStatusClass[selectedCandidate.status]}`}>
-                    {candidateStatusLabel[selectedCandidate.status]}
-                  </span>
-                  {/* <div>
-                    <span>Suggested relationship</span>
-                    <strong>{selectedCandidate.suggestedRelationshipType || 'Not suggested'}</strong>
-                  </div> */}
+                  <div>
+                    <span>Review decision</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                      <span className={`${styles.candidateStatus} ${candidateStatusClass[selectedCandidate.status]}`}>
+                        {candidateStatusLabel[selectedCandidate.status] || selectedCandidate.status}
+                      </span>
+                    </div>
+                    {selectedCandidate.status === 'REJECTED' && selectedCandidate.review?.rejectionReason && (
+                      <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: '#b91c1c' }}>
+                        Reason: {selectedCandidate.review.rejectionReason}
+                      </p>
+                    )}
+                  </div>
 
-                  {/* <div>
-                    <span>Data quality</span>
-                    <strong>{candidateCompleteness(selectedCandidate)}</strong>
-                  </div> */}
+                  <div>
+                    <span>Reviewed by</span>
+                    <strong style={{ fontSize: '1.05rem', marginTop: '6px', display: 'block' }}>
+                      {getCandidateReviewerName(selectedCandidate, projectMembers, currentUser)}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Reviewed at</span>
+                    <strong style={{ fontSize: '1.05rem', marginTop: '6px', display: 'block' }}>
+                      {(() => {
+                        const rDate = getCandidateReviewDate(selectedCandidate);
+                        return rDate ? formatDateTime(rDate) : '—';
+                      })()}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Company Profile</span>
+                    <div style={{ marginTop: '6px' }}>
+                      {(() => {
+                        const profileId = selectedCandidate.lifecycle?.convertedCompanyProfileId
+                          || selectedCandidate.deduplication?.existingProfileIdMatch
+                          || (selectedCandidate.status === 'APPROVED' ? apiProject?.targetCompanyProfileId : null);
+                        if (profileId) {
+                          return (
+                            <button
+                              type="button"
+                              className={styles.profileLinkBtn}
+                              onClick={() => {
+                                setSelectedCandidate(null);
+                                localStorage.setItem('apms-selected-company', profileId);
+                                localStorage.removeItem('apms-context-project');
+                                setActivePage?.(`company-detail?source=project&projectId=${apiProject?.id}&companyId=${profileId}`);
+                              }}
+                            >
+                              Company Profile <ExternalLink size={12} />
+                            </button>
+                          );
+                        }
+                        return (
+                          <span className={styles.unconvertedProfileNotice} title="Official company profile will be created once approved">
+                            Not created yet
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
 
                 <div className={styles.candidateReviewTabs} role="tablist" aria-label="Manager candidate review sections">
@@ -9756,6 +10833,181 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   disabled={closeLoading || (apiProject.progressPercentage !== 100 && !closeReason.trim())}
                 >
                   {closeLoading ? 'Processing...' : apiProject.progressPercentage === 100 ? 'Complete Project' : 'Close Project'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+      {selectedHistoryTask && createPortal(
+        <AnimatePresence>
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              setSelectedHistoryTask(null);
+              setTaskHistoryDetail(null);
+            }}
+          >
+            <motion.div
+              className={styles.historyModalCard}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.historyModalHeader}>
+                <div className={styles.historyModalTitleWrap}>
+                  <div className={styles.historyModalTitleRow}>
+                    <span className={styles.taskCodePill}>{selectedHistoryTask.taskCode || `APMS-${selectedHistoryTask.taskId}`}</span>
+                    <h2 className={styles.historyModalTitle}>{selectedHistoryTask.title}</h2>
+                    <span
+                      className={`${styles.candidateStatus} ${
+                        selectedHistoryTask.status === 'DONE'
+                          ? styles.candidateAPPROVED
+                          : selectedHistoryTask.latestReviewStatus === 'CHANGES_REQUESTED' || (selectedHistoryTask.status as string) === 'REVISION_REQUESTED'
+                          ? styles.candidateREJECTED
+                          : selectedHistoryTask.status === 'IN_REVIEW'
+                          ? styles.candidatePENDING_REVIEW
+                          : styles.candidateDRAFT
+                      }`}
+                      style={{ fontSize: '0.72rem', padding: '2px 8px' }}
+                    >
+                      {selectedHistoryTask.status === 'DONE'
+                        ? 'Done'
+                        : selectedHistoryTask.latestReviewStatus === 'CHANGES_REQUESTED' || (selectedHistoryTask.status as string) === 'REVISION_REQUESTED'
+                        ? 'Changes Requested'
+                        : selectedHistoryTask.status === 'IN_REVIEW'
+                        ? 'In Review'
+                        : 'In Progress'}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    Deliverable: <strong>{selectedHistoryTask.deliverable}</strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.closeModalCloseBtn}
+                  onClick={() => {
+                    setSelectedHistoryTask(null);
+                    setTaskHistoryDetail(null);
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className={styles.historyModalMetaStrip}>
+                <div className={styles.historyModalMetaItem}>
+                  <span>Claimed:</span>
+                  <strong>{selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : '—'}</strong>
+                </div>
+                <div className={styles.historyModalMetaItem}>
+                  <span>Last Submitted:</span>
+                  <strong>{selectedHistoryTask.lastSubmittedAt ? formatDateTime(selectedHistoryTask.lastSubmittedAt) : '—'}</strong>
+                </div>
+                {selectedHistoryTask.completedAt && (
+                  <div className={styles.historyModalMetaItem}>
+                    <span>Completed:</span>
+                    <strong style={{ color: '#15803d' }}>{formatDateTime(selectedHistoryTask.completedAt)}</strong>
+                  </div>
+                )}
+                <div className={styles.historyModalMetaItem}>
+                  <span>Revision Requests:</span>
+                  {selectedHistoryTask.revisionCount > 0 ? (
+                    <span className={styles.revisionCountBadge}>
+                      <AlertTriangle size={11} /> {selectedHistoryTask.revisionCount}
+                    </span>
+                  ) : (
+                    <strong>0</strong>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.historyModalBody}>
+                {taskHistoryLoading && (
+                  <div className={styles.empty}>Loading task timeline...</div>
+                )}
+                {taskHistoryError && (
+                  <div className={styles.inlineError}>{taskHistoryError}</div>
+                )}
+                {!taskHistoryLoading && taskHistoryDetail && (!taskHistoryDetail.activities || taskHistoryDetail.activities.length === 0) && (
+                  <div className={styles.empty}>No timeline events recorded for this task.</div>
+                )}
+                {!taskHistoryLoading && taskHistoryDetail && taskHistoryDetail.activities && taskHistoryDetail.activities.length > 0 && (
+                  <div className={styles.historyTimelineTrack}>
+                    {taskHistoryDetail.activities.map((event, idx) => {
+                      const isClaimed = event.type === 'TASK_CLAIMED' || event.type === 'CLAIMED' || event.type === 'TASK_CREATED';
+                      const isSubmitted = event.type === 'SUBMITTED' || event.type === 'RESUBMITTED';
+                      const isRevision = event.type === 'REVISION_REQUESTED' || event.type === 'CHANGES_REQUESTED';
+                      const isApproved = event.type === 'APPROVED' || event.type === 'TASK_APPROVED' || event.type === 'COMPLETED';
+
+                      const iconClass = isRevision
+                        ? styles.historyTimelineIconRevision
+                        : isApproved
+                        ? styles.historyTimelineIconApproved
+                        : isSubmitted
+                        ? styles.historyTimelineIconSubmitted
+                        : styles.historyTimelineIconClaimed;
+
+                      return (
+                        <div key={idx} className={styles.historyTimelineNode}>
+                          <div className={`${styles.historyTimelineIcon} ${iconClass}`}>
+                            {isRevision ? (
+                              <AlertTriangle size={15} />
+                            ) : isApproved ? (
+                              <CheckCircle2 size={15} />
+                            ) : isSubmitted ? (
+                              <Upload size={15} />
+                            ) : (
+                              <Clock size={15} />
+                            )}
+                          </div>
+                          <div className={styles.historyTimelineContent}>
+                            <div className={styles.historyTimelineHead}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span className={styles.historyTimelineEventTitle}>{event.title}</span>
+                                {event.actorName && (
+                                  <span className={styles.historyTimelineActor}>by <strong>{event.actorName}</strong></span>
+                                )}
+                              </div>
+                              <span className={styles.historyTimelineTime}>
+                                <Clock size={12} /> {formatDateTime(event.occurredAt)}
+                              </span>
+                            </div>
+                            {event.detail && (
+                              <div className={styles.historyTimelineDetail}>{event.detail}</div>
+                            )}
+                            {event.note && (
+                              <div className={styles.historyRevisionBox}>
+                                <div className={styles.historyRevisionBoxTitle}>
+                                  <MessageSquare size={13} /> Manager Review Note / Change Request:
+                                </div>
+                                <p className={styles.historyRevisionBoxText}>{event.note}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.historyModalFooter}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.outlineButton}`}
+                  onClick={() => {
+                    setSelectedHistoryTask(null);
+                    setTaskHistoryDetail(null);
+                  }}
+                >
+                  Close
                 </button>
               </div>
             </motion.div>

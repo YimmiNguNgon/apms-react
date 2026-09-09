@@ -468,10 +468,15 @@ export interface CandidateResponse {
   draftSequence?: number | null;
   documentVersion?: number;
   status: CandidateStatus;
-  extractionSource?: { extractionMethod: string; providerName?: string };
+  extractionSource?: { extractionMethod?: string; providerName?: string; originFileName?: string };
   suggestedRelationshipType?: RelationshipType;
   relationshipConfidenceScore?: number;
   relationshipTypeOverride?: RelationshipType;
+  lifecycle?: { status?: CandidateStatus; convertedCompanyProfileId?: string };
+  deduplication?: { existingProfileIdMatch?: string; similarityScore?: number };
+  review?: { rejectionReason?: string; reviewedBy?: string; reviewedAt?: string };
+  metadata?: { createdBy?: string; createdAt?: string; lastModifiedBy?: string; updatedAt?: string };
+  lastSubmittedAt?: string;
   
   fieldResults?: Record<string, AiFieldResult>;
   fieldEvidence?: Record<string, CandidateFieldEvidence[]>;
@@ -484,6 +489,11 @@ export interface CandidateResponse {
   innovation?: InnovationInfo;
   risk?: RiskInfo;
   compliance?: ComplianceInfo;
+  companyMatchStatus?: DocumentCompanyValidationStatus | null;
+  companyMatchConfirmed?: boolean | null;
+  companyMatchConfirmedBy?: number | null;
+  companyMatchConfirmedAt?: string | null;
+  detectedCompanyName?: string | null;
 
   [key: string]: unknown;
 }
@@ -630,6 +640,30 @@ export interface CandidateWorkflowResponse {
   submissionStatus?: SubmissionStatus | null;
   reviewRound?: number | null;
   candidateDetail?: CandidateResponse | null;
+}
+
+export interface ManagerReviewHistoryItem {
+  submissionId?: number | null;
+  projectId: number;
+  projectName?: string | null;
+  targetCompanyName?: string | null;
+  taskId?: number | null;
+  taskTitle: string;
+  taskType?: TaskType | null;
+  submissionType?: SubmissionType | null;
+  targetEntityType?: string | null;
+  targetEntityId?: string | null;
+  targetEntityName?: string | null;
+  submittedRevisionNumber?: number | null;
+  submittedByUserId?: number | null;
+  submittedByName?: string | null;
+  submittedAt?: string | null;
+  status: SubmissionStatus;
+  reviewedByUserId?: number | null;
+  reviewedByName?: string | null;
+  reviewedAt?: string | null;
+  reviewComment?: string | null;
+  note?: string | null;
 }
 
 export interface ProjectTaskWorkbenchResponse {
@@ -865,6 +899,50 @@ export interface ProjectTaskActivityResponse {
   action: string;
   detail?: string;
   occurredAt: string;
+}
+
+export interface StaffWorkHistoryItemResponse {
+  taskId: number;
+  taskCode: string;
+  title: string;
+  description?: string | null;
+  deliverable: string;
+  taskType: TaskType;
+  priority?: TaskPriority | null;
+  status: TaskStatus;
+  latestReviewStatus?: string | null;
+  claimedAt?: string | null;
+  lastSubmittedAt?: string | null;
+  completedAt?: string | null;
+  revisionCount: number;
+  lastActivityAt?: string | null;
+}
+
+export interface TaskTimelineEventResponse {
+  type: string;
+  submissionNumber?: number | null;
+  title: string;
+  detail?: string | null;
+  note?: string | null;
+  actorId?: number | null;
+  actorName?: string | null;
+  occurredAt: string;
+}
+
+export interface TaskHistoryDetailResponse {
+  taskId: number;
+  taskCode: string;
+  title: string;
+  description?: string | null;
+  deliverable: string;
+  taskType: TaskType;
+  priority?: TaskPriority | null;
+  status: TaskStatus;
+  revisionCount: number;
+  claimedAt?: string | null;
+  lastSubmittedAt?: string | null;
+  completedAt?: string | null;
+  activities: TaskTimelineEventResponse[];
 }
 
 export interface ProjectTaskDraftResponse {
@@ -1513,9 +1591,21 @@ export interface CompanyProfileUpdateProposalResponse {
   createdByAccountId?: number;
 }
 
+export type DocumentCompanyValidationStatus = 'MATCH' | 'POSSIBLE_MATCH' | 'MISMATCH' | 'UNKNOWN';
+
+export interface DocumentContext {
+  companyName?: string | null;
+  taxCode?: string | null;
+  address?: string | null;
+  companyValidation?: DocumentCompanyValidationStatus | null;
+  companyVerifiedByStaff?: boolean | null;
+  companyVerifiedByStaffId?: number | null;
+  companyVerifiedAt?: string | null;
+}
+
 export type ReportingPeriodType = 'QUARTER' | 'HALF_YEAR' | 'FULL_YEAR' | 'AS_OF_DATE' | 'LTM' | 'YTD';
 export interface ReportingPeriod { year?: number | null; periodType?: ReportingPeriodType | string | null; period?: string | null; asOfDate?: string | null; }
-export interface FinancialReportEntry { id: string; title: string; documentId: string; reportType: string; reportingPeriod: ReportingPeriod | null; targetPeriod?: ReportingPeriod | null; reportingYear: number | null; publicationDate: string | null; extractionStatus: string; extractionStage?: string | null; extractionProgress?: number; extractionStartedAt?: string | null; extractionCompletedAt?: string | null; extractionErrorCode?: string | null; extractionErrorMessage?: string | null; reviewStatus: string | null; reviewComment: string | null; reviewedBy?: number | null; reviewedByName?: string | null; reviewedAt?: string | null; }
+export interface FinancialReportEntry { id: string; title: string; documentId: string; reportType: string; documentContext?: DocumentContext | null; reportingPeriod: ReportingPeriod | null; targetPeriod?: ReportingPeriod | null; reportingYear: number | null; publicationDate: string | null; extractionStatus: string; extractionStage?: string | null; extractionProgress?: number; extractionStartedAt?: string | null; extractionCompletedAt?: string | null; extractionErrorCode?: string | null; extractionErrorMessage?: string | null; reviewStatus: string | null; reviewComment: string | null; reviewedBy?: number | null; reviewedByName?: string | null; reviewedAt?: string | null; }
 export interface FinancialMetricResponse { id: string; label: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; normalizedValue?: number | string | null; currency?: string; unit?: string; normalizedUnit?: string | null; period: ReportingPeriod | null; confidence?: number | null; qualityStatus?: string; verificationStatus?: string; inputMethod?: string; source?: { documentId?: string; documentName?: string; page?: number; reportEntryId?: string } | null; evidence?: string | null; }
 export interface FinancialResearchResponse { id: string; projectId: number; taskId: number; companyProfileId: string; targetResearchPeriod?: ReportingPeriod | null; reports: FinancialReportEntry[]; metrics: FinancialMetricResponse[]; status: string; submittedReportIds: string[] | null; submittedAt?: string | null; reviewedBy?: number | null; reviewedAt?: string | null; reviewReason?: string | null; canRecallSubmission?: boolean | null; activeSubmissionId?: number | null; createdAt?: string | null; updatedAt?: string | null; }
 export interface CreateFinancialReportRequest { title: string; documentId: string; reportType: string; statementScope?: string; reportingPeriod?: ReportingPeriod | null; reportingYear?: number | null; publicationDate?: string | null; }

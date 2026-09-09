@@ -23,6 +23,8 @@
       "loading": "Loading notifications...",
       "empty": "No notifications yet.",
       "refresh": "Refresh notifications",
+      "markAllRead": "Mark all as read",
+      "markingAllRead": "Marking as read...",
       "aria": "Notifications"
     },
     "time": {

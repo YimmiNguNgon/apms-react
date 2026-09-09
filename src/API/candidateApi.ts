@@ -49,6 +49,13 @@ export const candidateApi = {
     );
   },
 
+  confirmCompanyMatch: async (candidateId: string, confirmed: boolean) => {
+    return api.post<CandidateResponse>(
+      `/candidates/${candidateId}/confirm-company`,
+      { confirmed }
+    );
+  },
+
   submitCandidateWorkflow: async (candidateId: string, taskId: number) => {
     return api.post<CandidateWorkflowResponse>(
       `/candidates/${candidateId}/workflow/submit?taskId=${taskId}`

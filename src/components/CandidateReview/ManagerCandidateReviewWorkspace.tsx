@@ -7,6 +7,7 @@ import { taskApi } from '../../API/taskApi';
 import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse } from '../../types/domain';
 import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
+import { parseEvidenceCitations } from './EvidenceSection';
 import styles from './CandidateReview.module.css';
 
 interface ManagerCandidateReviewWorkspaceProps {
@@ -234,11 +235,25 @@ const evidenceForField = (candidate: CandidateResponse | null | undefined, key: 
   ];
 
   if (merged.length === 0 && evidenceText) {
-    merged.push({
-      evidenceText,
-      pageNumber: field?.pageNumber,
-      confidence: field?.confidence,
-    });
+    const citations = parseEvidenceCitations(evidenceText, undefined, field?.pageNumber);
+    if (citations.length > 0) {
+      for (const cit of citations) {
+        const pageNum = cit.page ? parseInt(cit.page.replace(/\D+/g, ''), 10) || undefined : field?.pageNumber;
+        merged.push({
+          fileName: cit.fileName !== 'Source Document' ? cit.fileName : undefined,
+          rawDocumentId: cit.docId,
+          pageNumber: pageNum,
+          evidenceText: cit.quote,
+          confidence: field?.confidence,
+        });
+      }
+    } else {
+      merged.push({
+        evidenceText,
+        pageNumber: field?.pageNumber,
+        confidence: field?.confidence,
+      });
+    }
   }
 
   const seen = new Set<string>();

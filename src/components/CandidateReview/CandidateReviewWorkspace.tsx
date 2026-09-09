@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { AlertCircle, CheckCheck, Edit2 } from 'lucide-react';
+import { AlertCircle, Building2, CheckCheck, CheckCircle2, Edit2, Loader2 } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
@@ -43,6 +43,7 @@ interface CandidateReviewWorkspaceProps {
   candidateId: string;
   taskId?: number;
   role?: string;
+  targetCompanyName?: string | null;
   onReviewed?: () => void;
   onCancel?: () => void;
   onSubmit?: () => void;
@@ -100,6 +101,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   projectId,
   candidateId,
   taskId,
+  targetCompanyName,
   onReviewed,
   onCancel,
   onSubmit,
@@ -166,6 +168,21 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     onError: () => {
       alert("Error saving changes");
     }
+  });
+
+  const confirmCompanyMutation = useMutation({
+    mutationFn: (confirmed: boolean) => candidateApi.confirmCompanyMatch(candidateId, confirmed),
+    onSuccess: (response) => {
+      if (response?.data) {
+        setServerCandidate(response.data);
+        queryClient.setQueryData(["candidate", candidateId], response);
+      }
+      queryClient.invalidateQueries({ queryKey: ["candidate", candidateId] });
+      queryClient.invalidateQueries({ queryKey: ["projectTaskWorkbench", taskId] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || "Failed to confirm company match");
+    },
   });
 
   useEffect(() => {
@@ -303,11 +320,19 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     .map((key) => ({ key, label: labelForField(key), field: fieldResults[key] }))
     .filter(({ field }) => isReturnedByManager(field));
   const hasChangesRequested = returnedFields.length > 0;
-  const isSubmitEnabled = allFieldKeys.every((key) => {
+  const requiresCompanyConfirmation = Boolean(
+    serverCandidate &&
+    (serverCandidate.companyMatchStatus ?? 'UNKNOWN') !== 'MATCH' &&
+    !serverCandidate.companyMatchConfirmed
+  );
+
+  const areAllFieldsConfirmed = allFieldKeys.every((key) => {
     const field = fieldResults[key];
     if (isManagerAccepted(field)) return true;
     return field?.staffReviewStatus === 'CONFIRMED';
   });
+
+  const isSubmitEnabled = areAllFieldsConfirmed && !requiresCompanyConfirmation;
 
   const isSaving = saveMutation.isPending;
 
@@ -474,6 +499,56 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               </ul>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Target Company Confirmation Banner */}
+      {requiresCompanyConfirmation && (
+        <div
+          style={{
+            padding: '12px 16px',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 8,
+            color: '#92400e',
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            marginTop: 10,
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Building2 size={20} color="#d97706" style={{ flexShrink: 0 }} />
+            <div>
+              <strong style={{ color: '#b45309' }}>Target Company Confirmation Required:</strong>{' '}
+              The target company for this project is <strong>"{targetCompanyName || 'N/A'}"</strong>.
+              Detected company in document:{' '}
+              <strong>
+                {serverCandidate.detectedCompanyName || 'Unknown company'}
+              </strong>
+              . Please confirm that this basic company information candidate belongs to the target company before submitting for review.
+            </div>
+          </div>
+
+          {!readOnly && (
+            <button
+              className={styles.btnPrimary}
+              style={{ padding: '6px 14px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+              type="button"
+              onClick={() => confirmCompanyMutation.mutate(true)}
+              disabled={confirmCompanyMutation.isPending}
+            >
+              {confirmCompanyMutation.isPending ? (
+                <Loader2 size={13} className={styles.spin} />
+              ) : (
+                <CheckCircle2 size={14} />
+              )}
+              {confirmCompanyMutation.isPending ? 'Confirming...' : 'Confirm this company'}
+            </button>
+          )}
         </div>
       )}
 
@@ -669,7 +744,13 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                 className={styles.btnSubmit} 
                 onClick={onSubmit} 
                 disabled={!isSubmitEnabled || submitLoading}
-                title={isSubmitEnabled ? "Submit to Manager" : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`}
+                title={
+                  requiresCompanyConfirmation
+                    ? "Target company confirmation required before submission"
+                    : isSubmitEnabled
+                    ? "Submit to Manager"
+                    : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`
+                }
               >
                 {submitLoading ? 'Submitting...' : (serverCandidate.status === 'REVISION_REQUIRED' ? 'Resubmit for Review' : 'Submit for Review')}
               </button>

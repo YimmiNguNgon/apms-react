@@ -214,7 +214,7 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
 
   // Available quarter tabs for currently selected year
   const availableQuarters = useMemo<string[]>(() => {
-    const base = ['ALL', 'Q1', 'Q2', 'Q3', 'Q4', 'FY'];
+    const base = ['ALL', 'Q1', 'Q2', 'Q3', 'Q4'];
     if (!selectedYear) return base;
 
     const reportsInYear = allApprovedReportsWithContext.filter(({ report }) => {
@@ -237,7 +237,6 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     if (hasH1) tabs.push('H1');
     tabs.push('Q3', 'Q4');
     if (hasH2) tabs.push('H2');
-    tabs.push('FY');
     return tabs;
   }, [allApprovedReportsWithContext, selectedYear]);
 

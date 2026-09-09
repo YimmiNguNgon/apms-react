@@ -9,6 +9,8 @@ import type {
   ProjectTaskWorkbenchResponse,
   ReviewTaskSubmissionRequest,
   TaskStatus,
+  StaffWorkHistoryItemResponse,
+  TaskHistoryDetailResponse,
 } from "../types/domain";
 
 export const taskApi = {
@@ -117,5 +119,17 @@ export const taskApi = {
       ? `/projects/${projectId}/tasks/${taskId}/submissions/${submissionId}/cancel`
       : `/projects/${projectId}/tasks/${taskId}/submissions/cancel`;
     return api.post<ApiResponse<void>>(url);
+  },
+
+  getMyWorkHistory: async (projectId: number) => {
+    return api.get<StaffWorkHistoryItemResponse[]>(
+      `/projects/${projectId}/tasks/my-history`
+    );
+  },
+
+  getTaskHistory: async (projectId: number, taskId: number) => {
+    return api.get<TaskHistoryDetailResponse>(
+      `/projects/${projectId}/tasks/${taskId}/history`
+    );
   },
 };

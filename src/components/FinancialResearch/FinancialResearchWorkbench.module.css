@@ -726,9 +726,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #15803d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #ef4444;
   font-size: 12px;
   font-weight: 600;
   padding: 3px 9px;
@@ -739,9 +739,9 @@
 }
 
 .verifiedActionTag:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fecdd3;
-  color: #b91c1c;
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 .verifiedActionTag:disabled {
@@ -1264,5 +1264,103 @@
 
 .toastCloseBtn:hover {
   opacity: 1;
+}
+
+/* ==========================================================================
+   Selection Toolbar (Tích tất cả / Hủy tích tất cả)
+   ========================================================================== */
+.selectionToolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.selectionCountBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: #64748b;
+  user-select: none;
+  min-width: 0;
+}
+
+.selectionMasterCheckbox {
+  width: 15px;
+  height: 15px;
+  accent-color: #2563eb;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.selectionCountText {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.selectionCountText strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.selectionBtnGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.selectionActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.selectionActionBtn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.selectionActionBtn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.selectionActionBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.selectionActionBtnPrimary {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.selectionActionBtnPrimary:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
 }
 

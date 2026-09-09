@@ -37,6 +37,7 @@ import {
   Briefcase,
   Users,
   Check,
+  CheckCheck,
   ShieldCheck,
   Edit3,
   Clock,
@@ -349,9 +350,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
       // 6. Contract Value
       const cv = common.contractValue?.value;
+      const isCvNa = cv?.amount == null && (!cv?.rawAmountText || cv.rawAmountText.toUpperCase() === 'N/A' || cv.rawAmountText.toUpperCase().startsWith('KHÔNG QUY ĐỊNH') || cv.rawAmountText.toUpperCase().startsWith('KHÔNG CÓ'));
       const cvDisplay = cv?.amount != null
         ? formatNumericValue(cv.amount)
-        : (cv?.rawAmountText || 'N/A');
+        : (isCvNa ? 'N/A' : cv?.rawAmountText || 'N/A');
       const cvUnit = cv?.amount != null ? (cv.currency || 'VND') : '';
       rows.push({
         id: 'gen-contractValue',
@@ -439,34 +441,56 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   }, [isManagerMode, contractsToDisplay, selectedContractId]);
 
   // Eligible contracts for submission
-  useEffect(() => {
-    const draftIds = contracts.filter((c) => c.reviewStatus === 'DRAFT').map((c) => c.id);
-    if (!hasInitializedSelection.current && contracts.length > 0) {
-      setSelectedContractIdsForSubmission(draftIds);
-      hasInitializedSelection.current = true;
-    } else if (hasInitializedSelection.current) {
-      setSelectedContractIdsForSubmission((prev) =>
-        prev.filter((id) => draftIds.includes(id))
-      );
-    }
+  const eligibleContractIds = useMemo(() => {
+    return contracts.filter((c) => c.reviewStatus !== 'APPROVED').map((c) => c.id);
   }, [contracts]);
+
+  const [submissionSelectionTouched, setSubmissionSelectionTouched] = useState(false);
+
+  useEffect(() => {
+    setSubmissionSelectionTouched(false);
+    setSelectedContractIdsForSubmission([]);
+  }, [research?.id]);
+
+  useEffect(() => {
+    const eligibleSet = new Set(eligibleContractIds);
+    setSelectedContractIdsForSubmission((prev) => {
+      const next = submissionSelectionTouched
+        ? prev.filter((id) => eligibleSet.has(id))
+        : eligibleContractIds;
+      if (next.length === prev.length && next.every((id, i) => id === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [eligibleContractIds, submissionSelectionTouched]);
 
   // Submission Package Counts
   const hasMultipleContracts = contracts.length > 1;
 
   const effectiveSubmissionIds = useMemo(() => {
-    if (!hasMultipleContracts) {
-      return contracts.length === 1 && contracts[0].reviewStatus !== 'APPROVED'
-        ? [contracts[0].id]
-        : [];
-    }
     return selectedContractIdsForSubmission;
-  }, [hasMultipleContracts, contracts, selectedContractIdsForSubmission]);
+  }, [selectedContractIdsForSubmission]);
 
   const selectedContractsForSubmission = useMemo(
     () => contracts.filter((c) => effectiveSubmissionIds.includes(c.id)),
     [contracts, effectiveSubmissionIds]
   );
+
+  const handleSelectAllContracts = () => {
+    setSubmissionSelectionTouched(true);
+    setSelectedContractIdsForSubmission(eligibleContractIds);
+  };
+
+  const handleDeselectAllContracts = () => {
+    setSubmissionSelectionTouched(true);
+    setSelectedContractIdsForSubmission([]);
+  };
+
+  const eligibleCount = eligibleContractIds.length;
+  const selectedCount = selectedContractIdsForSubmission.filter(id => eligibleContractIds.includes(id)).length;
+  const isAllSelected = eligibleCount > 0 && selectedCount === eligibleCount;
+  const isPartiallySelected = selectedCount > 0 && selectedCount < eligibleCount;
 
   const packageCounts = useMemo(() => {
     const total = contracts.length;
@@ -1112,7 +1136,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       !rawValStr ||
       rawValStr.toUpperCase() === 'N/A' ||
       rawValStr === '—' ||
-      rawValStr.toUpperCase() === 'CHƯA CÓ THÔNG TIN';
+      rawValStr.toUpperCase() === 'CHƯA CÓ THÔNG TIN' ||
+      rawValStr.toUpperCase().startsWith('KHÔNG QUY ĐỊNH') ||
+      rawValStr.toUpperCase().startsWith('KHÔNG CÓ THÔNG TIN') ||
+      rawValStr.toUpperCase().startsWith('TÀI LIỆU KHÔNG');
 
     // A field that is N/A or unstated should NEVER be flagged as NEEDS_REVIEW
     const isNeedsReview = !isVerified && !isNa && params.rawField?.qualityStatus === 'NEEDS_REVIEW';
@@ -1198,14 +1225,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         </div>
 
         <div className={contractStyles.kpiFooter}>
-          {params.sourcePage ? (
+          {!isNa && params.sourcePage ? (
             <span className={styles.sourceTag}>Page {params.sourcePage}</span>
           ) : (
             <span />
           )}
 
           <div className={contractStyles.kpiActions}>
-            {params.evidence && (
+            {!isNa && params.evidence && (
               <button
                 type="button"
                 className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnSecondary}`}
@@ -1352,6 +1379,39 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
             ) : null}
           </div>
 
+          {!isManagerMode && contractsToDisplay.length > 0 && (
+            <div className={styles.selectionToolbar}>
+              <div className={styles.selectionCountBadge}>
+                <span className={styles.selectionCountText}>
+                  Đã chọn <strong>{selectedCount}</strong>/{eligibleCount}
+                </span>
+              </div>
+
+              <div className={styles.selectionBtnGroup}>
+                <button
+                  type="button"
+                  className={`${styles.selectionActionBtn} ${styles.selectionActionBtnPrimary}`}
+                  onClick={handleSelectAllContracts}
+                  disabled={!effectiveCanEdit || isAllSelected || eligibleCount === 0 || isAnyExtracting}
+                  title="Tích tất cả các hợp đồng đủ điều kiện để nộp"
+                >
+                  <CheckCheck size={13} />
+                  <span>Tích tất cả</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.selectionActionBtn}
+                  onClick={handleDeselectAllContracts}
+                  disabled={!effectiveCanEdit || selectedCount === 0 || isAnyExtracting}
+                  title="Hủy tích tất cả các hợp đồng"
+                >
+                  <X size={13} />
+                  <span>Hủy tích</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {contractsToDisplay.length === 0 ? (
             <div className={styles.emptyCard}>
               <div className={styles.emptyIcon}>
@@ -1383,6 +1443,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       isAnyExtracting={isAnyExtracting}
                       onSelect={(id) => setSelectedContractId(id)}
                       onToggleSelection={(id) => {
+                        setSubmissionSelectionTouched(true);
                         setSelectedContractIdsForSubmission((prev) =>
                           prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
                         );
@@ -1965,10 +2026,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           const cv = common?.contractValue?.value;
                           const hasAmount = cv?.amount != null;
                           const rawText = cv?.rawAmountText ? cv.rawAmountText.trim() : '';
-                          const isNa = !hasAmount && (!rawText || rawText.toUpperCase() === 'N/A');
+                          const isNa = !hasAmount && (!rawText || rawText.toUpperCase() === 'N/A' || rawText.toUpperCase().startsWith('KHÔNG QUY ĐỊNH') || rawText.toUpperCase().startsWith('KHÔNG CÓ'));
                           const cvDisplay = hasAmount
                             ? `${formatNumericValue(cv.amount)} ${cv.currency || 'VND'}`
-                            : (rawText && rawText.toUpperCase() !== 'N/A' ? rawText : 'N/A');
+                            : (rawText && !isNa ? rawText : 'N/A');
                           const cvRaw = hasAmount ? cv.amount : (isNa ? 'N/A' : rawText);
                           return renderKpiCard({
                             id: 'gen-contractValue',
@@ -1977,8 +2038,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             rawValue: cvRaw,
                             displayValue: cvDisplay,
                             rawField: common?.contractValue as any,
-                            sourcePage: common?.contractValue?.sourcePage,
-                            evidence: common?.contractValue?.evidence,
+                            sourcePage: isNa ? null : common?.contractValue?.sourcePage,
+                            evidence: isNa ? null : common?.contractValue?.evidence,
                           });
                         })()}
 

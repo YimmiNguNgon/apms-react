@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../services/api";
 import type { ApiResponse } from "../services/api";
-import type { AddMemberRequest, AiExtractionJobResponse, CreateProjectRequest, DuplicateCompanyCheckResponse, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest, KeyResultReferenceResponse } from "../types/domain";
+import type { AddMemberRequest, AiExtractionJobResponse, CreateProjectRequest, DuplicateCompanyCheckResponse, PageResult, ProjectMemberResponse, ProjectResponse, RelationshipTypeOption, UpdateProjectStatusRequest, KeyResultReferenceResponse, ManagerReviewHistoryItem } from "../types/domain";
 
 const BASE_URL = `${API_BASE_URL}/projects`;
 const getAuthHeader = () => {
@@ -410,6 +410,25 @@ export const projectApi = {
       return payload as ApiResponse<AiExtractionJobResponse>;
     } catch (error) {
       console.error("Error getting extraction job status:", error);
+      throw error;
+    }
+  },
+  getProjectReviewHistory: async (projectId: string | number): Promise<ApiResponse<ManagerReviewHistoryItem[]>> => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/review-history`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to get project review history");
+      }
+
+      return payload as ApiResponse<ManagerReviewHistoryItem[]>;
+    } catch (error) {
+      console.error("Error getting project review history:", error);
       throw error;
     }
   }

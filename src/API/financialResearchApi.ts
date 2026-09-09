@@ -39,6 +39,12 @@ export const financialResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/cancel-extract`
     ),
 
+  confirmCompany: (projectId: number, taskId: number, reportId: string, confirmed: boolean) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/confirm-company`,
+      { confirmed }
+    ),
+
   addMetric: (projectId: number, taskId: number, data: CreateFinancialMetricRequest) =>
     api.post<FinancialResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/financial-research/metrics`,
@@ -69,6 +75,11 @@ export const financialResearchApi = {
   verifyAllMetrics: (projectId: number, taskId: number, reportId: string) =>
     api.post<FinancialResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/verify-all`
+    ),
+
+  unverifyAllMetrics: (projectId: number, taskId: number, reportId: string) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/unverify-all`
     ),
 
   reviewReport: (projectId: number, taskId: number, reportId: string, status: 'APPROVED' | 'CHANGES_REQUESTED', reason?: string) =>

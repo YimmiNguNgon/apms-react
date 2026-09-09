@@ -113,19 +113,8 @@ export const ContractCard: React.FC<Props> = ({
               ● Draft
             </span>
           )
-        ) : !hasMultipleContracts ? (
-          /* Single contract in project: No checkbox needed! */
-          contract.reviewStatus === 'CHANGES_REQUESTED' ? (
-            <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
-              ● Changes Requested
-            </span>
-          ) : (
-            <span className={styles.statusBadge} style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', fontSize: 11.5 }}>
-              ● Ready to Submit
-            </span>
-          )
         ) : (
-          /* Multiple contracts in project: Show checkbox to select, plus tag if CHANGES_REQUESTED */
+          /* Checkbox to select for submission, plus tag if CHANGES_REQUESTED */
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <label
               className={styles.cardSelectLabel}
@@ -141,7 +130,7 @@ export const ContractCard: React.FC<Props> = ({
                 checked={selectedForSubmission}
                 disabled={!canEditCard || !isEligible || isOtherExtracting}
                 onChange={handleSelectionChange}
-                aria-label={`Select ${contract.title} to submit`}
+                aria-label={`Select ${contract.title || 'Contract'} to submit`}
               />
               <span>Submit</span>
             </label>

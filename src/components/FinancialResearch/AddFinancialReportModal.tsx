@@ -14,6 +14,14 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  React.useEffect(() => {
+    if (open) {
+      setTitle('');
+      setPeriod('Q1');
+      setFile(null);
+    }
+  }, [open]);
+
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -168,7 +176,14 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
               accept="application/pdf" 
               required 
               style={{ ...inputStyle, paddingLeft: '38px', cursor: 'pointer' }} 
-              onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} 
+              onChange={(e) => {
+                const selectedFile = e.target.files?.[0] || null;
+                setFile(selectedFile);
+                if (selectedFile) {
+                  const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
+                  setTitle(baseName);
+                }
+              }} 
             />
             <FileUp size={18} color="#64748b" style={{ position: 'absolute', left: '12px' }} />
           </div>

@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BarChart3,
+  Building2,
   Check,
+  CheckCheck,
   CheckCircle2,
   Edit3,
   FileSearch,
@@ -351,12 +353,17 @@ function ExtractedMetricsPanel({
   onUnverifyMetric,
   onVerifyAll,
   verifyingAll,
+  onUnverifyAll,
+  unverifyingAll,
   unverifyingMetricId,
   onEditMetric,
   onDeleteMetric,
   onAddManualMetric,
   onViewPdf,
   openingPdfId,
+  targetCompanyName,
+  onConfirmCompany,
+  isConfirmingCompany,
 }: {
   report: FinancialReportEntry;
   metrics: FinancialMetricResponse[];
@@ -375,11 +382,16 @@ function ExtractedMetricsPanel({
   onUnverifyMetric?: (metricId: string) => void;
   onVerifyAll?: (reportId: string) => void;
   verifyingAll?: boolean;
+  onUnverifyAll?: (reportId: string) => void;
+  unverifyingAll?: boolean;
   onEditMetric: (metric: FinancialMetricResponse) => void;
   onDeleteMetric?: (metric: FinancialMetricResponse) => void;
   onAddManualMetric: () => void;
   onViewPdf: (documentId: string) => void;
   openingPdfId?: string | null;
+  targetCompanyName?: string | null;
+  onConfirmCompany?: (reportId: string, confirmed: boolean) => void;
+  isConfirmingCompany?: boolean;
 }) {
   const isApproved = report.reviewStatus === 'APPROVED';
   const canEditThisReport = canEdit && !isApproved;
@@ -445,6 +457,58 @@ function ExtractedMetricsPanel({
         </div>
       )}
 
+      {/* Target Company Confirmation Banner (matching Contract Workbench) */}
+      {!isApproved &&
+        (report.documentContext?.companyValidation ?? 'UNKNOWN') !== 'MATCH' &&
+        !report.documentContext?.companyVerifiedByStaff && (
+          <div
+            style={{
+              padding: '12px 16px',
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: 8,
+              color: '#92400e',
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              marginTop: 10,
+              marginBottom: 4,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Building2 size={20} color="#d97706" style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ color: '#b45309' }}>Target Company Confirmation Required:</strong>{' '}
+                The target company for this project is <strong>"{targetCompanyName || 'N/A'}"</strong>.
+                Detected report company:{' '}
+                <strong>
+                  {report.documentContext?.companyName || 'Unknown company'}
+                </strong>
+                . Please confirm that this financial report belongs to the target company before submitting for review.
+              </div>
+            </div>
+
+            {canEditThisReport && onConfirmCompany && (
+              <button
+                className={styles.primaryButton}
+                style={{ padding: '6px 14px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+                type="button"
+                onClick={() => onConfirmCompany(report.id, true)}
+                disabled={isConfirmingCompany}
+              >
+                {isConfirmingCompany ? (
+                  <Loader2 size={13} className={styles.spinIcon} />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
+                {isConfirmingCompany ? 'Confirming...' : 'Confirm this report'}
+              </button>
+            )}
+          </div>
+        )}
+
       {/* Verification Progress Banner (matching Contract Workbench) */}
       <div
         style={{
@@ -482,21 +546,68 @@ function ExtractedMetricsPanel({
           </div>
         </div>
 
-        {canEditThisReport && totalMetrics > 0 && percentVerified < 100 && (
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            style={{ padding: '4px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 600 }}
-            onClick={() => onVerifyAll?.(report.id)}
-            disabled={verifyingAll}
-          >
-            {verifyingAll ? (
-              <Loader2 size={13} className={styles.spinIcon} />
-            ) : (
-              <CheckCircle2 size={13} color="#2563eb" />
+        {canEditThisReport && totalMetrics > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {percentVerified < 100 && (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  color: '#2563eb',
+                  borderColor: '#bfdbfe',
+                  background: '#eff6ff',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => onVerifyAll?.(report.id)}
+                disabled={verifyingAll || unverifyingAll}
+                title="Verify all metrics"
+              >
+                {verifyingAll ? (
+                  <Loader2 size={13} className={styles.spinIcon} />
+                ) : (
+                  <CheckCircle2 size={13} color="#2563eb" />
+                )}
+                {verifyingAll ? 'Verifying...' : 'Verify All'}
+              </button>
             )}
-            {verifyingAll ? 'Đang xác thực...' : 'Xác thực tất cả'}
-          </button>
+
+            {verifiedCount > 0 && (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  color: '#dc2626',
+                  borderColor: '#fca5a5',
+                  background: '#fef2f2',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => onUnverifyAll?.(report.id)}
+                disabled={verifyingAll || unverifyingAll}
+                title="Unverify all metrics"
+              >
+                {unverifyingAll ? (
+                  <Loader2 size={13} className={styles.spinIcon} />
+                ) : (
+                  <RotateCcw size={13} color="#dc2626" />
+                )}
+                {unverifyingAll ? 'Unverifying...' : 'Unverify All'}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -624,12 +735,12 @@ function ExtractedMetricsPanel({
                                 onVerifyMetric(metric.id);
                               }
                             }}
-                            title={isVerified ? 'Hủy xác thực chỉ số này' : 'Xác thực chỉ số này'}
+                            title={isVerified ? 'Unverify this metric' : 'Xác thực chỉ số này'}
                           >
                             {isVerified ? (
                               <>
                                 <RotateCcw size={12} />
-                                {unverifyingMetricId === metric.id ? 'Đang hủy...' : 'Hủy xác thực'}
+                                {unverifyingMetricId === metric.id ? 'Unverifying...' : 'Unverify'}
                               </>
                             ) : verifyingMetricId === metric.id ? (
                               'Đang lưu...'
@@ -749,12 +860,12 @@ function ExtractedMetricsPanel({
                                       onVerifyMetric(metric.id);
                                     }
                                   }}
-                                  title={isVerified ? 'Hủy xác thực chỉ số này' : 'Xác thực chỉ số này'}
+                                  title={isVerified ? 'Unverify this metric' : 'Xác thực chỉ số này'}
                                 >
                                   {isVerified ? (
                                     <>
                                       <RotateCcw size={12} />
-                                      {unverifyingMetricId === metric.id ? 'Đang hủy...' : 'Hủy xác thực'}
+                                      {unverifyingMetricId === metric.id ? 'Unverifying...' : 'Unverify'}
                                     </>
                                   ) : (
                                     <>
@@ -797,6 +908,8 @@ function FinancialReportsPanel({
   selectedReportIdsForSubmission,
   eligibleReportIds,
   onToggleSelection,
+  onSelectAll,
+  onDeselectAll,
   isManagerMode = false,
 }: {
   reports: FinancialReportEntry[];
@@ -815,10 +928,17 @@ function FinancialReportsPanel({
   selectedReportIdsForSubmission: string[];
   eligibleReportIds: string[];
   onToggleSelection: (reportId: string) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
   isManagerMode?: boolean;
 }) {
   const selectedSubmissionSet = useMemo(() => new Set(selectedReportIdsForSubmission), [selectedReportIdsForSubmission]);
   const eligibleSubmissionSet = useMemo(() => new Set(eligibleReportIds), [eligibleReportIds]);
+  const eligibleCount = eligibleReportIds.length;
+  const selectedCount = selectedReportIdsForSubmission.filter(id => eligibleSubmissionSet.has(id)).length;
+  const isAllSelected = eligibleCount > 0 && selectedCount === eligibleCount;
+  const isPartiallySelected = selectedCount > 0 && selectedCount < eligibleCount;
+
   const groupedReports = reports.reduce((groups, report) => {
     const key = formatPeriod(report);
     if (!groups[key]) groups[key] = [];
@@ -849,6 +969,39 @@ function FinancialReportsPanel({
           </button>
         )}
       </div>
+
+      {!isManagerMode && reports.length > 0 && (
+        <div className={styles.selectionToolbar}>
+          <div className={styles.selectionCountBadge}>
+            <span className={styles.selectionCountText}>
+              Đã chọn <strong>{selectedCount}</strong>/{eligibleCount}
+            </span>
+          </div>
+
+          <div className={styles.selectionBtnGroup}>
+            <button
+              type="button"
+              className={`${styles.selectionActionBtn} ${styles.selectionActionBtnPrimary}`}
+              onClick={onSelectAll}
+              disabled={!canEdit || isAllSelected || eligibleCount === 0 || isAnyExtracting}
+              title="Tích tất cả các báo cáo đủ điều kiện để nộp"
+            >
+              <CheckCheck size={13} />
+              <span>Tích tất cả</span>
+            </button>
+            <button
+              type="button"
+              className={styles.selectionActionBtn}
+              onClick={onDeselectAll}
+              disabled={!canEdit || selectedCount === 0 || isAnyExtracting}
+              title="Hủy tích tất cả các báo cáo"
+            >
+              <X size={13} />
+              <span>Hủy tích</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {reports.length === 0 ? (
         <FinancialReportsEmptyState />
@@ -1187,7 +1340,18 @@ export default function FinancialResearchWorkbench({
     unverified: selectedSubmissionMetrics.filter(metric => metric.verificationStatus !== 'VERIFIED').length,
   }), [extractedReports.length, reports.length, selectedReportIdsForSubmission.length, selectedSubmissionMetrics]);
 
-  const canSubmit = !allApproved && counts.selected > 0 && counts.metrics > 0 && counts.unverified === 0;
+  const isCompanyConfirmationRequired = (report: FinancialReportEntry) => {
+    const status = report.documentContext?.companyValidation ?? 'UNKNOWN';
+    if (status === 'MATCH') return false;
+    return !report.documentContext?.companyVerifiedByStaff;
+  };
+
+  const hasUnconfirmedCompanyMatch = useMemo(
+    () => selectedSubmissionReports.some(isCompanyConfirmationRequired),
+    [selectedSubmissionReports]
+  );
+
+  const canSubmit = !allApproved && counts.selected > 0 && counts.metrics > 0 && counts.unverified === 0 && !hasUnconfirmedCompanyMatch;
 
   useEffect(() => {
     setSubmissionSelectionTouched(false);
@@ -1421,10 +1585,39 @@ export default function FinancialResearchWorkbench({
         queryClient.setQueryData(['financial-research', projectId, taskId], res);
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setToast({ message: 'Đã xác thực thành công toàn bộ chỉ số.', type: 'success' });
+      setToast({ message: 'All financial metrics verified successfully.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Không thể xác thực toàn bộ chỉ số.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to verify all metrics.', type: 'error' });
+    },
+  });
+
+  const unverifyAllMutation = useMutation({
+    mutationFn: (reportId: string) => financialResearchApi.unverifyAllMetrics(projectId, taskId, reportId),
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: 'All financial metrics unverified.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to unverify all metrics.', type: 'error' });
+    },
+  });
+
+  const confirmCompanyMutation = useMutation({
+    mutationFn: ({ reportId, confirmed }: { reportId: string; confirmed: boolean }) =>
+      financialResearchApi.confirmCompany(projectId, taskId, reportId, confirmed),
+    onSuccess: (res) => {
+      if (res?.data) {
+        queryClient.setQueryData(['financial-research', projectId, taskId], res);
+      }
+      queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+      setToast({ message: 'Target company match confirmed for this report.', type: 'success' });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.response?.data?.message || 'Failed to confirm company match.', type: 'error' });
     },
   });
 
@@ -1592,6 +1785,16 @@ export default function FinancialResearchWorkbench({
     );
   };
 
+  const handleSelectAllReports = () => {
+    setSubmissionSelectionTouched(true);
+    setSelectedReportIdsForSubmission(eligibleReportIds);
+  };
+
+  const handleDeselectAllReports = () => {
+    setSubmissionSelectionTouched(true);
+    setSelectedReportIdsForSubmission([]);
+  };
+
   const handleViewPdf = async (documentId?: string | null) => {
     if (!documentId) {
       setToast({ message: 'Không tìm thấy ID tài liệu PDF gốc.', type: 'error' });
@@ -1700,6 +1903,8 @@ export default function FinancialResearchWorkbench({
           selectedReportIdsForSubmission={selectedReportIdsForSubmission}
           eligibleReportIds={eligibleReportIds}
           onToggleSelection={handleToggleReportSelection}
+          onSelectAll={handleSelectAllReports}
+          onDeselectAll={handleDeselectAllReports}
           isManagerMode={isManagerMode}
         />
 
@@ -1747,11 +1952,16 @@ export default function FinancialResearchWorkbench({
                 onUnverifyMetric={(metricId) => unverifyMetricMutation.mutate(metricId)}
                 onVerifyAll={(reportId) => verifyAllMutation.mutate(reportId)}
                 verifyingAll={verifyAllMutation.isPending}
+                onUnverifyAll={(reportId) => unverifyAllMutation.mutate(reportId)}
+                unverifyingAll={unverifyAllMutation.isPending}
                 onEditMetric={(metric) => setEditingMetric(metric)}
                 onDeleteMetric={(metric) => setMetricToDelete(metric)}
                 onAddManualMetric={() => setIsAddMetricModalOpen(true)}
                 onViewPdf={handleViewPdf}
                 openingPdfId={openingPdfId}
+                targetCompanyName={targetCompanyName}
+                onConfirmCompany={(reportId, confirmed) => confirmCompanyMutation.mutate({ reportId, confirmed })}
+                isConfirmingCompany={confirmCompanyMutation.isPending}
               />
             ) : (
               <SelectedReportSummary
@@ -1773,7 +1983,7 @@ export default function FinancialResearchWorkbench({
       {isSubmitted && !isManagerMode && (
         <div className={styles.submittedNotice}>
           <CheckCircle2 size={18} />
-          <span>This financial research package is currently {formatStatus(research.status)}.</span>
+          <span>This financial research submission is currently pending review by your manager.</span>
         </div>
       )}
 
@@ -1781,7 +1991,7 @@ export default function FinancialResearchWorkbench({
         <ManagerReviewSummaryBar
           selectedReport={selectedReport}
           reports={reports}
-          isRecalled={research.status !== 'SUBMITTED'}
+          isRecalled={research.status === 'RECALLED'}
           onApprove={(reportId) => reviewReportMutation.mutate({ reportId, status: 'APPROVED' })}
           onRequestChanges={() => setIsRequestChangesModalOpen(true)}
           isProcessing={reviewReportMutation.isPending}
@@ -1799,6 +2009,14 @@ export default function FinancialResearchWorkbench({
           onSubmit={() => {
             if (counts.unverified > 0) {
               setToast({ message: `${counts.unverified} unverified metric(s) remaining. Please verify all metrics before submitting.`, type: 'error' });
+              return;
+            }
+            const unconfirmed = selectedSubmissionReports.find(isCompanyConfirmationRequired);
+            if (unconfirmed) {
+              setToast({
+                message: `Báo cáo "${unconfirmed.title}" cần được xác nhận thuộc công ty mục tiêu trước khi gửi duyệt.`,
+                type: 'error',
+              });
               return;
             }
             submitTaskMutation.mutate();

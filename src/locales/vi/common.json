@@ -23,6 +23,8 @@
       "loading": "Loading notifications...",
       "empty": "No notifications yet.",
       "refresh": "Refresh notifications",
+      "markAllRead": "Đọc tất cả",
+      "markingAllRead": "Đang đọc...",
       "aria": "Notifications"
     },
     "time": {

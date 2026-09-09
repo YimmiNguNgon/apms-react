@@ -82,6 +82,7 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
   const [tasks, setTasks] = useState<StaffTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   const loadStaffWorkspace = async (signal?: AbortSignal, options: { silent?: boolean } = {}) => {
     if (!options.silent) setLoading(true);
@@ -191,6 +192,10 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
     });
   }, [tasks]);
 
+  const visibleTasks = useMemo(() => {
+    return showAllTasks ? sortedTasks : sortedTasks.slice(0, 10);
+  }, [sortedTasks, showAllTasks]);
+
   const nextTask = sortedTasks.find((task) => task.status === 'IN_PROGRESS')
     ?? sortedTasks.find((task) => task.status === 'TODO')
     ?? sortedTasks[0];
@@ -215,9 +220,6 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
             </p>
           </div>
           <div className="workspace-head-actions">
-            <button type="button" className="btn btn-outline" onClick={() => setActivePage?.('my-tasks')}>
-              My Tasks
-            </button>
             <button type="button" className="btn btn-primary" onClick={() => setActivePage?.('project-management')}>
               Projects
             </button>
@@ -288,7 +290,7 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
 
             {!loading && sortedTasks.length > 0 && (
               <div className="staff-task-queue-list">
-                {sortedTasks.slice(0, 10).map((task) => {
+                {visibleTasks.map((task) => {
                   const overdue = isOverdue(task.dueDate) && task.status !== 'DONE';
                   return (
                     <article key={task.id} className={`staff-task-row ${task.status === 'DONE' ? 'done' : ''}`}>
@@ -340,10 +342,12 @@ export const StaffDashboard: React.FC<Props> = ({ setActivePage }) => {
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      onClick={() => setActivePage?.('my-tasks')}
+                      onClick={() => setShowAllTasks((prev) => !prev)}
                       style={{ fontSize: '0.82rem', color: 'var(--role-accent, #2563eb)' }}
                     >
-                      View all tasks ({sortedTasks.length}) →
+                      {showAllTasks
+                        ? 'Show less ↑'
+                        : `View all tasks (${sortedTasks.length}) ↓`}
                     </button>
                   </div>
                 )}

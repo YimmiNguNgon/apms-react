@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { FileText, ChevronDown, ChevronRight, Bookmark, Copy, Check } from 'lucide-react';
+import type { CandidateFieldEvidence } from '../../types/domain';
 import styles from './CandidateReview.module.css';
 
 export interface EvidenceCitation {
@@ -34,8 +35,28 @@ export function formatPageLabel(val: string | number): string {
 export function parseEvidenceCitations(
   rawEvidenceText?: string | null,
   fallbackFileName?: string,
-  fallbackPage?: string | number
+  fallbackPage?: string | number,
+  evidenceItems?: CandidateFieldEvidence[]
 ): EvidenceCitation[] {
+  // 1. If structured evidence items are provided and contain text, use them directly
+  if (evidenceItems && evidenceItems.length > 0) {
+    const validItems = evidenceItems.filter(item => Boolean(item.evidenceText || item.text || item.snippet || item.extractedText));
+    if (validItems.length > 0) {
+      return validItems.map((item, idx) => {
+        const itemPage = item.pageNumber ?? item.page;
+        return {
+          id: `struct-${idx}`,
+          fileName: item.fileName || item.documentName || fallbackFileName || 'Source Document',
+          docId: item.rawDocumentId || item.documentId || item.sourceDocumentId,
+          page: itemPage !== undefined && itemPage !== null
+            ? formatPageLabel(itemPage)
+            : (fallbackPage !== undefined && fallbackPage !== null ? formatPageLabel(fallbackPage) : undefined),
+          quote: cleanQuoteText(item.evidenceText || item.text || item.snippet || item.extractedText || ''),
+        };
+      });
+    }
+  }
+
   if (!rawEvidenceText || !rawEvidenceText.trim()) {
     return [];
   }
@@ -70,6 +91,11 @@ export function parseEvidenceCitations(
       } else {
         docId = p2;
       }
+    } else {
+      if (/^(page|trang|\d+)/i.test(p1)) {
+        pageStr = p1;
+        fileName = '';
+      }
     }
 
     matches.push({
@@ -81,10 +107,16 @@ export function parseEvidenceCitations(
     });
   }
 
+  // Find the first meaningful fileName from matches to serve as default for any quotes lacking fileName
+  const firstMatchedFileName = matches.find(match => Boolean(match.fileName && match.fileName !== 'Source Document'))?.fileName;
+  const resolvedDefaultFileName = (fallbackFileName && fallbackFileName !== 'Source Document')
+    ? fallbackFileName
+    : (firstMatchedFileName || fallbackFileName || 'Source Document');
+
   if (matches.length === 0) {
     return [{
       id: 'cit-0',
-      fileName: fallbackFileName || 'Source Document',
+      fileName: resolvedDefaultFileName,
       page: fallbackPage !== undefined && fallbackPage !== null ? formatPageLabel(fallbackPage) : undefined,
       quote: cleanQuoteText(text),
     }];
@@ -98,7 +130,7 @@ export function parseEvidenceCitations(
     if (preText && preText.length > 3) {
       citations.push({
         id: 'cit-pre',
-        fileName: fallbackFileName || matches[0].fileName || 'Source Document',
+        fileName: resolvedDefaultFileName,
         page: fallbackPage !== undefined && fallbackPage !== null ? formatPageLabel(fallbackPage) : undefined,
         quote: preText,
       });
@@ -112,6 +144,7 @@ export function parseEvidenceCitations(
     const rawQuote = text.substring(quoteStart, quoteEnd);
     const cleanedQuote = cleanQuoteText(rawQuote);
 
+    const itemFileName = current.fileName || resolvedDefaultFileName;
     const pageLabel = current.pageStr
       ? formatPageLabel(current.pageStr)
       : (fallbackPage !== undefined && fallbackPage !== null ? formatPageLabel(fallbackPage) : undefined);
@@ -119,7 +152,7 @@ export function parseEvidenceCitations(
     if (cleanedQuote || current.pageStr) {
       citations.push({
         id: `cit-${i}`,
-        fileName: current.fileName || fallbackFileName || 'Source Document',
+        fileName: itemFileName,
         docId: current.docId,
         page: pageLabel,
         quote: cleanedQuote || 'Direct quote not provided.',
@@ -132,6 +165,7 @@ export function parseEvidenceCitations(
 
 export interface EvidenceSectionProps {
   evidenceText?: string;
+  evidenceItems?: CandidateFieldEvidence[];
   pageNumber?: number;
   expanded: boolean;
   onToggle: () => void;
@@ -140,6 +174,7 @@ export interface EvidenceSectionProps {
 
 export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
   evidenceText,
+  evidenceItems,
   pageNumber,
   expanded,
   onToggle,
@@ -148,8 +183,8 @@ export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const citations = useMemo(() => {
-    return parseEvidenceCitations(evidenceText, defaultFileName, pageNumber);
-  }, [evidenceText, defaultFileName, pageNumber]);
+    return parseEvidenceCitations(evidenceText, defaultFileName, pageNumber, evidenceItems);
+  }, [evidenceText, defaultFileName, pageNumber, evidenceItems]);
 
   const groupedByFile = useMemo(() => {
     const map = new Map<string, EvidenceCitation[]>();
@@ -185,7 +220,7 @@ export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
     });
   }, [citations]);
 
-  if (!evidenceText || citations.length === 0) {
+  if (citations.length === 0) {
     return null;
   }
 
@@ -206,8 +241,8 @@ export const EvidenceSection: React.FC<EvidenceSectionProps> = ({
       >
         <FileText size={14} color="#3b82f6" />
         <span>Evidence</span>
-        {citations.length > 1 && (
-          <span className={styles.evidenceCountBadge} title={`${citations.length} supporting citations`}>
+        {citations.length > 0 && (
+          <span className={styles.evidenceCountBadge} title={`${citations.length} supporting citation${citations.length > 1 ? 's' : ''}`}>
             {citations.length}
           </span>
         )}

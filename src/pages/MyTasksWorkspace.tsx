@@ -47,12 +47,32 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     if (!options.silent) setLoading(true);
     setError(null);
     try {
-      const res = await api.get<PageResult<ProjectTaskResponse>>('/tasks/my', {
-        params: { page: 0, size: 100 }
+      const projRes = await api.get<PageResult<ProjectResponse>>('/projects', {
+        params: { page: 0, size: 50 },
       });
-      if (res?.success && res.data?.content) {
-        setTasks(res.data.content);
-      }
+      const projectRows = projRes?.data?.content ?? [];
+      const pMap: Record<number, string> = {};
+      projectRows.forEach((p) => {
+        pMap[p.id] = p.projectName;
+      });
+      setProjectsMap(pMap);
+
+      const taskResults = await Promise.allSettled(
+        projectRows.map(async (project) => {
+          const taskRes = await api.get<PageResult<ProjectTaskResponse>>(`/projects/${project.id}/tasks`, {
+            params: { page: 0, size: 100 },
+          });
+          return (taskRes?.data?.content ?? []).map((task) => ({
+            ...task,
+            projectName: project.projectName,
+          }));
+        })
+      );
+
+      const allTasks = taskResults.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value : []
+      );
+      setTasks(allTasks);
     } catch (err: unknown) {
       setError((err as Error)?.message || 'Failed to load assigned tasks.');
     } finally {
@@ -60,32 +80,13 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
     }
   }, []);
 
-  const loadProjectsMap = useCallback(async () => {
-    try {
-      const res = await api.get<PageResult<ProjectResponse>>('/projects', {
-        params: { page: 0, size: 100 }
-      });
-      if (res?.success && res.data?.content) {
-        const pMap: Record<number, string> = {};
-        res.data.content.forEach((p) => {
-          pMap[p.id] = p.projectName;
-        });
-        setProjectsMap(pMap);
-      }
-    } catch (err) {
-      console.warn('Failed to construct projects map:', err);
-    }
-  }, []);
-
   useEffect(() => {
-    void loadProjectsMap();
     void fetchMyTasks();
-  }, [fetchMyTasks, loadProjectsMap]);
+  }, [fetchMyTasks]);
 
   useEffect(() => {
     const refreshSilently = () => {
       void fetchMyTasks({ silent: true });
-      void loadProjectsMap();
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === 'visible') refreshSilently();
@@ -100,7 +101,7 @@ export const MyTasksWorkspace: React.FC<{ setActivePage?: (page: string) => void
       window.removeEventListener('focus', refreshSilently);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [fetchMyTasks, loadProjectsMap]);
+  }, [fetchMyTasks]);
 
   // Handle task status update via Drag and Drop or select dropdown
   const handleUpdateTaskStatus = async (taskId: number, projectId: number, newStatus: TaskStatus) => {
