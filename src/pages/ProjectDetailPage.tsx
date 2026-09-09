@@ -41,6 +41,7 @@ import {
   Users,
   X,
   History,
+  RotateCcw,
 } from 'lucide-react';
 import styles from './ProjectDetailPage.module.css';
 import {
@@ -6752,6 +6753,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return Array.from(documentsByKey.values());
   }, [managerCandidateDrafts, projectDocuments, workbench?.documents]);
 
+  const isAutomatedSystemNote = (note?: string | null): boolean => {
+    if (!note || !note.trim()) return true;
+    const lower = note.trim().toLowerCase();
+    const withoutRecall = lower.replace('[recalled by staff]', '').trim();
+    if (!withoutRecall) return true;
+    return (
+      withoutRecall.includes('submitted for manager review') ||
+      withoutRecall.includes('submitted for review') ||
+      withoutRecall.includes('submitted to manager') ||
+      withoutRecall.includes('completed revisions per manager feedback') ||
+      withoutRecall.includes('task result submitted') ||
+      withoutRecall.includes('documents submitted') ||
+      withoutRecall.includes('candidate submitted for manager review')
+    );
+  };
+
   const handleViewTaskHistory = async (taskItem: StaffWorkHistoryItemResponse) => {
     setSelectedHistoryTask(taskItem);
     setTaskHistoryDetail(null);
@@ -10860,10 +10877,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               onClick={(e) => e.stopPropagation()}
             >
               <div className={styles.historyModalHeader}>
-                <div className={styles.historyModalTitleWrap}>
-                  <div className={styles.historyModalTitleRow}>
+                <div className={styles.historyModalHeaderTop}>
+                  <div className={styles.historyModalBadges}>
                     <span className={styles.taskCodePill}>{selectedHistoryTask.taskCode || `APMS-${selectedHistoryTask.taskId}`}</span>
-                    <h2 className={styles.historyModalTitle}>{selectedHistoryTask.title}</h2>
+                    <span className={styles.historyDeliverableBadge}>
+                      <Target size={12} /> {selectedHistoryTask.deliverable}
+                    </span>
                     <span
                       className={`${styles.candidateStatus} ${
                         selectedHistoryTask.status === 'DONE'
@@ -10885,46 +10904,61 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         : 'In Progress'}
                     </span>
                   </div>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                    Deliverable: <strong>{selectedHistoryTask.deliverable}</strong>
-                  </span>
+                  <button
+                    type="button"
+                    className={styles.historyModalCloseBtn}
+                    onClick={() => {
+                      setSelectedHistoryTask(null);
+                      setTaskHistoryDetail(null);
+                    }}
+                    title="Close"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className={styles.closeModalCloseBtn}
-                  onClick={() => {
-                    setSelectedHistoryTask(null);
-                    setTaskHistoryDetail(null);
-                  }}
-                >
-                  <X size={20} />
-                </button>
+                <div className={styles.historyModalTitleRow}>
+                  <h2 className={styles.historyModalTitle}>{selectedHistoryTask.title}</h2>
+                </div>
               </div>
 
-              <div className={styles.historyModalMetaStrip}>
-                <div className={styles.historyModalMetaItem}>
-                  <span>Claimed:</span>
-                  <strong>{selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : '—'}</strong>
+              <div className={styles.historyModalMetaGrid}>
+                <div className={styles.historyMetaCard}>
+                  <span className={styles.historyMetaLabel}>
+                    <Clock size={12} style={{ color: '#3b82f6' }} /> Claimed At
+                  </span>
+                  <span className={styles.historyMetaValue} title={selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : undefined}>
+                    {selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : '—'}
+                  </span>
                 </div>
-                <div className={styles.historyModalMetaItem}>
-                  <span>Last Submitted:</span>
-                  <strong>{selectedHistoryTask.lastSubmittedAt ? formatDateTime(selectedHistoryTask.lastSubmittedAt) : '—'}</strong>
+                <div className={styles.historyMetaCard}>
+                  <span className={styles.historyMetaLabel}>
+                    <Upload size={12} style={{ color: '#6366f1' }} /> Last Submitted
+                  </span>
+                  <span className={styles.historyMetaValue} title={selectedHistoryTask.lastSubmittedAt ? formatDateTime(selectedHistoryTask.lastSubmittedAt) : undefined}>
+                    {selectedHistoryTask.lastSubmittedAt ? formatDateTime(selectedHistoryTask.lastSubmittedAt) : '—'}
+                  </span>
                 </div>
-                {selectedHistoryTask.completedAt && (
-                  <div className={styles.historyModalMetaItem}>
-                    <span>Completed:</span>
-                    <strong style={{ color: '#15803d' }}>{formatDateTime(selectedHistoryTask.completedAt)}</strong>
-                  </div>
-                )}
-                <div className={styles.historyModalMetaItem}>
-                  <span>Revision Requests:</span>
-                  {selectedHistoryTask.revisionCount > 0 ? (
-                    <span className={styles.revisionCountBadge}>
-                      <AlertTriangle size={11} /> {selectedHistoryTask.revisionCount}
-                    </span>
-                  ) : (
-                    <strong>0</strong>
-                  )}
+                <div className={styles.historyMetaCard}>
+                  <span className={styles.historyMetaLabel}>
+                    <CheckCircle2 size={12} style={{ color: '#16a34a' }} /> Completed
+                  </span>
+                  <span className={styles.historyMetaValue} style={{ color: selectedHistoryTask.completedAt ? '#15803d' : undefined }} title={selectedHistoryTask.completedAt ? formatDateTime(selectedHistoryTask.completedAt) : undefined}>
+                    {selectedHistoryTask.completedAt ? formatDateTime(selectedHistoryTask.completedAt) : (selectedHistoryTask.status === 'DONE' ? 'Done' : 'In Progress')}
+                  </span>
+                </div>
+                <div className={styles.historyMetaCard}>
+                  <span className={styles.historyMetaLabel}>
+                    <AlertTriangle size={12} style={{ color: selectedHistoryTask.revisionCount > 0 ? '#ea580c' : '#94a3b8' }} /> Revision Cycles
+                  </span>
+                  <span className={styles.historyMetaValue}>
+                    {selectedHistoryTask.revisionCount > 0 ? (
+                      <span className={styles.revisionCountBadge}>
+                        <AlertTriangle size={11} /> {selectedHistoryTask.revisionCount} {selectedHistoryTask.revisionCount === 1 ? 'time' : 'times'}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#64748b' }}>0 times</span>
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -10938,11 +10972,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {!taskHistoryLoading && taskHistoryDetail && (!taskHistoryDetail.activities || taskHistoryDetail.activities.length === 0) && (
                   <div className={styles.empty}>No timeline events recorded for this task.</div>
                 )}
+                {!taskHistoryDetail && !taskHistoryLoading && !taskHistoryError && (
+                  <div className={styles.empty}>Select a task to view timeline history.</div>
+                )}
                 {!taskHistoryLoading && taskHistoryDetail && taskHistoryDetail.activities && taskHistoryDetail.activities.length > 0 && (
                   <div className={styles.historyTimelineTrack}>
                     {taskHistoryDetail.activities.map((event, idx) => {
                       const isClaimed = event.type === 'TASK_CLAIMED' || event.type === 'CLAIMED' || event.type === 'TASK_CREATED';
-                      const isSubmitted = event.type === 'SUBMITTED' || event.type === 'RESUBMITTED';
+                      const isSubmitted = event.type === 'SUBMITTED';
+                      const isResubmitted = event.type === 'RESUBMITTED';
+                      const isRecalled = event.type === 'RECALLED';
                       const isRevision = event.type === 'REVISION_REQUESTED' || event.type === 'CHANGES_REQUESTED';
                       const isApproved = event.type === 'APPROVED' || event.type === 'TASK_APPROVED' || event.type === 'COMPLETED';
 
@@ -10950,29 +10989,43 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         ? styles.historyTimelineIconRevision
                         : isApproved
                         ? styles.historyTimelineIconApproved
+                        : isResubmitted
+                        ? styles.historyTimelineIconResubmitted
+                        : isRecalled
+                        ? styles.historyTimelineIconRecalled
                         : isSubmitted
                         ? styles.historyTimelineIconSubmitted
                         : styles.historyTimelineIconClaimed;
+
+                      const contentCardClass = `${styles.historyTimelineContent} ${
+                        isRevision ? styles.historyTimelineContentRevision : isApproved ? styles.historyTimelineContentApproved : ''
+                      }`;
 
                       return (
                         <div key={idx} className={styles.historyTimelineNode}>
                           <div className={`${styles.historyTimelineIcon} ${iconClass}`}>
                             {isRevision ? (
-                              <AlertTriangle size={15} />
+                              <AlertTriangle size={16} />
                             ) : isApproved ? (
-                              <CheckCircle2 size={15} />
+                              <CheckCircle2 size={16} />
+                            ) : isResubmitted ? (
+                              <RotateCcw size={16} />
+                            ) : isRecalled ? (
+                              <RotateCcw size={16} />
                             ) : isSubmitted ? (
-                              <Upload size={15} />
+                              <Upload size={16} />
                             ) : (
-                              <Clock size={15} />
+                              <Clock size={16} />
                             )}
                           </div>
-                          <div className={styles.historyTimelineContent}>
+                          <div className={contentCardClass}>
                             <div className={styles.historyTimelineHead}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <div className={styles.historyTimelineHeadLeft}>
                                 <span className={styles.historyTimelineEventTitle}>{event.title}</span>
                                 {event.actorName && (
-                                  <span className={styles.historyTimelineActor}>by <strong>{event.actorName}</strong></span>
+                                  <span className={`${styles.historyActorPill} ${isRevision ? styles.historyActorPillManager : ''}`}>
+                                    {isRevision || isApproved ? 'Reviewed by ' : 'by '}<strong>{event.actorName}</strong>
+                                  </span>
                                 )}
                               </div>
                               <span className={styles.historyTimelineTime}>
@@ -10982,12 +11035,38 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             {event.detail && (
                               <div className={styles.historyTimelineDetail}>{event.detail}</div>
                             )}
-                            {event.note && (
+                            {isRevision && event.note && (
                               <div className={styles.historyRevisionBox}>
                                 <div className={styles.historyRevisionBoxTitle}>
-                                  <MessageSquare size={13} /> Manager Review Note / Change Request:
+                                  <AlertTriangle size={13} /> Manager Feedback & Change Request:
                                 </div>
                                 <p className={styles.historyRevisionBoxText}>{event.note}</p>
+                              </div>
+                            )}
+                            {isApproved && (
+                              <div className={styles.historyApprovalBox}>
+                                <div className={styles.historyApprovalBoxTitle}>
+                                  <CheckCircle2 size={13} /> Manager Approval Note:
+                                </div>
+                                <p className={styles.historyApprovalBoxText}>
+                                  {event.note || 'Submission approved by Manager.'}
+                                </p>
+                              </div>
+                            )}
+                            {(isSubmitted || isResubmitted) && event.note && !isAutomatedSystemNote(event.note) && (
+                              <div className={styles.historyStaffNoteBox}>
+                                <div className={styles.historyStaffNoteTitle}>
+                                  <FileText size={13} /> Staff Submission Note:
+                                </div>
+                                <p className={styles.historyStaffNoteText}>{event.note}</p>
+                              </div>
+                            )}
+                            {isRecalled && event.note && !isAutomatedSystemNote(event.note) && (
+                              <div className={styles.historyStaffNoteBox} style={{ borderLeftColor: '#94a3b8' }}>
+                                <div className={styles.historyStaffNoteTitle} style={{ color: '#64748b' }}>
+                                  <RotateCcw size={13} /> Recall Reason:
+                                </div>
+                                <p className={styles.historyStaffNoteText}>{event.note.replace('[Recalled by Staff]', '').trim()}</p>
                               </div>
                             )}
                           </div>
@@ -10999,6 +11078,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
 
               <div className={styles.historyModalFooter}>
+                <span className={styles.historyModalFooterCount}>
+                  {taskHistoryDetail?.activities?.length ? `${taskHistoryDetail.activities.length} timeline events recorded` : ''}
+                </span>
                 <button
                   type="button"
                   className={`${styles.button} ${styles.outlineButton}`}

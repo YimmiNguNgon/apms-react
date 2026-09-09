@@ -715,15 +715,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
     setIsSubmittingPackage(true);
     try {
-      const noteToSend = selectedContractsForSubmission.some((c) => c.reviewStatus === 'CHANGES_REQUESTED')
-        ? 'Completed revisions per Manager feedback.'
-        : 'Partner contracts submitted for Manager review.';
-
       const updated = await contractResearchApi.submitResearch(
         projectId,
         taskId,
-        effectiveSubmissionIds,
-        noteToSend
+        effectiveSubmissionIds
       );
       setResearch(updated);
       setToast({ message: 'Contracts submitted for review successfully!', type: 'success' });

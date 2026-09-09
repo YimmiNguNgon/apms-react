@@ -120,7 +120,7 @@ export const contractResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/contract-research/submit`,
       {
         contractEntryIds,
-        note: note || 'Contract research submitted for manager review.',
+        note: note?.trim() || null,
       }
     ).then((res) => res.data),
 

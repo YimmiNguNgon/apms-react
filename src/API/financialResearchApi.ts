@@ -96,7 +96,7 @@ export const financialResearchApi = {
         targetEntityType: "FinancialResearch",
         targetEntityId: researchId,
         targetItemIds: selectedReportIds,
-        note: note || "Financial research submitted for manager review.",
+        note: note?.trim() || null,
       }
     ),
 
