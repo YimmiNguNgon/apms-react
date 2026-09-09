@@ -135,15 +135,17 @@ export const AreaChart: React.FC<AreaChartProps> = ({
 interface BarChartProps {
   data: { label: string; value: number; color?: string }[];
   height?: number;
+  maxValue?: number;
+  formatYTick?: (value: number) => string;
 }
 
-export const BarChart: React.FC<BarChartProps> = ({ data, height = 140 }) => {
+export const BarChart: React.FC<BarChartProps> = ({ data, height = 140, maxValue, formatYTick }) => {
   const W = 400; const H = height;
   const PAD = { top: 10, right: 8, bottom: 28, left: 32 };
   const iW = W - PAD.left - PAD.right;
   const iH = H - PAD.top - PAD.bottom;
 
-  const max = Math.max(...data.map(d => d.value)) * 1.1 || 1;
+  const max = maxValue ?? (Math.max(...data.map(d => d.value)) * 1.1 || 1);
   const barW = iW / data.length * 0.55;
   const gap   = iW / data.length;
 
@@ -154,13 +156,14 @@ export const BarChart: React.FC<BarChartProps> = ({ data, height = 140 }) => {
       {/* Grid */}
       {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
         const y = PAD.top + iH * (1 - f);
+        const tickVal = Math.round(max * f);
         return (
           <g key={i}>
             <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y}
               stroke="currentColor" strokeOpacity="0.07" strokeWidth="1" />
             <text x={PAD.left - 4} y={y + 4} textAnchor="end"
               fontSize="9" fill="currentColor" fillOpacity="0.4">
-              {Math.round(max * f)}
+              {formatYTick ? formatYTick(tickVal) : tickVal}
             </text>
           </g>
         );

@@ -4,7 +4,7 @@ import { api, type PageResponse } from '../services/api';
 import { companyProfileApi } from '../API/companyProfileApi';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
-import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse } from '../types/domain';
+import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse, UpdateCompanyProfileRequest, CompanyProfileMember } from '../types/domain';
 import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
 import {
   ListingTabBar,
@@ -15,8 +15,7 @@ import FinancialsTab from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab from './companyDetail/DocumentsTab';
 import ConfidentialNewsTab from './companyDetail/ConfidentialNewsTab';
-import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3 } from 'lucide-react';
-import { ProfileEditModal } from '../components/profile/ProfileEditModal';
+import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
 
 interface CompanyDetailProps {
@@ -88,6 +87,247 @@ const C = {
     color: '#94A3B8',
     wordBreak: 'break-word' as const,
   } as const,
+};
+
+const inlineInputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '4px 8px',
+  border: '1px solid #CBD5E1',
+  borderRadius: '6px',
+  fontSize: '0.72rem',
+  color: '#0F172A',
+  backgroundColor: '#FFFFFF',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const normalizeString = (val: string | null | undefined): string => {
+  if (val == null) return '';
+  return val.trim();
+};
+
+const normalizeNumber = (val: number | string | null | undefined): number | null => {
+  if (val == null) return null;
+  if (typeof val === 'number') {
+    return isNaN(val) ? null : val;
+  }
+  const trimmed = val.trim();
+  if (trimmed === '') return null;
+  const parsed = parseInt(trimmed, 10);
+  return isNaN(parsed) ? null : parsed;
+};
+
+const areStringListsEqual = (a: string[], b: string[]): boolean => {
+  const normA = (a || []).map((s) => (s ?? '').trim()).filter(Boolean);
+  const normB = (b || []).map((s) => (s ?? '').trim()).filter(Boolean);
+  if (normA.length !== normB.length) return false;
+  for (let i = 0; i < normA.length; i++) {
+    if (normA[i] !== normB[i]) return false;
+  }
+  return true;
+};
+
+const areProductsEqual = (
+  a: Array<{ name?: string; category?: string; description?: string }>,
+  b: Array<{ name?: string; category?: string; description?: string }>
+): boolean => {
+  const normA = (a || [])
+    .map((p) => ({
+      name: normalizeString(p.name),
+      category: normalizeString(p.category),
+      description: normalizeString(p.description),
+    }))
+    .filter((p) => p.name || p.category || p.description);
+
+  const normB = (b || [])
+    .map((p) => ({
+      name: normalizeString(p.name),
+      category: normalizeString(p.category),
+      description: normalizeString(p.description),
+    }))
+    .filter((p) => p.name || p.category || p.description);
+
+  if (normA.length !== normB.length) return false;
+  for (let i = 0; i < normA.length; i++) {
+    if (
+      normA[i].name !== normB[i].name ||
+      normA[i].category !== normB[i].category ||
+      normA[i].description !== normB[i].description
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const areMembersEqual = (
+  a: CompanyProfileMember[],
+  b: CompanyProfileMember[]
+): boolean => {
+  const normA = (a || [])
+    .map((m) => ({
+      fullName: normalizeString(m.fullName),
+      position: normalizeString(m.position),
+      imageUrl: normalizeString(m.imageUrl),
+      sourceUrl: normalizeString(m.sourceUrl),
+    }))
+    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl);
+
+  const normB = (b || [])
+    .map((m) => ({
+      fullName: normalizeString(m.fullName),
+      position: normalizeString(m.position),
+      imageUrl: normalizeString(m.imageUrl),
+      sourceUrl: normalizeString(m.sourceUrl),
+    }))
+    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl);
+
+  if (normA.length !== normB.length) return false;
+  for (let i = 0; i < normA.length; i++) {
+    if (
+      normA[i].fullName !== normB[i].fullName ||
+      normA[i].position !== normB[i].position ||
+      normA[i].imageUrl !== normB[i].imageUrl ||
+      normA[i].sourceUrl !== normB[i].sourceUrl
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+interface FullProfileBaseline {
+  // Overview
+  tradeName: string;
+  legalName: string;
+  taxCode: string;
+  website: string;
+  email: string;
+  phone: string;
+  employeeCount: number | null;
+  employeeTier: string;
+  address: string;
+  // Business
+  industries: string[];
+  markets: string[];
+  targetCustomers: string[];
+  products: Array<{ name: string; category?: string; description?: string }>;
+  businessModel: string;
+  // Leadership
+  members: CompanyProfileMember[];
+  // Concurrency
+  majorVersion: number;
+  revision: number;
+}
+
+const CompactTagEditor: React.FC<{
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  placeholder?: string;
+  tagBg: string;
+  tagColor: string;
+  disabled?: boolean;
+}> = ({ tags, onChange, placeholder = 'Add new...', tagBg, tagColor, disabled }) => {
+  const [inputVal, setInputVal] = useState('');
+
+  const handleAdd = () => {
+    const val = inputVal.trim();
+    if (!val) return;
+    onChange([...tags, val]);
+    setInputVal('');
+  };
+
+  const handleRemove = (index: number) => {
+    onChange(tags.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+        {tags.map((tag, idx) => (
+          <span
+            key={idx}
+            style={{
+              fontSize: '0.7rem',
+              background: tagBg,
+              color: tagColor,
+              padding: '2px 6px 2px 8px',
+              borderRadius: '4px',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            {tag}
+            {!disabled && (
+              <button
+                type="button"
+                onClick={() => handleRemove(idx)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: tagColor,
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '0.75rem',
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  opacity: 0.7,
+                }}
+                title="Remove"
+              >
+                ✕
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {!disabled && (
+        <div style={{ display: 'flex', gap: '4px', maxWidth: '320px', marginTop: tags.length > 0 ? '4px' : '0' }}>
+          <input
+            type="text"
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            placeholder={placeholder}
+            style={{
+              flex: 1,
+              padding: '3px 8px',
+              fontSize: '0.7rem',
+              border: '1px solid #CBD5E1',
+              borderRadius: '4px',
+              outline: 'none',
+              background: '#FFFFFF',
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={!inputVal.trim()}
+            style={{
+              background: inputVal.trim() ? '#2563EB' : '#E2E8F0',
+              color: inputVal.trim() ? '#FFFFFF' : '#94A3B8',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '3px 8px',
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              cursor: inputVal.trim() ? 'pointer' : 'default',
+            }}
+          >
+            + Add
+          </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export type CompanyDetailSource =
@@ -166,8 +406,64 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false);
+
+  // Inline editing states across Overview, Business Fields, and Leadership
+  const [isInlineEditing, setIsInlineEditing] = useState(false);
+  // Overview draft
+  const [draftTradeName, setDraftTradeName] = useState('');
+  const [draftLegalName, setDraftLegalName] = useState('');
+  const [draftTaxCode, setDraftTaxCode] = useState('');
+  const [draftWebsite, setDraftWebsite] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
+  const [draftPhone, setDraftPhone] = useState('');
+  const [draftEmployeeCount, setDraftEmployeeCount] = useState('');
+  const [draftEmployeeTier, setDraftEmployeeTier] = useState('');
+  const [draftAddress, setDraftAddress] = useState('');
+  // Business Fields draft
+  const [draftIndustries, setDraftIndustries] = useState<string[]>([]);
+  const [draftMarkets, setDraftMarkets] = useState<string[]>([]);
+  const [draftTargetCustomers, setDraftTargetCustomers] = useState<string[]>([]);
+  const [draftProducts, setDraftProducts] = useState<Array<{ name: string; category?: string; description?: string }>>([]);
+  const [draftBusinessModel, setDraftBusinessModel] = useState('');
+  // Leadership draft
+  const [draftMembers, setDraftMembers] = useState<CompanyProfileMember[]>([]);
+  // Baseline & concurrency
+  const [editBaseline, setEditBaseline] = useState<FullProfileBaseline | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [saveProfileError, setSaveProfileError] = useState<string | null>(null);
+
+  const handleAddProduct = () => {
+    setDraftProducts((prev) => [...prev, { name: '', category: '', description: '' }]);
+  };
+
+  const handleProductChange = (index: number, field: 'name' | 'category' | 'description', value: string) => {
+    setDraftProducts((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleDeleteProduct = (index: number) => {
+    setDraftProducts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddMember = () => {
+    setDraftMembers((prev) => [...prev, { fullName: '', position: '', imageUrl: '', sourceUrl: '' }]);
+  };
+
+  const handleUpdateMember = (index: number, field: keyof CompanyProfileMember, value: string) => {
+    setDraftMembers((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleDeleteMember = (index: number) => {
+    setDraftMembers((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const [navContext, setNavContext] = useState<NavContext>(() => {
     if (typeof window !== 'undefined') {
@@ -397,6 +693,205 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     }
   };
 
+  const handleStartEdit = () => {
+    if (!profile) return;
+    // Stay on current tab if already on an editable tab, else default to overview
+    if (activeTab !== 'overview' && activeTab !== 'business-fields' && activeTab !== 'board') {
+      setActiveTab('overview');
+    }
+
+    const major = profile.majorVersion ?? (profile.version ? parseInt(profile.version.split('.')[0].replace(/\D/g, ''), 10) || 1 : 1);
+    const rev = profile.revision ?? (profile.version && profile.version.includes('.') ? parseInt(profile.version.split('.')[1], 10) || 0 : 0);
+
+    const initialTradeName = profile.identity?.tradeName || '';
+    const initialLegalName = profile.identity?.legalName || '';
+    const initialTaxCode = profile.identity?.taxCode || '';
+    const initialWebsite = profile.contact?.website || '';
+    const initialEmail = profile.contact?.emails?.[0] || '';
+    const initialPhone = profile.contact?.phones?.[0] || '';
+    const initialEmpCount = profile.companySize?.employeeCount != null ? profile.companySize.employeeCount : null;
+    const initialEmpTier = profile.companySize?.employeeTier || '';
+    const initialAddress = profile.contact?.addresses?.[0]?.fullAddress || '';
+
+    const initialIndustries = [...(profile.business?.industries || intelligence?.company?.industries || [])];
+    const initialMarkets = [...(profile.business?.markets || intelligence?.company?.markets || [])];
+    const initialTargetCustomers = [...(profile.business?.targetCustomers || [])];
+    const initialProducts: Array<{ name: string; category?: string; description?: string }> = (
+      profile.business?.products || intelligence?.products || []
+    ).map((p: any) => ({
+      name: typeof p === 'string' ? p : (p.name || ''),
+      category: typeof p === 'object' && p.category ? p.category : '',
+      description: typeof p === 'object' && p.description ? p.description : '',
+    }));
+    const initialBusinessModel = profile.business?.businessModel || intelligence?.company?.businessModel || '';
+
+    const initialMembers: CompanyProfileMember[] = (profile.companyMembers || []).map(m => ({
+      fullName: m.fullName || m.name || '',
+      position: m.position || '',
+      imageUrl: m.imageUrl || '',
+      sourceUrl: m.sourceUrl || '',
+    }));
+
+    setDraftTradeName(initialTradeName);
+    setDraftLegalName(initialLegalName);
+    setDraftTaxCode(initialTaxCode);
+    setDraftWebsite(initialWebsite);
+    setDraftEmail(initialEmail);
+    setDraftPhone(initialPhone);
+    setDraftEmployeeCount(initialEmpCount != null ? String(initialEmpCount) : '');
+    setDraftEmployeeTier(initialEmpTier);
+    setDraftAddress(initialAddress);
+
+    setDraftIndustries(initialIndustries);
+    setDraftMarkets(initialMarkets);
+    setDraftTargetCustomers(initialTargetCustomers);
+    setDraftProducts(initialProducts);
+    setDraftBusinessModel(initialBusinessModel);
+
+    setDraftMembers(initialMembers);
+
+    setEditBaseline({
+      tradeName: initialTradeName,
+      legalName: initialLegalName,
+      taxCode: initialTaxCode,
+      website: initialWebsite,
+      email: initialEmail,
+      phone: initialPhone,
+      employeeCount: initialEmpCount,
+      employeeTier: initialEmpTier,
+      address: initialAddress,
+      industries: initialIndustries,
+      markets: initialMarkets,
+      targetCustomers: initialTargetCustomers,
+      products: initialProducts,
+      businessModel: initialBusinessModel,
+      members: initialMembers,
+      majorVersion: major,
+      revision: rev,
+    });
+
+    setSaveProfileError(null);
+    setIsInlineEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsInlineEditing(false);
+    setEditBaseline(null);
+    setSaveProfileError(null);
+  };
+
+  const hasSemanticChanges = useMemo(() => {
+    if (!isInlineEditing || !editBaseline) return false;
+    return (
+      normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
+      normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
+      normalizeString(draftTaxCode) !== normalizeString(editBaseline.taxCode) ||
+      normalizeString(draftWebsite) !== normalizeString(editBaseline.website) ||
+      normalizeString(draftEmail) !== normalizeString(editBaseline.email) ||
+      normalizeString(draftPhone) !== normalizeString(editBaseline.phone) ||
+      normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount) ||
+      normalizeString(draftEmployeeTier) !== normalizeString(editBaseline.employeeTier) ||
+      normalizeString(draftAddress) !== normalizeString(editBaseline.address) ||
+      normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel) ||
+      !areStringListsEqual(draftIndustries, editBaseline.industries) ||
+      !areStringListsEqual(draftMarkets, editBaseline.markets) ||
+      !areStringListsEqual(draftTargetCustomers, editBaseline.targetCustomers) ||
+      !areProductsEqual(draftProducts, editBaseline.products) ||
+      !areMembersEqual(draftMembers, editBaseline.members)
+    );
+  }, [
+    isInlineEditing,
+    editBaseline,
+    draftTradeName,
+    draftLegalName,
+    draftTaxCode,
+    draftWebsite,
+    draftEmail,
+    draftPhone,
+    draftEmployeeCount,
+    draftEmployeeTier,
+    draftAddress,
+    draftBusinessModel,
+    draftIndustries,
+    draftMarkets,
+    draftTargetCustomers,
+    draftProducts,
+    draftMembers,
+  ]);
+
+  const handleSaveProfile = async () => {
+    if (!profile || !editBaseline) return;
+    setIsSavingProfile(true);
+    setSaveProfileError(null);
+
+    const targetId = profile.companyId || profile.id;
+    const parsedCount = normalizeNumber(draftEmployeeCount);
+
+    const validProducts = draftProducts
+      .map(p => ({
+        name: normalizeString(p.name),
+        category: normalizeString(p.category) || undefined,
+        description: normalizeString(p.description) || undefined,
+      }))
+      .filter(p => p.name);
+
+    const validMembers: CompanyProfileMember[] = draftMembers
+      .map(m => ({
+        fullName: normalizeString(m.fullName),
+        position: normalizeString(m.position) || undefined,
+        imageUrl: normalizeString(m.imageUrl) || undefined,
+        sourceUrl: normalizeString(m.sourceUrl) || undefined,
+      }))
+      .filter(m => m.fullName);
+
+    const payload: UpdateCompanyProfileRequest = {
+      tradeName: normalizeString(draftTradeName),
+      legalName: normalizeString(draftLegalName),
+      taxCode: normalizeString(draftTaxCode),
+      website: normalizeString(draftWebsite),
+      emails: normalizeString(draftEmail)
+        ? [normalizeString(draftEmail), ...(profile.contact?.emails?.slice(1) || [])]
+        : ((profile.contact?.emails?.length ?? 0) > 1 ? profile.contact!.emails!.slice(1) : []),
+      phones: normalizeString(draftPhone)
+        ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
+        : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
+      headOfficeAddress: normalizeString(draftAddress),
+      employeeCount: parsedCount !== null ? parsedCount : undefined,
+      employeeTier: normalizeString(draftEmployeeTier) || undefined,
+      industries: draftIndustries.map(s => s.trim()).filter(Boolean),
+      markets: draftMarkets.map(s => s.trim()).filter(Boolean),
+      targetCustomers: draftTargetCustomers.map(s => s.trim()).filter(Boolean),
+      productsServices: validProducts.map(p => p.name),
+      products: validProducts,
+      businessModel: normalizeString(draftBusinessModel) || undefined,
+      companyMembers: validMembers,
+      expectedMajorVersion: editBaseline.majorVersion,
+      expectedRevision: editBaseline.revision,
+      changeNote: 'Inline edit of company profile',
+    };
+
+    try {
+      const updated = await companyProfileApi.updateCompanyProfile(targetId, payload);
+      if (updated) {
+        setProfile(updated);
+      }
+      setReloadTrigger(prev => prev + 1);
+      setIsInlineEditing(false);
+      setEditBaseline(null);
+    } catch (err: any) {
+      console.error('Failed to update company profile inline:', err);
+      if (err.status === 409 || err.message?.includes('changed since you opened it')) {
+        setSaveProfileError('The company profile has changed since you opened it. Please refresh before saving.');
+      } else if (err.status === 403 || err.message?.includes('responsible') || err.message?.includes('permission')) {
+        setSaveProfileError(err.message || 'You are not responsible for this company profile.');
+      } else {
+        setSaveProfileError(err.message || 'Failed to update company profile. Please try again.');
+      }
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
 
   const renderOverviewTab = () => {
     const taxCode = profile?.identity?.taxCode || 'Not updated';
@@ -414,6 +909,30 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         {/* Main Profile Details Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           
+          {saveProfileError && (
+            <div style={{
+              padding: '8px 12px',
+              backgroundColor: '#FEF2F2',
+              border: '1px solid #FCA5A5',
+              borderRadius: '6px',
+              color: '#991B1B',
+              fontSize: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <span>{saveProfileError}</span>
+              <button
+                type="button"
+                onClick={() => setSaveProfileError(null)}
+                style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' }}
+                title="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Panel 1: Legal Identity */}
           <section style={C.card}>
             <div style={C.cardHeader}>
@@ -422,15 +941,48 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <div style={C.fieldGrid}>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Trade Name</span>
-                <strong style={tradeName ? C.value : C.muted}>{tradeName || 'Not updated'}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={inlineInputStyle}
+                    value={draftTradeName}
+                    onChange={(e) => setDraftTradeName(e.target.value)}
+                    placeholder="Trade Name"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={tradeName ? C.value : C.muted}>{tradeName || 'Not updated'}</strong>
+                )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Legal Name</span>
-                <strong style={legalName ? C.value : C.muted}>{legalName || 'Not updated'}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={inlineInputStyle}
+                    value={draftLegalName}
+                    onChange={(e) => setDraftLegalName(e.target.value)}
+                    placeholder="Legal Name"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={legalName ? C.value : C.muted}>{legalName || 'Not updated'}</strong>
+                )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Tax Code</span>
-                <strong style={{ ...(taxCode !== 'Not updated' ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={{ ...inlineInputStyle, fontFamily: 'monospace' }}
+                    value={draftTaxCode}
+                    onChange={(e) => setDraftTaxCode(e.target.value)}
+                    placeholder="Tax Code"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={{ ...(taxCode !== 'Not updated' ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
+                )}
               </div>
             </div>
             
@@ -577,42 +1129,131 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <div style={C.fieldGrid}>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Website</span>
-                {website !== 'Not updated' ? (
-                  <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
-                    {website}
-                  </a>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={inlineInputStyle}
+                    value={draftWebsite}
+                    onChange={(e) => setDraftWebsite(e.target.value)}
+                    placeholder="Website"
+                    disabled={isSavingProfile}
+                  />
                 ) : (
-                  <strong style={C.muted}>{website}</strong>
+                  website !== 'Not updated' ? (
+                    <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
+                      {website}
+                    </a>
+                  ) : (
+                    <strong style={C.muted}>{website}</strong>
+                  )
                 )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Contact Email</span>
-                <strong style={email !== 'Not updated' ? C.value : C.muted}>{email}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="email"
+                    style={inlineInputStyle}
+                    value={draftEmail}
+                    onChange={(e) => setDraftEmail(e.target.value)}
+                    placeholder="Contact Email"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={email !== 'Not updated' ? C.value : C.muted}>{email}</strong>
+                )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Phone</span>
-                <strong style={phone !== 'Not updated' ? C.value : C.muted}>{phone}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={inlineInputStyle}
+                    value={draftPhone}
+                    onChange={(e) => setDraftPhone(e.target.value)}
+                    placeholder="Phone"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={phone !== 'Not updated' ? C.value : C.muted}>{phone}</strong>
+                )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Company Size</span>
-                <strong style={sizeStr !== 'Not updated' ? C.value : C.muted}>{sizeStr}</strong>
+                {isInlineEditing ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <input
+                      type="number"
+                      style={inlineInputStyle}
+                      value={draftEmployeeCount}
+                      onChange={(e) => setDraftEmployeeCount(e.target.value)}
+                      placeholder="Count (e.g. 150)"
+                      disabled={isSavingProfile}
+                      min={0}
+                    />
+                    <input
+                      type="text"
+                      style={inlineInputStyle}
+                      value={draftEmployeeTier}
+                      onChange={(e) => setDraftEmployeeTier(e.target.value)}
+                      placeholder="Tier (e.g. 100-500)"
+                      disabled={isSavingProfile}
+                    />
+                  </div>
+                ) : (
+                  <strong style={sizeStr !== 'Not updated' ? C.value : C.muted}>{sizeStr}</strong>
+                )}
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Head Office Address</span>
-                <strong style={address !== 'Not updated' ? C.value : C.muted}>{address}</strong>
+                {isInlineEditing ? (
+                  <input
+                    type="text"
+                    style={inlineInputStyle}
+                    value={draftAddress}
+                    onChange={(e) => setDraftAddress(e.target.value)}
+                    placeholder="Head Office Address"
+                    disabled={isSavingProfile}
+                  />
+                ) : (
+                  <strong style={address !== 'Not updated' ? C.value : C.muted}>{address}</strong>
+                )}
               </div>
             </div>
           </section>
 
           {/* Panel 3: Description & Summary */}
-          {(profile?.business?.businessModel || intelligence?.company?.businessModel) && (
+          {(isInlineEditing || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
             <section style={C.card}>
               <div style={C.cardHeader}>
                 <h2 style={C.h2}>Introduction & Business Model</h2>
               </div>
-              <p style={{ margin: 0, fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
-                {profile?.business?.businessModel || intelligence?.company?.businessModel}
-              </p>
+              {isInlineEditing ? (
+                <textarea
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '6px 8px',
+                    fontSize: '0.74rem',
+                    color: '#334155',
+                    lineHeight: '1.5',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: '4px',
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                  value={draftBusinessModel}
+                  onChange={(e) => setDraftBusinessModel(e.target.value)}
+                  placeholder="Enter business introduction and model..."
+                  disabled={isSavingProfile}
+                />
+              ) : (
+                <p style={{ margin: 0, fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
+                  {profile?.business?.businessModel || intelligence?.company?.businessModel}
+                </p>
+              )}
             </section>
           )}
 
@@ -721,7 +1362,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {!hasData ? (
+        {!isInlineEditing && !hasData ? (
           <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
             <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>No business field data available.</p>
           </div>
@@ -730,10 +1371,132 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             {/* Products & Services Column */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <section style={C.card}>
-                <div style={C.cardHeader}>
+                <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h2 style={C.h2}>Products & Services</h2>
+                  {isInlineEditing && (
+                    <button
+                      type="button"
+                      onClick={handleAddProduct}
+                      disabled={isSavingProfile}
+                      style={{
+                        background: '#2563EB',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Plus size={11} />
+                      Add Product / Service
+                    </button>
+                  )}
                 </div>
-                {products.length > 0 ? (
+
+                {isInlineEditing ? (
+                  draftProducts.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {draftProducts.map((p, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: '#F8FAFC',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #CBD5E1',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                              Product #{idx + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProduct(idx)}
+                              disabled={isSavingProfile}
+                              title="Delete Product"
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#EF4444',
+                                cursor: 'pointer',
+                                padding: '2px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.68rem',
+                              }}
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+
+                          <div>
+                            <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                              Name *
+                            </label>
+                            <input
+                              type="text"
+                              style={inlineInputStyle}
+                              value={p.name}
+                              onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
+                              placeholder="Product or service name..."
+                              disabled={isSavingProfile}
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                                Category
+                              </label>
+                              <input
+                                type="text"
+                                style={inlineInputStyle}
+                                value={p.category || ''}
+                                onChange={(e) => handleProductChange(idx, 'category', e.target.value)}
+                                placeholder="Category (e.g. Memory / Semiconductor)..."
+                                disabled={isSavingProfile}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                                Description
+                              </label>
+                              <textarea
+                                style={{
+                                  ...inlineInputStyle,
+                                  minHeight: '44px',
+                                  fontFamily: 'inherit',
+                                  resize: 'vertical',
+                                }}
+                                value={p.description || ''}
+                                onChange={(e) => handleProductChange(idx, 'description', e.target.value)}
+                                placeholder="Short description..."
+                                disabled={isSavingProfile}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '16px', textAlign: 'center', background: '#F8FAFC', borderRadius: '6px', border: '1px dashed #CBD5E1' }}>
+                      <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+                        No product/service recorded. Click <strong>+ Add Product / Service</strong> above to add one.
+                      </p>
+                    </div>
+                  )
+                ) : products.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
                       <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
@@ -780,7 +1543,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   <h2 style={C.h2}>Industry</h2>
                 </div>
                 <div>
-                  {industries.length > 0 ? (
+                  {isInlineEditing ? (
+                    <CompactTagEditor
+                      tags={draftIndustries}
+                      onChange={setDraftIndustries}
+                      placeholder="Add industry (e.g. Semiconductor)..."
+                      tagBg="#E0E7FF"
+                      tagColor="#3730A3"
+                      disabled={isSavingProfile}
+                    />
+                  ) : industries.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {industries.map((ind, idx) => (
                         <span key={idx} style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
@@ -800,7 +1572,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {/* Markets */}
                   <div>
                     <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active market</span>
-                    {markets.length > 0 ? (
+                    {isInlineEditing ? (
+                      <CompactTagEditor
+                        tags={draftMarkets}
+                        onChange={setDraftMarkets}
+                        placeholder="Add market (e.g. South Korea)..."
+                        tagBg="#F1F5F9"
+                        tagColor="#334155"
+                        disabled={isSavingProfile}
+                      />
+                    ) : markets.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                         {markets.map((m, idx) => (
                           <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
@@ -814,7 +1595,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {/* Customers */}
                   <div>
                     <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target customers</span>
-                    {targetCustomers.length > 0 ? (
+                    {isInlineEditing ? (
+                      <CompactTagEditor
+                        tags={draftTargetCustomers}
+                        onChange={setDraftTargetCustomers}
+                        placeholder="Add customer group (e.g. AI Server Providers)..."
+                        tagBg="#ECFDF5"
+                        tagColor="#065F46"
+                        disabled={isSavingProfile}
+                      />
+                    ) : targetCustomers.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                         {targetCustomers.map((c, idx) => (
                           <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
@@ -1002,7 +1792,19 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       case 'business-fields':
         return renderBusinessFieldsTab();
       case 'board':
-        return <div style={{ padding: '4px 0' }}><BoardMembersTab companyId={resolvedId} /></div>;
+        return (
+          <div style={{ padding: '4px 0' }}>
+            <BoardMembersTab
+              companyId={resolvedId}
+              isInlineEditing={isInlineEditing}
+              members={isInlineEditing ? draftMembers : (profile?.companyMembers?.length ? profile.companyMembers : undefined)}
+              onAddMember={handleAddMember}
+              onUpdateMember={handleUpdateMember}
+              onDeleteMember={handleDeleteMember}
+              disabled={isSavingProfile}
+            />
+          </div>
+        );
       case 'financials':
         return <div style={{ padding: '4px 0' }}><FinancialsTab companyId={resolvedId} /></div>;
       case 'news':
@@ -1044,7 +1846,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return (
       <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
         <button
-          onClick={() => (setActivePage ? setActivePage('company-profiles') : history.back())}
+          onClick={() => (setActivePage ? setActivePage('companies') : history.back())}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -1122,7 +1924,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
                       setActivePage('staff-dashboard');
                     } else {
-                      setActivePage('company-profiles');
+                      setActivePage('companies');
                     }
                   }}
                   style={{
@@ -1326,30 +2128,78 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   </button>
                 )}
 
-                {/* Direct Edit Button for authorized Manager / Admin */}
+                {/* Direct Edit / Inline Edit Button for authorized Manager / Admin */}
                 {profile && Boolean(profile.canEditProfile) && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditModalOpen(true)}
-                    style={{
-                      background: '#2563EB',
-                      border: 'none',
-                      color: '#FFFFFF',
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
-                    }}
-                    title="Directly Edit Official Company Profile"
-                  >
-                    <Edit3 size={12} />
-                    Edit Profile
-                  </button>
+                  !isInlineEditing ? (
+                    <button
+                      type="button"
+                      onClick={handleStartEdit}
+                      style={{
+                        background: '#2563EB',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
+                      }}
+                      title="Directly Edit Official Company Profile"
+                    >
+                      <Edit3 size={12} />
+                      Edit Profile
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={isSavingProfile}
+                        style={{
+                          background: '#FFFFFF',
+                          border: '1px solid #CBD5E1',
+                          color: '#475569',
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          cursor: isSavingProfile ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        title="Cancel Inline Editing"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveProfile()}
+                        disabled={!hasSemanticChanges || isSavingProfile}
+                        style={{
+                          background: (!hasSemanticChanges || isSavingProfile) ? '#94A3B8' : '#2563EB',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          cursor: (!hasSemanticChanges || isSavingProfile) ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          boxShadow: (!hasSemanticChanges || isSavingProfile) ? 'none' : '0 1px 2px rgba(37, 99, 235, 0.2)',
+                        }}
+                        title={!hasSemanticChanges ? 'No changes to save' : 'Save Changes'}
+                      >
+                        {isSavingProfile ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </>
+                  )
                 )}
 
                 {(() => {
@@ -1476,22 +2326,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         {renderTabContent()}
 
         {profile && (
-          <>
-            <ProfileEditModal
-              profile={profile}
-              isOpen={isEditModalOpen}
-              onClose={() => setIsEditModalOpen(false)}
-              onSuccess={(updated) => {
-                setProfile(updated);
-                setReloadTrigger(prev => prev + 1);
-              }}
-            />
-            <ProfileVersionHistoryModal
-              profile={profile}
-              isOpen={isVersionHistoryModalOpen}
-              onClose={() => setIsVersionHistoryModalOpen(false)}
-            />
-          </>
+          <ProfileVersionHistoryModal
+            profile={profile}
+            isOpen={isVersionHistoryModalOpen}
+            onClose={() => setIsVersionHistoryModalOpen(false)}
+          />
         )}
       </div>
     </div>
