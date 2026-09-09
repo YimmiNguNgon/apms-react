@@ -67,7 +67,9 @@ export interface DashboardSummaryDto {
   partnerCount: number;
   competitorCount: number;
   supplierCount: number;
+  customerCount?: number;
   potentialPartnerCount: number;
+  relationshipComposition?: { relationshipType: string; count: number }[];
   verifiedCompanyCount: number;
   totalIndustries: number;
   totalUsers?: number;
@@ -209,6 +211,7 @@ export interface UpdateCompanyProfileRequest {
   markets?: string[];
   targetCustomers?: string[];
   productsServices?: string[];
+  products?: Array<{ name?: string; category?: string; description?: string }>;
   description?: string;
   businessModel?: string;
   companyMembers?: CompanyProfileMember[];

@@ -520,7 +520,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
         {!grouped && (
           <div className={styles.messageAuthor}>
             <strong>{mine ? 'You' : message.senderName || `User #${message.senderId}`}</strong>
-            <span>{formatTime(message.createdAt)}</span>
           </div>
         )}
         <div className={styles.bubbleWrap}>

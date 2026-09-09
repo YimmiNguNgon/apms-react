@@ -326,7 +326,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ setActivePag
               </div>
             </div>
             {projectProgressData.length ? (
-              <BarChart data={projectProgressData} height={160} />
+              <BarChart data={projectProgressData} height={160} maxValue={100} />
             ) : (
               <div className="workspace-empty">No active project progress data available.</div>
             )}

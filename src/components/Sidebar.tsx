@@ -171,7 +171,7 @@ const OWNER_MENU: MenuSection[] = [
     title: 'menu.governanceSettings',
     items: [
       { id: 'owner-profile', label: 'My Enterprise' },
-      { id: 'company-profiles', label: 'menu.companyProfiles' },
+      { id: 'companies', label: 'menu.companyProfiles' },
     ],
   },
 ];
@@ -183,6 +183,49 @@ const MENU_BY_ROLE = {
   [ROLES.STAFF]:   STAFF_MENU,
 };
 
+const getSourceFromLocation = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  const qIndex = hash.indexOf('?');
+  const searchStr = qIndex !== -1 ? hash.slice(qIndex) : window.location.search;
+  if (searchStr) {
+    const params = new URLSearchParams(searchStr);
+    return params.get('source');
+  }
+  return null;
+};
+
+const isItemActive = (itemId: string, activePage: string): boolean => {
+  let effectiveActive = activePage;
+
+  if (activePage === 'project-detail') {
+    effectiveActive = 'project-management';
+  } else if (activePage === 'company-profiles') {
+    effectiveActive = 'companies';
+  } else if (activePage === 'company-detail') {
+    const source = getSourceFromLocation();
+    if (source === 'project') {
+      effectiveActive = 'project-management';
+    } else if (source === 'monitoring' || source === 'company-monitoring') {
+      effectiveActive = 'company-monitoring';
+    } else if (source === 'staff-monitoring') {
+      effectiveActive = 'staff-monitoring';
+    } else if (source === 'my-companies') {
+      effectiveActive = 'my-companies';
+    } else {
+      // Default / source === 'company-profiles' / source === 'companies'
+      effectiveActive = 'companies';
+    }
+  }
+
+  if (itemId === effectiveActive) return true;
+  // Handle alias if any menu item uses company-profiles or companies
+  if (effectiveActive === 'companies' && itemId === 'company-profiles') return true;
+  if (effectiveActive === 'company-profiles' && itemId === 'companies') return true;
+
+  return false;
+};
+
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
@@ -191,6 +234,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, col
   const { currentUser, logout } = useUser();
   const { totalUnread } = useChatNotifications();
   const [showLogout, setShowLogout] = useState(false);
+  const [, setHashTick] = useState(0);
+
+  React.useEffect(() => {
+    const handleHash = () => setHashTick((t) => t + 1);
+    window.addEventListener('hashchange', handleHash);
+    window.addEventListener('popstate', handleHash);
+    return () => {
+      window.removeEventListener('hashchange', handleHash);
+      window.removeEventListener('popstate', handleHash);
+    };
+  }, []);
 
   if (!currentUser) return null;
 
@@ -290,7 +344,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, col
                   return (
                     <a
                       key={item.id}
-                      className={`nav-item ${activePage === item.id ? 'active' : ''} ${item.id === 'system-chat' && badgeValue && badgeValue > 0 ? 'has-unread' : ''}`}
+                      className={`nav-item ${isItemActive(item.id, activePage) ? 'active' : ''} ${item.id === 'system-chat' && badgeValue && badgeValue > 0 ? 'has-unread' : ''}`}
                       onClick={() => setActivePage(item.id)}
                       title={collapsed ? t(item.label) : undefined}
                       style={{ cursor: 'pointer' }}

@@ -26,11 +26,9 @@ const normalizeName = (name?: string | null) =>
     .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '')
     .replace(/\s+/g, ' ');
 
-const profileRelationshipBadge = (profile: ProfileResponse): { label: string; tone: 'info' | 'danger' | 'warning' | 'success' | 'primary' | 'neutral' } => {
-  const rel = (profile as unknown as Record<string, unknown>).relationshipType ||
-              (profile as unknown as Record<string, unknown>).relationship ||
-              (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
-
+export const getRelationshipBadge = (
+  rel?: string,
+): { label: string; tone: 'info' | 'danger' | 'warning' | 'success' | 'primary' | 'neutral' } => {
   if (!rel) {
     return { label: 'None', tone: 'neutral' };
   }
@@ -61,6 +59,32 @@ const profileRelationshipBadge = (profile: ProfileResponse): { label: string; to
   }
 };
 
+const profileRelationshipBadge = (
+  profile: ProfileResponse,
+): { label: string; tone: 'info' | 'danger' | 'warning' | 'success' | 'primary' | 'neutral' } => {
+  const rel = (profile as unknown as Record<string, unknown>).relationshipType ||
+              (profile as unknown as Record<string, unknown>).relationship ||
+              (profile as unknown as Record<string, unknown>).suggestedRelationshipType;
+
+  return getRelationshipBadge(rel ? String(rel) : undefined);
+};
+
+export const countDistinctRelationshipTypes = (
+  rawTypes: (string | null | undefined)[],
+): number => {
+  const distinctCanonicalTypes = new Set<string>();
+
+  for (const raw of rawTypes) {
+    if (!raw) continue;
+    const badge = getRelationshipBadge(raw);
+    if (badge && badge.label && badge.label !== 'None') {
+      distinctCanonicalTypes.add(badge.label);
+    }
+  }
+
+  return distinctCanonicalTypes.size;
+};
+
 const profileUpdatedTime = (profile: ProfileResponse) => {
   const value = profile.metadata?.updatedAt || profile.metadata?.createdAt;
   const time = value ? new Date(value).getTime() : 0;
@@ -79,13 +103,16 @@ export const CompanyList: React.FC<CompanyListProps> = ({
   const { t } = useTranslation('company-list');
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
+  const [unfilteredTotal, setUnfilteredTotal] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [relationshipFilter, setRelationshipFilter] = useState('');
   const [industryFilter, setIndustryFilter] = useState('');
   const [industriesList, setIndustriesList] = useState<string[]>([]);
+  const [authoritativeRelationshipTypes, setAuthoritativeRelationshipTypes] = useState<string[] | null>(null);
   const [summary, setSummary] = useState<DashboardSummaryDto | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
@@ -111,8 +138,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({
 
       if (res.status === 'fulfilled') {
         const content = newestProfilesFirst(res.value.data?.content ?? []);
+        const total = res.value.data?.totalElements ?? content.length;
         setProfiles(content);
-        setTotalElements(res.value.data?.totalElements ?? content.length);
+        setTotalElements(total);
+        if (!searchQuery.trim() && !industryFilter && !relationshipFilter) {
+          setUnfilteredTotal(total);
+        }
         setCurrentPage(page);
       } else {
         setProfiles([]);
@@ -134,24 +165,98 @@ export const CompanyList: React.FC<CompanyListProps> = ({
   }, [searchQuery, relationshipFilter, industryFilter]);
 
   useEffect(() => {
-    api.get<DashboardSummaryDto>('/dashboard/summary').then((res) => {
-      if (res.data) setSummary(res.data);
-    }).catch(err => console.error('Failed to load dashboard summary', err));
+    let active = true;
+    setStatsLoading(true);
 
-    api.get<string[]>('/profiles/industries').then((res) => {
-      if (res.data) {
-        setIndustriesList(res.data.filter(Boolean).sort());
+    const loadStats = async () => {
+      try {
+        const [summaryRes, industriesRes, relTypesRes] = await Promise.allSettled([
+          api.get<DashboardSummaryDto>('/dashboard/summary'),
+          api.get<string[]>('/profiles/industries'),
+          api.get<string[]>('/profiles/relationship-types', {
+            params: {
+              excludeOwner: true,
+              createdByMe: createdByMe ? true : undefined,
+            },
+          }),
+        ]);
+
+        if (!active) return;
+
+        if (summaryRes.status === 'fulfilled' && summaryRes.value.data) {
+          setSummary(summaryRes.value.data);
+        }
+        if (industriesRes.status === 'fulfilled' && industriesRes.value.data) {
+          setIndustriesList(industriesRes.value.data.filter(Boolean).sort());
+        }
+        if (relTypesRes.status === 'fulfilled' && relTypesRes.value.data) {
+          setAuthoritativeRelationshipTypes(relTypesRes.value.data);
+        }
+      } catch (err) {
+        console.error('Failed to load profile stats/metadata', err);
+      } finally {
+        if (active) {
+          setStatsLoading(false);
+        }
       }
-    }).catch(err => console.error('Failed to load industries', err));
-  }, []);
+    };
+
+    void loadStats();
+
+    return () => {
+      active = false;
+    };
+  }, [createdByMe]);
+
+  const distinctRelationshipCount = useMemo(() => {
+    if (authoritativeRelationshipTypes !== null && authoritativeRelationshipTypes.length > 0) {
+      return countDistinctRelationshipTypes(authoritativeRelationshipTypes);
+    }
+    // Fallback if authoritativeRelationshipTypes is empty or not yet loaded: derive from summary
+    if (summary?.relationshipComposition && summary.relationshipComposition.length > 0) {
+      const activeCompositionTypes = summary.relationshipComposition
+        .filter((item) => (item.count || 0) > 0)
+        .map((item) => item.relationshipType);
+      if (activeCompositionTypes.length > 0) {
+        return countDistinctRelationshipTypes(activeCompositionTypes);
+      }
+    }
+    const fallbackTypes: string[] = [];
+    if ((summary?.partnerCount ?? 0) > 0) fallbackTypes.push('PARTNER');
+    if ((summary?.competitorCount ?? 0) > 0) fallbackTypes.push('COMPETITOR');
+    if ((summary?.supplierCount ?? 0) > 0) fallbackTypes.push('SUPPLIER');
+    if ((summary?.customerCount ?? 0) > 0) fallbackTypes.push('CUSTOMER');
+    if ((summary?.potentialPartnerCount ?? 0) > 0) fallbackTypes.push('POTENTIAL_PARTNER');
+    if (fallbackTypes.length > 0) {
+      return countDistinctRelationshipTypes(fallbackTypes);
+    }
+    return 0;
+  }, [authoritativeRelationshipTypes, summary]);
+
+  const totalCompanyProfiles = useMemo(() => {
+    if (unfilteredTotal !== null && unfilteredTotal !== undefined) {
+      return unfilteredTotal;
+    }
+    if (summary?.totalCompanyProfiles !== undefined && summary.totalCompanyProfiles !== null) {
+      return summary.totalCompanyProfiles;
+    }
+    return totalElements;
+  }, [unfilteredTotal, summary, totalElements]);
+
+  const totalIndustriesCount = useMemo(() => {
+    if (summary?.totalIndustries !== undefined && summary.totalIndustries !== null) {
+      return summary.totalIndustries;
+    }
+    return industriesList.length;
+  }, [summary, industriesList]);
 
   const metrics = useMemo(() => {
     return [
-      { label: t('stats.profiles.label') || 'Company Profiles', value: summary?.totalCompanyProfiles || 0 },
-      { label: 'Relationships', value: (summary?.partnerCount || 0) + (summary?.competitorCount || 0) + (summary?.supplierCount || 0) + (summary?.potentialPartnerCount || 0) },
-      { label: t('stats.industries.label') || 'Industries', value: summary?.totalIndustries || 0 },
+      { label: t('stats.profiles.label') || 'Company Profiles', value: totalCompanyProfiles },
+      { label: 'Relationship Types', value: distinctRelationshipCount },
+      { label: t('stats.industries.label') || 'Industries', value: totalIndustriesCount },
     ];
-  }, [summary, t]);
+  }, [totalCompanyProfiles, distinctRelationshipCount, totalIndustriesCount, t]);
 
   const openProfile = (profile: ProfileResponse) => {
     const id = profile.companyId || profile.id;
@@ -172,10 +277,11 @@ export const CompanyList: React.FC<CompanyListProps> = ({
           <div>
             <h1>Company Profiles</h1>
             <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              {subtitle || 'Manage approved company profiles and business information'}
+              {subtitle || 'Manage company profiles and business information'}
             </p>
           </div>
         </div>
+
 
         {error && <div className="workspace-inline-error">{error}</div>}
 
@@ -184,7 +290,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({
           <div className="workspace-focus-metrics">
             {metrics.map((item) => (
               <article key={item.label}>
-                <strong>{loading ? '...' : item.value}</strong>
+                <strong>{statsLoading ? '...' : item.value}</strong>
                 <span>{item.label}</span>
               </article>
             ))}
