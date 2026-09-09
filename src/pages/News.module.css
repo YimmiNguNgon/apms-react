@@ -2,77 +2,10 @@
    News & Intelligence – Modern Editorial Portal Layout
    ============================================================ */
 
-.newsPage {
-  max-width: 1480px;
-  width: calc(100% - 48px);
+.newsContainer {
   width: 100%;
   margin: 0 auto;
-  padding: 0 24px 40px;
-}
-
-/* ── Header ─────────────────────────────────────────────── */
-.newsHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 20px 0 16px;
-  border-bottom: 2px solid var(--cds-border-strong-01, #000);
-  margin-bottom: 16px;
-}
-
-.newsHeaderLeft {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.headerEyebrow {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--cds-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.newsTitle {
-  font-family: var(--cds-font-family-serif, "Georgia", serif);
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--cds-text-primary);
-  line-height: 1.1;
-  letter-spacing: -0.5px;
-  margin: 0;
-}
-
-.newsSub {
-  font-size: 0.875rem;
-  color: var(--cds-text-secondary);
-  max-width: 600px;
-  margin: 0;
-}
-
-.newsHeaderRight {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.newsLastUpdated {
-  font-size: 0.75rem;
-  color: var(--cds-text-helper);
-  white-space: nowrap;
-}
-
-.spinIcon {
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  padding: 0 0 40px;
 }
 
 /* ── Company Filter Bar ─────────────────────────────────── */
@@ -81,18 +14,18 @@
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  padding: 4px 0 10px 0;
-  margin-bottom: 16px;
+  padding: 4px 0 12px 0;
+  margin-bottom: 20px;
   scrollbar-width: thin;
-  scrollbar-color: var(--cds-border-subtle-01) transparent;
-  border-bottom: 1px solid var(--cds-border-subtle-01);
+  scrollbar-color: var(--cds-border-subtle-01, #e2e8f0) transparent;
+  border-bottom: 1px solid var(--cds-border-subtle-01, #e2e8f0);
 }
 
 .companyFilterBar::-webkit-scrollbar {
   height: 4px;
 }
 .companyFilterBar::-webkit-scrollbar-thumb {
-  background: var(--cds-border-subtle-01);
+  background: var(--cds-border-subtle-01, #e2e8f0);
   border-radius: 4px;
 }
 
@@ -101,14 +34,15 @@
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 20px;
-  font-size: 0.875rem;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: var(--cds-layer-01, #ffffff);
+  background: var(--cds-layer-02, #ffffff);
   border: 1px solid var(--cds-border-subtle-01, #e2e8f0);
   color: var(--cds-text-secondary, #475569);
   user-select: none;
@@ -144,25 +78,27 @@
 .searchBox {
   flex: 1;
   min-width: 280px;
-  max-width: 450px;
+  max-width: 480px;
   position: relative;
 }
 
 .searchBox input {
   width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--cds-border-subtle-01);
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--cds-border-subtle-01, #e2e8f0);
   border-radius: 6px;
-  background: var(--cds-field-01);
+  background: var(--cds-field-01, #ffffff);
+  font-family: inherit;
   font-size: 0.875rem;
-  color: var(--cds-text-primary);
+  color: var(--cds-text-primary, #0f172a);
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .searchBox input:focus {
-  border-color: var(--cds-border-interactive);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .filtersContainer {
@@ -261,10 +197,10 @@
 }
 
 .featuredTitle {
-  font-family: var(--cds-font-family-serif, "Georgia", serif);
-  font-size: 1.875rem;
+  font-family: inherit;
+  font-size: 1.625rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--cds-text-primary);
   margin: 0;
   transition: color 0.2s;
@@ -276,7 +212,7 @@
 
 @media (max-width: 768px) {
   .featuredTitle {
-    font-size: 1.5rem;
+    font-size: 1.375rem;
   }
 }
 
@@ -303,14 +239,14 @@
   flex-direction: column;
   gap: 20px;
   padding-left: 24px;
-  border-left: 1px solid var(--cds-border-subtle-01);
+  border-left: 1px solid var(--cds-border-subtle-01, #e2e8f0);
 }
 
 @media (max-width: 1024px) {
   .secondaryStories {
     padding-left: 0;
     border-left: none;
-    border-top: 1px solid var(--cds-border-subtle-01);
+    border-top: 1px solid var(--cds-border-subtle-01, #e2e8f0);
     padding-top: 24px;
   }
 }
@@ -370,13 +306,13 @@
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 20px;
-  border-bottom: 2px solid var(--cds-border-subtle-01);
+  border-bottom: 1px solid var(--cds-border-subtle-01, #e2e8f0);
   padding-bottom: 8px;
 }
 
 .sectionTitle {
-  font-family: var(--cds-font-family-serif, "Georgia", serif);
-  font-size: 1.375rem;
+  font-family: inherit;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--cds-text-primary);
   margin: 0;

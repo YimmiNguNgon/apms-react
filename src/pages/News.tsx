@@ -1,14 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { externalDataApi, type ExternalDataItem } from '../API/externalDataApi';
+import { externalDataApi, type ExternalDataItem, type TrackedCompany } from '../API/externalDataApi';
 import { SecondaryButton } from '../components/ui';
 import styles from './News.module.css';
-
-interface TrackedCompany {
-  id: string;
-  companyName: string;
-  aliases?: string[];
-}
 
 interface NormalizedNewsArticle {
   id: string;
@@ -110,14 +104,39 @@ const normalizeConfidence = (value?: number | null) => {
   return percentage >= 0 && percentage <= 100 ? Math.round(percentage) : null;
 };
 
-const normalizeArticle = (item: ExternalDataItem): NormalizedNewsArticle => {
+const resolveArticleCompanyDisplayName = (
+  companyId?: string | null,
+  rawName?: string | null,
+  companies: TrackedCompany[] = []
+): string | null => {
+  if (companyId) {
+    const found = companies.find(c => c.id === companyId);
+    if (found) return found.displayName || found.companyName;
+  }
+  if (rawName) {
+    const clean = rawName.trim().toLowerCase();
+    const found = companies.find(c =>
+      (c.displayName && c.displayName.toLowerCase() === clean) ||
+      (c.companyName && c.companyName.toLowerCase() === clean) ||
+      (c.aliases && c.aliases.some(a => a.toLowerCase() === clean))
+    );
+    if (found) return found.displayName || found.companyName;
+  }
+  return displayValue(rawName);
+};
+
+const normalizeArticle = (item: ExternalDataItem, trackedList: TrackedCompany[] = []): NormalizedNewsArticle => {
   const source = extractSource(item.source || item.sourceDomain);
   const title = parseHtmlContent(item.title) || 'Untitled news item';
   const summary = parseHtmlContent(item.aiSummary) || parseHtmlContent(item.summary);
   const content = parseHtmlContent(item.content);
   const topics = (item.topics || []).filter(Boolean);
   const importance = item.riskLevel || item.opportunityLevel || null;
-  const companyName = displayValue(item.relatedCompanyName);
+  const companyName = resolveArticleCompanyDisplayName(
+    item.relatedCompanyId || item.companyProfileId,
+    item.displayCompanyName || item.relatedCompanyName,
+    trackedList
+  );
   return {
     id: item.id,
     title,
@@ -144,11 +163,8 @@ const normalizeArticle = (item: ExternalDataItem): NormalizedNewsArticle => {
 };
 
 const getCompanyDisplayName = (company: TrackedCompany) => {
-  if (company.aliases && company.aliases.length > 0) {
-    const sorted = [...company.aliases].sort((a, b) => a.length - b.length);
-    return sorted[0];
-  }
-  return company.companyName.replace(/Công ty Cổ phần Tập đoàn|Công ty Cổ phần|Công ty TNHH|Tập đoàn|Tổng công ty/gi, '').trim();
+  if (!company) return '';
+  return company.displayName || company.companyName || '';
 };
 
 const PAGE_SIZE = 12;
@@ -184,9 +200,9 @@ export const News: React.FC<NewsProps> = () => {
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Load Companies
+  // Load Companies: only active canonical APMS companies that have news articles
   useEffect(() => {
-    externalDataApi.getTrackedCompanies(true)
+    externalDataApi.getTrackedCompanies(true, true)
       .then((data: any) => {
         if (Array.isArray(data)) {
           setTrackedCompanies(data);
@@ -200,7 +216,7 @@ export const News: React.FC<NewsProps> = () => {
     setLoading(true);
     try {
       const selectedCompany = trackedCompanies.find(c => c.id === selectedCompanyId);
-      const companyNameQuery = selectedCompany ? selectedCompany.companyName : undefined;
+      const companyNameQuery = selectedCompany ? (selectedCompany.displayName || selectedCompany.companyName) : undefined;
 
       const res = await externalDataApi.getItems('NEWS', {
         page: targetPage,
@@ -211,7 +227,7 @@ export const News: React.FC<NewsProps> = () => {
         importance: importanceFilter !== 'All' ? importanceFilter : undefined,
       });
       
-      const mapped = (res?.content || []).map(normalizeArticle);
+      const mapped = (res?.content || []).map((item) => normalizeArticle(item, trackedCompanies));
       setArticles(mapped);
       setPage(targetPage);
       setTotalCount(res ? res.totalElements : 0);
@@ -244,7 +260,12 @@ export const News: React.FC<NewsProps> = () => {
 
   const handleCompanyTagClick = (e: React.MouseEvent, companyName: string) => {
     e.stopPropagation();
-    const found = trackedCompanies.find(c => c.companyName === companyName);
+    const clean = companyName.trim().toLowerCase();
+    const found = trackedCompanies.find(c =>
+      (c.displayName && c.displayName.toLowerCase() === clean) ||
+      (c.companyName && c.companyName.toLowerCase() === clean) ||
+      (c.aliases && c.aliases.some(a => a.toLowerCase() === clean))
+    );
     if (found) {
       setSelectedCompanyId(found.id);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -328,43 +349,42 @@ export const News: React.FC<NewsProps> = () => {
   };
 
   return (
-    <div className={styles.newsPage}>
-      {/* ── Custom Newspaper Header ───────────────────────── */}
-      <div className={styles.newsHeader}>
-        <div className={styles.newsHeaderLeft}>
-          <div className={styles.headerEyebrow}>
-            {t('header.eyebrow')}
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page news-page" id="page-news">
+      <div className="workspace-main-full">
+        {/* ── Page Header aligned with APMS standard style ── */}
+        <div className="workspace-page-head">
+          <div>
+            <h1>{t('header.title', 'News & Media Intelligence')}</h1>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              {t('header.description', 'Latest news and media related to companies in the APMS ecosystem')}
+            </p>
           </div>
-          <h1 className={styles.newsTitle}>{t('header.title')}</h1>
-          <p className={styles.newsSub}>
-            {t('header.description')}
-          </p>
-        </div>
-        <div className={styles.newsHeaderRight}>
-          <div className={styles.newsLastUpdated}>
-            {loading ? t('aiState.inProgress', 'Updating...') : `${t('drawer.synced', 'Updated')} ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
+          <div style={{ color: 'var(--text-muted, #64748b)', fontSize: '0.8125rem', paddingTop: '4px', whiteSpace: 'nowrap' }}>
+            {loading ? t('aiState.inProgress', 'Updating...') : `Last updated: ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
           </div>
         </div>
-      </div>
 
-      {/* ── Company Filter Bar ────────────────────────────── */}
-      <div className={styles.companyFilterBar}>
-        <div 
-          className={`${styles.companyChip} ${!selectedCompanyId ? styles.companyChipActive : ''}`}
-          onClick={() => setSelectedCompanyId(null)}
-        >
-          {t('filters.allCompanies')}
-        </div>
-        {trackedCompanies.map(c => (
-          <div 
-            key={c.id} 
-            className={`${styles.companyChip} ${selectedCompanyId === c.id ? styles.companyChipActive : ''}`}
-            onClick={() => setSelectedCompanyId(c.id)}
-          >
-            {getCompanyDisplayName(c)}
+        <div className={styles.newsContainer}>
+          {/* ── Company Filter Bar ────────────────────────────── */}
+          <div className={styles.companyFilterBar}>
+            <button 
+              type="button"
+              className={`${styles.companyChip} ${!selectedCompanyId ? styles.companyChipActive : ''}`}
+              onClick={() => setSelectedCompanyId(null)}
+            >
+              {t('filters.allCompanies', 'All Companies')}
+            </button>
+            {trackedCompanies.map(c => (
+              <button 
+                type="button"
+                key={c.id} 
+                className={`${styles.companyChip} ${selectedCompanyId === c.id ? styles.companyChipActive : ''}`}
+                onClick={() => setSelectedCompanyId(c.id)}
+              >
+                {getCompanyDisplayName(c)}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
 
       {/* ── Search & Secondary Filters ────────────────────── */}
       <div className={styles.toolsBar}>
@@ -547,7 +567,8 @@ export const News: React.FC<NewsProps> = () => {
           </div>
         </div>
       )}
-
-    </div>
+        </div>
+      </div>
+    </section>
   );
 };

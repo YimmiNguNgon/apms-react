@@ -2051,27 +2051,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   })()}
                 </span>
               )}
-              {!isOwnerProfile && profile.business?.industries?.[0] && (
+              {navContext.source === 'project' && profile.reviewStatus && (
                 <span
                   style={{
-                    background: '#F1F5F9',
-                    border: '1px solid #E2E8F0',
-                    color: '#475569',
-                    fontSize: '0.62rem',
-                    fontWeight: 600,
-                    padding: '1px 7px',
-                    borderRadius: '999px',
-                  }}
-                >
-                  {profile.business.industries[0]}
-                </span>
-              )}
-              {profile.reviewStatus && (
-                <span
-                  style={{
-                    background: '#DCFCE7',
-                    border: '1px solid #BBF7D0',
-                    color: '#15803D',
+                    background: profile.reviewStatus === 'UNVERIFIED' ? '#FEF3C7' : '#DCFCE7',
+                    border: profile.reviewStatus === 'UNVERIFIED' ? '1px solid #FDE68A' : '1px solid #BBF7D0',
+                    color: profile.reviewStatus === 'UNVERIFIED' ? '#B45309' : '#15803D',
                     fontSize: '0.62rem',
                     fontWeight: 700,
                     padding: '1px 7px',

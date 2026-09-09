@@ -30,6 +30,7 @@ export interface ExternalDataItem {
   riskLevel?: string | null;
   opportunityLevel?: string | null;
   relatedCompanyName?: string | null;
+  displayCompanyName?: string | null;
   relatedCompanyId?: string | null;
   projectId?: number | null;
   companyProfileId?: string | null;
@@ -50,6 +51,14 @@ export interface ExternalDataItem {
   duplicateGroupId?: string | null;
   mergedSourceNames?: string[] | null;
   companySentiments?: CompanySentiment[] | null;
+}
+
+export interface TrackedCompany {
+  id: string;
+  companyName: string;
+  displayName?: string;
+  aliases?: string[];
+  active?: boolean;
 }
 
 export interface TrustedSource {
@@ -165,9 +174,9 @@ export const externalDataApi = {
     return response.data ?? { companyId, status: 'IDLE' };
   },
 
-  getTrackedCompanies: async (activeOnly: boolean = true) => {
+  getTrackedCompanies: async (activeOnly: boolean = true, withNewsOnly: boolean = true) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tracked-companies?activeOnly=${activeOnly}`, {
+      const response = await fetch(`${API_BASE_URL}/tracked-companies?activeOnly=${activeOnly}&withNewsOnly=${withNewsOnly}`, {
         headers: { ...getAuthHeader() } as Record<string, string>,
       });
       const payload = await response.json().catch(() => null);

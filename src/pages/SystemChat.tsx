@@ -54,8 +54,13 @@ const SOUND_ENABLED_KEY = 'apms-chat-sound-enabled';
 
 const formatBadgeCount = (value: number) => (value > 99 ? '99+' : String(value));
 
-const formatMessagePreview = (message?: ChatMessageResponse | null, fallback?: string | null) => {
-  if (!message) return fallback || 'Project conversation';
+const isSameName = (a?: string | null, b?: string | null) => {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+};
+
+const formatMessagePreview = (message?: ChatMessageResponse | null, fallback?: string | null): string | null => {
+  if (!message) return fallback || null;
   const sender = message.senderName?.split('@')[0] || `User #${message.senderId}`;
   const content = message.isDeleted ? 'Deleted message' : message.content;
   return `${sender}: ${content}`;
@@ -257,14 +262,17 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
               Project chats
               {totalUnread > 0 && <span className={styles.totalUnreadBadge}>{formatBadgeCount(totalUnread)}</span>}
             </h1>
-            <span>{projects.length} conversation(s)</span>
+            <span>{projects.length === 1 ? '1 conversation' : `${projects.length} conversations`}</span>
           </div>
         </div>
 
         <ProjectSearch value={query} onChange={onQueryChange} />
         <div className={`${styles.unreadSummary} ${totalUnread > 0 ? styles.unreadSummaryActive : ''}`}>
-          <span>{totalUnread > 0 ? `${formatBadgeCount(totalUnread)} unread message${totalUnread > 1 ? 's' : ''}` : 'All caught up'}</span>
-          <small>{totalUnread > 0 ? 'New project updates need attention' : 'No unread project messages'}</small>
+          {totalUnread > 0 ? (
+            <span>● {formatBadgeCount(totalUnread)} unread message{totalUnread > 1 ? 's' : ''}</span>
+          ) : (
+            <span>✓ All caught up · No unread messages</span>
+          )}
         </div>
         {/* <ProjectFilter value={filter} onChange={onFilterChange} /> */}
       </div>
@@ -326,33 +334,48 @@ interface ProjectConversationItemProps {
   onSelect: () => void;
 }
 
-const ProjectConversationItem: React.FC<ProjectConversationItemProps> = ({ project, selected, latestMessage, unreadCount, onSelect }) => (
-  <button
-    className={`${styles.projectItem} ${selected ? styles.projectItemActive : ''} ${unreadCount > 0 ? styles.projectItemUnread : ''}`}
-    type="button"
-    onClick={onSelect}
-  >
-    <ProjectAvatar label={project.projectName} tone={projectTone(project)} />
-    <div className={styles.projectItemBody}>
-      <div className={styles.projectItemTop}>
-        <strong>{project.projectName}</strong>
+const ProjectConversationItem: React.FC<ProjectConversationItemProps> = ({ project, selected, latestMessage, unreadCount, onSelect }) => {
+  const isSameCompany = isSameName(project.projectName, project.targetCompanyName);
+  const hasDifferentTargetCompany = Boolean(project.targetCompanyName && !isSameCompany);
+  const isTerminalStatus = Boolean(project.status && project.status.toUpperCase() !== 'ACTIVE');
+
+  const previewFallback = hasDifferentTargetCompany ? project.targetCompanyName?.trim() : null;
+  const messagePreview = formatMessagePreview(latestMessage, previewFallback);
+
+  return (
+    <button
+      className={`${styles.projectItem} ${selected ? styles.projectItemActive : ''} ${unreadCount > 0 ? styles.projectItemUnread : ''}`}
+      type="button"
+      onClick={onSelect}
+    >
+      <ProjectAvatar label={project.projectName} tone={projectTone(project)} />
+      <div className={styles.projectItemBody}>
+        <div className={styles.projectItemTop}>
+          <strong>{project.projectName}</strong>
+          {hasDifferentTargetCompany && latestMessage && (
+            <span className={styles.targetCompanyBadge}>{project.targetCompanyName}</span>
+          )}
+        </div>
+        {messagePreview && <p>{messagePreview}</p>}
       </div>
-      <p>{formatMessagePreview(latestMessage, project.targetCompanyName || project.description)}</p>
-      <div className={styles.projectItemMeta}>
-        <span className={styles.statusDot} data-status={project.status?.toLowerCase()} />
-        <span>{humanize(project.status)}</span>
+      <div className={styles.projectItemSignal}>
+        <time>{formatTime(latestMessage?.createdAt || project.updatedAt || project.createdAt)}</time>
+        <div className={styles.signalBadges}>
+          {isTerminalStatus && (
+            <span className={styles.terminalStatusBadge} data-status={project.status?.toLowerCase()}>
+              {humanize(project.status)}
+            </span>
+          )}
+          {unreadCount > 0 ? (
+            <span className={styles.projectUnreadBadge}>{formatBadgeCount(unreadCount)}</span>
+          ) : (
+            !isTerminalStatus && <span className={styles.readIndicator} />
+          )}
+        </div>
       </div>
-    </div>
-    <div className={styles.projectItemSignal}>
-      <time>{formatTime(latestMessage?.createdAt || project.updatedAt || project.createdAt)}</time>
-      {unreadCount > 0 ? (
-        <span className={styles.projectUnreadBadge}>{formatBadgeCount(unreadCount)}</span>
-      ) : (
-        <span className={styles.readIndicator} />
-      )}
-    </div>
-  </button>
-);
+    </button>
+  );
+};
 
 const ProjectAvatar: React.FC<{ label?: string | null; tone?: ProjectTone; small?: boolean }> = ({ label, tone = 'blue', small }) => (
   <div className={`${styles.avatar} ${small ? styles.avatarSmall : ''}`} data-tone={tone}>
@@ -366,35 +389,39 @@ interface ChatHeaderProps {
   onDetails: () => void;
 }
 
-const ChatHeader: React.FC<ChatHeaderProps> = ({ project, onBack, onDetails }) => (
-  <header className={styles.chatHeader}>
-    <button aria-label="Back to project list" className={`${styles.iconButton} ${styles.mobileBack}`} type="button" onClick={onBack}>
-      <ChevronLeft size={19} />
-    </button>
+const ChatHeader: React.FC<ChatHeaderProps> = ({ project, onBack, onDetails }) => {
+  const memberCount = project?.members?.length ?? 0;
+  const memberText = memberCount === 1 ? '1 member' : `${memberCount} members`;
 
-    <div className={styles.chatTitle}>
-      <ProjectAvatar label={project?.projectName} tone={projectTone(project)} />
-      <div>
-        <h2>{project?.projectName || 'Select a project chat'}</h2>
-        {project ? (
-          <div className={styles.chatMeta}>
-            <span>{relationshipLabel(project.targetRelationshipType)}</span>
-            <span>{project.members?.length ?? 0} member(s)</span>
-          </div>
-        ) : (
-          <p>Choose a project on the left to start messaging.</p>
-        )}
-      </div>
-    </div>
-
-    <div className={styles.chatHeaderActions}>
-      <button aria-label="Open project details" className={styles.detailsButton} type="button" disabled={!project} onClick={onDetails}>
-        <Users size={17} />
-        <span>Details</span>
+  return (
+    <header className={styles.chatHeader}>
+      <button aria-label="Back to project list" className={`${styles.iconButton} ${styles.mobileBack}`} type="button" onClick={onBack}>
+        <ChevronLeft size={19} />
       </button>
-    </div>
-  </header>
-);
+
+      <div className={styles.chatTitle}>
+        <ProjectAvatar label={project?.projectName} tone={projectTone(project)} />
+        <div>
+          <h2>{project?.projectName || 'Select a project chat'}</h2>
+          {project ? (
+            <div className={styles.chatMeta}>
+              <span className={styles.memberCount}>{memberText}</span>
+            </div>
+          ) : (
+            <p>Choose a project on the left to start messaging.</p>
+          )}
+        </div>
+      </div>
+
+      <div className={styles.chatHeaderActions}>
+        <button aria-label="Open conversation details" className={styles.detailsButton} type="button" disabled={!project} onClick={onDetails}>
+          <Users size={17} />
+          <span>Details</span>
+        </button>
+      </div>
+    </header>
+  );
+};
 
 interface ChatMessageListProps {
   messages: ChatMessageResponse[];
@@ -607,7 +634,6 @@ const MessageComposer: React.FC<MessageComposerProps> = ({ project, value, sendi
 
   return (
     <footer className={styles.composer}>
-      <div className={styles.composerHint}>{t('ui.membersOnly')}</div>
       <div className={styles.composerBox}>
         <button aria-label={t('ui.attachFile')} className={styles.composerIcon} type="button" disabled={!project}>
           <Paperclip size={18} />
@@ -656,44 +682,24 @@ const ProjectDetailsDrawer: React.FC<ProjectDetailsDrawerProps> = ({ project, op
     <aside className={`${styles.detailsDrawer} ${open ? styles.detailsDrawerOpen : ''}`} aria-hidden={!open}>
       <div className={styles.drawerHeader}>
         <div>
-          <span>Project details</span>
+          <span>Conversation details</span>
           <h3>{project?.projectName || 'No project selected'}</h3>
         </div>
-        <button aria-label="Close project details" className={styles.iconButton} type="button" onClick={onClose}>
+        <button aria-label="Close conversation details" className={styles.iconButton} type="button" onClick={onClose}>
           <X size={18} />
         </button>
       </div>
       <div className={styles.drawerBody}>
-        <ProjectOverview project={project} />
         <ProjectMemberList members={project?.members ?? []} />
       </div>
     </aside>
   </>
 );
 
-const ProjectOverview: React.FC<{ project: ProjectResponse | null }> = ({ project }) => (
-  <section className={styles.drawerSection}>
-    <div className={styles.projectOverview}>
-      <ProjectAvatar label={project?.projectName} tone={projectTone(project)} />
-      <div>
-        <strong>{project?.projectName || 'No project selected'}</strong>
-        <p>{project?.description || project?.targetCompanyName || 'Project conversation details.'}</p>
-      </div>
-    </div>
-    <dl className={styles.detailList}>
-      <div><dt>Status</dt><dd>{humanize(project?.status)}</dd></div>
-      <div><dt>Project type</dt><dd>{projectTypeLabel(project?.projectType)}</dd></div>
-      <div><dt>Relationship</dt><dd>{relationshipLabel(project?.targetRelationshipType)}</dd></div>
-      <div><dt>Last updated</dt><dd>{formatFullDate(project?.updatedAt || project?.createdAt)}</dd></div>
-    </dl>
-  </section>
-);
-
 const ProjectMemberList: React.FC<{ members: ProjectMemberResponse[] }> = ({ members }) => (
   <section className={styles.drawerSection}>
     <div className={styles.sectionTitle}>
-      <h4>Members</h4>
-      <span>{members.length}</span>
+      <h4>Members ({members.length})</h4>
     </div>
     <div className={styles.memberList}>
       {members.length === 0 && <div className={styles.listState}>No members loaded.</div>}
