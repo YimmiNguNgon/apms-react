@@ -36,6 +36,7 @@ type MonitoringProposalPayload = {
   changeSummary: string;
   sourceDocumentIds: string[];
   changedFieldPaths?: string[];
+  originalValues?: Record<string, unknown>;
   fieldEvidence?: FieldEvidence[];
   proposedIdentity?: Record<string, unknown>;
   proposedContact?: Record<string, unknown>;
@@ -147,6 +148,7 @@ const toRecord = (value: unknown): Record<string, unknown> | undefined =>
 
 const buildProposalPayload = (
   companyProfileId: string,
+  originalProfile: ProfileResponse | null,
   localProfile: ProfileResponse,
   changedFields: ChangedField[],
   evidenceMap: Record<string, FieldEvidence>
@@ -169,11 +171,20 @@ const buildProposalPayload = (
     }
   });
 
+  const origFields = originalProfile ? comparableFields(originalProfile) : {};
+  const originalValues: Record<string, unknown> = {};
+  changedFields.forEach(f => {
+    if (origFields[f.key]) {
+      originalValues[f.path] = origFields[f.key].value;
+    }
+  });
+
   const payload: MonitoringProposalPayload = {
     companyProfileId,
     changeSummary: `Staff monitoring updates: ${changedFields.map((field) => field.label).join(', ')}`,
     sourceDocumentIds: [],
     changedFieldPaths: changedFields.map((f) => f.path),
+    originalValues,
     fieldEvidence: changedFields.map(f => evidenceMap[f.path] || { fieldPath: f.path, fieldLabel: f.label }).filter(e => e.evidenceSource || e.evidenceScript || e.evidenceImageId)
   };
 
@@ -294,7 +305,7 @@ export const StaffMonitoringReviewPage: React.FC<{
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const payload = buildProposalPayload(companyProfileId, localProfile, currentChangedFields, evidenceMap);
+      const payload = buildProposalPayload(companyProfileId, originalProfile, localProfile, currentChangedFields, evidenceMap);
       const proposalResponse = await companyMonitoringApi.createMonitoringProposal(
         payload.companyProfileId,
         payload.changeSummary,
@@ -305,7 +316,8 @@ export const StaffMonitoringReviewPage: React.FC<{
         payload.proposedBusiness,
         payload.proposedCompanySize,
         payload.proposedInsights,
-        payload.proposedCompanyMembers
+        payload.proposedCompanyMembers,
+        payload.originalValues
       );
       const updateProposalId = proposalResponse.id;
       

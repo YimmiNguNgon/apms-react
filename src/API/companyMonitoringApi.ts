@@ -90,7 +90,7 @@ export const companyMonitoringApi = {
     return response.blob();
   },
 
-  createMonitoringProposal: async (companyProfileId: string, changeSummary: string, changedFieldPaths?: string[], fieldEvidence?: any[], proposedIdentity?: any, proposedContact?: any, proposedBusiness?: any, proposedCompanySize?: any, proposedInsights?: any, proposedCompanyMembers?: any[]): Promise<{ id: string }> => {
+  createMonitoringProposal: async (companyProfileId: string, changeSummary: string, changedFieldPaths?: string[], fieldEvidence?: any[], proposedIdentity?: any, proposedContact?: any, proposedBusiness?: any, proposedCompanySize?: any, proposedInsights?: any, proposedCompanyMembers?: any[], originalValues?: Record<string, any>): Promise<{ id: string }> => {
     const response = await api.post<{ id: string }>('/profile-update-proposals/monitoring', {
       companyProfileId,
       changeSummary,
@@ -101,7 +101,8 @@ export const companyMonitoringApi = {
       proposedBusiness,
       proposedCompanySize,
       proposedInsights,
-      proposedCompanyMembers
+      proposedCompanyMembers,
+      originalValues
     });
     return response.data;
   },

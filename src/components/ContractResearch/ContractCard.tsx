@@ -21,6 +21,7 @@ interface Props {
   onEdit?: (contract: ContractEntry) => void;
   onViewPdf: (documentId: string) => void;
   isAnyExtracting?: boolean;
+  hasTopReviewBanner?: boolean;
 }
 
 const formatContractType = (type?: string | null) => {
@@ -60,6 +61,7 @@ export const ContractCard: React.FC<Props> = ({
   onEdit,
   onViewPdf,
   isAnyExtracting = false,
+  hasTopReviewBanner = false,
 }) => {
   const isExtracting = contract.extractionStatus === 'PROCESSING';
   const isOtherExtracting = Boolean(isAnyExtracting && !isExtracting);
@@ -198,7 +200,7 @@ export const ContractCard: React.FC<Props> = ({
       )}
 
       {/* Changes Requested Feedback */}
-      {contract.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!isManagerMode && !hasTopReviewBanner && contract.reviewStatus === 'CHANGES_REQUESTED' && (
         <div className={styles.cardFeedbackBox}>
           <strong>Manager Review Feedback</strong>
           <p>{contract.reviewComment || 'Manager requested revisions for this contract.'}</p>

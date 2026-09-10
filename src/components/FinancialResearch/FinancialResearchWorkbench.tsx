@@ -49,6 +49,7 @@ type FinancialResearchWorkbenchProps = {
   targetCompanyName?: string | null;
   canEdit?: boolean;
   isManagerMode?: boolean;
+  hasTopReviewBanner?: boolean;
   workbenchSubmissions?: ProjectTaskSubmissionResponse[];
   onClose?: () => void;
   onReviewed?: (message: string, isSuccess: boolean) => void;
@@ -216,6 +217,7 @@ function SelectedReportSummary({
   isCancelling = false,
   onViewPdf,
   openingPdfId,
+  hasTopReviewBanner,
 }: {
   report: FinancialReportEntry;
   metricsCount: number;
@@ -226,6 +228,7 @@ function SelectedReportSummary({
   isCancelling?: boolean;
   onViewPdf?: (documentId: string) => void;
   openingPdfId?: string | null;
+  hasTopReviewBanner?: boolean;
 }) {
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isFailed = report.extractionStatus === 'FAILED';
@@ -285,7 +288,7 @@ function SelectedReportSummary({
         </div>
       </div>
 
-      {report.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
         <div className={styles.managerFeedbackBanner}>
           <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
           <div className={styles.managerFeedbackContent}>
@@ -364,6 +367,7 @@ function ExtractedMetricsPanel({
   targetCompanyName,
   onConfirmCompany,
   isConfirmingCompany,
+  hasTopReviewBanner,
 }: {
   report: FinancialReportEntry;
   metrics: FinancialMetricResponse[];
@@ -392,6 +396,7 @@ function ExtractedMetricsPanel({
   targetCompanyName?: string | null;
   onConfirmCompany?: (reportId: string, confirmed: boolean) => void;
   isConfirmingCompany?: boolean;
+  hasTopReviewBanner?: boolean;
 }) {
   const isApproved = report.reviewStatus === 'APPROVED';
   const canEditThisReport = canEdit && !isApproved;
@@ -443,7 +448,7 @@ function ExtractedMetricsPanel({
         )}
       </div>
 
-      {report.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
         <div className={styles.managerFeedbackBanner}>
           <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
           <div className={styles.managerFeedbackContent}>
@@ -911,6 +916,7 @@ function FinancialReportsPanel({
   onSelectAll,
   onDeselectAll,
   isManagerMode = false,
+  hasTopReviewBanner = false,
 }: {
   reports: FinancialReportEntry[];
   metrics: FinancialMetricResponse[];
@@ -931,6 +937,7 @@ function FinancialReportsPanel({
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
   isManagerMode?: boolean;
+  hasTopReviewBanner?: boolean;
 }) {
   const selectedSubmissionSet = useMemo(() => new Set(selectedReportIdsForSubmission), [selectedReportIdsForSubmission]);
   const eligibleSubmissionSet = useMemo(() => new Set(eligibleReportIds), [eligibleReportIds]);
@@ -1034,6 +1041,7 @@ function FinancialReportsPanel({
                       onViewPdf={onViewPdf}
                       isOpeningPdf={openingPdfId === report.documentId}
                       isManagerMode={isManagerMode}
+                      hasTopReviewBanner={hasTopReviewBanner}
                     />
                   );
                 })}
@@ -1123,6 +1131,7 @@ function ManagerReviewSummaryBar({
   onApprove,
   onRequestChanges,
   isProcessing,
+  hasTopReviewBanner,
 }: {
   selectedReport: FinancialReportEntry | null;
   reports: FinancialReportEntry[];
@@ -1130,6 +1139,7 @@ function ManagerReviewSummaryBar({
   onApprove: (reportId: string) => void;
   onRequestChanges: (reportId: string) => void;
   isProcessing: boolean;
+  hasTopReviewBanner?: boolean;
 }) {
   if (isRecalled) {
     return (
@@ -1160,7 +1170,8 @@ function ManagerReviewSummaryBar({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ea580c', fontWeight: 600 }}>
             <AlertTriangle size={16} />
             <span>
-              "{selectedReport?.title}" returned for changes: "{selectedReport?.reviewComment || 'Staff needs to make corrections.'}"
+              "{selectedReport?.title}" • Changes Requested
+              {!hasTopReviewBanner && selectedReport?.reviewComment ? `: "${selectedReport.reviewComment}"` : ''}
             </span>
           </div>
         ) : (
@@ -1231,6 +1242,7 @@ export default function FinancialResearchWorkbench({
   targetCompanyName,
   canEdit = true,
   isManagerMode = false,
+  hasTopReviewBanner = false,
   workbenchSubmissions,
   onClose,
   onReviewed,
@@ -1906,6 +1918,7 @@ export default function FinancialResearchWorkbench({
           onSelectAll={handleSelectAllReports}
           onDeselectAll={handleDeselectAllReports}
           isManagerMode={isManagerMode}
+          hasTopReviewBanner={hasTopReviewBanner}
         />
 
         <section className={`${styles.panel} ${styles.rightPanel}`}>
@@ -1923,6 +1936,7 @@ export default function FinancialResearchWorkbench({
                 isCancelling={cancelExtractMutation.isPending}
                 onViewPdf={handleViewPdf}
                 openingPdfId={openingPdfId}
+                hasTopReviewBanner={hasTopReviewBanner}
               />
             ) : (isReportExtracted(selectedReport) || selectedReportMetrics.length > 0) ? (
               <ExtractedMetricsPanel
@@ -1962,6 +1976,7 @@ export default function FinancialResearchWorkbench({
                 targetCompanyName={targetCompanyName}
                 onConfirmCompany={(reportId, confirmed) => confirmCompanyMutation.mutate({ reportId, confirmed })}
                 isConfirmingCompany={confirmCompanyMutation.isPending}
+                hasTopReviewBanner={hasTopReviewBanner}
               />
             ) : (
               <SelectedReportSummary
@@ -1974,6 +1989,7 @@ export default function FinancialResearchWorkbench({
                 isCancelling={cancelExtractMutation.isPending}
                 onViewPdf={handleViewPdf}
                 openingPdfId={openingPdfId}
+                hasTopReviewBanner={hasTopReviewBanner}
               />
             )}
           </div>
@@ -1995,6 +2011,7 @@ export default function FinancialResearchWorkbench({
           onApprove={(reportId) => reviewReportMutation.mutate({ reportId, status: 'APPROVED' })}
           onRequestChanges={() => setIsRequestChangesModalOpen(true)}
           isProcessing={reviewReportMutation.isPending}
+          hasTopReviewBanner={hasTopReviewBanner}
         />
       ) : (
         <FinancialPackageSummary

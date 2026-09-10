@@ -71,9 +71,10 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
     if (proposal.changedFieldPaths?.length && !proposal.changedFieldPaths.includes(fieldPath)) {
       return null;
     }
-    const origStr = formatValue(original);
+    const origSnapshot = proposal.originalValues?.[fieldPath];
+    const origStr = formatValue(origSnapshot !== undefined ? origSnapshot : original);
     const propStr = formatValue(proposed);
-    if (origStr === propStr || (origStr === 'N/A' && proposed === undefined)) return null;
+    if (!proposal.changedFieldPaths?.includes(fieldPath) && (origStr === propStr || (origStr === 'N/A' && proposed === undefined))) return null;
 
     const evidence = proposal.fieldEvidence?.find(e => e.fieldPath === fieldPath);
 
@@ -105,10 +106,12 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
     if (proposal.changedFieldPaths?.length && !proposal.changedFieldPaths.includes(fieldPath)) {
       return null;
     }
-    if (!original?.length && !proposed?.length) return null;
-    if (JSON.stringify(original) === JSON.stringify(proposed)) return null;
+    const origSnapshot = proposal.originalValues?.[fieldPath] as any[] | undefined;
+    const effectiveOriginal = origSnapshot !== undefined ? origSnapshot : original;
+    if (!effectiveOriginal?.length && !proposed?.length) return null;
+    if (!proposal.changedFieldPaths?.includes(fieldPath) && JSON.stringify(effectiveOriginal) === JSON.stringify(proposed)) return null;
 
-    const origMembers = original || [];
+    const origMembers = effectiveOriginal || [];
     const propMembers = proposed || [];
 
     const renderMember = (member: any, type: 'orig' | 'prop') => (

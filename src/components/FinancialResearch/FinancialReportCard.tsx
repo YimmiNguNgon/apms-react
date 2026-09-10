@@ -21,6 +21,7 @@ interface Props {
   onSelect?: (reportId: string) => void;
   onToggleSelection?: (reportId: string) => void;
   isManagerMode?: boolean;
+  hasTopReviewBanner?: boolean;
 }
 
 const formatReportType = (value?: string | null) =>
@@ -64,6 +65,7 @@ export default function FinancialReportCard({
   onSelect,
   onToggleSelection,
   isManagerMode = false,
+  hasTopReviewBanner = false,
 }: Props) {
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isExtracted = report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
@@ -152,7 +154,7 @@ export default function FinancialReportCard({
 
       <h4 className={styles.cardTitle}>{report.title}</h4>
 
-      {report.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!isManagerMode && !hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
         <div className={styles.cardFeedbackBox}>
           <strong>Manager Feedback</strong>
           <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
-import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse } from '../../types/domain';
+import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
 import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
 import { parseEvidenceCitations } from './EvidenceSection';
@@ -24,6 +24,9 @@ interface ManagerCandidateReviewWorkspaceProps {
   onReviewed?: () => void;
   onCancel?: () => void;
   isWorkspaceReadOnly?: boolean;
+  onViewCompanyProfile?: (profileId?: string) => void;
+  banner?: React.ReactNode;
+  reviewHistoryItem?: ManagerReviewHistoryItem | null;
 }
 
 type TabType = CandidateCategoryTab;
@@ -80,6 +83,23 @@ function formatReviewDate(dateStr?: string | null): string {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return String(dateStr);
     return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  } catch {
+    return String(dateStr);
+  }
+}
+
+function formatReviewDateTime(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr);
+    return d.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   } catch {
     return String(dateStr);
   }
@@ -296,6 +316,9 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   onReviewed,
   onCancel,
   isWorkspaceReadOnly,
+  onViewCompanyProfile,
+  banner,
+  reviewHistoryItem,
 }) => {
   const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
   const [currentSubmission, setCurrentSubmission] = useState<ProjectTaskSubmissionResponse | null>(submission ?? null);
@@ -361,7 +384,8 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           const subList = Array.isArray(subs) ? subs : [];
           setSubmissionHistory(subList);
           if (!currentSubmission && subList.length > 0) {
-            const matched = subList.find(s => s.targetEntityId === candidateId && s.status === 'IN_REVIEW')
+            const matched = (submissionId ? subList.find(s => s.id === submissionId) : null)
+              || subList.find(s => s.targetEntityId === candidateId && s.status === 'IN_REVIEW')
               || subList.find(s => s.status === 'IN_REVIEW')
               || subList.find(s => s.targetEntityId === candidateId)
               || subList[0];
@@ -378,7 +402,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     } finally {
       setLoading(false);
     }
-  }, [candidateId, taskId, projectId, currentSubmission]);
+  }, [candidateId, taskId, projectId, currentSubmission, submissionId]);
 
   useEffect(() => {
     fetchData();
@@ -608,10 +632,97 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     return <div className={styles.managerFieldGrid}>{cards}</div>;
   };
 
+  // ── Unified Top Bar (Kiểu 1) ──
+  const isHistoryView = Boolean(reviewHistoryItem);
+  const historyStatus = reviewHistoryItem?.status;
+  const isApproved = historyStatus === 'APPROVED' || serverCandidate?.status === 'APPROVED';
+  const isChangesRequested = historyStatus === 'CHANGES_REQUESTED' || historyStatus === 'REVISION_REQUESTED' || historyStatus === 'REJECTED';
+  const showTopBar = isHistoryView || isWorkspaceReadOnly;
+
+  let unifiedTopBar: React.ReactNode = null;
+  if (showTopBar) {
+    const reviewerName = reviewHistoryItem?.reviewedByName || serverCandidate?.review?.reviewedBy || 'Business Manager';
+    const reviewDateFormatted = formatReviewDateTime(reviewHistoryItem?.reviewedAt || serverCandidate?.review?.reviewedAt);
+    const comment = reviewHistoryItem?.reviewComment || serverCandidate?.review?.rejectionReason || (isApproved ? 'Candidate approved and Company Profile created.' : undefined);
+    const profileId = serverCandidate?.lifecycle?.convertedCompanyProfileId
+      || serverCandidate?.deduplication?.existingProfileIdMatch;
+
+    const barThemeClass = isApproved
+      ? styles.unifiedTopBarApproved
+      : isChangesRequested
+      ? styles.unifiedTopBarChangesRequested
+      : styles.unifiedTopBarNeutral;
+
+    unifiedTopBar = (
+      <div className={`${styles.unifiedTopBar} ${barThemeClass}`}>
+        <div className={styles.unifiedTopBarLeft}>
+          <div className={styles.unifiedTopBarIconCircle}>
+            {isApproved ? (
+              <CheckCircle size={15} />
+            ) : isChangesRequested ? (
+              <AlertTriangle size={15} />
+            ) : (
+              <CheckCircle size={15} />
+            )}
+          </div>
+
+          <span className={styles.unifiedTopBarBadge}>
+            {isApproved ? 'APPROVED' : isChangesRequested ? 'CHANGES REQUESTED' : 'REVIEWED'}
+          </span>
+
+          <span className={styles.unifiedTopBarDot}>•</span>
+
+          <div className={styles.unifiedTopBarText}>
+            <span>
+              {isApproved ? 'Approved by' : isChangesRequested ? 'Changes requested by' : 'Reviewed by'}{' '}
+              <strong>{reviewerName}</strong>
+              {comment ? (
+                <>: <span className={styles.unifiedTopBarQuote}>&ldquo;{comment}&rdquo;</span></>
+              ) : null}
+            </span>
+            {reviewDateFormatted && (
+              <>
+                <span className={styles.unifiedTopBarDot}>•</span>
+                <span className={styles.unifiedTopBarDate}>{reviewDateFormatted}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className={styles.unifiedTopBarRight}>
+          {isApproved && onViewCompanyProfile && (
+            <button
+              type="button"
+              className={styles.unifiedTopBarActionBtn}
+              onClick={() => onViewCompanyProfile(profileId)}
+              title="View official company profile"
+            >
+              <span>View Company Profile</span>
+              <ExternalLink size={13} />
+            </button>
+          )}
+
+          <div className={styles.unifiedTopBarDivider} />
+
+          <button
+            type="button"
+            className={styles.unifiedTopBarCloseBtn}
+            onClick={onCancel}
+            aria-label="Close modal"
+            title="Close (Esc)"
+          >
+            <XIcon size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Loading state ──
   if (loading || !serverCandidate) {
     const skeletonContent = (
       <div className={styles.workspace} style={{ padding: 24, height: '100%' }}>
+        {!unifiedTopBar && banner && <div style={{ marginBottom: 16 }}>{banner}</div>}
         <div className={styles.skeletonHeader} style={{ height: 60, background: '#e2e8f0', borderRadius: 8, marginBottom: 20 }} />
         <div className={styles.skeletonBody} style={{ height: 400, background: '#f1f5f9', borderRadius: 8 }} />
       </div>
@@ -619,6 +730,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     return ReactDOM.createPortal(
       <div className={styles.managerReviewBackdrop} onClick={onCancel}>
         <div className={styles.managerReviewModal} onClick={(e) => e.stopPropagation()}>
+          {unifiedTopBar}
           {skeletonContent}
         </div>
       </div>,
@@ -630,8 +742,8 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const draftTitle = serverCandidate.draftName
     || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : (currentSubmission?.submittedRevisionNumber ? `Draft ${currentSubmission.submittedRevisionNumber}` : 'Draft 1'));
   const roundNumber = currentSubmission?.submittedRevisionNumber || serverCandidate.revisionNumber || 1;
-  const submittedBy = currentSubmission?.submittedByName || 'Staff';
-  const submittedAt = currentSubmission?.submittedAt || currentSubmission?.createdAt;
+  const submittedBy = currentSubmission?.submittedByName || serverCandidate.metadata?.createdBy || 'Staff';
+  const submittedAt = currentSubmission?.submittedAt || currentSubmission?.createdAt || serverCandidate.lastSubmittedAt || serverCandidate.metadata?.createdAt;
   const companyLegalName = serverCandidate.identity?.legalName || 'Unknown Company';
 
   // Extract source document info if present
@@ -646,7 +758,19 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
   // ── Sidebar status message ──
   let sidebarMessage: React.ReactNode = null;
-  if (stats.pending > 0) {
+  if (serverCandidate.status === 'APPROVED') {
+    sidebarMessage = (
+      <div className={styles.sidebarSuccessBanner}>
+        <CheckCircle size={14} /> Candidate approved & Company Profile created.
+      </div>
+    );
+  } else if (serverCandidate.status === 'REJECTED') {
+    sidebarMessage = (
+      <div className={styles.sidebarWarnBanner}>
+        Candidate was rejected.
+      </div>
+    );
+  } else if (stats.pending > 0) {
     sidebarMessage = (
       <div className={styles.sidebarInfoBanner}>
         {stats.pending} field{stats.pending !== 1 ? 's' : ''} still need{stats.pending === 1 ? 's' : ''} a decision.
@@ -669,6 +793,12 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const workspaceContent = (
     <div className={styles.workspace}>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {!unifiedTopBar && banner && (
+        <div style={{ marginBottom: 16 }}>
+          {banner}
+        </div>
+      )}
 
       {/* Header */}
       <div className={styles.managerReviewHeader}>
@@ -701,8 +831,21 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           </div>
 
           <div className={styles.managerReviewMeta}>
-            <span className={styles.managerReviewStatus}>
-              IN REVIEW
+            <span
+              className={styles.managerReviewStatus}
+              style={
+                serverCandidate.status === 'APPROVED'
+                  ? { backgroundColor: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' }
+                  : serverCandidate.status === 'REJECTED'
+                  ? { backgroundColor: '#fee2e2', color: '#991b1b', borderColor: '#fecaca' }
+                  : undefined
+              }
+            >
+              {serverCandidate.status === 'APPROVED'
+                ? 'APPROVED'
+                : serverCandidate.status === 'REJECTED'
+                ? 'REJECTED'
+                : 'IN REVIEW'}
             </span>
             <span>•</span>
             <span>Round {roundNumber}</span>
@@ -731,13 +874,15 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             )}
           </div>
         </div>
-        <button
-          className={styles.closeButton}
-          onClick={onCancel}
-          aria-label="Close review workspace"
-        >
-          <XIcon size={22} />
-        </button>
+        {!unifiedTopBar && (
+          <button
+            className={styles.closeButton}
+            onClick={onCancel}
+            aria-label="Close review workspace"
+          >
+            <XIcon size={22} />
+          </button>
+        )}
       </div>
 
       {/* Main Layout */}
@@ -839,7 +984,25 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             </div>
 
             {/* Actions */}
-            {!isWorkspaceReadOnly && (
+            {isWorkspaceReadOnly ? (
+              serverCandidate.status === 'APPROVED' && (
+                <div className={styles.managerSidebarActions}>
+                  {onViewCompanyProfile ? (
+                    <button
+                      type="button"
+                      className={styles.btnCompleteReview}
+                      onClick={() => onViewCompanyProfile(serverCandidate.lifecycle?.convertedCompanyProfileId)}
+                    >
+                      <ExternalLink size={16} /> View Company Profile
+                    </button>
+                  ) : (
+                    <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, color: '#166534', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <CheckCircle size={15} color="#16a34a" /> Candidate Approved (Read-only)
+                    </div>
+                  )}
+                </div>
+              )
+            ) : (
               <div className={styles.managerSidebarActions}>
                 {stats.canComplete && (
                   <button
@@ -932,6 +1095,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   return ReactDOM.createPortal(
     <div className={styles.managerReviewBackdrop} onClick={onCancel}>
       <div className={styles.managerReviewModal} onClick={(e) => e.stopPropagation()}>
+        {unifiedTopBar}
         {workspaceContent}
       </div>
     </div>,

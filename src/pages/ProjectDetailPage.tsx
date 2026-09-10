@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Copy,
@@ -332,6 +333,22 @@ const getCandidateSource = (candidate: CandidateResponse): { fileName: string; m
     return { fileName: candidate.extractionSource.extractionMethod };
   }
   return { fileName: '—' };
+};
+
+const isAutomatedSystemNote = (note?: string | null): boolean => {
+  if (!note || !note.trim()) return true;
+  const lower = note.trim().toLowerCase();
+  const withoutRecall = lower.replace('[recalled by staff]', '').trim();
+  if (!withoutRecall) return true;
+  return (
+    withoutRecall.includes('submitted for manager review') ||
+    withoutRecall.includes('submitted for review') ||
+    withoutRecall.includes('submitted to manager') ||
+    withoutRecall.includes('completed revisions per manager feedback') ||
+    withoutRecall.includes('task result submitted') ||
+    withoutRecall.includes('documents submitted') ||
+    withoutRecall.includes('candidate submitted for manager review')
+  );
 };
 
 const getCandidateEmptyStateMessage = (
@@ -3448,8 +3465,20 @@ const CompanyMemberLayerBoard: React.FC<{
                   alignItems: 'center',
                   padding: '1px 7px',
                   borderRadius: '4px',
-                  background: statusLabel === 'Approved' ? '#dcfce7' : statusLabel === 'Submitted' ? '#dbeafe' : '#f1f5f9',
-                  color: statusLabel === 'Approved' ? '#15803d' : statusLabel === 'Submitted' ? '#1e40af' : '#475569',
+                  background: statusLabel === 'Approved'
+                    ? '#dcfce7'
+                    : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
+                    ? '#ffedd5'
+                    : statusLabel === 'Submitted'
+                    ? '#dbeafe'
+                    : '#f1f5f9',
+                  color: statusLabel === 'Approved'
+                    ? '#15803d'
+                    : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
+                    ? '#c2410c'
+                    : statusLabel === 'Submitted'
+                    ? '#1e40af'
+                    : '#475569',
                   fontSize: '11px',
                   fontWeight: 600,
                   textTransform: 'uppercase',
@@ -3734,6 +3763,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [reviewHistoryError, setReviewHistoryError] = useState<string | null>(null);
   const [reviewSearch, setReviewSearch] = useState('');
   const [reviewDecisionFilter, setReviewDecisionFilter] = useState<'ALL' | 'APPROVED' | 'CHANGES_REQUESTED' | 'PENDING_REVIEW'>('ALL');
+  const [reviewHistoryPage, setReviewHistoryPage] = useState(1);
+  const REVIEW_HISTORY_PAGE_SIZE = 5;
   const [selectedReviewHistoryItem, setSelectedReviewHistoryItem] = useState<ManagerReviewHistoryItem | null>(null);
 
   const closeManagerReviewModal = () => {
@@ -4113,6 +4144,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     createdAt: formatOptionalDate(apiProject?.createdAt || projectDetail.startDate),
     dueDate: formatOptionalDate(apiProject?.plannedEndDate || projectDetail.dueDate),
     targetCompanyName: apiProject?.targetCompanyName,
+    targetCompanyTaxCode: apiProject?.targetCompanyTaxCode,
     description: apiProject?.description,
   }), [apiProject]);
 
@@ -4469,17 +4501,38 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     });
   }, [unifiedReviewHistory, reviewDecisionFilter, reviewSearch]);
 
+  const totalReviewHistoryPages = Math.max(1, Math.ceil(filteredReviewHistory.length / REVIEW_HISTORY_PAGE_SIZE));
+  const safeReviewHistoryPage = Math.min(Math.max(1, reviewHistoryPage), totalReviewHistoryPages);
+
+  const paginatedReviewHistory = useMemo(() => {
+    const startIndex = (safeReviewHistoryPage - 1) * REVIEW_HISTORY_PAGE_SIZE;
+    return filteredReviewHistory.slice(startIndex, startIndex + REVIEW_HISTORY_PAGE_SIZE);
+  }, [filteredReviewHistory, safeReviewHistoryPage]);
+
+  useEffect(() => {
+    setReviewHistoryPage(1);
+  }, [reviewSearch, reviewDecisionFilter]);
+
   const openCandidateDetailById = async (candidateId?: string | null, historyItem?: ManagerReviewHistoryItem | null) => {
     if (!candidateId) return;
     setSelectedReviewHistoryItem(historyItem || null);
+    if (historyItem) {
+      setCandidateReviewTaskContext({
+        projectId: historyItem.projectId,
+        taskId: historyItem.taskId || 0,
+        taskTitle: historyItem.taskTitle,
+        taskDueDate: historyItem.reviewedAt || historyItem.submittedAt,
+        submissionId: historyItem.submissionId,
+      });
+    }
     const existing = candidates.find((c) => c.id === candidateId);
     if (existing) {
-      void openCandidateDetail(existing);
+      void openCandidateDetail(existing, true);
     } else {
       try {
         const payload = await candidateApi.getCandidateById(candidateId);
         if (payload?.data) {
-          void openCandidateDetail(payload.data);
+          void openCandidateDetail(payload.data, true);
         }
       } catch {
         setToast({ kind: 'error', message: 'Cannot load candidate details.' });
@@ -4510,222 +4563,139 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const renderReviewHistoryBanner = (onClose?: () => void) => {
+  const renderReviewHistoryBanner = (_onClose?: () => void) => {
     if (!selectedReviewHistoryItem) return null;
     const item = selectedReviewHistoryItem;
     const isApproved = item.status === 'APPROVED';
     const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
     const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
 
-    // Ẩn banner trên đầu khi đang trong phiên review (Pending Review).
-    // Chỉ hiển thị khi xem lại lịch sử các lần đã yêu cầu sửa đổi (Changes requested) hoặc đã phê duyệt.
+    // Only show banner for historical reviews (approved or changes requested)
     if (isPending || (!isChangesRequested && !isApproved)) {
       return null;
     }
+
+    const reviewerName = item.reviewedByName || 'Business Manager';
+    const reviewDateFormatted = item.reviewedAt ? formatDateTime(item.reviewedAt) : '';
+    const comment = item.reviewComment || (isApproved ? 'Task approved.' : undefined);
+    const hasStaffCustomNote = item.note && !isAutomatedSystemNote(item.note);
 
     return (
       <div
         style={{
           flex: '0 0 auto',
           marginBottom: '16px',
-          padding: '14px 18px',
-          borderRadius: '12px',
-          border: isChangesRequested
-            ? '1px solid #fca5a5'
-            : isApproved
-            ? '1px solid #86efac'
-            : '1px solid #cbd5e1',
-          background: isChangesRequested
-            ? 'linear-gradient(135deg, #fff1f2 0%, #fff7ed 100%)'
-            : isApproved
-            ? 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)'
-            : '#f8fafc',
-          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.06)',
+          borderRadius: '10px',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.12)',
+          minHeight: '44px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '10px',
+          overflow: 'hidden',
+          background: isApproved
+            ? 'linear-gradient(90deg, #064e3b 0%, #065f46 60%, #047857 100%)'
+            : isChangesRequested
+            ? 'linear-gradient(90deg, #c2410c 0%, #ea580c 50%, #f97316 100%)'
+            : 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
+          border: isApproved ? '1px solid #059669' : isChangesRequested ? '1px solid #ea580c' : '1px solid #334155',
+          color: isApproved ? '#ecfdf5' : isChangesRequested ? '#ffffff' : '#f8fafc',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {isChangesRequested ? (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#fee2e2',
-                  color: '#b91c1c',
-                  border: '1px solid #fca5a5',
-                  borderRadius: '9999px',
-                  padding: '3px 10px',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                <AlertTriangle size={14} />
-                {item.status === 'REVISION_REQUESTED' ? 'Cần chỉnh sửa (Needs revision)' : 'Yêu cầu sửa đổi (Changes requested)'}
-              </span>
-            ) : isApproved ? (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#dcfce7',
-                  color: '#15803d',
-                  border: '1px solid #86efac',
-                  borderRadius: '9999px',
-                  padding: '3px 10px',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                <CheckCircle2 size={14} />
-                Đã phê duyệt (Approved)
-              </span>
-            ) : (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  background: '#e0f2fe',
-                  color: '#0369a1',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '9999px',
-                  padding: '3px 10px',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                <Clock size={14} />
-                Đang chờ duyệt (Pending review)
-              </span>
-            )}
-
-            <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>
-              Hồ sơ đánh giá: {item.targetEntityName || item.taskTitle}
-            </span>
-
-            {item.submittedRevisionNumber != null && (
-              <span
-                style={{
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  padding: '2px 8px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                }}
-              >
-                Lần nộp #{item.submittedRevisionNumber} (Rev. {item.submittedRevisionNumber})
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.8rem', color: '#64748b' }}>
-            {item.submittedByName && (
-              <span>
-                Nhân viên gửi: <strong style={{ color: '#1e293b' }}>{item.submittedByName}</strong>
-                {item.submittedAt ? ` (${formatDateTime(item.submittedAt)})` : ''}
-              </span>
-            )}
-            {item.reviewedByName && (
-              <span>
-                Người đánh giá: <strong style={{ color: '#1e293b' }}>{item.reviewedByName}</strong>
-                {item.reviewedAt ? ` (${formatDateTime(item.reviewedAt)})` : ''}
-              </span>
-            )}
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  color: '#475569',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                }}
-                aria-label="Đóng"
-                title="Đóng cửa sổ chi tiết"
-              >
-                <X size={14} />
-                Đóng
-              </button>
-            )}
-          </div>
-        </div>
-
         <div
           style={{
-            padding: '10px 14px',
-            borderRadius: '8px',
-            background: '#ffffff',
-            border: isChangesRequested ? '1px solid #fecaca' : isApproved ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-            fontSize: '0.88rem',
-            lineHeight: '1.45',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            padding: '9px 16px',
+            flexWrap: 'wrap',
           }}
         >
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              color: isChangesRequested ? '#b91c1c' : isApproved ? '#15803d' : '#475569',
-              marginBottom: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            {isChangesRequested ? (
-              <>
-                <AlertTriangle size={15} />
-                <span>Nội dung yêu cầu chỉnh sửa / Lý do từ Manager:</span>
-              </>
-            ) : isApproved ? (
-              <>
-                <CheckCircle2 size={15} />
-                <span>Nhận xét phê duyệt từ Manager:</span>
-              </>
-            ) : (
-              <>
-                <FileText size={15} />
-                <span>Ghi chú đánh giá:</span>
-              </>
-            )}
-          </div>
-          <div
-            style={{
-              color: item.reviewComment ? '#0f172a' : '#94a3b8',
-              fontStyle: item.reviewComment ? 'normal' : 'italic',
-              whiteSpace: 'pre-wrap',
-              fontWeight: item.reviewComment ? 500 : 400,
-            }}
-          >
-            {item.reviewComment || '(Không có ghi chú nhận xét)'}
-          </div>
-
-          {item.note && (
-            <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #e2e8f0', fontSize: '0.8rem', color: '#64748b' }}>
-              <strong>Ghi chú từ nhân viên khi nộp bài:</strong> {item.note}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                background: isApproved
+                  ? 'rgba(167, 243, 208, 0.2)'
+                  : isChangesRequested
+                  ? 'rgba(255, 255, 255, 0.22)'
+                  : 'rgba(255, 255, 255, 0.15)',
+                color: isApproved ? '#6ee7b7' : isChangesRequested ? '#ffffff' : '#cbd5e1',
+                border: isApproved
+                  ? '1px solid rgba(167, 243, 208, 0.35)'
+                  : isChangesRequested
+                  ? '1px solid rgba(255, 255, 255, 0.4)'
+                  : '1px solid rgba(255, 255, 255, 0.25)',
+                flexShrink: 0,
+              }}
+            >
+              {isApproved ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
             </div>
-          )}
+
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '2px 8px',
+                borderRadius: '9999px',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                background: isApproved
+                  ? 'rgba(16, 185, 129, 0.25)'
+                  : isChangesRequested
+                  ? 'rgba(0, 0, 0, 0.2)'
+                  : 'rgba(255, 255, 255, 0.15)',
+                color: isApproved ? '#a7f3d0' : isChangesRequested ? '#ffffff' : '#e2e8f0',
+                border: isApproved
+                  ? '1px solid rgba(167, 243, 208, 0.3)'
+                  : isChangesRequested
+                  ? '1px solid rgba(255, 255, 255, 0.35)'
+                  : '1px solid rgba(255, 255, 255, 0.25)',
+                flexShrink: 0,
+              }}
+            >
+              {isApproved ? 'APPROVED' : isChangesRequested ? (item.status === 'REVISION_REQUESTED' ? 'REVISION REQUIRED' : 'CHANGES REQUESTED') : 'REVIEWED'}
+            </span>
+
+            <span style={{ opacity: 0.45 }}>•</span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+              <span>
+                {isApproved ? 'Approved by' : isChangesRequested ? 'Changes requested by' : 'Reviewed by'}{' '}
+                <strong>{reviewerName}</strong>
+                {comment ? (
+                  <>: <em style={{ fontStyle: 'italic', fontWeight: 500, color: '#ffffff' }}>&ldquo;{comment}&rdquo;</em></>
+                ) : null}
+              </span>
+              {reviewDateFormatted && (
+                <>
+                  <span style={{ opacity: 0.45 }}>•</span>
+                  <span style={{ fontSize: '0.74rem', opacity: 0.85 }}>{reviewDateFormatted}</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
+
+        {hasStaffCustomNote && (
+          <div
+            style={{
+              padding: '6px 16px 8px 50px',
+              fontSize: '0.76rem',
+              color: 'rgba(255, 255, 255, 0.85)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+              background: 'rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <strong>Staff submission note:</strong> {item.note}
+          </div>
+        )}
       </div>
     );
   };
@@ -5022,8 +4992,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const openCandidateDetail = async (candidate: CandidateResponse) => {
-    setCandidateReviewTaskContext(null);
+  const openCandidateDetail = async (candidate: CandidateResponse, keepContext = false) => {
+    if (!keepContext) {
+      setCandidateReviewTaskContext(null);
+    }
     setCandidateActionMessage(null);
     setCandidateError(null);
     setSelectedCandidate(candidate);
@@ -6753,22 +6725,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return Array.from(documentsByKey.values());
   }, [managerCandidateDrafts, projectDocuments, workbench?.documents]);
 
-  const isAutomatedSystemNote = (note?: string | null): boolean => {
-    if (!note || !note.trim()) return true;
-    const lower = note.trim().toLowerCase();
-    const withoutRecall = lower.replace('[recalled by staff]', '').trim();
-    if (!withoutRecall) return true;
-    return (
-      withoutRecall.includes('submitted for manager review') ||
-      withoutRecall.includes('submitted for review') ||
-      withoutRecall.includes('submitted to manager') ||
-      withoutRecall.includes('completed revisions per manager feedback') ||
-      withoutRecall.includes('task result submitted') ||
-      withoutRecall.includes('documents submitted') ||
-      withoutRecall.includes('candidate submitted for manager review')
-    );
-  };
-
   const handleViewTaskHistory = async (taskItem: StaffWorkHistoryItemResponse) => {
     setSelectedHistoryTask(taskItem);
     setTaskHistoryDetail(null);
@@ -6906,7 +6862,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
               <div className={styles.summaryMetaItem}>
                 <div className={styles.summaryMetaLabel}>Tax Code</div>
-                <div className={styles.summaryMetaValue}>{apiProject?.targetCompanyTaxCode || 'N/A'}</div>
+                <div className={styles.summaryMetaValue}>{displayedProject.targetCompanyTaxCode || apiProject?.targetCompanyTaxCode || 'N/A'}</div>
               </div>
               <div className={styles.summaryMetaItem}>
                 <div className={styles.summaryMetaLabel}>Relationship</div>
@@ -7175,7 +7131,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         </td>
                       </tr>
                     )}
-                    {!reviewHistoryLoading && filteredReviewHistory.map((item, index) => {
+                    {!reviewHistoryLoading && paginatedReviewHistory.map((item, index) => {
                       const isApproved = item.status === 'APPROVED';
                       const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
                       const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
@@ -7203,11 +7159,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                       const targetDisplayName = item.targetEntityName || item.targetCompanyName || item.taskTitle;
                       const deliverableLabel = formatDeliverableType(item.submissionType || item.taskType);
+                      const itemOrder = (safeReviewHistoryPage - 1) * REVIEW_HISTORY_PAGE_SIZE + index + 1;
 
                       return (
                         <tr key={item.submissionId ?? `${item.taskId ?? 't'}-${item.targetEntityId ?? 'e'}-${index}`}>
                           <td>
-                            <span className={styles.candidateOrderCell}>{index + 1}</span>
+                            <span className={styles.candidateOrderCell}>{itemOrder}</span>
                           </td>
                           <td>
                             <div className={styles.candidateNameCell}>
@@ -7319,6 +7276,46 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </tbody>
                 </table>
               </div>
+
+              {filteredReviewHistory.length > 0 && (
+                <div className={styles.reviewHistoryPagination}>
+                  <span className={styles.reviewHistoryPaginationInfo}>
+                    Showing {(safeReviewHistoryPage - 1) * REVIEW_HISTORY_PAGE_SIZE + 1}–{Math.min(safeReviewHistoryPage * REVIEW_HISTORY_PAGE_SIZE, filteredReviewHistory.length)} of {filteredReviewHistory.length} reviews
+                  </span>
+                  <div className={styles.reviewHistoryPaginationControls}>
+                    <button
+                      type="button"
+                      className={styles.reviewHistoryPageBtn}
+                      onClick={() => setReviewHistoryPage((prev) => Math.max(1, prev - 1))}
+                      disabled={safeReviewHistoryPage <= 1}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                      <span>Prev</span>
+                    </button>
+                    {Array.from({ length: totalReviewHistoryPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        className={`${styles.reviewHistoryPageBtn} ${safeReviewHistoryPage === pageNum ? styles.reviewHistoryPageBtnActive : ''}`}
+                        onClick={() => setReviewHistoryPage(pageNum)}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={styles.reviewHistoryPageBtn}
+                      onClick={() => setReviewHistoryPage((prev) => Math.min(totalReviewHistoryPages, prev + 1))}
+                      disabled={safeReviewHistoryPage >= totalReviewHistoryPages}
+                      aria-label="Next page"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.section>
           ) : activeTab === 'My Work History' ? (
             <motion.section className={styles.memberPanel} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -9796,7 +9793,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               transition={{ type: 'spring', stiffness: 360, damping: 30 }}
               onClick={(event) => event.stopPropagation()}
             >
-              {(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') && (
+              {(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION' || selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH') && (
                 <div className={styles.inviteHead} style={{ alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>
                     <h2 id="manager-task-review-title" style={{ marginTop: 0, marginBottom: '6px' }}>{selectedManagerReviewTask.title}</h2>
@@ -9870,6 +9867,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
+                  hasTopReviewBanner={Boolean(selectedReviewHistoryItem)}
                   onClose={() => closeManagerReviewModal()}
                   onReviewed={(message: string, isSuccess: boolean) => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
@@ -9890,6 +9888,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   assignedToName={selectedManagerReviewTask.assignedToName}
                   workbenchSubmissions={workbench?.submissions}
                   submissionId={workbench?.submissions?.[0]?.id || 0}
+                  hasTopReviewBanner={Boolean(selectedReviewHistoryItem)}
                   onClose={() => closeManagerReviewModal()}
                   onReviewCompleted={() => {
                     void loadManagerWorkbench(selectedManagerReviewTask);
@@ -9900,34 +9899,40 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 />
               ) : (
                 <>
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>
-                    {selectedManagerReviewTask.status === 'DONE' ? 'Completed task' : 'Manager review'} - APMS-{selectedManagerReviewTask.id}
-                  </span>
-                  <h2 id="manager-task-review-title">{selectedManagerReviewTask.title}</h2>
-                  <p>
-                    {selectedManagerReviewTask.status === 'DONE'
-                      ? 'View the submitted evidence, candidate drafts, and review history for this completed task.'
-                      : 'Review submitted evidence, candidate drafts, and staff notes before approving this task.'}
-                  </p>
+              {selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>
+                      {selectedReviewHistoryItem
+                        ? `Task APMS-${selectedManagerReviewTask.id} • ${taskTypeText[selectedManagerReviewTask.taskType].title}`
+                        : (selectedManagerReviewTask.status === 'DONE' ? 'Completed task' : 'Manager review') + ` - APMS-${selectedManagerReviewTask.id}`}
+                    </span>
+                    <h2 id="manager-task-review-title">{selectedManagerReviewTask.title}</h2>
+                    <p>
+                      {selectedManagerReviewTask.status === 'DONE'
+                        ? 'View the submitted evidence, candidate drafts, and review history for this completed task.'
+                        : 'Review submitted evidence, candidate drafts, and staff notes before approving this task.'}
+                    </p>
+                  </div>
+                  <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
+                    <X size={18} />
+                  </button>
                 </div>
-                <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
-                  <X size={18} />
-                </button>
-              </div>
+              )}
 
               {workbenchError && <div className={styles.inlineError}>{workbenchError}</div>}
               {workbenchMessage && <div className={styles.inlineSuccess}>{workbenchMessage}</div>}
 
-              <div className={styles.workbenchStatusRow}>
-                <div><span>Status</span><strong>{workbench?.taskStatus || selectedManagerReviewTask.status}</strong></div>
-                <div><span>Task type</span><strong>{taskTypeText[selectedManagerReviewTask.taskType].title}</strong></div>
-                <div><span>Assignee</span><strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong></div>
-                <div><span>Due date</span><strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong></div>
-              </div>
+              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
+                <div className={styles.workbenchStatusRow}>
+                  <div><span>Status</span><strong>{workbench?.taskStatus || selectedManagerReviewTask.status}</strong></div>
+                  <div><span>Task type</span><strong>{taskTypeText[selectedManagerReviewTask.taskType].title}</strong></div>
+                  <div><span>Assignee</span><strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong></div>
+                  <div><span>Due date</span><strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong></div>
+                </div>
+              )}
 
-              <div className={styles.staffWorkbenchGrid}>
+              <div className={`${styles.staffWorkbenchGrid} ${(selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' || Boolean(selectedReviewHistoryItem)) ? styles.companyMemberWorkbenchGrid : ''}`}>
                 <main className={styles.workbenchMain}>
                   {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
                   <section className={styles.workbenchPanel}>
@@ -9980,26 +9985,89 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </section>
                   )}
 
-                  {selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (
-                    <section className={styles.workbenchPanel}>
-                      <div className={styles.workbenchPanelHead}>
-                        <div>
-                          <h3>Company member research</h3>
+                  {selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (() => {
+                    const latestSub = workbench?.submissions?.[0];
+                    const historyItem = selectedReviewHistoryItem;
+
+                    const roundNumber = historyItem?.submittedRevisionNumber || latestSub?.submittedRevisionNumber;
+                    const roundLabel = roundNumber ? `Round ${roundNumber}` : 'Round 1';
+
+                    const submittedAtDate = historyItem?.submittedAt || latestSub?.submittedAt || latestSub?.createdAt;
+                    const submittedByLabel = historyItem?.submittedByName || latestSub?.submittedByName || selectedManagerReviewTask.assignedToName || 'Staff';
+
+                    const isApproved = historyItem?.status === 'APPROVED' || selectedManagerReviewTask.status === 'DONE';
+                    const isChangesRequested = ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(historyItem?.status as string)
+                      || ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(latestSub?.status as string);
+
+                    const badgeText = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted for Review';
+                    const badgeStyle = isApproved
+                      ? { background: '#dcfce7', color: '#15803d' }
+                      : isChangesRequested
+                      ? { background: '#ffedd5', color: '#c2410c' }
+                      : { background: '#dbeafe', color: '#1e40af' };
+
+                    const memberCount = managerCompanyMemberDraft?.members?.length ?? 0;
+                    const headingText = isApproved
+                      ? `Approved Members (${memberCount})`
+                      : `Submitted Members (${memberCount})`;
+
+                    const statusLabel = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted';
+
+                    return (
+                      <section className={styles.workbenchPanel} style={{ width: '100%' }}>
+                        <div style={{
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          padding: '20px 24px',
+                          marginBottom: '20px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: '16px',
+                          flexWrap: 'wrap'
+                        }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                              <span style={{
+                                ...badgeStyle,
+                                fontWeight: 700,
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                              }}>
+                                {badgeText}
+                              </span>
+                              <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
+                                {roundLabel}
+                              </span>
+                            </div>
+                            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#0f172a' }}>
+                              {headingText}
+                            </h3>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
+                              <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
+                              <span><strong>Submitted By:</strong> {submittedByLabel}</span>
+                            </div>
+                          </div>
                         </div>
-                        {/* <span className={styles.taskTypeBadge}>{managerCompanyMemberDraft?.members?.length ?? 0} member(s)</span> */}
-                      </div>
-                      {managerCompanyMemberLoading ? (
-                        <div className={styles.empty}>Loading submitted members...</div>
-                      ) : !managerCompanyMemberDraft?.members?.length ? (
-                        <div className={styles.empty}>No company members were submitted for review.</div>
-                      ) : (
-                        <CompanyMemberLayerBoard
-                          members={managerCompanyMemberDraft.members}
-                          emptyText="No company members were submitted for review."
-                        />
-                      )}
-                    </section>
-                  )}
+
+                        {managerCompanyMemberLoading ? (
+                          <div className={styles.empty}>Loading submitted members...</div>
+                        ) : !managerCompanyMemberDraft?.members?.length ? (
+                          <div className={styles.empty}>No company members were submitted for review.</div>
+                        ) : (
+                          <CompanyMemberLayerBoard
+                            members={managerCompanyMemberDraft.members}
+                            emptyText="No company members were submitted for review."
+                            statusLabel={statusLabel}
+                          />
+                        )}
+                      </section>
+                    );
+                  })()}
 
                   {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
                     <section className={styles.workbenchPanel}>
@@ -10094,49 +10162,50 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           />
                         </label>
 
-                        {selectedManagerReviewTask.status !== 'DONE' && (
-                          <div className={styles.modalActions}>
-                            <button
-                              className={`${styles.button} ${styles.dangerButton}`}
-                              type="button"
-                              onClick={() => void handleManagerReviewSubmission('REJECT')}
-                              disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
-                            >
-                              {managerReviewLoading ? 'Saving...' : 'Request Changes'}
-                            </button>
-                            <button
-                              className={`${styles.button} ${styles.primaryButton}`}
-                              type="button"
-                              onClick={() => void handleManagerReviewSubmission('APPROVE')}
-                              disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
-                            >
-                              <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : 'Approve'}
-                            </button>
-                          </div>
-                        )}
+                        <div className={styles.modalActions}>
+                          <button
+                            className={`${styles.button} ${styles.dangerButton}`}
+                            type="button"
+                            onClick={() => void handleManagerReviewSubmission('REJECT')}
+                            disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
+                            title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
+                          >
+                            {managerReviewLoading ? 'Saving...' : 'Request Changes'}
+                          </button>
+                          <button
+                            className={`${styles.button} ${styles.primaryButton}`}
+                            type="button"
+                            onClick={() => void handleManagerReviewSubmission('APPROVE')}
+                            disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
+                            title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
+                          >
+                            <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : selectedManagerReviewTask.status === 'DONE' ? 'Approved' : 'Approve'}
+                          </button>
+                        </div>
                       </>
                     )}
                   </section>
                   )}
                 </main>
 
-                <aside className={styles.workbenchSidebar}>
-                  <section className={styles.workbenchPanel}>
-                    <h3>Submission history</h3>
-                    <div className={styles.workbenchTimeline}>
-                      {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
-                      {workbench?.submissions?.map((submission) => (
-                        <article key={submission.id}>
-                          <strong>{submission.status}</strong>
-                          <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
-                          <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
-                          {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-
-                </aside>
+                {!['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && !selectedReviewHistoryItem && (
+                  <aside className={styles.workbenchSidebar}>
+                    <section className={styles.workbenchPanel}>
+                      <h3>Submission history</h3>
+                      <div className={styles.workbenchTimeline}>
+                        {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
+                        {workbench?.submissions?.map((submission) => (
+                          <article key={submission.id}>
+                            <strong>{submission.status}</strong>
+                            <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
+                            <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
+                            {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  </aside>
+                )}
               </div>
                 </>
               )}
@@ -10195,37 +10264,41 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             ? managerCandidateTabs
             : managerCandidateTabs.filter((tab) => tab.id !== 'decision');
 
-          return isManager && (selectedCandidate.status === 'PENDING_REVIEW' || selectedCandidate.status === 'REVISION_REQUIRED' || Boolean(candidateReviewTaskContext?.submissionId)) ? (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f8fafc', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-              {selectedReviewHistoryItem && (
-                <div style={{ padding: '16px 24px 0 24px' }}>
-                  {renderReviewHistoryBanner(closeCandidateModal)}
-                </div>
-              )}
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <ManagerCandidateReviewWorkspace
-                  projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
-                  candidateId={selectedCandidate.id}
-                  taskId={candidateReviewTaskContext?.taskId}
-                  submissionId={candidateReviewTaskContext?.submissionId || undefined}
-                  submission={candidateReviewTaskContext?.submission || undefined}
-                  allActiveSubmissions={candidateReviewTaskContext?.allActiveSubmissions}
-                  taskDueDate={candidateReviewTaskContext?.taskDueDate || undefined}
-                  taskTitle={candidateReviewTaskContext?.taskTitle || undefined}
-                  sourceDocuments={workbench?.documents}
-                  onSelectCandidate={(newCandidateId) => {
-                    void openManagerCandidateReview(newCandidateId);
-                  }}
-                  onReviewed={() => {
-                    closeCandidateModal();
-                    setTaskRefreshTick((current) => current + 1);
-                  }}
-                  onCancel={() => {
-                    closeCandidateModal();
-                  }}
-                />
-              </div>
-            </div>
+          return isManager ? (
+            <ManagerCandidateReviewWorkspace
+              projectId={String(apiProject?.id || candidateReviewTaskContext?.projectId || '')}
+              candidateId={selectedCandidate.id}
+              taskId={candidateReviewTaskContext?.taskId}
+              submissionId={candidateReviewTaskContext?.submissionId || undefined}
+              submission={candidateReviewTaskContext?.submission || undefined}
+              allActiveSubmissions={candidateReviewTaskContext?.allActiveSubmissions}
+              taskDueDate={candidateReviewTaskContext?.taskDueDate || undefined}
+              taskTitle={candidateReviewTaskContext?.taskTitle || undefined}
+              sourceDocuments={workbench?.documents}
+              reviewHistoryItem={selectedReviewHistoryItem}
+              onSelectCandidate={(newCandidateId) => {
+                void openManagerCandidateReview(newCandidateId);
+              }}
+              onReviewed={() => {
+                closeCandidateModal();
+                setTaskRefreshTick((current) => current + 1);
+              }}
+              onCancel={() => {
+                closeCandidateModal();
+              }}
+              isWorkspaceReadOnly={selectedCandidate.status === 'APPROVED' || selectedCandidate.status === 'REJECTED' || Boolean(selectedReviewHistoryItem)}
+              onViewCompanyProfile={(profileId) => {
+                const targetId = profileId
+                  || selectedCandidate.lifecycle?.convertedCompanyProfileId
+                  || selectedCandidate.deduplication?.existingProfileIdMatch
+                  || (selectedCandidate.status === 'APPROVED' ? apiProject?.targetCompanyProfileId : null);
+                if (!targetId) return;
+                closeCandidateModal();
+                localStorage.setItem('apms-selected-company', targetId);
+                localStorage.removeItem('apms-context-project');
+                setActivePage?.(`company-detail?source=project&projectId=${apiProject?.id}&companyId=${targetId}`);
+              }}
+            />
           ) : (
             <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => closeCandidateModal()}>
               <motion.div

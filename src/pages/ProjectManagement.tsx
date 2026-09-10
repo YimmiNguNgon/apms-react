@@ -606,12 +606,16 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     }
 
     try {
+      const taxCode = projectForm.projectType === 'UPDATE_EXISTING_COMPANY'
+        ? (selectedCompany?.identity?.taxCode || projectForm.targetCompanyTaxCode || undefined)
+        : (projectForm.targetCompanyTaxCode || undefined);
+
       const payload: CreateProjectRequest = {
         projectName,
         projectType: projectForm.projectType,
         targetCompanyProfileId: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? targetCompanyProfileId : null,
         targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectForm.targetCompanyName,
-        targetCompanyTaxCode: projectForm.projectType === 'RESEARCH_NEW_COMPANY' ? projectForm.targetCompanyTaxCode : undefined,
+        targetCompanyTaxCode: taxCode,
         targetRelationshipType,
         description: description || null,
         objective: objective || null,
@@ -776,6 +780,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                           projectType,
                           targetCompanyName: '',
                           targetCompanyProfileId: '',
+                          targetCompanyTaxCode: '',
                         }));
                       }}
                     >
@@ -804,6 +809,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                               ...current,
                               targetCompanyProfileId: selectedId,
                               targetCompanyName: profile ? profileName(profile) : '',
+                              targetCompanyTaxCode: profile?.identity?.taxCode || '',
                               targetRelationshipType: newRelationship,
                               keyResults: rebalancedKrs,
                             };

@@ -1570,6 +1570,7 @@ export interface CompanyProfileUpdateProposalResponse {
   origin?: string;
   changeSummary?: string;
   changedFieldPaths?: string[] | null;
+  originalValues?: Record<string, unknown> | null;
   fieldEvidence?: FieldEvidence[] | null;
   proposedIdentity?: Record<string, unknown> | null;
   proposedContact?: Record<string, unknown> | null;

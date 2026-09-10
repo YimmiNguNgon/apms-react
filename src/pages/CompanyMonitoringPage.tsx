@@ -304,23 +304,53 @@ export const collectProposalChanges = (
     'Relationship': 'relationshipType'
   };
 
+  const matchesFieldPath = (fieldPath: string, targetPath: string): boolean => {
+    if (fieldPath === targetPath) return true;
+    if ((fieldPath === 'contact.phones' && targetPath === 'contact.phoneNumbers') ||
+        (fieldPath === 'contact.phoneNumbers' && targetPath === 'contact.phones')) {
+      return true;
+    }
+    return false;
+  };
+
   return sections.flatMap((section) => {
     if (!section.proposed) return [];
 
     return flattenRecord(section.proposed as Record<string, unknown>).flatMap(([path, proposedValue]) => {
-      const currentValue = getByPath(section.current, path);
-      if (normalizeValue(currentValue) === normalizeValue(proposedValue)) return [];
-
       const root = sectionRoots[section.source];
       const fieldPath = root === 'companyMembers' || root === 'relationshipType' ? root : `${root}.${path}`;
 
+      const isExplicitlyChanged = Boolean(
+        proposal.changedFieldPaths &&
+        proposal.changedFieldPaths.some(p => matchesFieldPath(fieldPath, p))
+      );
+
       if (proposal.changedFieldPaths && proposal.changedFieldPaths.length > 0) {
-        if (!proposal.changedFieldPaths.includes(fieldPath)) {
+        if (!isExplicitlyChanged) {
           return [];
         }
       }
 
-      const evidence = proposal.fieldEvidence?.find(e => e.fieldPath === fieldPath);
+      let currentValue: unknown;
+      if (proposal.originalValues) {
+        if (Object.prototype.hasOwnProperty.call(proposal.originalValues, fieldPath)) {
+          currentValue = proposal.originalValues[fieldPath];
+        } else if (fieldPath === 'contact.phones' && Object.prototype.hasOwnProperty.call(proposal.originalValues, 'contact.phoneNumbers')) {
+          currentValue = proposal.originalValues['contact.phoneNumbers'];
+        } else if (fieldPath === 'contact.phoneNumbers' && Object.prototype.hasOwnProperty.call(proposal.originalValues, 'contact.phones')) {
+          currentValue = proposal.originalValues['contact.phones'];
+        } else {
+          currentValue = getByPath(section.current, path);
+        }
+      } else {
+        currentValue = getByPath(section.current, path);
+      }
+
+      if (!isExplicitlyChanged && normalizeValue(currentValue) === normalizeValue(proposedValue)) {
+        return [];
+      }
+
+      const evidence = proposal.fieldEvidence?.find(e => matchesFieldPath(fieldPath, e.fieldPath));
 
       return [{
         key: `${section.source}.${path}`,

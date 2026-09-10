@@ -12,6 +12,7 @@ interface ManagerFinancialResearchReviewWorkspaceProps {
   targetCompanyName?: string | null;
   assignedToName?: string | null;
   workbenchSubmissions?: ProjectTaskSubmissionResponse[];
+  hasTopReviewBanner?: boolean;
   onClose: () => void;
   onReviewed?: (message: string, isSuccess: boolean) => void;
 }
@@ -24,6 +25,7 @@ export default function ManagerFinancialResearchReviewWorkspace(
       {...props}
       canEdit={false}
       isManagerMode={true}
+      hasTopReviewBanner={props.hasTopReviewBanner}
     />
   );
 }

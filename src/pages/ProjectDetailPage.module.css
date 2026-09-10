@@ -8024,3 +8024,65 @@
   font-weight: 500;
 }
 
+.reviewHistoryPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 4px 4px 4px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.85rem;
+}
+
+.reviewHistoryPaginationInfo {
+  font-weight: 500;
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.reviewHistoryPaginationControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reviewHistoryPageBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reviewHistoryPageBtn:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.reviewHistoryPageBtnActive {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.28);
+}
+
+.reviewHistoryPageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+

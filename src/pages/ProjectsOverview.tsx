@@ -308,11 +308,16 @@ export const ProjectsOverview: React.FC = () => {
     const selectedCompany = companyOptions.find(
       (profile) => profile.companyId === createForm.targetCompanyProfileId || profile.id === createForm.targetCompanyProfileId,
     );
+    const taxCode = createForm.projectType === 'UPDATE_EXISTING_COMPANY'
+      ? (selectedCompany?.identity?.taxCode || createForm.targetCompanyTaxCode || undefined)
+      : (createForm.targetCompanyTaxCode || undefined);
+
     const payload: CreateProjectRequest = {
       projectName,
       projectType: createForm.projectType,
       targetCompanyProfileId: createForm.projectType === 'UPDATE_EXISTING_COMPANY' ? createForm.targetCompanyProfileId : null,
       targetCompanyName: createForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectName,
+      targetCompanyTaxCode: taxCode,
       targetRelationshipType: createForm.targetRelationshipType as RelationshipType,
       description: createForm.description.trim() || null,
       plannedEndDate: createForm.plannedEndDate,

@@ -58,6 +58,7 @@ interface ContractResearchWorkbenchProps {
   assignedToName?: string | null;
   canEdit?: boolean;
   isManagerMode?: boolean;
+  hasTopReviewBanner?: boolean;
   submissionId?: number;
   onRefreshWorkbench?: () => void;
   onRecallSuccess?: () => void;
@@ -122,6 +123,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   targetCompanyName,
   canEdit = true,
   isManagerMode = false,
+  hasTopReviewBanner = false,
   submissionId,
   onRecallSuccess,
   onSubmitSuccess,
@@ -1432,6 +1434,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       isEligible={isEligible}
                       canEdit={effectiveCanEdit}
                       isManagerMode={isManagerMode}
+                      hasTopReviewBanner={hasTopReviewBanner}
                       hasMultipleContracts={hasMultipleContracts}
                       clauseCount={extractContractRows(contract).length}
                       needsReviewCount={0}
@@ -1772,7 +1775,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               {/* Workspace Body Scrollable Content */}
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, flex: '1 0 auto' }}>
                 {/* Changes Requested Banner */}
-                {selectedContract.reviewStatus === 'CHANGES_REQUESTED' && (
+                {!hasTopReviewBanner && selectedContract.reviewStatus === 'CHANGES_REQUESTED' && (
                 <div className={styles.managerFeedbackBanner} style={{ marginTop: 10 }}>
                   <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div className={styles.managerFeedbackContent}>

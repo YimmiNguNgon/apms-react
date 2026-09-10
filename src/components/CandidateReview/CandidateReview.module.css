@@ -2583,3 +2583,183 @@
 .evidenceCopyBtnSuccess {
   color: #16a34a !important;
 }
+
+/* --- Unified Review Decision Top Bar (Kiểu 1) --- */
+.unifiedTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 18px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  min-height: 44px;
+}
+
+.unifiedTopBarApproved {
+  background: linear-gradient(90deg, #064e3b 0%, #065f46 60%, #047857 100%);
+  border-bottom: 1px solid #059669;
+  color: #ecfdf5;
+}
+
+.unifiedTopBarChangesRequested {
+  background: linear-gradient(90deg, #c2410c 0%, #ea580c 50%, #f97316 100%);
+  border-bottom: 1px solid #ea580c;
+  color: #ffffff;
+}
+
+.unifiedTopBarNeutral {
+  background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+  border-bottom: 1px solid #334155;
+  color: #f8fafc;
+}
+
+.unifiedTopBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.unifiedTopBarIconCircle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.unifiedTopBarApproved .unifiedTopBarIconCircle {
+  background: rgba(167, 243, 208, 0.2);
+  color: #6ee7b7;
+  border: 1px solid rgba(167, 243, 208, 0.35);
+}
+
+.unifiedTopBarChangesRequested .unifiedTopBarIconCircle {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.unifiedTopBarNeutral .unifiedTopBarIconCircle {
+  background: rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.unifiedTopBarBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.unifiedTopBarApproved .unifiedTopBarBadge {
+  background: rgba(16, 185, 129, 0.25);
+  color: #a7f3d0;
+  border: 1px solid rgba(167, 243, 208, 0.3);
+}
+
+.unifiedTopBarChangesRequested .unifiedTopBarBadge {
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.unifiedTopBarNeutral .unifiedTopBarBadge {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.unifiedTopBarText {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unifiedTopBarQuote {
+  font-style: italic;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.unifiedTopBarDate {
+  font-size: 0.72rem;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.unifiedTopBarDot {
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.unifiedTopBarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.unifiedTopBarActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.unifiedTopBarActionBtn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.unifiedTopBarDivider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 2px;
+}
+
+.unifiedTopBarCloseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.unifiedTopBarCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}

@@ -13,6 +13,7 @@ interface Props {
   targetCompanyName?: string | null;
   assignedToName?: string | null;
   workbenchSubmissions?: ProjectTaskSubmissionResponse[];
+  hasTopReviewBanner?: boolean;
   onClose?: () => void;
   onReviewCompleted?: () => void;
 }
@@ -24,6 +25,7 @@ export const ManagerContractResearchReviewWorkspace: React.FC<Props> = (props) =
       canEdit={false}
       isManagerMode={true}
       submissionId={props.submissionId || props.workbenchSubmissions?.[0]?.id || 0}
+      hasTopReviewBanner={props.hasTopReviewBanner}
     />
   );
 };
