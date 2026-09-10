@@ -202,33 +202,26 @@
 }
 
 .unreadSummary {
-  display: grid;
-  gap: 2px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #ffffff;
-  padding: 10px 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  padding: 2px 2px 4px;
 }
 
 .unreadSummary span {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.unreadSummary small {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .unreadSummaryActive {
-  border-color: #bfdbfe;
-  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  background: transparent;
 }
 
 .unreadSummaryActive span {
   color: var(--primary);
+  font-weight: 750;
 }
 
 .filterRow {
@@ -281,7 +274,7 @@
 .projectItem {
   position: relative;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 38px;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -416,6 +409,50 @@
   color: var(--primary);
 }
 
+.signalBadges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminalStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 750;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.terminalStatusBadge[data-status="completed"] {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.terminalStatusBadge[data-status="closed"] {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.targetCompanyBadge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .projectItemMeta {
   display: flex;
   align-items: center;
@@ -502,7 +539,7 @@
 .chatMeta {
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .chatMeta span {
@@ -512,6 +549,15 @@
   font-size: 12px;
   font-weight: 750;
   padding: 4px 8px;
+}
+
+.chatMeta .memberCount {
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 0;
 }
 
 .chatHeaderActions {

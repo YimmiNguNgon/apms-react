@@ -6,6 +6,7 @@ interface CompanyProfileHeaderProps {
   initials: string;
   industry?: string;
   reviewStatus?: string;
+  source?: string;
   version?: string;
   topRow?: React.ReactNode;
   isHidden?: boolean;
@@ -23,6 +24,7 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
   initials,
   industry,
   reviewStatus,
+  source,
   version,
   topRow,
   isHidden,
@@ -100,23 +102,10 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
             >
               PARTNER ECOSYSTEM
             </span>
-            {industry && (
-              <span
-                style={{
-                  background: '#F1F5F9',
-                  border: '1px solid #E2E8F0',
-                  color: '#475569',
-                  fontSize: '0.62rem',
-                  fontWeight: 600,
-                  padding: '1px 7px',
-                  borderRadius: '999px',
-                }}
-              >
-                {industry}
-              </span>
-            )}
             <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Trạng thái: <strong style={{ color: '#15803D', fontWeight: 700 }}>{reviewStatus || 'VERIFIED'}</strong></span>
+              {source === 'project' && reviewStatus && (
+                <span>Trạng thái: <strong style={{ color: reviewStatus === 'UNVERIFIED' ? '#B45309' : '#15803D', fontWeight: 700 }}>{reviewStatus}</strong></span>
+              )}
               {typeof isHidden === 'boolean' && (
                 <span style={{
                   fontSize: '0.65rem',

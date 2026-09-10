@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Newspaper, Search, Sparkles, Filter } from 'lucide-react';
+import { ExternalLink, Newspaper } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import { externalDataApi } from '../../API/externalDataApi';
 import type { CompanyNews } from '../../types/listingData';
@@ -7,7 +7,6 @@ import { ListingTabShell } from './common';
 import { formatDateTime, useListingTabData } from './utils';
 
 const PAGE_SIZE = 8;
-const CATEGORIES = ['Tất cả', 'CÔNG BỐ THÔNG TIN', 'HOẠT ĐỘNG KINH DOANH', 'CỔ TỨC & PHÁT HÀNH', 'BÁO CÁO PHÂN TÍCH', 'CẢNH BẢO RỦI RO', 'CƠ HỘI ĐẦU TƯ'];
 
 interface NewsTabProps {
   companyId: string;
@@ -32,31 +31,21 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
     listingDataApi.getNews,
   );
   const [currentPage, setCurrentPage] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
-  const [searchQuery, setSearchQuery] = useState('');
   const [crawling, setCrawling] = useState(false);
   const [crawlMsg, setCrawlMsg] = useState<string | null>(null);
   const showManualCrawler = companyId !== '6a31a0000000000000000001';
 
-  // Reset pagination when companyId, searchQuery, or selectedCategory changes
+  // Reset pagination when companyId changes
   useEffect(() => {
     setCurrentPage(0);
-  }, [companyId, searchQuery, selectedCategory]);
+  }, [companyId]);
 
   const news = data?.data ?? [];
 
-  const filteredNews = news.filter((item) => {
-    const matchCat = selectedCategory === 'Tất cả' || item.category === selectedCategory;
-    const matchQuery = !searchQuery.trim() ||
-      (item.title && item.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (item.summary && item.summary.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchCat && matchQuery;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredNews.length / PAGE_SIZE));
-  const shown = filteredNews.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
-  const startItem = filteredNews.length > 0 ? currentPage * PAGE_SIZE + 1 : 0;
-  const endItem = Math.min((currentPage + 1) * PAGE_SIZE, filteredNews.length);
+  const totalPages = Math.max(1, Math.ceil(news.length / PAGE_SIZE));
+  const shown = news.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const startItem = news.length > 0 ? currentPage * PAGE_SIZE + 1 : 0;
+  const endItem = Math.min((currentPage + 1) * PAGE_SIZE, news.length);
 
   const handlePageChange = (newPage: number) => {
     if (newPage < 0 || newPage >= totalPages || newPage === currentPage) return;
@@ -155,70 +144,23 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
 
   return (
     <ListingTabShell loading={loading} error={error} hasData={news.length > 0} crawledAt={data?.crawledAt} onRetry={reload} emptyHint="No news has been collected by the AI crawler for this company yet. Please click 'Run AI Crawler'.">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {/* Header Bar */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Newspaper size={20} style={{ color: '#2563EB' }} />
               <h2 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                Tin Tức & Truyền Thông ({filteredNews.length} bài)
+                Tin Tức & Truyền Thông ({news.length} bài)
               </h2>
             </div>
-
           </div>
 
           {showManualCrawler && crawlMsg && (
-            <div style={{ fontSize: '0.65rem', color: '#059669', background: '#ECFDF5', padding: '4px 8px', borderRadius: '4px', marginBottom: '10px', fontWeight: 600 }}>
+            <div style={{ fontSize: '0.65rem', color: '#059669', background: '#ECFDF5', padding: '4px 8px', borderRadius: '4px', marginTop: '8px', fontWeight: 600 }}>
               {crawlMsg}
             </div>
           )}
-
-          {/* Search & Category Filter Pills */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-              <input
-                type="text"
-                placeholder="Tìm kiếm tin tức theo tiêu đề hoặc nội dung..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '6px 10px 6px 32px',
-                  borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '0.73rem',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <Filter size={13} style={{ color: '#64748B' }} />
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  style={{
-                    padding: '3px 9px',
-                    borderRadius: '999px',
-                    fontSize: '0.64rem',
-                    fontWeight: 700,
-                    border: '1px solid',
-                    borderColor: selectedCategory === cat ? '#2563EB' : '#E2E8F0',
-                    background: selectedCategory === cat ? '#EFF6FF' : '#F8FAFC',
-                    color: selectedCategory === cat ? '#1D4ED8' : '#475569',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* News Stream List (Max 8 articles per page) */}
@@ -266,7 +208,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
         </div>
 
         {/* Numerated Pagination Bar */}
-        {filteredNews.length > 0 && (
+        {news.length > 0 && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -281,7 +223,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
           }}>
             <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-              Hiển thị {startItem}–{endItem} trong tổng số {filteredNews.length} bài báo (Trang {currentPage + 1}/{totalPages})
+              Hiển thị {startItem}–{endItem} trong tổng số {news.length} bài (Trang {currentPage + 1}/{totalPages})
             </div>
 
             {totalPages > 1 && (
