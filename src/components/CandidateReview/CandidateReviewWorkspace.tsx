@@ -59,10 +59,14 @@ import {
   isCandidateFieldEdited,
   areCandidateFieldValuesEqual,
   normalizeCandidateFieldValue,
+  isManualCandidate,
+  isValidCandidateEmail,
+  isValidCandidateUrl,
+  isValidCandidatePhone,
 } from './candidateFieldDefinitions';
 
 type TabType = CandidateCategoryTab;
-type ReviewFilter = 'ALL' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE';
+type ReviewFilter = 'ALL' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE' | 'FILLED' | 'EMPTY';
 
 const TAB_FIELD_GROUPS = CANDIDATE_FIELD_GROUPS;
 
@@ -232,17 +236,30 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     }
   };
 
+  const isManual = isManualCandidate(serverCandidate);
+
   const handleSave = () => {
     if (Object.keys(pendingUpdates).length === 0) return;
     const reviewUpdates: Record<string, any> = {};
     for (const [dotKey, val] of Object.entries(pendingUpdates)) {
       let staffStatus = val.reviewStatus;
-      if (staffStatus === 'ACCEPTED') staffStatus = 'CONFIRMED';
-      if (staffStatus === 'RESTORED') staffStatus = 'PENDING';
+      if (isManual) {
+        const isValEmpty = normalizeCandidateFieldValue(val.reviewedValue) === null;
+        const originalVal = fieldResults[dotKey]?.value;
+        const isOrigEmpty = normalizeCandidateFieldValue(originalVal) === null;
+        if (isValEmpty) {
+          staffStatus = isOrigEmpty ? 'PENDING' : 'REMOVED';
+        } else {
+          staffStatus = isOrigEmpty ? 'ADDED' : 'EDITED';
+        }
+      } else {
+        if (staffStatus === 'ACCEPTED') staffStatus = 'CONFIRMED';
+        if (staffStatus === 'RESTORED') staffStatus = 'PENDING';
 
-      const originalValue = fieldResults[dotKey]?.value;
-      if (!isCandidateFieldEdited(originalValue, val.reviewedValue) && (staffStatus === 'EDITED' || staffStatus === 'ADDED' || staffStatus === 'REMOVED')) {
-        staffStatus = 'CONFIRMED';
+        const originalValue = fieldResults[dotKey]?.value;
+        if (!isCandidateFieldEdited(originalValue, val.reviewedValue) && (staffStatus === 'EDITED' || staffStatus === 'ADDED' || staffStatus === 'REMOVED')) {
+          staffStatus = 'CONFIRMED';
+        }
       }
 
       reviewUpdates[dotKey] = {
@@ -268,8 +285,19 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     if (!fieldResults[key]) fieldResults[key] = { value: null };
     
     let staffStatus = pendingUpdates[key].reviewStatus;
-    if (staffStatus === 'ACCEPTED') staffStatus = 'CONFIRMED';
-    if (staffStatus === 'RESTORED') staffStatus = 'PENDING';
+    if (isManual) {
+      const isValEmpty = normalizeCandidateFieldValue(pendingUpdates[key].reviewedValue) === null;
+      const originalVal = fieldResults[key]?.value;
+      const isOrigEmpty = normalizeCandidateFieldValue(originalVal) === null;
+      if (isValEmpty) {
+        staffStatus = isOrigEmpty ? 'PENDING' : 'REMOVED';
+      } else {
+        staffStatus = isOrigEmpty ? 'ADDED' : 'EDITED';
+      }
+    } else {
+      if (staffStatus === 'ACCEPTED') staffStatus = 'CONFIRMED';
+      if (staffStatus === 'RESTORED') staffStatus = 'PENDING';
+    }
 
     fieldResults[key] = {
       ...fieldResults[key],
@@ -322,9 +350,36 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const hasChangesRequested = returnedFields.length > 0;
   const requiresCompanyConfirmation = Boolean(
     serverCandidate &&
+    !isManual &&
     (serverCandidate.companyMatchStatus ?? 'UNKNOWN') !== 'MATCH' &&
     !serverCandidate.companyMatchConfirmed
   );
+
+  const getFieldValue = (key: string) => {
+    const field = fieldResults[key];
+    if (field?.reviewedValue !== undefined) return field.reviewedValue;
+    if (field?.staffReviewedValue !== undefined) return field.staffReviewedValue;
+    return field?.value;
+  };
+
+  const isFieldFilled = (key: string) => {
+    return normalizeCandidateFieldValue(getFieldValue(key)) !== null;
+  };
+
+  const filledCount = allCandidateKeys.filter(isFieldFilled).length;
+  const emptyCount = totalFieldsGlobal - filledCount;
+  const filledPercent = totalFieldsGlobal > 0 ? Math.round((filledCount / totalFieldsGlobal) * 100) : 0;
+
+  const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
+
+  const tabFilledStats = tabs.reduce<Record<TabType, { filled: number; total: number }>>((map, tab) => {
+    const fields = TAB_FIELD_GROUPS[tab];
+    map[tab] = {
+      total: fields.length,
+      filled: fields.filter((f) => isFieldFilled(f.key)).length,
+    };
+    return map;
+  }, {} as Record<TabType, { filled: number; total: number }>);
 
   const areAllFieldsConfirmed = allFieldKeys.every((key) => {
     const field = fieldResults[key];
@@ -332,26 +387,65 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     return field?.staffReviewStatus === 'CONFIRMED';
   });
 
-  const isSubmitEnabled = areAllFieldsConfirmed && !requiresCompanyConfirmation;
+  const isManualDataValid = (() => {
+    if (!isManual) return true;
+    const website = getFieldValue('contact.website');
+    if (typeof website === 'string' && website.trim() && !isValidCandidateUrl(website)) {
+      return false;
+    }
+    const emails = getFieldValue('contact.emails');
+    if (Array.isArray(emails)) {
+      for (const email of emails) {
+        if (typeof email === 'string' && email.trim() && !isValidCandidateEmail(email)) return false;
+      }
+    }
+    const phones = getFieldValue('contact.phones');
+    if (Array.isArray(phones)) {
+      for (const phone of phones) {
+        if (typeof phone === 'string' && phone.trim() && !isValidCandidatePhone(phone)) return false;
+      }
+    }
+    return true;
+  })();
+
+  const isCandidateEditable = !readOnly && (serverCandidate.status === 'DRAFT' || serverCandidate.status === 'REVISION_REQUIRED');
+  const isManualSubmitEnabled = isCandidateEditable && !requiresCompanyConfirmation && isManualDataValid;
+  const isSubmitEnabled = isManual ? isManualSubmitEnabled : (areAllFieldsConfirmed && !requiresCompanyConfirmation);
 
   const isSaving = saveMutation.isPending;
 
-  const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
-  const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = [
-    { id: 'ALL', label: 'All', count: tabTotalFields },
-    { id: 'PENDING', label: 'Pending', count: tabPendingFields },
-    { id: 'EDITED', label: 'Edited', count: tabEditedFields },
-    { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
-    { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: tabLowConfidenceFields },
-  ];
+  let tabFilledCount = 0;
+  let tabEmptyCount = 0;
+  for (const { key } of activeTabFields) {
+    if (isFieldFilled(key)) tabFilledCount++;
+    else tabEmptyCount++;
+  }
+
+  const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = isManual
+    ? [
+        { id: 'ALL', label: 'All', count: tabTotalFields },
+        { id: 'FILLED', label: 'Filled', count: tabFilledCount },
+        { id: 'EMPTY', label: 'Empty', count: tabEmptyCount },
+        ...(tabIssueFields > 0 ? [{ id: 'ISSUES' as ReviewFilter, label: 'Issues', count: tabIssueFields }] : []),
+      ]
+    : [
+        { id: 'ALL', label: 'All', count: tabTotalFields },
+        { id: 'PENDING', label: 'Pending', count: tabPendingFields },
+        { id: 'EDITED', label: 'Edited', count: tabEditedFields },
+        { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
+        { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: tabLowConfidenceFields },
+      ];
+
   const normalizedSearch = searchQuery.trim().toLowerCase();
-  const getFieldValue = (key: string) => {
-    const field = fieldResults[key];
-    if (field?.reviewedValue !== undefined) return field.reviewedValue;
-    if (field?.staffReviewedValue !== undefined) return field.staffReviewedValue;
-    return field?.value;
-  };
+
   const checkFilterMatch = (key: string, filterId: ReviewFilter) => {
+    if (isManual) {
+      if (filterId === 'FILLED') return isFieldFilled(key);
+      if (filterId === 'EMPTY') return !isFieldFilled(key);
+      if (filterId === 'ISSUES') return fieldResults[key]?.validationStatus === 'FAIL';
+      return true;
+    }
+
     const field = fieldResults[key];
     const staffStatus = field?.staffReviewStatus;
     const fieldOriginal = field?.value;
@@ -395,8 +489,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
       <React.Fragment key={key}>{content}</React.Fragment>
     );
   };
-
-  const isManual = serverCandidate.extractionSource?.extractionMethod === 'MANUAL';
 
   return (
     <div className={styles.workspace}>
@@ -602,7 +694,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                 </button>
               ))}
 
-              {!readOnly && (
+              {!readOnly && !isManual && (
                 <button
                   type="button"
                   className={styles.approveAllBtn}
@@ -618,34 +710,34 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
           <div className={styles.tabContent}>
             {activeTab === 'Identity' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} isManual={isManual} />)}
               </div>
             )}
 
             {activeTab === 'Business' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.industries', 'Industries', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('companySize.employeeTier', 'Employee Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeTier'])} label="Employee Tier" fieldKey="companySize.employeeTier" fieldResult={fieldResults['companySize.employeeTier']} onChange={handleFieldChange} />)}
-                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} />)}
-                {renderReviewField('companySize.revenueTier', 'Revenue Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.revenueTier'])} label="Revenue Tier" fieldKey="companySize.revenueTier" fieldResult={fieldResults["companySize.revenueTier"]} onChange={handleFieldChange} />)}
+                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('business.industries', 'Industries', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('companySize.employeeTier', 'Employee Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeTier'])} label="Employee Tier" fieldKey="companySize.employeeTier" fieldResult={fieldResults['companySize.employeeTier']} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('companySize.revenueTier', 'Revenue Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.revenueTier'])} label="Revenue Tier" fieldKey="companySize.revenueTier" fieldResult={fieldResults["companySize.revenueTier"]} onChange={handleFieldChange} isManual={isManual} />)}
               </div>
             )}
 
             {activeTab === 'Markets' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} isManual={isManual} />, true)}
               </div>
             )}
 
             {activeTab === 'Products' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} isManual={isManual} />, true)}
               </div>
             )}
 
@@ -658,60 +750,120 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
         </div>
 
         <div className={styles.sidebar}>
-          <div className={styles.staffReviewPanel}>
-            <h3>Review</h3>
-            
-            <div className={styles.staffProgressBlock}>
-              <div className={styles.staffProgressTopline}>
-                <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
-              </div>
-              <div className={styles.progressBarTrack}>
-                <div 
-                  className={styles.progressBarFill} 
-                  style={{ width: `${progressPercent}%`, backgroundColor: progressPercent === 100 ? '#16a34a' : '#2563eb' }}
-                />
-                <span className={styles.progressBarLabel}>{progressPercent}%</span>
-              </div>
-            </div>
-
-            <div className={styles.staffReviewStats}>
-              <div className={styles.staffReviewStat}>
-                <span>
-                  <i className={styles.dotConfirmed}></i>
-                  Confirmed
-                </span>
-                <strong>{resolvedFields}</strong>
-              </div>
+          {isManual ? (
+            <div className={styles.staffReviewPanel}>
+              <h3>Manual Entry</h3>
               
-              <div className={styles.staffReviewStat}>
-                <span>
-                  <i className={styles.dotPending}></i>
-                  Pending
-                </span>
-                <strong>{totalFieldsGlobal - resolvedFields}</strong>
+              <div className={styles.staffProgressBlock}>
+                <div className={styles.staffProgressTopline}>
+                  <span>{filledCount} / {totalFieldsGlobal} fields filled</span>
+                  <strong>{filledPercent}%</strong>
+                </div>
+                <div className={styles.progressBarTrack}>
+                  <div 
+                    className={styles.progressBarFill} 
+                    style={{ width: `${filledPercent}%`, backgroundColor: '#2563eb' }}
+                  />
+                  <span className={styles.progressBarLabel}>{filledPercent}%</span>
+                </div>
               </div>
 
-              {tabIssueFields > 0 && (
-                <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
+              <div className={styles.staffReviewStats}>
+                <div className={styles.staffReviewStat}>
                   <span>
-                    <AlertCircle size={14} />
-                    Validation Issues
+                    <i className={styles.dotConfirmed}></i>
+                    Filled Fields
                   </span>
-                  <strong>{tabIssueFields}</strong>
+                  <strong>{filledCount}</strong>
                 </div>
-              )}
+                
+                <div className={styles.staffReviewStat}>
+                  <span>
+                    <i className={styles.dotPending}></i>
+                    Empty (Optional)
+                  </span>
+                  <strong>{emptyCount}</strong>
+                </div>
 
-              {tabLowConfidenceFields > 0 && (
-                <div className={`${styles.staffReviewStat} ${styles.staffReviewCaution}`}>
-                  <span>
-                    <AlertCircle size={14} />
-                    Low Confidence
-                  </span>
-                  <strong>{tabLowConfidenceFields}</strong>
+                {tabIssueFields > 0 && (
+                  <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
+                    <span>
+                      <AlertCircle size={14} />
+                      Format Issues
+                    </span>
+                    <strong>{tabIssueFields}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.sidebarSection}>
+                <h3>Sections</h3>
+                <div className={styles.staffReviewStats}>
+                  {tabs.map((tab) => (
+                    <div key={tab} className={styles.staffReviewStat}>
+                      <span>{tab}</span>
+                      <strong>{tabFilledStats[tab]?.filled ?? 0} / {tabFilledStats[tab]?.total ?? 0}</strong>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className={styles.staffReviewPanel}>
+              <h3>Review</h3>
+              
+              <div className={styles.staffProgressBlock}>
+                <div className={styles.staffProgressTopline}>
+                  <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
+                </div>
+                <div className={styles.progressBarTrack}>
+                  <div 
+                    className={styles.progressBarFill} 
+                    style={{ width: `${progressPercent}%`, backgroundColor: progressPercent === 100 ? '#16a34a' : '#2563eb' }}
+                  />
+                  <span className={styles.progressBarLabel}>{progressPercent}%</span>
+                </div>
+              </div>
+
+              <div className={styles.staffReviewStats}>
+                <div className={styles.staffReviewStat}>
+                  <span>
+                    <i className={styles.dotConfirmed}></i>
+                    Confirmed
+                  </span>
+                  <strong>{resolvedFields}</strong>
+                </div>
+                
+                <div className={styles.staffReviewStat}>
+                  <span>
+                    <i className={styles.dotPending}></i>
+                    Pending
+                  </span>
+                  <strong>{totalFieldsGlobal - resolvedFields}</strong>
+                </div>
+
+                {tabIssueFields > 0 && (
+                  <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
+                    <span>
+                      <AlertCircle size={14} />
+                      Validation Issues
+                    </span>
+                    <strong>{tabIssueFields}</strong>
+                  </div>
+                )}
+
+                {tabLowConfidenceFields > 0 && (
+                  <div className={`${styles.staffReviewStat} ${styles.staffReviewCaution}`}>
+                    <span>
+                      <AlertCircle size={14} />
+                      Low Confidence
+                    </span>
+                    <strong>{tabLowConfidenceFields}</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -721,6 +873,11 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
             {isSubmitEnabled ? (
               <span className={styles.progressTitle} style={{ fontWeight: '600', color: '#16a34a' }}>
                 ✓ Ready to submit
+              </span>
+            ) : !isManualDataValid ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#dc2626' }}>
+                <AlertCircle size={15} />
+                Please fix format issues (email, website, phone)
               </span>
             ) : unsavedCount > 0 ? (
               <span className={styles.actionBarDirty}>
@@ -747,8 +904,10 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                 title={
                   requiresCompanyConfirmation
                     ? "Target company confirmation required before submission"
+                    : !isManualDataValid
+                    ? "Please provide valid format for filled fields (website, email, phone)"
                     : isSubmitEnabled
-                    ? "Submit to Manager"
+                    ? (isManual ? "Submit manual candidate to Manager" : "Submit to Manager")
                     : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`
                 }
               >

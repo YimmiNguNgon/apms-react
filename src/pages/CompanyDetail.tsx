@@ -6,6 +6,7 @@ import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse, UpdateCompanyProfileRequest, CompanyProfileMember } from '../types/domain';
 import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
+import styles from './CompanyDetail.module.css';
 import {
   ListingTabBar,
   type ListingTabId,
@@ -933,9 +934,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
           )}
 
-          {/* Panel 1: Legal Identity */}
-          <section style={C.card}>
-            <div style={C.cardHeader}>
+          {/* Top Row: Legal & Identity Information + Relationship Closeness */}
+          <div className={!isOwnerProfile ? styles.overviewTopRow : styles.overviewTopRowSingle}>
+            {/* Panel 1: Legal Identity */}
+            <section style={C.card}>
+              <div style={C.cardHeader}>
               <h2 style={C.h2}>Legal & Identity Information</h2>
             </div>
             <div style={C.fieldGrid}>
@@ -1121,8 +1124,17 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div> */}
           </section>
 
-          {/* Panel 2: Contact & Headquarters */}
-          <section style={C.card}>
+          {/* Relationship Closeness Panel (beside Legal & Identity for external companies) */}
+          {!isOwnerProfile && (
+            <CompanyRelationshipClosenessPanel
+              companyProfileId={relationshipClosenessProfileId}
+              currentUserRole={currentUser?.role}
+            />
+          )}
+        </div>
+
+        {/* Panel 2: Contact & Headquarters */}
+        <section style={C.card}>
             <div style={C.cardHeader}>
               <h2 style={C.h2}>Contact & Size Information</h2>
             </div>
@@ -1281,13 +1293,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 )}
               </div>
             </section>
-          )}
-          {/* Partner Relationship Closeness Panel */}
-          {!isOwnerProfile && profile?.relationshipType?.toUpperCase() === 'PARTNER' && (
-            <CompanyRelationshipClosenessPanel
-              companyProfileId={relationshipClosenessProfileId}
-              currentUserRole={currentUser?.role}
-            />
           )}
         </div>
       </div>
@@ -1770,14 +1775,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   //             </div>
   //           )}
   //         </section>
-  //       </div>
-
-  //       {/* Right Column */}
-  //       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-  //         <CompanyRelationshipClosenessPanel
-  //           companyProfileId={relationshipClosenessProfileId}
-  //           currentUserRole={currentUser?.role}
-  //         />
   //       </div>
   //     </div>
   //   );

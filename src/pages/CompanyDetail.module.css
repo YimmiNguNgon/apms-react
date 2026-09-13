@@ -662,3 +662,22 @@
   color: #64748b;
   padding: 0 6px;
 }
+
+.overviewTopRow {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.overviewTopRowSingle {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .overviewTopRow {
+    grid-template-columns: 1fr;
+  }
+}

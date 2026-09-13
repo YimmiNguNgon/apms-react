@@ -55,12 +55,21 @@ export const ContractEntryCard: React.FC<Props> = ({
 
           <div className={styles.contractCardMeta}>
             <span>{contract.documentDate || 'No Date'}</span>
-            <span>•</span>
-            <span title={contract.documentName}>
-              📄 {contract.documentName.length > 22
-                ? contract.documentName.substring(0, 20) + '...'
-                : contract.documentName}
-            </span>
+            {contract.documentName ? (
+              <>
+                <span>•</span>
+                <span title={contract.documentName}>
+                  📄 {contract.documentName.length > 22
+                    ? contract.documentName.substring(0, 20) + '...'
+                    : contract.documentName}
+                </span>
+              </>
+            ) : contract.dataEntryMethod === 'MANUAL' ? (
+              <>
+                <span>•</span>
+                <span>✍️ Manual Entry</span>
+              </>
+            ) : null}
           </div>
 
           <div className={styles.contractCardBadges}>

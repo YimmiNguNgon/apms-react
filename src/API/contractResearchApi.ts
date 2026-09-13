@@ -8,6 +8,7 @@ import type {
   ContractType,
   ContractEntryReviewStatus,
   ContractEntry,
+  SaveManualContractRequest,
 } from '../types/contractResearch';
 
 export const contractResearchApi = {
@@ -22,11 +23,36 @@ export const contractResearchApi = {
       data
     ).then((res) => res.data),
 
+  saveManualContract: (
+    projectId: number,
+    taskId: number,
+    contractId: string,
+    data: SaveManualContractRequest
+  ): Promise<ContractResearchResponse> =>
+    api.put<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/manual`,
+      data
+    ).then((res) => res.data),
+
   updateContract: (projectId: number, taskId: number, contractId: string, data: UpdateContractEntryRequest): Promise<ContractResearchResponse> =>
     api.put<ContractResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}`,
       data
     ).then((res) => res.data),
+
+  replaceContractFile: (
+    projectId: number,
+    taskId: number,
+    contractId: string,
+    file: File
+  ): Promise<ContractResearchResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.put<ContractResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/contract-research/contracts/${contractId}/file`,
+      formData
+    ).then((res) => res.data);
+  },
 
   deleteContract: (projectId: number, taskId: number, contractId: string): Promise<ContractResearchResponse> =>
     api.delete<ContractResearchResponse>(

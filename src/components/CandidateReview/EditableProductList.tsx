@@ -17,6 +17,7 @@ interface EditableProductListProps {
   fieldResult?: AiFieldResult;
   onChange: (key: string, value: Product[], status?: string) => void;
   disabled?: boolean;
+  isManual?: boolean;
 }
 
 export const EditableProductList: React.FC<EditableProductListProps> = ({
@@ -25,6 +26,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
   fieldResult,
   onChange,
   disabled,
+  isManual = false,
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const rawCurrentValue = hasStaffReviewedValue
@@ -54,7 +56,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
     }
     const isEdited = isCandidateFieldEdited(fieldResult?.value, finalProducts);
     if (!isEdited) {
-      onChange(fieldKey, finalProducts, 'CONFIRMED');
+      onChange(fieldKey, finalProducts, isManual ? (normalizeCandidateFieldValue(finalProducts) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
       return;
     }
 
@@ -70,7 +72,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
   };
 
   const handleConfirm = () => {
-    onChange(fieldKey, currentValue, 'CONFIRMED');
+    onChange(fieldKey, currentValue, isManual ? 'ADDED' : 'CONFIRMED');
   };
 
   const handleRestore = () => {
@@ -87,37 +89,38 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
     setAdding(false);
   };
 
+  const updateProduct = (index: number, field: keyof Product, val: string) => {
+    const updated = [...draftProducts];
+    updated[index] = { ...updated[index], [field]: val };
+    setDraftProducts(updated);
+  };
+
   const deleteProduct = (index: number) => {
     setDraftProducts(draftProducts.filter((_, i) => i !== index));
   };
 
-  const updateProduct = (index: number, field: keyof Product, val: string) => {
-    const newList = [...draftProducts];
-    newList[index] = { ...newList[index], [field]: val };
-    setDraftProducts(newList);
-  };
-
   const displayList = (
-    <div className={styles.productGrid}>
+    <div className={styles.productDisplayList}>
       {currentValue.length > 0 ? (
         <>
-          {currentValue.slice(0, showAll ? currentValue.length : initialShowCount).map((p, idx) => (
-            <div key={idx} className={styles.productCard}>
-              <div className={styles.productHeader}>
-                <span className={styles.productName}>{p.name || 'Unnamed Product'}</span>
-                {p.category && <span className={styles.productCategory}>{p.category}</span>}
-              </div>
+          {(showAll ? currentValue : currentValue.slice(0, initialShowCount)).map((p, idx) => (
+            <div key={idx} className={styles.productPill}>
+              <strong>{p.name}</strong>
+              {p.category && <span className={styles.productCat}>{p.category}</span>}
               {p.description && <p className={styles.productDesc}>{p.description}</p>}
             </div>
           ))}
           {currentValue.length > initialShowCount && (
-            <button 
-              type="button" 
-              className={styles.btnSecondary} 
+            <button
+              type="button"
+              className={styles.btnShowMore}
               onClick={() => setShowAll(!showAll)}
-              style={{ alignSelf: 'flex-start', marginTop: '8px' }}
             >
-              {showAll ? <><ChevronUp size={14}/> Show less</> : <><ChevronDown size={14}/> Show {currentValue.length - initialShowCount} more</>}
+              {showAll ? (
+                <>Show less <ChevronUp size={14} /></>
+              ) : (
+                <>Show {currentValue.length - initialShowCount} more <ChevronDown size={14} /></>
+              )}
             </button>
           )}
         </>
@@ -138,6 +141,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
       currentValueDisplay={displayList}
       isList
       disabled={disabled}
+      isManual={isManual}
     >
       <div className={styles.productGrid}>
         {draftProducts.map((p, idx) => (

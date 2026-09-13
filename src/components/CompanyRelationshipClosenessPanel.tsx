@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Edit3, Lock, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
+import { Edit3, Lock, Save, Star, Trash2, X } from 'lucide-react';
 import {
   companyRelationshipClosenessApi,
   type RelationshipClosenessResponse,
@@ -18,17 +18,17 @@ const LEVEL_LABELS: Record<string, string> = {
   ESTABLISHED: 'Established',
   CLOSE: 'Close',
   STRATEGIC: 'Strategic',
-  UNRATED: 'Unrated',
+  UNRATED: 'Chưa có đánh giá',
 };
 
 const describeStars = (stars?: number | null) => {
   switch (stars) {
-    case 1: return 'Contact Only';
-    case 2: return 'Weak';
-    case 3: return 'Established';
-    case 4: return 'Close';
-    case 5: return 'Strategic';
-    default: return 'Unrated';
+    case 1: return '1 / 5 · Contact Only';
+    case 2: return '2 / 5 · Weak';
+    case 3: return '3 / 5 · Established';
+    case 4: return '4 / 5 · Close';
+    case 5: return '5 / 5 · Strategic';
+    default: return 'Chưa có đánh giá';
   }
 };
 
@@ -76,6 +76,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 }) => {
   const [data, setData] = useState<RelationshipClosenessResponse | null>(null);
   const [draftStars, setDraftStars] = useState(0);
+  const [draftNote, setDraftNote] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -98,6 +99,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 
   const syncDraft = (next: RelationshipClosenessResponse | null) => {
     setDraftStars(next?.stars || 0);
+    setDraftNote(next?.note || '');
   };
 
   const loadCloseness = async () => {
@@ -114,7 +116,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       setData(null);
       setMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Không thể tải đánh giá quan hệ.',
+        text: error instanceof Error ? error.message : 'Could not load relationship rating.',
       });
     } finally {
       setLoading(false);
@@ -150,7 +152,12 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     if (!canEdit) return;
 
     if (draftStars < 1 || draftStars > 5) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn mức đánh giá từ 1 đến 5 sao.' });
+      setMessage({ type: 'error', text: 'Please select a rating between 1 and 5 stars.' });
+      return;
+    }
+
+    if (draftNote.length > 1000) {
+      setMessage({ type: 'error', text: 'Note cannot exceed 1000 characters.' });
       return;
     }
 
@@ -159,7 +166,7 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     try {
       const response = await companyRelationshipClosenessApi.update(companyProfileId, {
         stars: draftStars,
-        note: null,
+        note: draftNote.trim() || null,
       });
       const next = response.data;
       setData(next);
@@ -202,29 +209,27 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
 
   const editButtonText = currentUserRole === ROLES.OWNER
     ? (data?.ownerFinalized ? 'Update final rating' : 'Final rating')
-    : (data?.stars ? 'Update' : 'Rate');
+    : (data?.stars ? 'Update' : 'Đánh giá');
 
   if (!currentUserRole || isAdmin) {
     const lockedText = !currentUserRole
-      ? 'Determining user permissions before loading relationship closeness data.'
-      : 'System Admin cannot access relationship closeness data per backend rules.';
+      ? 'Đang xác định quyền...'
+      : 'Admin hệ thống không truy cập dữ liệu quan hệ.';
 
     return (
       <section className={styles.panel}>
         <div className={styles.header}>
           <div className={styles.titleGroup}>
-            <span className={styles.iconBox}>
-              <Lock size={15} />
-            </span>
+            <Star size={13} style={{ color: '#94A3B8' }} />
             <div>
-              <h2 className={styles.title}>Relationship Affinity</h2>
-              <p className={styles.subtitle}>Internal data between Owner Organization and this company</p>
+              <h2 className={styles.title}>Relationship Closeness</h2>
+              <p className={styles.subtitle}>Manual 1-5 stars with Owner Organization</p>
             </div>
           </div>
         </div>
         <div className={styles.body}>
           <div className={styles.locked}>
-            <Lock size={15} />
+            <Lock size={12} />
             <span>{lockedText}</span>
           </div>
         </div>
@@ -236,15 +241,13 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
     <section className={styles.panel} aria-busy={loading || saving}>
       <div className={styles.header}>
         <div className={styles.titleGroup}>
-          <span className={styles.iconBox}>
-            <Star size={15} />
-          </span>
+          <Star size={13} fill="#F59E0B" color="#F59E0B" />
           <div>
-            <h2 className={styles.title}>Relationship Affinity</h2>
+            <h2 className={styles.title}>Relationship Closeness</h2>
             <p className={styles.subtitle}>Manual 1-5 stars with Owner Organization</p>
           </div>
         </div>
-        <span className={styles.badge}>{loading ? 'Loading' : describeStars(data?.stars)}</span>
+        <span className={styles.badge}>{loading ? 'Loading...' : describeStars(data?.stars)}</span>
       </div>
 
       <div className={styles.body}>
@@ -264,29 +267,31 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                   ].filter(Boolean).join(' ')}
                   onClick={() => editing && canEdit && setDraftStars(value)}
                   disabled={!editing || !canEdit || saving}
-                  title={describeStars(value)}
-                  aria-label={describeStars(value)}
+                  title={`${value} sao`}
+                  aria-label={`${value} sao`}
                 >
-                  <Star size={16} fill={filled ? 'currentColor' : 'none'} />
+                  <Star size={13} fill={filled ? 'currentColor' : 'none'} />
                 </button>
               );
             })}
           </div>
 
           <div className={styles.scoreMeta}>
-            <div className={styles.levelText}>
+            <span className={styles.levelText}>
               {describeStars(editing ? draftStars : data?.stars)}
-            </div>
-            <div className={styles.timestamp}>
-              {formatTime(effectiveTime) ? `Updated: ${formatTime(effectiveTime)}` : 'No update history'}
-            </div>
+            </span>
+            {data?.stars && formatTime(effectiveTime) ? (
+              <span className={styles.timestamp}>
+                · {formatTime(effectiveTime)}
+              </span>
+            ) : null}
           </div>
         </div>
 
         {managerLockedByOwner ? (
           <div className={styles.finalNotice}>
-            <Lock size={14} />
-            <span>Owner has provided the final rating. Manager can only view, no further updates allowed.</span>
+            <Lock size={12} />
+            <span>Owner has finalized this rating. Manager view only.</span>
           </div>
         ) : null}
 
@@ -294,19 +299,37 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
           <div className={styles.ratingTrail}>
             {data?.managerStars ? (
               <div className={styles.trailItem}>
-                <span className={styles.trailLabel}>Manager</span>
+                <span className={styles.trailLabel}>Manager:</span>
                 <span>{describeStars(data.managerStars)}{formatTime(data.managerRatedAt) ? ` · ${formatTime(data.managerRatedAt)}` : ''}</span>
               </div>
             ) : null}
             {data?.ownerStars ? (
               <div className={styles.trailItem}>
-                <span className={styles.trailLabel}>Final Owner</span>
+                <span className={styles.trailLabel}>Owner (Final):</span>
                 <span>{describeStars(data.ownerStars)}{formatTime(data.ownerRatedAt) ? ` · ${formatTime(data.ownerRatedAt)}` : ''}</span>
               </div>
             ) : null}
           </div>
         ) : null}
 
+        {editing ? (
+          <div className={styles.editor}>
+            <textarea
+              className={styles.textarea}
+              value={draftNote}
+              maxLength={1000}
+              onChange={(event) => setDraftNote(event.target.value)}
+              placeholder="Enter note regarding relationship, collaboration history, or key context..."
+              disabled={saving}
+            />
+            <div className={styles.charCount}>{draftNote.length}/1000</div>
+          </div>
+        ) : data?.note ? (
+          <div className={styles.compactNote} title={data.note}>
+            <span className={styles.noteLabel}>Note: </span>
+            <span>{data.note}</span>
+          </div>
+        ) : null}
 
         {message && (
           <div className={`${styles.message} ${message.type === 'ok' ? styles.messageOk : styles.messageError}`}>
@@ -315,31 +338,20 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.button}
-            onClick={() => void loadCloseness()}
-            disabled={loading || saving}
-            title="Reload"
-          >
-            <RefreshCw size={13} />
-            Reload
-          </button>
-
           {editing ? (
             <>
               <button type="button" className={styles.button} onClick={cancelEdit} disabled={saving}>
-                <X size={13} />
+                <X size={12} />
                 Cancel
               </button>
               <button
                 type="button"
                 className={`${styles.button} ${styles.primaryButton}`}
                 onClick={() => void handleSave()}
-                disabled={saving || draftStars < 1}
+                disabled={saving || draftStars < 1 || draftNote.length > 1000}
               >
-                <Save size={13} />
-                {saving ? 'Saving' : 'Save'}
+                <Save size={12} />
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </>
           ) : (
@@ -350,21 +362,22 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
                   className={`${styles.button} ${styles.dangerButton}`}
                   onClick={() => void handleClear()}
                   disabled={saving}
+                  title="Delete rating"
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={12} />
                   Delete
                 </button>
               ) : null}
 
               {canEdit ? (
                 <button type="button" className={`${styles.button} ${styles.primaryButton}`} onClick={startEdit} disabled={loading || saving}>
-                  <Edit3 size={13} />
+                  <Edit3 size={12} />
                   {editButtonText}
                 </button>
               ) : (
                 <span className={styles.locked}>
-                  <Lock size={14} />
-                  {managerLockedByOwner ? 'Owner has made the final rating.' : 'Staff only has view access within project.'}
+                  <Lock size={12} />
+                  {managerLockedByOwner ? 'Owner finalized.' : 'Staff view only.'}
                 </span>
               )}
             </>

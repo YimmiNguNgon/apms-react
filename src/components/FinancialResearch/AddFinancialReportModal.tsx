@@ -1,58 +1,93 @@
 import React, { useState } from 'react';
 import type { CreateFinancialReportRequest } from '../../types/domain';
-import { FileUp, Loader2, X } from 'lucide-react';
+import { Bot, FileText, FileUp, Loader2, Sparkles, X } from 'lucide-react';
 
 interface Props {
   open: boolean;
+  targetYear?: number | null;
   onClose: () => void;
-  onSubmit: (data: CreateFinancialReportRequest, file: File) => void;
+  onSubmit: (data: CreateFinancialReportRequest, file?: File | null) => Promise<void> | void;
 }
 
-export default function AddFinancialReportModal({ open, onClose, onSubmit }: Props) {
+export default function AddFinancialReportModal({ open, targetYear, onClose, onSubmit }: Props) {
   const [title, setTitle] = useState('');
-  const [period, setPeriod] = useState('Q1');
+  const [period, setPeriod] = useState<'Q1' | 'Q2' | 'Q3' | 'FY'>('Q1');
+  const [dataEntryMethod, setDataEntryMethod] = useState<'AI_EXTRACTION' | 'MANUAL'>('AI_EXTRACTION');
   const [file, setFile] = useState<File | null>(null);
+  const [customYear, setCustomYear] = useState<number | ''>(targetYear || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (open) {
       setTitle('');
       setPeriod('Q1');
+      setDataEntryMethod('AI_EXTRACTION');
       setFile(null);
+      setErrorMessage(null);
+      setCustomYear(targetYear || '');
     }
-  }, [open]);
+  }, [open, targetYear]);
 
   if (!open) return null;
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0] || null;
+    if (selectedFile) {
+      if (!selectedFile.name.toLowerCase().endsWith('.pdf') && selectedFile.type !== 'application/pdf') {
+        setErrorMessage('Only PDF documents are supported for financial reports.');
+        return;
+      }
+      setErrorMessage(null);
+      setFile(selectedFile);
+      if (!title.trim()) {
+        const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
+        setTitle(baseName);
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !period || !file) return;
+    if (!title.trim()) {
+      setErrorMessage('Please enter the report title.');
+      return;
+    }
 
-    // Tự động lấy ngày hiện tại và năm hiện tại theo giờ địa phương
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const todayStr = `${currentYear}-${month}-${day}`;
+    if (dataEntryMethod === 'AI_EXTRACTION' && !file) {
+      setErrorMessage('Source document (PDF) is required for AI Extraction.');
+      return;
+    }
 
+    const finalYear = targetYear || (customYear ? Number(customYear) : undefined);
+    if (!finalYear) {
+      setErrorMessage('Financial Year is required.');
+      return;
+    }
+
+    setErrorMessage(null);
     setIsSubmitting(true);
     try {
       await onSubmit({
         title: title.trim(),
-        publicationDate: todayStr,
-        documentId: '', 
+        dataEntryMethod,
+        documentId: '',
         reportType: 'FINANCIAL_STATEMENT',
-        statementScope: 'CONSOLIDATED',
+        statementScope: 'UNKNOWN',
         reportingPeriod: {
-          year: currentYear,
-          periodType: 'QUARTER',
+          year: finalYear,
+          periodType: period === 'FY' ? 'FULL_YEAR' : 'QUARTER',
           period,
         },
       }, file);
       
       setTitle('');
       setPeriod('Q1');
+      setDataEntryMethod('AI_EXTRACTION');
       setFile(null);
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to create financial report.');
     } finally {
       setIsSubmitting(false);
     }
@@ -121,9 +156,14 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
     <div style={overlayStyle} onClick={onClose}>
       <form style={modalStyle} onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
-          <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
-            Add Financial Report
-          </h3>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
+              Add Financial Report
+            </h3>
+            {targetYear && (
+              <span style={{ fontSize: '12px', color: '#64748b' }}>Financial Year: {targetYear}</span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -142,51 +182,162 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
             <X size={18} />
           </button>
         </div>
+
+        {errorMessage && (
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              fontSize: '13px',
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
         
+        {/* Report Title */}
         <label style={labelStyle}>
-          Report Title
+          Report Title *
           <input
             required
             style={inputStyle}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Báo cáo tài chính Q2 2026"
+            disabled={isSubmitting}
           />
         </label>
         
+        {/* Reporting Period */}
         <label style={labelStyle}>
-          Quarter
+          Reporting Period *
           <select
             style={inputStyle}
             value={period}
-            onChange={(e) => setPeriod(e.target.value)}
+            onChange={(e) => setPeriod(e.target.value as any)}
+            disabled={isSubmitting}
           >
             <option value="Q1">Q1</option>
             <option value="Q2">Q2</option>
             <option value="Q3">Q3</option>
-            <option value="Q4">Q4</option>
+            <option value="FY">FY (Full Year)</option>
           </select>
         </label>
 
+        {!targetYear && (
+          <label style={labelStyle}>
+            Financial Year *
+            <input
+              type="number"
+              required
+              style={inputStyle}
+              value={customYear}
+              onChange={(e) => setCustomYear(e.target.value ? parseInt(e.target.value, 10) : '')}
+              placeholder="e.g. 2026"
+              disabled={isSubmitting}
+            />
+          </label>
+        )}
+
+        {/* Data Entry Method Selection */}
+        <div style={labelStyle}>
+          <span>Data Entry Method *</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <label
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                padding: '12px',
+                borderRadius: '10px',
+                border: `2px solid ${dataEntryMethod === 'AI_EXTRACTION' ? '#3b82f6' : '#e2e8f0'}`,
+                background: dataEntryMethod === 'AI_EXTRACTION' ? '#eff6ff' : '#f8fafc',
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#1e293b' }}>
+                <input
+                  type="radio"
+                  name="dataEntryMethod"
+                  value="AI_EXTRACTION"
+                  checked={dataEntryMethod === 'AI_EXTRACTION'}
+                  onChange={() => setDataEntryMethod('AI_EXTRACTION')}
+                  style={{ accentColor: '#2563eb' }}
+                />
+                <Bot size={16} color={dataEntryMethod === 'AI_EXTRACTION' ? '#2563eb' : '#64748b'} />
+                <span>AI Extraction</span>
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '24px', lineHeight: 1.4 }}>
+                Upload a financial document and extract metrics using AI.
+              </span>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                padding: '12px',
+                borderRadius: '10px',
+                border: `2px solid ${dataEntryMethod === 'MANUAL' ? '#3b82f6' : '#e2e8f0'}`,
+                background: dataEntryMethod === 'MANUAL' ? '#eff6ff' : '#f8fafc',
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#1e293b' }}>
+                <input
+                  type="radio"
+                  name="dataEntryMethod"
+                  value="MANUAL"
+                  checked={dataEntryMethod === 'MANUAL'}
+                  onChange={() => setDataEntryMethod('MANUAL')}
+                  style={{ accentColor: '#2563eb' }}
+                />
+                <FileText size={16} color={dataEntryMethod === 'MANUAL' ? '#2563eb' : '#64748b'} />
+                <span>Manual Entry</span>
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '24px', lineHeight: 1.4 }}>
+                Enter financial metrics manually.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Source or Reference Document */}
         <label style={labelStyle}>
-          Source Document (PDF)
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{dataEntryMethod === 'AI_EXTRACTION' ? 'Source Document (PDF) *' : 'Reference Document (Optional)'}</span>
+            {file && dataEntryMethod === 'MANUAL' && (
+              <button
+                type="button"
+                onClick={() => setFile(null)}
+                style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '11px', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+              >
+                Remove attached file
+              </button>
+            )}
+          </div>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
               type="file" 
               accept="application/pdf" 
-              required 
+              required={dataEntryMethod === 'AI_EXTRACTION'}
+              disabled={isSubmitting}
               style={{ ...inputStyle, paddingLeft: '38px', cursor: 'pointer' }} 
-              onChange={(e) => {
-                const selectedFile = e.target.files?.[0] || null;
-                setFile(selectedFile);
-                if (selectedFile) {
-                  const baseName = selectedFile.name.replace(/\.[^/.]+$/, '');
-                  setTitle(baseName);
-                }
-              }} 
+              onChange={handleFileChange} 
             />
             <FileUp size={18} color="#64748b" style={{ position: 'absolute', left: '12px' }} />
           </div>
+          {dataEntryMethod === 'MANUAL' && (
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>
+              Optional reference document for viewing alongside metrics. Will not trigger AI extraction.
+            </span>
+          )}
         </label>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
@@ -200,7 +351,7 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
               color: '#475569',
               border: '1px solid #cbd5e1',
               borderRadius: '8px',
-              cursor: 'pointer',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
               fontWeight: 600,
               fontSize: '13px',
             }}
@@ -209,30 +360,23 @@ export default function AddFinancialReportModal({ open, onClose, onSubmit }: Pro
           </button>
           <button
             type="submit"
-            disabled={!title.trim() || !file || isSubmitting}
+            disabled={isSubmitting}
             style={{
               padding: '8px 18px',
               background: '#2563eb',
               color: '#ffffff',
               border: 'none',
               borderRadius: '8px',
-              cursor: isSubmitting || !title.trim() || !file ? 'not-allowed' : 'pointer',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
               fontWeight: 600,
               fontSize: '13px',
-              opacity: isSubmitting || !title.trim() || !file ? 0.6 : 1,
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               gap: '6px',
             }}
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                Uploading & Creating...
-              </>
-            ) : (
-              'Create Report'
-            )}
+            {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+            <span>{isSubmitting ? 'Creating...' : 'Create Report'}</span>
           </button>
         </div>
       </form>

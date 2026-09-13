@@ -425,6 +425,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, us
                           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
                           Hết hiệu lực
                         </span>
+                      ) : status === 'NOT_EFFECTIVE' ? (
+                        <span className={styles.statusChipOther} style={{ color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
+                          Chưa có hiệu lực
+                        </span>
                       ) : (
                         <span className={styles.statusChipOther}>
                           {status || 'Đã duyệt'}
@@ -434,7 +439,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, us
                       {signDate && <span className={styles.cardDate}>{signDate}</span>}
                     </div>
 
-                    <h4 className={styles.cardTitle} title={contract.title || contract.documentName}>
+                    <h4 className={styles.cardTitle} title={contract.title || contract.documentName || undefined}>
                       {contract.title || contract.documentName || 'Hợp đồng chưa đặt tên'}
                     </h4>
 
@@ -497,6 +502,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, us
                       <span className={styles.statusChipExpired}>
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
                         Hết hiệu lực
+                      </span>
+                    ) : selectedContract.derivedContractStatus === 'NOT_EFFECTIVE' ? (
+                      <span className={styles.statusChipOther} style={{ color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
+                        Chưa có hiệu lực
                       </span>
                     ) : (
                       <span className={styles.statusChipOther}>

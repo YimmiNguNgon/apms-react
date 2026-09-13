@@ -19,8 +19,10 @@ import { EditArrayItemModal } from './EditArrayItemModal';
 import { EditContractModal } from './EditContractModal';
 import { ContractEvidenceDrawer } from './ContractEvidenceDrawer';
 import { ContractProgressBar } from './ContractProgressBar';
+import { isContractEditableByStaff } from './contractEditability';
 import {
   FileText,
+  FileUp,
   Sparkles,
   RotateCcw,
   CheckCircle2,
@@ -45,6 +47,71 @@ import {
 } from 'lucide-react';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 import contractStyles from './ContractResearchWorkbench.module.css';
+import { ManualContractEntryTemplate } from './ManualContractEntryTemplate';
+import { ManualContractSummaryView } from './ManualContractSummaryView';
+
+export function hasMeaningfulContractData(contract?: ContractEntry | null): boolean {
+  if (!contract || !contract.commonData) return false;
+  const c = contract.commonData;
+  if (c.contractNumber?.value && String(c.contractNumber.value).trim()) return true;
+  if (c.signingDate?.value) return true;
+  if (c.effectiveDate?.value) return true;
+  if (c.expiryDate?.value) return true;
+  if (c.term?.value && String(c.term.value).trim()) return true;
+  if (c.governingLaw?.value && String(c.governingLaw.value).trim()) return true;
+  if (c.purpose?.value && String(c.purpose.value).trim()) return true;
+  if (c.contractValue?.value) {
+    const cv = c.contractValue.value;
+    if (cv.amount != null || (cv.rawAmountText && cv.rawAmountText.trim())) return true;
+  }
+  if (c.parties && c.parties.some((p) => p && p.legalName && p.legalName.trim())) return true;
+  return false;
+}
+
+export function getDerivedStatusLabel(status?: string | null): string {
+  if (!status) return '';
+  switch (status) {
+    case 'NOT_EFFECTIVE':
+      return 'Chưa có hiệu lực';
+    case 'ACTIVE':
+      return 'Đang có hiệu lực';
+    case 'EXPIRED':
+      return 'Hết hiệu lực';
+    case 'TERMINATED':
+      return 'Đã chấm dứt';
+    case 'UNKNOWN':
+      return 'Chưa xác định';
+    default:
+      return status;
+  }
+}
+
+export function getDerivedStatusTooltip(
+  status?: string | null,
+  effectiveDate?: string | null,
+  expiryDate?: string | null
+): string | undefined {
+  if (!status) return undefined;
+  if (status === 'NOT_EFFECTIVE') {
+    if (effectiveDate) {
+      return `Hợp đồng sẽ có hiệu lực từ ${formatDate(effectiveDate)}.`;
+    }
+    return 'Hợp đồng chưa đến ngày có hiệu lực.';
+  }
+  if (status === 'EXPIRED') {
+    if (expiryDate) {
+      return `Hợp đồng đã hết hiệu lực từ ${formatDate(expiryDate)}.`;
+    }
+    return 'Hợp đồng đã hết hiệu lực.';
+  }
+  if (status === 'ACTIVE') {
+    return 'Hợp đồng đang có hiệu lực.';
+  }
+  if (status === 'TERMINATED') {
+    return 'Hợp đồng đã chấm dứt hiệu lực.';
+  }
+  return undefined;
+}
 
 interface ContractResearchWorkbenchProps {
   projectId: number;
@@ -144,6 +211,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   // Selection for package submission
   const [selectedContractIdsForSubmission, setSelectedContractIdsForSubmission] = useState<string[]>([]);
   const hasInitializedSelection = useRef(false);
+  const hasInitializedRevisionSelection = useRef(false);
+
+  useEffect(() => {
+    hasInitializedRevisionSelection.current = false;
+  }, [taskId]);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -222,9 +294,19 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         const data = await contractResearchApi.getResearch(projectId, taskId);
         setResearch(data);
 
-        // Auto-select contract if not selected
+        // Auto-select contract if not selected or initial revision mode
         if (data.contracts && data.contracts.length > 0) {
+          const isRevision =
+            data.status === 'CHANGES_REQUESTED' ||
+            data.activeSubmissionStatus === 'REVISION_REQUESTED' ||
+            (taskStatus === 'IN_PROGRESS' && data.contracts.some((c) => c.reviewStatus === 'CHANGES_REQUESTED'));
+
           setSelectedContractId((prev) => {
+            if (!hasInitializedRevisionSelection.current && isRevision && !isManagerMode) {
+              hasInitializedRevisionSelection.current = true;
+              const firstRevision = data.contracts.find((c) => c.reviewStatus === 'CHANGES_REQUESTED');
+              if (firstRevision) return firstRevision.id;
+            }
             if (prev && data.contracts.some((c) => c.id === prev)) return prev;
             return data.contracts[0].id;
           });
@@ -274,14 +356,61 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     };
   }, [isAnyExtracting, fetchResearch]);
 
-  const isSubmitted = research?.status === 'SUBMITTED' || research?.status === 'APPROVED';
+  const hasChangesRequestedContracts = useMemo(
+    () => contracts.some((c) => c.reviewStatus === 'CHANGES_REQUESTED'),
+    [contracts]
+  );
+  const isRevisionMode =
+    research?.status === 'CHANGES_REQUESTED' ||
+    research?.activeSubmissionStatus === 'REVISION_REQUESTED' ||
+    (taskStatus === 'IN_PROGRESS' && hasChangesRequestedContracts);
+
+  const isSubmitted =
+    !isRevisionMode && (research?.status === 'SUBMITTED' || research?.status === 'APPROVED');
   const effectiveCanEdit = !isManagerMode && canEdit && !isSubmitted;
+
+  const isDraftEditingMode =
+    !isRevisionMode && (research?.status === 'DRAFT' || !research?.status || taskStatus === 'IN_PROGRESS');
+
+  const staffCanMutateResearch =
+    !isManagerMode && canEdit && (isDraftEditingMode || isRevisionMode);
 
   // Selected contract
   const selectedContract = useMemo(
     () => contracts.find((c) => c.id === selectedContractId) || null,
     [contracts, selectedContractId]
   );
+
+  const selectedContractEditable = Boolean(
+    staffCanMutateResearch && isContractEditableByStaff(selectedContract)
+  );
+
+  const [manualViewModes, setManualViewModes] = useState<Record<string, 'EDIT' | 'SUMMARY'>>({});
+  const [manualContractDirty, setManualContractDirty] = useState<boolean>(false);
+
+  useEffect(() => {
+    setManualContractDirty(false);
+  }, [selectedContractId]);
+
+  const currentManualMode = useMemo<'EDIT' | 'SUMMARY'>(() => {
+    if (!selectedContract) return 'SUMMARY';
+    if (manualViewModes[selectedContract.id]) {
+      return manualViewModes[selectedContract.id];
+    }
+    return hasMeaningfulContractData(selectedContract) ? 'SUMMARY' : 'EDIT';
+  }, [selectedContract, manualViewModes]);
+
+  const handleSelectContract = (id: string) => {
+    if (id === selectedContractId) return;
+    if (manualContractDirty) {
+      const confirmLeave = window.confirm(
+        'Bạn có thay đổi chưa lưu trên hợp đồng này. Bạn có chắc chắn muốn chuyển sang hợp đồng khác không?'
+      );
+      if (!confirmLeave) return;
+      setManualContractDirty(false);
+    }
+    setSelectedContractId(id);
+  };
 
   // Helper to extract structured rows for any contract
   const extractContractRows = (contract: ContractEntry | null | undefined): FlattenedContractRow[] => {
@@ -418,6 +547,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     [selectedContract]
   );
 
+  const isPendingReview = (c?: ContractEntry | null) => {
+    if (!c) return false;
+    return c.reviewStatus === 'PENDING_REVIEW' || !c.reviewStatus;
+  };
+
   // Contracts to display (In Manager mode, only show submitted contracts)
   const contractsToDisplay = useMemo(() => {
     if (isManagerMode) {
@@ -433,19 +567,29 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     return contracts;
   }, [isManagerMode, contracts, research?.activeSubmittedContractIds]);
 
-  // Ensure active contract in Manager mode is within displayed contracts
+  // Ensure active contract in Manager mode is within displayed contracts (prefer first pending)
   useEffect(() => {
     if (isManagerMode && contractsToDisplay.length > 0) {
       if (!selectedContractId || !contractsToDisplay.some((c) => c.id === selectedContractId)) {
-        setSelectedContractId(contractsToDisplay[0].id);
+        const firstPending = contractsToDisplay.find((c) => isPendingReview(c));
+        setSelectedContractId(firstPending ? firstPending.id : contractsToDisplay[0].id);
       }
     }
   }, [isManagerMode, contractsToDisplay, selectedContractId]);
 
   // Eligible contracts for submission
   const eligibleContractIds = useMemo(() => {
-    return contracts.filter((c) => c.reviewStatus !== 'APPROVED').map((c) => c.id);
-  }, [contracts]);
+    if (isRevisionMode) {
+      // During revision, only CHANGES_REQUESTED contracts can be resubmitted
+      return contracts
+        .filter((c) => c.reviewStatus === 'CHANGES_REQUESTED')
+        .map((c) => c.id);
+    }
+    // Normal mode: all non-APPROVED, non-PENDING_REVIEW
+    return contracts
+      .filter((c) => c.reviewStatus !== 'APPROVED' && c.reviewStatus !== 'PENDING_REVIEW')
+      .map((c) => c.id);
+  }, [contracts, isRevisionMode]);
 
   const [submissionSelectionTouched, setSubmissionSelectionTouched] = useState(false);
 
@@ -499,7 +643,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     const extracted = contracts.filter((c) => c.extractionStatus === 'COMPLETED').length;
     const selected = effectiveSubmissionIds.length;
     const needsReview = selectedContractsForSubmission.filter(
-      (c) => c.extractionStatus === 'COMPLETED' && (c.companyMatchStatus === 'MISMATCH' || c.typeValidationStatus === 'MISMATCH')
+      (c) =>
+        c.dataEntryMethod !== 'MANUAL' &&
+        c.extractionStatus === 'COMPLETED' &&
+        (c.companyMatchStatus === 'MISMATCH' || c.typeValidationStatus === 'MISMATCH')
     ).length;
 
     return { total, extracted, selected, needsReview };
@@ -511,6 +658,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   // Actions
   const handleExtract = async (contractId: string) => {
+    const targetContract = contracts.find((c) => c.id === contractId);
+    if (!targetContract || !isContractEditableByStaff(targetContract)) {
+      setToast({
+        message: 'This contract is finalized or in review and cannot be modified.',
+        type: 'error',
+      });
+      return;
+    }
+
     if (isAnyExtracting) {
       setToast({
         message: 'Another document is currently being processed by AI. Please wait for completion before proceeding.',
@@ -530,6 +686,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   };
 
   const handleReExtract = async (contractId: string) => {
+    const targetContract = contracts.find((c) => c.id === contractId);
+    if (!targetContract || !isContractEditableByStaff(targetContract)) {
+      setToast({
+        message: 'This contract is finalized or in review and cannot be modified.',
+        type: 'error',
+      });
+      return;
+    }
     const isAnyOtherExtracting = (research?.contracts || []).some(
       (c) => c.id !== contractId && c.extractionStatus === 'PROCESSING'
     );
@@ -641,6 +805,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   const handleSubmitPackage = async () => {
     if (!effectiveCanEdit) return;
 
+    if (manualContractDirty) {
+      setToast({
+        message: 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.',
+        type: 'error',
+      });
+      return;
+    }
+
     if (effectiveSubmissionIds.length === 0) {
       setToast({
         message: contracts.length === 1
@@ -651,8 +823,20 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       return;
     }
 
+    const emptyManualContract = selectedContractsForSubmission.find(
+      (c) => c.dataEntryMethod === 'MANUAL' && !hasMeaningfulContractData(c)
+    );
+    if (emptyManualContract) {
+      setSelectedContractId(emptyManualContract.id);
+      setToast({
+        message: `Hợp đồng "${emptyManualContract.title}" chưa có thông tin nào. Vui lòng nhập thông tin hợp đồng trước khi gửi duyệt.`,
+        type: 'error',
+      });
+      return;
+    }
+
     const notCompletedContract = selectedContractsForSubmission.find(
-      (c) => c.extractionStatus !== 'COMPLETED'
+      (c) => c.dataEntryMethod !== 'MANUAL' && c.extractionStatus !== 'COMPLETED'
     );
     if (notCompletedContract) {
       setSelectedContractId(notCompletedContract.id);
@@ -664,7 +848,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     }
 
     const unconfirmedMatch = selectedContractsForSubmission.find(
-      (c) => c.extractionStatus === 'COMPLETED' && !c.companyMatchConfirmed && c.companyMatchStatus !== 'MATCH'
+      (c) =>
+        c.dataEntryMethod !== 'MANUAL' &&
+        c.extractionStatus === 'COMPLETED' &&
+        !c.companyMatchConfirmed &&
+        c.companyMatchStatus !== 'MATCH'
     );
     if (unconfirmedMatch) {
       setSelectedContractId(unconfirmedMatch.id);
@@ -676,7 +864,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     }
 
     const typeMismatch = selectedContractsForSubmission.find(
-      (c) => c.extractionStatus === 'COMPLETED' && c.typeValidationStatus === 'MISMATCH'
+      (c) =>
+        c.dataEntryMethod !== 'MANUAL' &&
+        c.extractionStatus === 'COMPLETED' &&
+        c.typeValidationStatus === 'MISMATCH'
     );
     if (typeMismatch) {
       setSelectedContractId(typeMismatch.id);
@@ -688,7 +879,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     }
 
     const needsReviewContract = selectedContractsForSubmission.find(
-      (c) => c.extractionStatus === 'COMPLETED' && hasUnresolvedNeedsReview(c)
+      (c) =>
+        c.dataEntryMethod !== 'MANUAL' &&
+        c.extractionStatus === 'COMPLETED' &&
+        hasUnresolvedNeedsReview(c)
     );
     if (needsReviewContract) {
       setSelectedContractId(needsReviewContract.id);
@@ -700,6 +894,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     }
 
     const unverifiedContract = selectedContractsForSubmission.find((c) => {
+      if (c.dataEntryMethod === 'MANUAL') return false;
       if (c.extractionStatus !== 'COMPLETED') return false;
       const rows = extractContractRows(c);
       return rows.some((r) => r.verificationStatus !== 'VERIFIED');
@@ -779,7 +974,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     itemId?: string;
     rawField?: ExtractedContractField<any> | null;
   }) => {
-    if (!selectedContract) return;
+    if (!selectedContract || !selectedContractEditable) return;
     setVerifyingRowId(row.id);
     const isCurrentlyVerified = row.verificationStatus === 'UNVERIFIED' || row.rawField?.verificationStatus === 'VERIFIED';
     try {
@@ -831,7 +1026,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   };
 
   const handleVerifyAllEligible = async () => {
-    if (!selectedContract || !effectiveCanEdit) return;
+    if (!selectedContract || !selectedContractEditable) return;
     const unverifiedRows = flattenedRows.filter((r) => r.verificationStatus !== 'VERIFIED');
     const rowsToProcess = unverifiedRows.length > 0 ? unverifiedRows : flattenedRows;
     if (rowsToProcess.length === 0) return;
@@ -855,7 +1050,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   };
 
   const handleUnverifyAll = async () => {
-    if (!selectedContract || !effectiveCanEdit) return;
+    if (!selectedContract || !selectedContractEditable) return;
     setIsVerifyingAll(true);
     try {
       const updated = await contractResearchApi.unverifyAllContractFields(
@@ -875,6 +1070,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   };
 
   const handleConfirmCompanyMatch = async (contractId: string, confirmed: boolean) => {
+    if (!selectedContractEditable) return;
     setIsConfirmingCompany(true);
     try {
       const updated = await contractResearchApi.confirmCompany(projectId, taskId, contractId, confirmed);
@@ -899,12 +1095,38 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         'APPROVED'
       );
       setResearch(updated);
-      setToast({ message: 'Contract approved successfully.', type: 'success' });
+
+      const activeIds = updated.activeSubmittedContractIds || [];
       const remainingPending = (updated.contracts || []).filter(
-        (c) => (updated.activeSubmittedContractIds?.includes(c.id) || c.reviewStatus === 'PENDING_REVIEW') && c.reviewStatus === 'PENDING_REVIEW'
+        (c) => (activeIds.length === 0 || activeIds.includes(c.id)) && isPendingReview(c)
       );
-      if (remainingPending.length === 0 && onReviewCompleted) {
-        onReviewCompleted();
+
+      if (remainingPending.length > 0) {
+        const nextPending = remainingPending.find((c) => c.id !== contractId) || remainingPending[0];
+        setSelectedContractId(nextPending.id);
+        setToast({
+          message: 'Contract approved. Continuing review with next pending contract.',
+          type: 'success',
+        });
+        return;
+      }
+
+      // No pending documents remain; backend response is authoritative
+      if (updated.status === 'APPROVED') {
+        setToast({ message: 'All contract documents approved. Task completed.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
+      } else if (updated.status === 'CHANGES_REQUESTED') {
+        setToast({ message: 'Contract review complete. Documents requiring changes have been returned to staff.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
+      } else {
+        setToast({ message: 'Contract approved successfully.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
       }
     } catch (err: any) {
       setToast({ message: err?.response?.data?.message || 'Failed to approve contract.', type: 'error' });
@@ -932,9 +1154,38 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       setResearch(updated);
       setManagerRequestChangesModalOpen(false);
       setManagerChangesReason('');
-      setToast({ message: 'Revision request submitted to Staff successfully.', type: 'success' });
-      if (onReviewCompleted) {
-        onReviewCompleted();
+
+      const activeIds = updated.activeSubmittedContractIds || [];
+      const remainingPending = (updated.contracts || []).filter(
+        (c) => (activeIds.length === 0 || activeIds.includes(c.id)) && isPendingReview(c)
+      );
+
+      if (remainingPending.length > 0) {
+        const nextPending = remainingPending.find((c) => c.id !== contractId) || remainingPending[0];
+        setSelectedContractId(nextPending.id);
+        setToast({
+          message: 'Changes requested. Continuing review with next pending contract.',
+          type: 'success',
+        });
+        return;
+      }
+
+      // No pending documents remain; backend response is authoritative
+      if (updated.status === 'CHANGES_REQUESTED') {
+        setToast({ message: 'Contract review complete. Documents requiring changes have been returned to staff.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
+      } else if (updated.status === 'APPROVED') {
+        setToast({ message: 'All contract documents approved. Task completed.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
+      } else {
+        setToast({ message: 'Revision request submitted to Staff successfully.', type: 'success' });
+        if (onReviewCompleted) {
+          onReviewCompleted();
+        }
       }
     } catch (err: any) {
       setToast({ message: err?.response?.data?.message || 'Failed to request changes.', type: 'error' });
@@ -992,7 +1243,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     sourcePage?: number | null;
     evidence?: string | null;
   }) => {
-    if (!selectedContract) return;
+    if (!selectedContract || !selectedContractEditable) return;
     if (row.isItem && row.itemId) {
       setEditArrayItemModal({
         open: true,
@@ -1095,6 +1346,29 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
       setToast({ message: 'Unable to open PDF document. Please check permissions or try again later.', type: 'error' });
     } finally {
       setOpeningPdfId(null);
+    }
+  };
+
+  const [isReplacingContractFile, setIsReplacingContractFile] = useState(false);
+
+  const handleReplaceContractFile = async (contractId: string, file: File) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      setToast({ message: 'Chỉ hỗ trợ tệp định dạng PDF.', type: 'error' });
+      return;
+    }
+    setIsReplacingContractFile(true);
+    try {
+      const updated = await contractResearchApi.replaceContractFile(projectId, taskId, contractId, file);
+      setResearch(updated);
+      setToast({ message: 'Đã cập nhật tài liệu PDF tham khảo thành công.', type: 'success' });
+    } catch (err: any) {
+      setToast({
+        message: err?.response?.data?.message || err?.message || 'Không thể cập nhật tài liệu PDF.',
+        type: 'error',
+      });
+    } finally {
+      setIsReplacingContractFile(false);
     }
   };
 
@@ -1242,8 +1516,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     confidence: params.rawField?.confidence,
                     qualityStatus: params.rawField?.qualityStatus,
                     verificationStatus: params.rawField?.verificationStatus,
-                    onVerify: handleVerify,
-                    onEdit: handleEdit,
+                    onVerify: selectedContractEditable ? handleVerify : undefined,
+                    onEdit: selectedContractEditable ? handleEdit : undefined,
                   })
                 }
                 title="View evidence from source document"
@@ -1252,7 +1526,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               </button>
             )}
 
-            {effectiveCanEdit && (
+            {selectedContractEditable && (
               <button
                 type="button"
                 className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnEdit}`}
@@ -1263,7 +1537,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               </button>
             )}
 
-            {effectiveCanEdit && (
+            {selectedContractEditable && (
               <button
                 type="button"
                 className={`${contractStyles.kpiBtn} ${
@@ -1439,7 +1713,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       clauseCount={extractContractRows(contract).length}
                       needsReviewCount={0}
                       isAnyExtracting={isAnyExtracting}
-                      onSelect={(id) => setSelectedContractId(id)}
+                      onSelect={handleSelectContract}
                       onToggleSelection={(id) => {
                         setSubmissionSelectionTouched(true);
                         setSelectedContractIdsForSubmission((prev) =>
@@ -1486,50 +1760,105 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
                       {selectedContract.title}
                     </h3>
-                    {effectiveCanEdit && (
-                      <button
-                        type="button"
-                        onClick={() => setEditContractModalContract(selectedContract)}
+                    {selectedContract.dataEntryMethod === 'MANUAL' ? (
+                      <span
                         style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#2563eb',
-                          cursor: 'pointer',
-                          padding: '3px 6px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          borderRadius: 4,
+                          padding: '3px 10px',
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          borderRadius: 12,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
                         }}
-                        title="Edit contract details"
                       >
-                        <Edit3 size={15} />
-                      </button>
+                        Manual Entry
+                      </span>
+                    ) : (
+                      selectedContractEditable && (
+                        <button
+                          type="button"
+                          onClick={() => setEditContractModalContract(selectedContract)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#2563eb',
+                            cursor: 'pointer',
+                            padding: '3px 6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            borderRadius: 4,
+                          }}
+                          title="Edit contract details"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                      )
                     )}
                   </div>
 
                   {/* Metadata Chips Row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {/* File Attachment Chip */}
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 10px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        color: '#475569',
-                        maxWidth: 320,
-                      }}
-                      title={selectedContract.documentName || 'PDF Document'}
-                    >
-                      <FileText size={13} color="#64748b" style={{ flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {selectedContract.documentName || 'PDF Document'}
-                      </span>
-                    </div>
+                    {selectedContract.documentName ? (
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '4px 10px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          color: '#475569',
+                          maxWidth: 320,
+                        }}
+                        title={selectedContract.documentName}
+                      >
+                        <FileText size={13} color="#64748b" style={{ flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {selectedContract.documentName}
+                        </span>
+                      </div>
+                    ) : selectedContract.dataEntryMethod === 'MANUAL' ? (
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '4px 10px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          color: '#94a3b8',
+                        }}
+                      >
+                        <FileText size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
+                        <span>Không có tài liệu tham khảo</span>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '4px 10px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          color: '#475569',
+                          maxWidth: 320,
+                        }}
+                      >
+                        <FileText size={13} color="#64748b" style={{ flexShrink: 0 }} />
+                        <span>PDF Document</span>
+                      </div>
+                    )}
 
                     {/* Signing Date Chip */}
                     <div
@@ -1554,6 +1883,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     {/* Derived Status Badge */}
                     {selectedContract.derivedContractStatus && (
                       <div
+                        title={getDerivedStatusTooltip(
+                          selectedContract.derivedContractStatus,
+                          selectedContract.commonData?.effectiveDate?.value ? String(selectedContract.commonData.effectiveDate.value) : null,
+                          selectedContract.commonData?.expiryDate?.value ? String(selectedContract.commonData.expiryDate.value) : null
+                        )}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -1562,6 +1896,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           borderRadius: 6,
                           fontSize: 12,
                           fontWeight: 600,
+                          cursor: 'help',
                           background:
                             selectedContract.derivedContractStatus === 'ACTIVE'
                               ? '#f0fdf4'
@@ -1584,13 +1919,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         }}
                       >
                         <span>●</span>
-                        <span>
-                          {selectedContract.derivedContractStatus === 'ACTIVE'
-                            ? 'Active'
-                            : selectedContract.derivedContractStatus === 'EXPIRED'
-                            ? 'Expired'
-                            : selectedContract.derivedContractStatus}
-                        </span>
+                        <span>{getDerivedStatusLabel(selectedContract.derivedContractStatus)}</span>
                       </div>
                     )}
 
@@ -1618,7 +1947,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 </div>
 
                 <div className={contractStyles.contractHeaderActions}>
-                  {effectiveCanEdit && (
+                  {/* For AI contracts: Edit Contract metadata modal */}
+                  {selectedContract.dataEntryMethod !== 'MANUAL' && selectedContractEditable && (
                     <button
                       className={styles.secondaryButton}
                       type="button"
@@ -1630,23 +1960,104 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       Edit Contract
                     </button>
                   )}
-                  {selectedContract.documentId && (
+
+                  {/* For Manual contracts in SUMMARY mode: Chỉnh sửa thông tin */}
+                  {selectedContract.dataEntryMethod === 'MANUAL' &&
+                    selectedContractEditable &&
+                    currentManualMode === 'SUMMARY' && (
                     <button
-                      className={styles.secondaryButton}
+                      className={styles.primaryButton}
                       type="button"
-                      onClick={() => handleViewPdf(selectedContract.documentId)}
-                      disabled={openingPdfId === selectedContract.documentId}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => setManualViewModes((prev) => ({ ...prev, [selectedContract.id]: 'EDIT' }))}
+                      style={{ padding: '6px 14px', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}
                     >
-                      {openingPdfId === selectedContract.documentId ? (
-                        <Loader2 size={14} className={styles.spinIcon} />
-                      ) : (
-                        <FileText size={14} />
-                      )}
-                      {openingPdfId === selectedContract.documentId ? 'Loading PDF...' : 'View Original PDF'}
+                      <Edit3 size={14} />
+                      Chỉnh sửa thông tin
                     </button>
                   )}
-                  {effectiveCanEdit && (selectedContract.extractionStatus === 'COMPLETED' || selectedContract.extractionStatus === 'PROCESSING') && (
+
+                  {/* View / Attach / Change PDF */}
+                  {selectedContract.documentId ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <button
+                        className={styles.secondaryButton}
+                        type="button"
+                        onClick={() => handleViewPdf(selectedContract.documentId)}
+                        disabled={openingPdfId === selectedContract.documentId}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                      >
+                        {openingPdfId === selectedContract.documentId ? (
+                          <Loader2 size={14} className={styles.spinIcon} />
+                        ) : (
+                          <FileText size={14} />
+                        )}
+                        {openingPdfId === selectedContract.documentId
+                          ? 'Loading PDF...'
+                          : selectedContract.dataEntryMethod === 'MANUAL'
+                          ? 'View Reference PDF'
+                          : 'View Original PDF'}
+                      </button>
+                      {selectedContract.dataEntryMethod === 'MANUAL' && selectedContractEditable && (
+                        <label
+                          className={styles.secondaryButton}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            cursor: isReplacingContractFile ? 'not-allowed' : 'pointer',
+                            fontSize: 13,
+                          }}
+                          title="Thay đổi tài liệu PDF tham khảo cho hợp đồng này"
+                        >
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            style={{ display: 'none' }}
+                            disabled={isReplacingContractFile}
+                            onChange={async (e) => {
+                              if (e.target.files?.[0]) {
+                                await handleReplaceContractFile(selectedContract.id, e.target.files[0]);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                          {isReplacingContractFile ? <Loader2 size={14} className={styles.spinIcon} /> : <RefreshCw size={14} />}
+                          <span>{isReplacingContractFile ? 'Đang thay đổi...' : 'Thay đổi PDF'}</span>
+                        </label>
+                      )}
+                    </div>
+                  ) : selectedContract.dataEntryMethod === 'MANUAL' && selectedContractEditable ? (
+                    <label
+                      className={styles.secondaryButton}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        cursor: isReplacingContractFile ? 'not-allowed' : 'pointer',
+                        fontSize: 13,
+                      }}
+                      title="Đính kèm tài liệu PDF tham khảo cho hợp đồng này"
+                    >
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        style={{ display: 'none' }}
+                        disabled={isReplacingContractFile}
+                        onChange={async (e) => {
+                          if (e.target.files?.[0]) {
+                            await handleReplaceContractFile(selectedContract.id, e.target.files[0]);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      {isReplacingContractFile ? <Loader2 size={14} className={styles.spinIcon} /> : <FileUp size={14} />}
+                      <span>{isReplacingContractFile ? 'Đang tải lên...' : 'Đính kèm PDF tham khảo'}</span>
+                    </label>
+                  ) : null}
+
+                  {selectedContract.dataEntryMethod !== 'MANUAL' &&
+                    selectedContractEditable &&
+                    (selectedContract.extractionStatus === 'COMPLETED' || selectedContract.extractionStatus === 'PROCESSING') && (
                     <button
                       className={styles.secondaryButton}
                       type="button"
@@ -1676,33 +2087,6 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
                   {isManagerMode && selectedContract && (
                     <>
-                      {selectedContract.reviewStatus === 'PENDING_REVIEW' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            style={{ padding: '6px 14px', fontSize: 13, color: '#c2410c', borderColor: '#fed7aa', background: '#fff7ed', display: 'flex', alignItems: 'center', gap: 6 }}
-                            onClick={() => {
-                              setManagerReviewActionContractId(selectedContract.id);
-                              setManagerRequestChangesModalOpen(true);
-                            }}
-                            disabled={isManagerProcessing}
-                          >
-                            <AlertTriangle size={14} />
-                            Request Changes
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.primaryButton}
-                            style={{ padding: '6px 16px', fontSize: 13, background: '#16a34a', borderColor: '#16a34a', display: 'flex', alignItems: 'center', gap: 6 }}
-                            onClick={() => handleManagerApprove(selectedContract.id)}
-                            disabled={isManagerProcessing}
-                          >
-                            {isManagerProcessing ? <Loader2 size={14} className={styles.spinIcon} /> : <Check size={14} />}
-                            Approve Contract
-                          </button>
-                        </div>
-                      )}
                       {selectedContract.reviewStatus === 'APPROVED' && (
                         <span className={`${styles.statusBadge} ${styles.statusApproved}`} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                           <CheckCircle2 size={14} />
@@ -1718,7 +2102,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     </>
                   )}
 
-                  {!isManagerMode && (
+                  {!isManagerMode && selectedContract.dataEntryMethod !== 'MANUAL' && (
                     <>
                       {selectedContract.extractionStatus === 'COMPLETED' ? (
                         <span className={`${styles.statusBadge} ${styles.statusExtracted}`}>
@@ -1731,7 +2115,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             <Loader2 size={13} className={styles.spinIcon} />
                             Extracting...
                           </span>
-                          {effectiveCanEdit && (
+                          {selectedContractEditable && (
                             <button
                               type="button"
                               onClick={() => handleCancelExtract(selectedContract.id)}
@@ -1791,7 +2175,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
 
               {/* Company Match Banner */}
-              {selectedContract.extractionStatus === 'COMPLETED' &&
+              {selectedContract.dataEntryMethod !== 'MANUAL' &&
+                selectedContract.extractionStatus === 'COMPLETED' &&
                 !selectedContract.companyMatchConfirmed &&
                 selectedContract.companyMatchStatus !== 'MATCH' && (
                   <div
@@ -1822,7 +2207,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       </div>
                     </div>
 
-                    {effectiveCanEdit && (
+                    {selectedContractEditable && (
                       <button
                         className={styles.primaryButton}
                         style={{ padding: '6px 14px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}
@@ -1841,8 +2226,43 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   </div>
                 )}
 
-              {/* Extraction Progress or Empty State */}
-              {selectedContract.extractionStatus === 'PROCESSING' ? (
+              {/* Manual Entry or AI Extraction / Structured Cards View */}
+              {selectedContract.dataEntryMethod === 'MANUAL' ? (
+                currentManualMode === 'EDIT' && selectedContractEditable ? (
+                  <ManualContractEntryTemplate
+                    projectId={projectId}
+                    taskId={taskId}
+                    contract={selectedContract}
+                    onSaveSuccess={(updated) => {
+                      setResearch(updated);
+                      setManualViewModes((prev) => ({ ...prev, [selectedContract.id]: 'SUMMARY' }));
+                      setManualContractDirty(false);
+                      setToast({ message: 'Lưu thông tin hợp đồng thành công!', type: 'success' });
+                    }}
+                    onCancel={() => {
+                      if (hasMeaningfulContractData(selectedContract)) {
+                        setManualViewModes((prev) => ({ ...prev, [selectedContract.id]: 'SUMMARY' }));
+                        setManualContractDirty(false);
+                      }
+                    }}
+                    onDirtyChange={(dirty) => setManualContractDirty(dirty)}
+                    onViewPdf={(docId) => handleViewPdf(docId || selectedContract.documentId)}
+                    onReplaceFile={(file) => handleReplaceContractFile(selectedContract.id, file)}
+                    isReplacingFile={isReplacingContractFile}
+                  />
+                ) : (
+                  <ManualContractSummaryView
+                    contract={selectedContract}
+                    canEdit={selectedContractEditable}
+                    onEdit={() => {
+                      setManualViewModes((prev) => ({ ...prev, [selectedContract.id]: 'EDIT' }));
+                    }}
+                    onViewPdf={(docId) => handleViewPdf(docId || selectedContract.documentId)}
+                    onReplaceFile={(file) => handleReplaceContractFile(selectedContract.id, file)}
+                    isReplacingFile={isReplacingContractFile}
+                  />
+                )
+              ) : selectedContract.extractionStatus === 'PROCESSING' ? (
                 <div style={{ padding: '8px 0' }}>
                   <ContractProgressBar
                     status={selectedContract.extractionStatus}
@@ -1860,17 +2280,19 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   <span style={{ maxWidth: 460, textAlign: 'center', color: '#64748b', fontSize: 13, lineHeight: 1.5 }}>
                     Click the button below to allow AI to classify and extract contract terms, parties, and obligations.
                   </span>
-                  <button
-                    className={styles.primaryButton}
-                    type="button"
-                    onClick={() => handleExtract(selectedContract.id)}
-                    disabled={!effectiveCanEdit || isAnyExtracting}
-                    title={isAnyExtracting ? 'Another document is currently being processed by AI. Please wait for completion.' : undefined}
-                    style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
-                  >
-                    <Sparkles size={14} />
-                    {selectedContract.extractionStatus === 'FAILED' ? 'Retry Extraction' : 'Extract Contract Data'}
-                  </button>
+                  {selectedContractEditable && (
+                    <button
+                      className={styles.primaryButton}
+                      type="button"
+                      onClick={() => handleExtract(selectedContract.id)}
+                      disabled={isAnyExtracting}
+                      title={isAnyExtracting ? 'Another document is currently being processed by AI. Please wait for completion.' : undefined}
+                      style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
+                    >
+                      <Sparkles size={14} />
+                      {selectedContract.extractionStatus === 'FAILED' ? 'Retry Extraction' : 'Extract Contract Data'}
+                    </button>
+                  )}
 
                   {selectedContract.extractionErrorMessage && (
                     <div className={`${styles.statusBadge} ${styles.statusError}`} style={{ marginTop: 8 }}>
@@ -1903,7 +2325,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       </div>
 
                       <div className={contractStyles.verificationActions}>
-                        {effectiveCanEdit && totalCount > 0 && (
+                        {selectedContractEditable && totalCount > 0 && (
                           <button
                             type="button"
                             className={styles.secondaryButton}
@@ -1956,7 +2378,19 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span className={contractStyles.sectionMeta}>
-                            Contract status: <strong style={{ color: '#15803d' }}>{selectedContract.derivedContractStatus || 'ACTIVE'}</strong>
+                            Contract status:{' '}
+                            <strong
+                              style={{
+                                color:
+                                  selectedContract.derivedContractStatus === 'ACTIVE'
+                                    ? '#15803d'
+                                    : selectedContract.derivedContractStatus === 'EXPIRED'
+                                    ? '#b91c1c'
+                                    : '#c2410c',
+                              }}
+                            >
+                              {getDerivedStatusLabel(selectedContract.derivedContractStatus) || 'Đang có hiệu lực'}
+                            </strong>
                           </span>
                         </div>
                       </div>
@@ -2252,8 +2686,8 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                           confidence: party.confidence,
                                           qualityStatus: party.qualityStatus,
                                           verificationStatus: party.verificationStatus,
-                                          onVerify: handleVerifyParty,
-                                          onEdit: handleEditParty,
+                                          onVerify: selectedContractEditable ? handleVerifyParty : undefined,
+                                          onEdit: selectedContractEditable ? handleEditParty : undefined,
                                         });
                                       }}
                                       title="View evidence from source document"
@@ -2262,7 +2696,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                     </button>
                                   )}
 
-                                  {effectiveCanEdit && (
+                                  {selectedContractEditable && (
                                     <button
                                       type="button"
                                       className={`${contractStyles.kpiBtn} ${contractStyles.kpiBtnEdit}`}
@@ -2273,7 +2707,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                     </button>
                                   )}
 
-                                  {effectiveCanEdit && (
+                                  {selectedContractEditable && (
                                     <button
                                       type="button"
                                       className={`${contractStyles.kpiBtn} ${
@@ -2310,55 +2744,130 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         </section>
       </div>
 
-      {/* Package Summary Footer (Staff Only) */}
-      {!isManagerMode && (
+      {/* Package Summary Footer */}
+      {isManagerMode ? (
+        <ManagerContractReviewSummaryBar
+          selectedContract={selectedContract}
+          contracts={contractsToDisplay}
+          onApprove={(contractId) => handleManagerApprove(contractId)}
+          onRequestChanges={(contractId) => {
+            setManagerReviewActionContractId(contractId);
+            setManagerRequestChangesModalOpen(true);
+          }}
+          isProcessing={isManagerProcessing}
+          hasTopReviewBanner={hasTopReviewBanner}
+        />
+      ) : (
         <footer className={styles.packageSummary}>
           {canRecall ? (
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setIsRecallModalOpen(true)}
-              disabled={isRecalling}
-              style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#bfdbfe', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              {isRecalling ? (
-                <>
-                  <Loader2 size={15} className={styles.spinIcon} />
-                  <span>Recalling...</span>
-                </>
-              ) : (
-                <>
-                  <RotateCcw size={15} />
-                  <span>Recall Submission</span>
-                </>
-              )}
-            </button>
-          ) : !isSubmitted && (
-            <button
-              type="button"
-              className={styles.submitBtn}
-              onClick={handleSubmitPackage}
-              disabled={!effectiveCanEdit || isSubmittingPackage || allApproved || isAnyExtracting || effectiveSubmissionIds.length === 0}
-              title={
-                isAnyExtracting
-                  ? 'AI extraction is currently in progress. Please wait for completion before submitting.'
-                  : effectiveSubmissionIds.length === 0
-                  ? 'No eligible contracts ready for submission.'
-                  : undefined
-              }
-            >
-              {isSubmittingPackage ? (
-                <>
-                  <Loader2 size={16} className={styles.spinIcon} />
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={16} />
-                  <span>Submit for Review</span>
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#2563eb', fontSize: 13, fontWeight: 500 }}>
+                <Clock size={15} />
+                <span>Contracts are currently submitted and under manager review.</span>
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setIsRecallModalOpen(true)}
+                disabled={isRecalling}
+                style={{ background: '#eff6ff', color: '#2563eb', borderColor: '#bfdbfe', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                {isRecalling ? (
+                  <>
+                    <Loader2 size={15} className={styles.spinIcon} />
+                    <span>Recalling...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={15} />
+                    <span>Recall Submission</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : isRevisionMode ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ea580c', fontSize: 13, fontWeight: 500 }}>
+                <AlertTriangle size={15} />
+                <span>
+                  Manager has requested changes on <strong>{eligibleCount}</strong> contract(s). Review feedback and resubmit.
+                </span>
+                {manualContractDirty && (
+                  <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
+                    • Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className={styles.submitBtn}
+                onClick={handleSubmitPackage}
+                disabled={!effectiveCanEdit || isSubmittingPackage || effectiveSubmissionIds.length === 0 || manualContractDirty}
+                title={
+                  manualContractDirty
+                    ? 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.'
+                    : undefined
+                }
+              >
+                {isSubmittingPackage ? (
+                  <>
+                    <Loader2 size={16} className={styles.spinIcon} />
+                    <span>Resubmitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>Resubmit to Manager</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : !isSubmitted ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13, fontWeight: 500 }}>
+                <FileText size={15} />
+                <span>
+                  <strong>{packageCounts.selected}</strong> of <strong>{eligibleCount}</strong> eligible contract(s) selected
+                </span>
+                {manualContractDirty && (
+                  <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
+                    • Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className={styles.submitBtn}
+                onClick={handleSubmitPackage}
+                disabled={!effectiveCanEdit || isSubmittingPackage || allApproved || isAnyExtracting || effectiveSubmissionIds.length === 0 || manualContractDirty}
+                title={
+                  manualContractDirty
+                    ? 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.'
+                    : isAnyExtracting
+                    ? 'AI extraction is currently in progress. Please wait for completion before submitting.'
+                    : effectiveSubmissionIds.length === 0
+                    ? 'No eligible contracts ready for submission.'
+                    : undefined
+                }
+              >
+                {isSubmittingPackage ? (
+                  <>
+                    <Loader2 size={16} className={styles.spinIcon} />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>Submit for Review</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#2563eb', fontSize: 13, fontWeight: 600 }}>
+              <Clock size={16} />
+              <span>Contracts are currently submitted and pending manager review.</span>
+            </div>
           )}
         </footer>
       )}
@@ -2412,7 +2921,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           confidence={evidenceData.confidence}
           qualityStatus={evidenceData.qualityStatus || 'VALID'}
           verificationStatus={evidenceData.verificationStatus || 'UNVERIFIED'}
-          isEditable={effectiveCanEdit}
+          isEditable={selectedContractEditable}
           onVerify={evidenceData.onVerify}
           onEdit={evidenceData.onEdit}
           onClose={() => setEvidenceOpen(false)}
@@ -2682,3 +3191,85 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     </div>
   );
 };
+
+function ManagerContractReviewSummaryBar({
+  selectedContract,
+  contracts,
+  onApprove,
+  onRequestChanges,
+  isProcessing,
+  hasTopReviewBanner,
+}: {
+  selectedContract: ContractEntry | null;
+  contracts: ContractEntry[];
+  onApprove: (contractId: string) => void;
+  onRequestChanges: (contractId: string) => void;
+  isProcessing: boolean;
+  hasTopReviewBanner?: boolean;
+}) {
+  const isPending = (c: ContractEntry) => c.reviewStatus === 'PENDING_REVIEW' || !c.reviewStatus;
+  const pendingContracts = contracts.filter(isPending);
+  const reviewedContracts = contracts.filter((c) => c.reviewStatus === 'APPROVED' || c.reviewStatus === 'CHANGES_REQUESTED');
+  const isApproved = selectedContract?.reviewStatus === 'APPROVED';
+  const isChangesRequested = selectedContract?.reviewStatus === 'CHANGES_REQUESTED';
+  const isReviewable = !isApproved && !isChangesRequested;
+
+  return (
+    <footer className={styles.packageSummary}>
+      <div className={styles.summaryStatusGroup}>
+        {isApproved ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 600 }}>
+            <CheckCircle2 size={16} />
+            <span>
+              "{selectedContract?.title}" was approved by {selectedContract?.reviewedByName || 'Manager'}.
+            </span>
+          </div>
+        ) : isChangesRequested ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ea580c', fontWeight: 600 }}>
+            <AlertTriangle size={16} />
+            <span>
+              "{selectedContract?.title}" • Changes Requested
+              {!hasTopReviewBanner && selectedContract?.reviewComment ? `: "${selectedContract.reviewComment}"` : ''}
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600 }}>
+            <FileText size={16} />
+            <span>
+              Reviewing "{selectedContract?.title || 'Contract'}" • {reviewedContracts.length} of {contracts.length} reviewed ({pendingContracts.length} pending)
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {selectedContract && isReviewable && (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => onRequestChanges(selectedContract.id)}
+            disabled={isProcessing}
+            style={{ padding: '7px 14px', fontSize: '13px', color: '#c2410c', borderColor: '#fed7aa', background: '#fff7ed', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <AlertTriangle size={14} />
+            Request Changes
+          </button>
+        )}
+
+        {selectedContract && isReviewable && (
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => onApprove(selectedContract.id)}
+            disabled={isProcessing}
+            style={{ padding: '7px 16px', fontSize: '13px', background: '#16a34a', borderColor: '#16a34a', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            {isProcessing ? <Loader2 size={14} className={styles.spinIcon} /> : <Check size={14} />}
+            Approve Contract
+          </button>
+        )}
+      </div>
+    </footer>
+  );
+}
+

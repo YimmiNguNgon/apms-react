@@ -487,6 +487,9 @@ export interface CandidateResponse {
   qualityStatus?: string;
   qualityMetrics?: Record<string, unknown>;
   identity?: { legalName?: string; [key: string]: any };
+  contact?: { website?: string; address?: string; addresses?: string[]; emails?: string[]; phones?: string[]; [key: string]: any };
+  business?: { businessModel?: string; industries?: string[]; products?: any[]; markets?: string[]; targetCustomers?: string[]; [key: string]: any };
+  companySize?: { employeeTier?: string; employeeCount?: number; revenueTier?: string; [key: string]: any };
   financial?: FinancialInfo;
   market?: MarketInfo;
   innovation?: InnovationInfo;
@@ -514,6 +517,7 @@ export interface FieldApprovalRecord {
   comment?: string;
   previousStatus?: FieldApprovalStatus;
   previousComment?: string;
+  previousReviewedRevision?: number;
   changedInRevision?: number;
   staleReason?: string;
   pendingValue?: unknown;
@@ -564,6 +568,7 @@ export interface AiFieldResult {
   previousManagerReviewComment?: string;
   previousSubmittedValue?: unknown;
   previousReviewedRevision?: number;
+  reviewedRevision?: number;
   changedInRevision?: number;
   reviewedValue?: unknown;
   staffReviewedValue?: unknown;
@@ -1598,6 +1603,7 @@ export interface CompanyProfileUpdateProposalResponse {
 export type DocumentCompanyValidationStatus = 'MATCH' | 'POSSIBLE_MATCH' | 'MISMATCH' | 'UNKNOWN';
 
 export interface DocumentContext {
+  documentName?: string | null;
   companyName?: string | null;
   taxCode?: string | null;
   address?: string | null;
@@ -1609,11 +1615,12 @@ export interface DocumentContext {
 
 export type ReportingPeriodType = 'QUARTER' | 'HALF_YEAR' | 'FULL_YEAR' | 'AS_OF_DATE' | 'LTM' | 'YTD';
 export interface ReportingPeriod { year?: number | null; periodType?: ReportingPeriodType | string | null; period?: string | null; asOfDate?: string | null; }
-export interface FinancialReportEntry { id: string; title: string; documentId: string; reportType: string; documentContext?: DocumentContext | null; reportingPeriod: ReportingPeriod | null; targetPeriod?: ReportingPeriod | null; reportingYear: number | null; publicationDate: string | null; extractionStatus: string; extractionStage?: string | null; extractionProgress?: number; extractionStartedAt?: string | null; extractionCompletedAt?: string | null; extractionErrorCode?: string | null; extractionErrorMessage?: string | null; reviewStatus: string | null; reviewComment: string | null; reviewedBy?: number | null; reviewedByName?: string | null; reviewedAt?: string | null; }
-export interface FinancialMetricResponse { id: string; label: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; normalizedValue?: number | string | null; currency?: string; unit?: string; normalizedUnit?: string | null; period: ReportingPeriod | null; confidence?: number | null; qualityStatus?: string; verificationStatus?: string; inputMethod?: string; source?: { documentId?: string; documentName?: string; page?: number; reportEntryId?: string } | null; evidence?: string | null; }
+export interface FinancialReportEntry { id: string; title: string; documentId: string; fileName?: string | null; reportType: string; statementScope?: string | null; dataEntryMethod?: 'AI_EXTRACTION' | 'MANUAL'; documentContext?: DocumentContext | null; reportingPeriod: ReportingPeriod | null; targetPeriod?: ReportingPeriod | null; reportingYear: number | null; publicationDate: string | null; extractionStatus: string; extractionStage?: string | null; extractionProgress?: number; extractionStartedAt?: string | null; extractionCompletedAt?: string | null; extractionErrorCode?: string | null; extractionErrorMessage?: string | null; reviewStatus: string | null; reviewComment: string | null; reviewedBy?: number | null; reviewedByName?: string | null; reviewedAt?: string | null; }
+export interface FinancialMetricResponse { id: string; label: string; originalLabel?: string | null; metricCode?: string | null; rawValue?: number | string | null; rawUnit?: string | null; value?: number; normalizedValue?: number | string | null; currency?: string; unit?: string; normalizedUnit?: string | null; period: ReportingPeriod | null; confidence?: number | null; qualityStatus?: string; verificationStatus?: string; inputMethod?: string; source?: { documentId?: string; documentName?: string; page?: number; reportEntryId?: string; statementType?: string; sourceColumn?: string } | null; evidence?: string | null; }
 export interface FinancialResearchResponse { id: string; projectId: number; taskId: number; companyProfileId: string; targetResearchPeriod?: ReportingPeriod | null; reports: FinancialReportEntry[]; metrics: FinancialMetricResponse[]; status: string; submittedReportIds: string[] | null; submittedAt?: string | null; reviewedBy?: number | null; reviewedAt?: string | null; reviewReason?: string | null; canRecallSubmission?: boolean | null; activeSubmissionId?: number | null; createdAt?: string | null; updatedAt?: string | null; }
-export interface CreateFinancialReportRequest { title: string; documentId: string; reportType: string; statementScope?: string; reportingPeriod?: ReportingPeriod | null; reportingYear?: number | null; publicationDate?: string | null; }
-export interface CreateFinancialMetricRequest { reportId?: string | null; reportEntryId?: string | null; sourceDocumentId?: string | null; sourcePage?: number | null; label: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
+export interface CreateFinancialReportRequest { title: string; documentId?: string | null; dataEntryMethod?: 'AI_EXTRACTION' | 'MANUAL'; reportType?: string; statementScope?: string; reportingPeriod?: ReportingPeriod | null; reportingYear?: number | null; publicationDate?: string | null; }
+export interface UpdateFinancialReportRequest { title?: string; publicationDate?: string | null; reportingPeriod?: ReportingPeriod | null; reportType?: string; statementScope?: string; }
+export interface CreateFinancialMetricRequest { reportId?: string | null; reportEntryId?: string | null; sourceDocumentId?: string | null; sourcePage?: number | null; label: string; originalLabel?: string | null; metricCode?: string | null; statementType?: string | null; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
 export interface UpdateFinancialMetricRequest { label?: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
 
 export * from './contractResearch';

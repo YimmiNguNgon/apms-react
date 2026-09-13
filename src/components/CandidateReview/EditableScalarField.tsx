@@ -11,6 +11,7 @@ interface EditableScalarFieldProps {
   type?: 'string' | 'number' | 'textarea';
   onChange: (key: string, value: any, status?: string) => void;
   disabled?: boolean;
+  isManual?: boolean;
 }
 
 export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
@@ -19,7 +20,8 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   fieldResult,
   type = 'string',
   onChange,
-  disabled
+  disabled,
+  isManual = false
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const currentValue = hasStaffReviewedValue
@@ -39,7 +41,7 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   const handleSave = () => {
     const isEdited = isCandidateFieldEdited(fieldResult?.value, draftValue);
     if (!isEdited) {
-      onChange(fieldKey, draftValue, 'CONFIRMED');
+      onChange(fieldKey, draftValue, isManual ? (normalizeCandidateFieldValue(draftValue) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
       return;
     }
 
@@ -54,7 +56,7 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   };
 
   const handleConfirm = () => {
-    onChange(fieldKey, currentValue, 'CONFIRMED');
+    onChange(fieldKey, currentValue, isManual ? 'ADDED' : 'CONFIRMED');
   };
 
   const handleRestore = () => {
@@ -78,6 +80,7 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
           : <span className={styles.emptyValue}>N/A</span>
       }
       disabled={disabled}
+      isManual={isManual}
     >
       {type === 'textarea' ? (
         <textarea 

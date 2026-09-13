@@ -1,0 +1,803 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import type { CreateFinancialMetricRequest, FinancialMetricResponse, FinancialReportEntry } from '../../types/domain';
+import {
+  CANONICAL_FINANCIAL_TAXONOMY,
+  formatFinancialUnit,
+  type CanonicalMetricDefinition,
+} from './canonicalFinancialTaxonomy';
+import {
+  AlertCircle,
+  Building2,
+  CheckCircle2,
+  Eye,
+  LineChart,
+  Loader2,
+  PieChart,
+  Plus,
+  Save,
+  Trash2,
+  TrendingUp,
+} from 'lucide-react';
+import styles from './FinancialResearchWorkbench.module.css';
+
+interface Props {
+  report: FinancialReportEntry;
+  existingMetrics?: FinancialMetricResponse[];
+  targetYear?: number | null;
+  onSaveBatch: (metrics: CreateFinancialMetricRequest[]) => Promise<void>;
+  isSaving?: boolean;
+  onOpenAddMetric: () => void;
+  onDeleteMetric?: (metric: FinancialMetricResponse) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
+  canEdit?: boolean;
+  onSaveSuccess?: () => void;
+  onViewSummary?: () => void;
+}
+
+const UNIT_OPTIONS = [
+  { value: 'MILLION_VND', label: 'Triệu VNĐ' },
+  { value: 'BILLION_VND', label: 'Tỷ VNĐ' },
+  { value: 'VND', label: 'VNĐ' },
+  { value: 'MILLION_USD', label: 'Triệu USD' },
+  { value: 'USD', label: 'USD' },
+  { value: 'PERCENT', label: '%' },
+  { value: 'RATIO', label: 'Tỷ lệ' },
+  { value: 'TIMES', label: 'Lần' },
+  { value: 'COUNT', label: 'Số lượng' },
+];
+
+export default function ManualFinancialEntryTemplate({
+  report,
+  existingMetrics = [],
+  targetYear,
+  onSaveBatch,
+  isSaving = false,
+  onOpenAddMetric,
+  onDeleteMetric,
+  onDirtyChange,
+  canEdit = true,
+  onSaveSuccess,
+  onViewSummary,
+}: Props) {
+  // 1. Balance Sheet Subgroups (29 metrics)
+  const balanceSheetGroups = useMemo(() => {
+    const bs = CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BALANCE_SHEET');
+    return [
+      { subCategory: 'CURRENT_ASSETS', title: '1.1 TÀI SẢN NGẮN HẠN', metrics: bs.filter((m) => m.subCategory === 'CURRENT_ASSETS') },
+      { subCategory: 'NON_CURRENT_ASSETS', title: '1.2 TÀI SẢN DÀI HẠN', metrics: bs.filter((m) => m.subCategory === 'NON_CURRENT_ASSETS') },
+      { subCategory: 'TOTAL_ASSETS', title: '1.3 TỔNG TÀI SẢN', metrics: bs.filter((m) => m.subCategory === 'TOTAL_ASSETS') },
+      { subCategory: 'LIABILITIES', title: '1.4 NỢ PHẢI TRẢ', metrics: bs.filter((m) => m.subCategory === 'LIABILITIES') },
+      { subCategory: 'EQUITY', title: '1.5 VỐN CHỦ SỞ HỮU', metrics: bs.filter((m) => m.subCategory === 'EQUITY') },
+    ];
+  }, []);
+
+  // 2. Income Statement Metrics (18 metrics)
+  const incomeStatementMetrics = useMemo(() => {
+    return CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'INCOME_STATEMENT');
+  }, []);
+
+  // 3. Banking Metrics (8 metrics)
+  const bankingMetrics = useMemo(() => {
+    return CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BANKING');
+  }, []);
+
+  // 4. Ratio Metrics (6 metrics)
+  const ratioMetrics = useMemo(() => {
+    return CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'RATIOS');
+  }, []);
+
+  // 5. Custom Metrics (persisted non-canonical metrics)
+  const customMetrics = useMemo(() => {
+    const canonicalCodes = new Set(CANONICAL_FINANCIAL_TAXONOMY.map((m) => m.code));
+    return existingMetrics.filter((m) => !m.metricCode || !canonicalCodes.has(m.metricCode));
+  }, [existingMetrics]);
+
+  // Build draft values helper from existingMetrics
+  const buildInitialDraft = (metricsList: FinancialMetricResponse[]) => {
+    const initial: Record<string, { value: string; unit: string }> = {};
+    for (const def of CANONICAL_FINANCIAL_TAXONOMY) {
+      const persisted = metricsList.find((m) => m.metricCode === def.code);
+      initial[def.code] = {
+        value: persisted?.rawValue != null ? String(persisted.rawValue) : '',
+        unit: persisted?.rawUnit || def.defaultUnit,
+      };
+    }
+    return initial;
+  };
+
+  // Draft values state: code -> { value, unit }
+  const [draftValues, setDraftValues] = useState<Record<string, { value: string; unit: string }>>(() =>
+    buildInitialDraft(existingMetrics)
+  );
+
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Sync draftValues when existingMetrics changes from server, preserving unsaved changes
+  useEffect(() => {
+    setDraftValues((prev) => {
+      const next = { ...prev };
+      for (const def of CANONICAL_FINANCIAL_TAXONOMY) {
+        const persisted = existingMetrics.find((m) => m.metricCode === def.code);
+        if (!next[def.code]) {
+          next[def.code] = {
+            value: persisted?.rawValue != null ? String(persisted.rawValue) : '',
+            unit: persisted?.rawUnit || def.defaultUnit,
+          };
+        } else if (persisted && !next[def.code].value) {
+          next[def.code] = {
+            value: persisted.rawValue != null ? String(persisted.rawValue) : '',
+            unit: persisted.rawUnit || def.defaultUnit,
+          };
+        }
+      }
+      return next;
+    });
+  }, [existingMetrics]);
+
+  // Compute dirty state
+  const isDirty = useMemo(() => {
+    for (const def of CANONICAL_FINANCIAL_TAXONOMY) {
+      const current = draftValues[def.code];
+      const persisted = existingMetrics.find((m) => m.metricCode === def.code);
+      const persistedVal = (persisted?.rawValue != null ? String(persisted.rawValue) : '').trim();
+      const persistedUnit = persisted?.rawUnit || def.defaultUnit;
+
+      const currentVal = (current?.value ?? '').trim();
+      const currentUnit = current?.unit || def.defaultUnit;
+
+      if (currentVal !== persistedVal) {
+        return true;
+      }
+      if (currentVal !== '' && currentUnit !== persistedUnit) {
+        return true;
+      }
+    }
+    return false;
+  }, [draftValues, existingMetrics]);
+
+  // Notify parent of dirty change
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  const handleValueChange = (code: string, val: string) => {
+    setDraftValues((prev) => ({
+      ...prev,
+      [code]: {
+        ...prev[code],
+        value: val,
+      },
+    }));
+    if (validationError) setValidationError(null);
+  };
+
+  const handleUnitChange = (code: string, unit: string) => {
+    setDraftValues((prev) => ({
+      ...prev,
+      [code]: {
+        ...prev[code],
+        unit,
+      },
+    }));
+    if (validationError) setValidationError(null);
+  };
+
+  // Section filled counters
+  const totalBalanceSheet = CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BALANCE_SHEET');
+  const bsFilledCount = totalBalanceSheet.filter((m) => draftValues[m.code]?.value?.trim()).length;
+  const isFilledCount = incomeStatementMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
+  const bankFilledCount = bankingMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
+  const ratioFilledCount = ratioMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
+
+  const totalFilledCanonical = bsFilledCount + isFilledCount + bankFilledCount + ratioFilledCount;
+
+  // Handle explicit deletion of persisted metric
+  const handleDeletePersisted = (metric: FinancialMetricResponse) => {
+    if (!canEdit || !onDeleteMetric) return;
+    const confirmMsg = `Bạn có chắc muốn xóa chỉ số "${metric.label}" khỏi báo cáo tài chính?`;
+    if (window.confirm(confirmMsg)) {
+      onDeleteMetric(metric);
+      if (metric.metricCode) {
+        const def = CANONICAL_FINANCIAL_TAXONOMY.find((m) => m.code === metric.metricCode);
+        setDraftValues((prev) => ({
+          ...prev,
+          [metric.metricCode!]: {
+            value: '',
+            unit: def?.defaultUnit || 'MILLION_VND',
+          },
+        }));
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    setValidationError(null);
+
+    // Filter meaningful rows only (Sparse persistence)
+    const enteredEntries = Object.entries(draftValues).filter(
+      ([_, item]) => item && item.value !== undefined && item.value.trim() !== ''
+    );
+
+    if (enteredEntries.length === 0 && customMetrics.length === 0) {
+      setValidationError('Vui lòng nhập giá trị cho ít nhất một chỉ số để lưu.');
+      return;
+    }
+
+    // Client-side numeric validation
+    for (const [code, item] of enteredEntries) {
+      const def = CANONICAL_FINANCIAL_TAXONOMY.find((m) => m.code === code);
+      const cleanVal = item.value.replace(/,/g, '').trim();
+      if (Number.isNaN(Number(cleanVal))) {
+        setValidationError(`Giá trị không hợp lệ cho chỉ số "${def?.label || code}": "${item.value}".`);
+        return;
+      }
+    }
+
+    const periodPayload = report.reportingPeriod ? {
+      year: report.reportingPeriod.year || targetYear || null,
+      periodType: report.reportingPeriod.periodType || null,
+      period: report.reportingPeriod.period || null,
+      asOfDate: report.reportingPeriod.asOfDate || null,
+    } : null;
+
+    const payload: CreateFinancialMetricRequest[] = enteredEntries.map(([code, item]) => {
+      const def = CANONICAL_FINANCIAL_TAXONOMY.find((m) => m.code === code);
+      const cleanVal = item.value.replace(/,/g, '').trim();
+      const numVal = Number(cleanVal);
+
+      return {
+        reportId: report.id,
+        reportEntryId: report.id,
+        metricCode: code,
+        label: def?.label || code,
+        originalLabel: def?.label || code,
+        statementType: def?.statementType || 'BALANCE_SHEET',
+        rawValue: cleanVal,
+        rawUnit: item.unit,
+        value: Number.isNaN(numVal) ? undefined : numVal,
+        unit: item.unit,
+        period: periodPayload,
+      };
+    });
+
+    try {
+      await onSaveBatch(payload);
+      onSaveSuccess?.();
+    } catch (err: any) {
+      setValidationError(err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi lưu chỉ số.');
+    }
+  };
+
+  const renderMetricRow = (metric: CanonicalMetricDefinition, idx: number, total: number) => {
+    const current = draftValues[metric.code] || { value: '', unit: metric.defaultUnit };
+    const isFilled = Boolean(current.value?.trim());
+    const persisted = existingMetrics.find((m) => m.metricCode === metric.code);
+
+    return (
+      <tr
+        key={metric.code}
+        id={`metric-row-${metric.code}`}
+        style={{
+          borderBottom: idx < total - 1 ? '1px solid #f1f5f9' : 'none',
+          background: isFilled ? '#f8fafc' : '#ffffff',
+          height: '42px',
+        }}
+      >
+        <td style={{ padding: '8px 16px', color: '#1e293b', fontWeight: isFilled ? 600 : 500, fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {isFilled && <CheckCircle2 size={13} style={{ color: '#16a34a', flexShrink: 0 }} />}
+            <span>{metric.label}</span>
+          </div>
+        </td>
+        <td style={{ padding: '6px 12px', width: '220px' }}>
+          <input
+            type="text"
+            id={`metric-input-${metric.code}`}
+            disabled={!canEdit || isSaving}
+            value={current.value}
+            onChange={(e) => handleValueChange(metric.code, e.target.value)}
+            placeholder="Trống"
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              border: isFilled ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+              borderRadius: 6,
+              fontSize: 13,
+              outline: 'none',
+              background: canEdit ? '#ffffff' : '#f1f5f9',
+              boxSizing: 'border-box',
+              fontWeight: isFilled ? 600 : 400,
+              color: isFilled ? '#0f172a' : '#475569',
+            }}
+          />
+        </td>
+        <td style={{ padding: '6px 12px', width: '130px' }}>
+          <select
+            disabled={!canEdit || isSaving}
+            value={current.unit}
+            onChange={(e) => handleUnitChange(metric.code, e.target.value)}
+            style={{
+              width: '100%',
+              padding: '6px 8px',
+              border: '1px solid #cbd5e1',
+              borderRadius: 6,
+              fontSize: 12,
+              background: canEdit ? '#ffffff' : '#f1f5f9',
+              outline: 'none',
+              boxSizing: 'border-box',
+              color: '#334155',
+            }}
+          >
+            {!UNIT_OPTIONS.some((opt) => opt.value === current.unit) && current.unit && (
+              <option key={current.unit} value={current.unit}>
+                {formatFinancialUnit(current.unit)}
+              </option>
+            )}
+            {UNIT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td style={{ padding: '6px 10px', textAlign: 'center', width: '44px' }}>
+          {persisted && canEdit && (
+            <button
+              type="button"
+              onClick={() => handleDeletePersisted(persisted)}
+              title="Xóa chỉ số khỏi báo cáo"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ef4444',
+                cursor: 'pointer',
+                padding: 4,
+                borderRadius: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: '1 1 0px',
+        minHeight: 0,
+        height: '100%',
+        overflow: 'hidden',
+        background: '#ffffff',
+      }}
+    >
+      {/* Validation Error Alert */}
+      {validationError && (
+        <div style={{ margin: '10px 16px 0', padding: '8px 14px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, flex: '0 0 auto' }}>
+          <AlertCircle size={16} style={{ flexShrink: 0 }} />
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {/* 
+        Single Right-Panel Scroll Owner:
+        display: block with natural flow so sections never squash or flex-shrink.
+        overflowY: auto enables ONE smooth vertical scroll for all 61 fields.
+      */}
+      <div
+        style={{
+          display: 'block',
+          flex: '1 1 0px',
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '12px 16px 28px',
+        }}
+      >
+        {/* 1. BALANCE SHEET (29 metrics across 5 subsections) */}
+        <section
+          style={{
+            display: 'block',
+            height: 'auto',
+            maxHeight: 'none',
+            overflow: 'visible',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            background: '#ffffff',
+            marginBottom: 20,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Static Section Header */}
+          <div
+            style={{
+              background: '#f1f5f9',
+              padding: '11px 16px',
+              borderBottom: '1px solid #e2e8f0',
+              borderRadius: '9px 9px 0 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <PieChart size={16} color="#2563eb" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                1. Bảng Cân Đối Kế Toán (Balance Sheet)
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              {totalBalanceSheet.length} chỉ số • {bsFilledCount} đã nhập
+            </span>
+          </div>
+
+          {/* 5 Balance Sheet Subsections */}
+          <div style={{ display: 'block', height: 'auto', overflow: 'visible' }}>
+            {balanceSheetGroups.map((group, gIdx) => (
+              <div
+                key={group.subCategory}
+                style={{
+                  display: 'block',
+                  height: 'auto',
+                  overflow: 'visible',
+                  borderBottom: gIdx < balanceSheetGroups.length - 1 ? '1px solid #e2e8f0' : 'none',
+                }}
+              >
+                <div style={{ background: '#f8fafc', padding: '8px 16px', borderBottom: '1px solid #f1f5f9', fontSize: 12, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  {group.title}
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
+                  <thead>
+                    <tr style={{ background: '#ffffff', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
+                      <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
+                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
+                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                      <th style={{ padding: '6px 10px', width: '44px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.metrics.map((m, idx) => renderMetricRow(m, idx, group.metrics.length))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 2. INCOME STATEMENT (18 metrics) */}
+        <section
+          style={{
+            display: 'block',
+            height: 'auto',
+            maxHeight: 'none',
+            overflow: 'visible',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            background: '#ffffff',
+            marginBottom: 20,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Static Section Header */}
+          <div
+            style={{
+              background: '#f1f5f9',
+              padding: '11px 16px',
+              borderBottom: '1px solid #e2e8f0',
+              borderRadius: '9px 9px 0 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <TrendingUp size={16} color="#16a34a" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                2. Báo Cáo Kết Quả Hoạt Động Kinh Doanh (Income Statement)
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              {incomeStatementMetrics.length} chỉ số • {isFilledCount} đã nhập
+            </span>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
+            <thead>
+              <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 10px', width: '44px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {incomeStatementMetrics.map((m, idx) => renderMetricRow(m, idx, incomeStatementMetrics.length))}
+            </tbody>
+          </table>
+        </section>
+
+        {/* 3. BANKING & CREDIT INSTITUTIONS (8 metrics) */}
+        <section
+          style={{
+            display: 'block',
+            height: 'auto',
+            maxHeight: 'none',
+            overflow: 'visible',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            background: '#ffffff',
+            marginBottom: 20,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Static Section Header */}
+          <div
+            style={{
+              background: '#f1f5f9',
+              padding: '11px 16px',
+              borderBottom: '1px solid #e2e8f0',
+              borderRadius: '9px 9px 0 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Building2 size={16} color="#8b5cf6" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                3. Ngân Hàng & Tổ Chức Tín Dụng (Banking & Credit Institutions)
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              {bankingMetrics.length} chỉ số • {bankFilledCount} đã nhập
+            </span>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
+            <thead>
+              <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 10px', width: '44px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {bankingMetrics.map((m, idx) => renderMetricRow(m, idx, bankingMetrics.length))}
+            </tbody>
+          </table>
+        </section>
+
+        {/* 4. FINANCIAL & SAFETY RATIOS (6 metrics) */}
+        <section
+          style={{
+            display: 'block',
+            height: 'auto',
+            maxHeight: 'none',
+            overflow: 'visible',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            background: '#ffffff',
+            marginBottom: 20,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Static Section Header */}
+          <div
+            style={{
+              background: '#f1f5f9',
+              padding: '11px 16px',
+              borderBottom: '1px solid #e2e8f0',
+              borderRadius: '9px 9px 0 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <LineChart size={16} color="#f59e0b" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                4. Các Chỉ Số Tài Chính & An Toàn (Financial & Safety Ratios)
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              {ratioMetrics.length} chỉ số • {ratioFilledCount} đã nhập
+            </span>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
+            <thead>
+              <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 10px', width: '44px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ratioMetrics.map((m, idx) => renderMetricRow(m, idx, ratioMetrics.length))}
+            </tbody>
+          </table>
+        </section>
+
+        {/* 5. CUSTOM METRICS SECTION (Only rendered if custom metrics exist) */}
+        {customMetrics.length > 0 && (
+          <section
+            style={{
+              display: 'block',
+              height: 'auto',
+              maxHeight: 'none',
+              overflow: 'visible',
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              background: '#ffffff',
+              marginBottom: 20,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            {/* Static Section Header */}
+            <div
+              style={{
+                background: '#f1f5f9',
+                padding: '11px 16px',
+                borderBottom: '1px solid #e2e8f0',
+                borderRadius: '9px 9px 0 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Plus size={16} color="#0284c7" />
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  5. Chỉ Số Bổ Sung (Custom Indicators)
+                </span>
+              </div>
+              <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                {customMetrics.length} chỉ số
+              </span>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
+              <thead>
+                <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
+                  <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Tên chỉ số</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                  <th style={{ padding: '6px 10px', width: '44px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {customMetrics.map((metric, idx) => (
+                  <tr
+                    key={metric.id}
+                    style={{
+                      borderBottom: idx < customMetrics.length - 1 ? '1px solid #f1f5f9' : 'none',
+                      background: '#ffffff',
+                      height: '42px',
+                    }}
+                  >
+                    <td style={{ padding: '8px 16px', color: '#1e293b', fontWeight: 600, fontSize: 13 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle2 size={13} style={{ color: '#16a34a', flexShrink: 0 }} />
+                        <span>{metric.label}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '6px 12px', color: '#0f172a', fontWeight: 600, fontSize: 13, width: '220px' }}>
+                      {metric.rawValue}
+                    </td>
+                    <td style={{ padding: '6px 12px', color: '#475569', fontSize: 12, width: '130px' }}>
+                      {formatFinancialUnit(metric.rawUnit || metric.unit)}
+                    </td>
+                    <td style={{ padding: '6px 10px', textAlign: 'center', width: '44px' }}>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePersisted(metric)}
+                          title="Xóa chỉ số bổ sung"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            padding: 4,
+                            borderRadius: 4,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+      </div>
+
+      {/* Pinned Bottom Actions Footer */}
+      <div
+        style={{
+          flex: '0 0 auto',
+          padding: '12px 16px',
+          borderTop: '1px solid #e2e8f0',
+          background: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: 13, color: '#475569' }}>
+            Đã nhập: <strong>{totalFilledCanonical + customMetrics.length}</strong> chỉ số
+            {isDirty && (
+              <span style={{ marginLeft: 8, color: '#ea580c', fontWeight: 600, fontSize: 12 }}>
+                (Có thay đổi chưa lưu)
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {onViewSummary && existingMetrics.length > 0 && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onViewSummary}
+              style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Eye size={15} />
+              <span>Xem bảng tổng hợp</span>
+            </button>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onOpenAddMetric}
+              style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus size={15} />
+              <span>+ Thêm chỉ số khác</span>
+            </button>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={handleSave}
+              disabled={isSaving || (!isDirty && totalFilledCanonical === 0)}
+              style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 size={15} className={styles.spinIcon} />
+                  <span>Đang lưu...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={15} />
+                  <span>Lưu số liệu ({totalFilledCanonical})</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

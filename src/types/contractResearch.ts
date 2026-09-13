@@ -29,6 +29,7 @@ export type TypeValidationStatus = 'MATCH' | 'MISMATCH' | 'CONFIRMED';
 export type ContractFieldQualityStatus = 'VALID' | 'NEEDS_REVIEW';
 export type ContractFieldVerificationStatus = 'UNVERIFIED' | 'VERIFIED';
 export type ContractFieldInputMethod = 'AI_EXTRACTED' | 'MANUAL';
+export type ContractDataEntryMethod = 'AI_EXTRACTION' | 'MANUAL';
 
 export interface ExtractedContractField<T> {
   value: T | null;
@@ -324,10 +325,11 @@ export interface ContractEntry {
   id: string;
   projectId?: number | null;
   taskId?: number | null;
-  documentId: string;
-  documentName: string;
+  documentId?: string | null;
+  documentName?: string | null;
   title: string;
   documentDate?: string | null;
+  dataEntryMethod?: ContractDataEntryMethod | null;
 
   declaredContractType?: ContractType | null;
   detectedContractType?: ContractType | null;
@@ -385,6 +387,7 @@ export interface ContractResearchResponse {
 
   activeSubmissionId?: number | null;
   activeSubmittedContractIds?: string[];
+  activeSubmissionStatus?: string | null;
   submittedAt?: string | null;
   canRecallSubmission?: boolean | null;
 
@@ -399,8 +402,35 @@ export interface ContractResearchResponse {
 export interface CreateContractEntryRequest {
   title: string;
   documentDate?: string | null;
-  documentId: string;
+  documentId?: string | null;
   declaredContractType?: ContractTypeSelection | null;
+  dataEntryMethod?: ContractDataEntryMethod | null;
+}
+
+export interface ManualContractPartyDto {
+  id?: string;
+  legalName?: string;
+  role?: string;
+  taxCode?: string;
+  representative?: string;
+  address?: string;
+  isTargetCompany?: boolean;
+}
+
+export interface SaveManualContractRequest {
+  title?: string;
+  documentDate?: string | null;
+  contractNumber?: string | null;
+  signingDate?: string | null;
+  effectiveDate?: string | null;
+  expiryDate?: string | null;
+  term?: string | null;
+  contractValueAmount?: number | null;
+  contractValueCurrency?: string | null;
+  rawContractValueText?: string | null;
+  governingLaw?: string | null;
+  purpose?: string | null;
+  parties?: ManualContractPartyDto[];
 }
 
 export interface UpdateContractEntryRequest {

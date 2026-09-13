@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { FinancialMetricResponse, ReportingPeriodType, UpdateFinancialMetricRequest } from '../../types/domain';
+import { formatFinancialUnit } from './canonicalFinancialTaxonomy';
 import { Edit3, Loader2, X } from 'lucide-react';
 
 interface Props {
@@ -11,13 +12,14 @@ interface Props {
 }
 
 const UNIT_OPTIONS = [
-  { value: 'VND', label: 'VND (Đồng)' },
-  { value: 'BILLION_VND', label: 'Tỷ VND (BILLION_VND)' },
-  { value: 'MILLION_VND', label: 'Triệu VND (MILLION_VND)' },
-  { value: 'USD', label: 'USD (Đô la Mỹ)' },
+  { value: 'MILLION_VND', label: 'Triệu VNĐ' },
+  { value: 'BILLION_VND', label: 'Tỷ VNĐ' },
+  { value: 'VND', label: 'VNĐ' },
   { value: 'MILLION_USD', label: 'Triệu USD' },
-  { value: 'PERCENT', label: '% (Phần trăm)' },
-  { value: 'RATIO', label: 'Tỷ lệ (Ratio)' },
+  { value: 'USD', label: 'USD' },
+  { value: 'PERCENT', label: '%' },
+  { value: 'RATIO', label: 'Tỷ lệ' },
+  { value: 'TIMES', label: 'Lần' },
   { value: 'COUNT', label: 'Số lượng' },
 ];
 
@@ -30,7 +32,7 @@ export default function EditFinancialMetricModal({
 }: Props) {
   const [label, setLabel] = useState('');
   const [value, setValue] = useState<string>('');
-  const [unit, setUnit] = useState('VND');
+  const [unit, setUnit] = useState('MILLION_VND');
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [periodType, setPeriodType] = useState<ReportingPeriodType>('QUARTER');
   const [period, setPeriod] = useState('Q1');
@@ -38,7 +40,7 @@ export default function EditFinancialMetricModal({
 
   const unitOptions = React.useMemo(() => {
     if (unit && !UNIT_OPTIONS.some(opt => opt.value === unit)) {
-      return [{ value: unit, label: unit }, ...UNIT_OPTIONS];
+      return [{ value: unit, label: formatFinancialUnit(unit) }, ...UNIT_OPTIONS];
     }
     return UNIT_OPTIONS;
   }, [unit]);

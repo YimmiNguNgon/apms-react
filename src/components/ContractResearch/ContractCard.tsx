@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles, Trash2, Edit3 } from 'lucide-react';
 import type { ContractEntry } from '../../types/contractResearch';
+import { isContractEditableByStaff } from './contractEditability';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -68,7 +69,7 @@ export const ContractCard: React.FC<Props> = ({
   const isExtracted = contract.extractionStatus === 'COMPLETED';
   const isFailed = contract.extractionStatus === 'FAILED';
   const isApproved = contract.reviewStatus === 'APPROVED';
-  const canEditCard = canEdit && !isApproved;
+  const canEditCard = Boolean(canEdit && !isManagerMode && isContractEditableByStaff(contract));
 
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
@@ -101,9 +102,9 @@ export const ContractCard: React.FC<Props> = ({
             <CheckCircle2 size={12} />
             Approved
           </span>
-        ) : contract.reviewStatus === 'PENDING_REVIEW' ? (
-          <span className={styles.statusBadge} style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontSize: 11.5 }}>
-            ● In Review
+        ) : (!isEligible && (contract.reviewStatus === 'PENDING_REVIEW' || (!contract.reviewStatus && isManagerMode))) ? (
+          <span className={`${styles.statusBadge} ${styles.statusPendingReview}`}>
+            ● Pending Review
           </span>
         ) : isManagerMode ? (
           contract.reviewStatus === 'CHANGES_REQUESTED' ? (
@@ -116,7 +117,7 @@ export const ContractCard: React.FC<Props> = ({
             </span>
           )
         ) : (
-          /* Checkbox to select for submission, plus tag if CHANGES_REQUESTED */
+          /* Checkbox to select for submission, plus tag if CHANGES_REQUESTED or PENDING_REVIEW */
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <label
               className={styles.cardSelectLabel}
@@ -137,11 +138,15 @@ export const ContractCard: React.FC<Props> = ({
               <span>Submit</span>
             </label>
 
-            {contract.reviewStatus === 'CHANGES_REQUESTED' && (
+            {contract.reviewStatus === 'CHANGES_REQUESTED' ? (
               <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`} style={{ padding: '2px 7px', fontSize: 10.5 }}>
                 ● Changes Requested
               </span>
-            )}
+            ) : contract.reviewStatus === 'PENDING_REVIEW' ? (
+              <span className={`${styles.statusBadge} ${styles.statusPendingReview}`} style={{ padding: '2px 7px', fontSize: 10.5 }}>
+                ● Pending Review
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -193,11 +198,15 @@ export const ContractCard: React.FC<Props> = ({
 
       {/* Contract Title & Number */}
       <h4 className={styles.cardTitle}>{contract.title}</h4>
-      {contract.documentName && (
+      {contract.documentName ? (
         <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#64748b' }}>
           File: {contract.documentName}
         </p>
-      )}
+      ) : contract.dataEntryMethod === 'MANUAL' ? (
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
+          Không có tài liệu tham khảo
+        </p>
+      ) : null}
 
       {/* Changes Requested Feedback */}
       {!isManagerMode && !hasTopReviewBanner && contract.reviewStatus === 'CHANGES_REQUESTED' && (
@@ -212,7 +221,7 @@ export const ContractCard: React.FC<Props> = ({
       )}
 
       {/* View Source PDF Link */}
-      {contract.documentId && (
+      {contract.documentId ? (
         <button
           className={styles.cardPdfLink}
           type="button"
@@ -220,15 +229,15 @@ export const ContractCard: React.FC<Props> = ({
           onClick={(event) => {
             stop(event);
             if (isOtherExtracting) return;
-            onViewPdf(contract.documentId);
+            onViewPdf(contract.documentId!);
           }}
           style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : undefined}
         >
           <FileText size={14} />
-          View Original PDF
+          {contract.dataEntryMethod === 'MANUAL' ? 'View Reference PDF' : 'View Original PDF'}
         </button>
-      )}
+      ) : null}
 
       {/* Card Footer */}
       <div className={styles.cardFooter}>
@@ -266,6 +275,11 @@ export const ContractCard: React.FC<Props> = ({
                 />
               </div>
             </div>
+          ) : contract.dataEntryMethod === 'MANUAL' ? (
+            <>
+              <FileText size={14} color="#2563eb" />
+              <span style={{ color: '#1d4ed8', fontWeight: 600 }}>Manual Entry</span>
+            </>
           ) : isFailed ? (
             <span>Extraction Failed</span>
           ) : isExtracted ? (
@@ -278,7 +292,7 @@ export const ContractCard: React.FC<Props> = ({
           )}
         </div>
 
-        {canEditCard && (
+        {canEditCard && contract.dataEntryMethod !== 'MANUAL' && (
           isExtracted ? (
             <button
               className={styles.cardExtractBtn}

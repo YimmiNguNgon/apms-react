@@ -17,6 +17,7 @@ interface EditableObjectFieldProps {
   schema: ObjectFieldSchema[];
   onChange: (key: string, value: any, status?: string) => void;
   disabled?: boolean;
+  isManual?: boolean;
 }
 
 export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
@@ -25,7 +26,8 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
   fieldResult,
   schema,
   onChange,
-  disabled
+  disabled,
+  isManual = false,
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const rawCurrentValue = hasStaffReviewedValue
@@ -53,7 +55,7 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
   const handleSave = () => {
     const isEdited = isCandidateFieldEdited(fieldResult?.value, draftValue);
     if (!isEdited) {
-      onChange(fieldKey, draftValue, 'CONFIRMED');
+      onChange(fieldKey, draftValue, isManual ? (normalizeCandidateFieldValue(draftValue) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
       return;
     }
 
@@ -69,7 +71,7 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
   };
 
   const handleConfirm = () => {
-    onChange(fieldKey, currentValue, 'CONFIRMED');
+    onChange(fieldKey, currentValue, isManual ? 'ADDED' : 'CONFIRMED');
   };
 
   const handleRestore = () => {
@@ -78,26 +80,10 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
 
   const formatDisplayValue = (val: any, label: string) => {
     if (typeof val === 'number') {
-      const lowerLabel = label.toLowerCase();
-      if (lowerLabel.includes('%') || lowerLabel.includes('margin') || lowerLabel.includes('rate') || lowerLabel.includes('growth') || lowerLabel.includes('share') || lowerLabel.includes('ratio')) {
-        if (val > 0 && val <= 1) return (val * 100).toFixed(2) + '%';
-        return val.toLocaleString() + '%';
-      }
-      if (val >= 1e12) return (val / 1e12).toFixed(2) + ' Trillion';
-      if (val >= 1e9) return (val / 1e9).toFixed(2) + ' Billion';
-      if (val >= 1e6) return (val / 1e6).toFixed(2) + ' Million';
       return val.toLocaleString();
     }
     if (Array.isArray(val)) {
-      return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-          {val.map((item, idx) => (
-            <span key={idx} style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600 }}>
-              {item}
-            </span>
-          ))}
-        </div>
-      );
+      return val.join(', ');
     }
     return String(val);
   };
@@ -131,6 +117,7 @@ export const EditableObjectField: React.FC<EditableObjectFieldProps> = ({
         displayValue || <span className={styles.emptyValue}>N/A</span>
       }
       disabled={disabled}
+      isManual={isManual}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {schema.map(field => (

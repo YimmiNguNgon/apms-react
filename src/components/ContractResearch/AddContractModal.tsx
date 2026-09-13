@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../../services/api';
 import { contractResearchApi } from '../../API/contractResearchApi';
 import type { ContractResearchResponse } from '../../types/contractResearch';
-import { FileUp, Loader2, X, FileText } from 'lucide-react';
+import { FileUp, Loader2, X, FileText, Sparkles, Edit3 } from 'lucide-react';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
 
 export default function AddContractModal({ open, projectId, taskId, onClose, onSuccess }: Props) {
   const [title, setTitle] = useState('');
+  const [dataEntryMethod, setDataEntryMethod] = useState<'AI_EXTRACTION' | 'MANUAL'>('AI_EXTRACTION');
   
   // File upload state
   const [file, setFile] = useState<File | null>(null);
@@ -24,14 +25,23 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (open) {
+      setTitle('');
+      setFile(null);
+      setDataEntryMethod('AI_EXTRACTION');
+      setErrorMessage(null);
+    }
+  }, [open]);
+
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!file) {
-      setErrorMessage('Please select or upload a PDF contract file.');
+    if (dataEntryMethod === 'AI_EXTRACTION' && !file) {
+      setErrorMessage('Please select or upload a PDF contract file for AI Extraction.');
       return;
     }
 
@@ -42,16 +52,15 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
 
     setIsSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('taskId', String(taskId));
+      let finalDocId: string | null = null;
+      if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('taskId', String(taskId));
 
-      const uploadRes = await api.post<any>(`/projects/${projectId}/documents/upload`, formData);
-      const dataObj = uploadRes.data?.data || uploadRes.data;
-      const finalDocId = dataObj?.rawDocumentId || (dataObj?.id ? String(dataObj.id) : '');
-
-      if (!finalDocId) {
-        throw new Error('File uploaded successfully, but document ID was not returned.');
+        const uploadRes = await api.post<any>(`/projects/${projectId}/documents/upload`, formData);
+        const dataObj = uploadRes.data?.data || uploadRes.data;
+        finalDocId = dataObj?.rawDocumentId || (dataObj?.id ? String(dataObj.id) : null);
       }
 
       const updated = await contractResearchApi.createContract(projectId, taskId, {
@@ -59,6 +68,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
         documentId: finalDocId,
         documentDate: null,
         declaredContractType: 'COOPERATION_AGREEMENT',
+        dataEntryMethod,
       });
 
       // Find the newly created contract ID
@@ -105,10 +115,12 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
           </div>
           <div style={{ flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
-              Add Contract Document
+              {dataEntryMethod === 'AI_EXTRACTION' ? 'Add Contract Document (AI Extraction)' : 'Add Contract (Manual Entry)'}
             </h3>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Upload a partner contract PDF to extract terms with AI
+              {dataEntryMethod === 'AI_EXTRACTION'
+                ? 'Upload a partner contract PDF to extract terms with AI'
+                : 'Enter contract terms manually (reference PDF is optional)'}
             </span>
           </div>
           <button
@@ -127,8 +139,123 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Upload Box */}
+          {/* 1. Contract Title */}
           <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>
+              Contract Title *
+            </label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., Strategic Investment and Distribution Agreement 2026"
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: 8,
+                fontSize: 13,
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          {/* 2. Method Switcher Cards */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'block' }}>
+              Data Entry Method *
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div
+                onClick={() => {
+                  setDataEntryMethod('AI_EXTRACTION');
+                  setErrorMessage(null);
+                }}
+                style={{
+                  border: dataEntryMethod === 'AI_EXTRACTION' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  background: dataEntryMethod === 'AI_EXTRACTION' ? '#eff6ff' : '#ffffff',
+                  borderRadius: 8,
+                  padding: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ marginTop: 2, color: dataEntryMethod === 'AI_EXTRACTION' ? '#2563eb' : '#64748b' }}>
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: dataEntryMethod === 'AI_EXTRACTION' ? '#1e40af' : '#1e293b' }}>
+                    AI Extraction
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                    Upload source PDF and extract contract terms automatically
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => {
+                  setDataEntryMethod('MANUAL');
+                  setErrorMessage(null);
+                }}
+                style={{
+                  border: dataEntryMethod === 'MANUAL' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  background: dataEntryMethod === 'MANUAL' ? '#eff6ff' : '#ffffff',
+                  borderRadius: 8,
+                  padding: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ marginTop: 2, color: dataEntryMethod === 'MANUAL' ? '#2563eb' : '#64748b' }}>
+                  <Edit3 size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: dataEntryMethod === 'MANUAL' ? '#1e40af' : '#1e293b' }}>
+                    Manual Entry
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                    Enter contract fields manually; reference PDF is optional
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Upload Box */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block' }}>
+                {dataEntryMethod === 'AI_EXTRACTION' ? 'Source Contract PDF *' : 'Reference Contract PDF (Optional)'}
+              </label>
+              {file && dataEntryMethod === 'MANUAL' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFile(null);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ef4444',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                  }}
+                >
+                  Remove attached file
+                </button>
+              )}
+            </div>
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -140,7 +267,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
                 border: isDragging ? '2px dashed #2563eb' : '2px dashed #cbd5e1',
                 background: isDragging ? '#eff6ff' : '#f8fafc',
                 borderRadius: 10,
-                padding: '24px 16px',
+                padding: '20px 16px',
                 textAlign: 'center',
                 cursor: 'pointer',
                 transition: 'all 150ms ease',
@@ -167,42 +294,24 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
                 <div>
                   <strong style={{ fontSize: 13, color: '#0f172a' }}>{file.name}</strong>
                   <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>
-                    Ready to upload ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    Ready to {dataEntryMethod === 'MANUAL' ? 'attach' : 'upload'} ({(file.size / 1024 / 1024).toFixed(2)} MB)
                   </div>
                 </div>
               ) : (
                 <div>
                   <strong style={{ fontSize: 13, color: '#334155' }}>
-                    Click to browse or drag & drop contract PDF
+                    {dataEntryMethod === 'AI_EXTRACTION'
+                      ? 'Click to browse or drag & drop contract PDF *'
+                      : 'Click to attach reference PDF (Optional)'}
                   </strong>
                   <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                    Supported format: PDF up to 50MB
+                    {dataEntryMethod === 'AI_EXTRACTION'
+                      ? 'Required for AI Extraction • PDF up to 50MB'
+                      : 'Không có tài liệu tham khảo? Bạn có thể tiếp tục tạo hợp đồng thủ công.'}
                   </div>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Contract Title */}
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>
-              Contract Title *
-            </label>
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Strategic Investment and Distribution Agreement 2026"
-              style={{
-                width: '100%',
-                padding: '9px 12px',
-                border: '1px solid #cbd5e1',
-                borderRadius: 8,
-                fontSize: 13,
-                boxSizing: 'border-box',
-              }}
-            />
           </div>
 
           <div className={styles.deleteModalActions} style={{ marginTop: 12 }}>
@@ -224,6 +333,8 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
                   <Loader2 size={14} className={styles.spinIcon} />
                   Creating Entry...
                 </>
+              ) : dataEntryMethod === 'MANUAL' ? (
+                'Create Manual Contract'
               ) : (
                 'Create Contract Entry'
               )}

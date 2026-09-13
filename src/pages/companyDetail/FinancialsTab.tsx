@@ -17,6 +17,7 @@ import type {
   FinancialMetricResponse,
   FinancialReportEntry,
 } from '../../types/domain';
+import { formatFinancialUnit } from '../../components/FinancialResearch/canonicalFinancialTaxonomy';
 import styles from './FinancialsTab.module.css';
 
 interface FinancialsTabProps {
@@ -95,10 +96,10 @@ const formatMetricNumber = (value?: number | string | null) => {
 
 const metricValueParts = (metric: FinancialMetricResponse) => {
   const value = metric.normalizedValue ?? metric.rawValue ?? metric.value;
-  const unit = metric.normalizedUnit ?? metric.rawUnit ?? metric.unit ?? metric.currency;
+  const rawUnit = metric.rawUnit ?? metric.normalizedUnit ?? metric.unit ?? metric.currency;
   return {
     value: formatMetricNumber(value),
-    unit: unit || '',
+    unit: rawUnit ? formatFinancialUnit(rawUnit) : '',
   };
 };
 

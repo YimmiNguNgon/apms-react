@@ -3801,19 +3801,39 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isCompanyDataInReview = Boolean(
     selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'IN_REVIEW'
   );
-  const inReviewPendingSub = isCompanyDataInReview
-    ? (workbench?.submissions?.find((s) => s.status === 'IN_REVIEW') ?? workbench?.submissions?.[0])
+  const isCompanyDataDone = Boolean(
+    selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'DONE'
+  );
+  const isCompanyDataReviewOrDone = isCompanyDataInReview || isCompanyDataDone;
+  const inReviewPendingSub = isCompanyDataReviewOrDone
+    ? (workbench?.submissions?.find((s) => s.status === 'IN_REVIEW')
+       ?? workbench?.submissions?.find((s) => s.status === 'APPROVED')
+       ?? workbench?.submissions?.[0])
     : undefined;
   const inReviewSubmittedCandId = inReviewPendingSub?.targetEntityId || workbench?.candidateDrafts?.[0]?.candidateId;
-  const inReviewDrafts = isCompanyDataInReview
-    ? [...(workbench?.candidateDrafts || [])].sort((a, b) => {
-        const seqA = a.draftSequence ?? 0;
-        const seqB = b.draftSequence ?? 0;
-        if (seqA !== seqB) return seqB - seqA;
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-      })
+  const inReviewDrafts = isCompanyDataReviewOrDone
+    ? (() => {
+        let list = [...(workbench?.candidateDrafts || [])];
+        if (list.length === 0 && inReviewPendingSub?.targetEntityId) {
+          list = [{
+            candidateId: inReviewPendingSub.targetEntityId,
+            draftName: submittedCandidateData?.draftName || 'Approved Candidate Profile',
+            candidateName: submittedCandidateData?.identity?.legalName || 'Target Company Profile',
+            status: isCompanyDataDone ? 'APPROVED' : 'PENDING_REVIEW',
+            isApproved: isCompanyDataDone,
+            isUnderReview: isCompanyDataInReview,
+            createdAt: inReviewPendingSub.createdAt,
+          } as any];
+        }
+        return list.sort((a, b) => {
+          const seqA = a.draftSequence ?? 0;
+          const seqB = b.draftSequence ?? 0;
+          if (seqA !== seqB) return seqB - seqA;
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        });
+      })()
     : [];
   const inReviewActiveCandId = (inReviewSelectedCandidateId && inReviewDrafts.some((d) => d.candidateId === inReviewSelectedCandidateId))
     ? inReviewSelectedCandidateId
@@ -5178,15 +5198,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         setStaffCandidateEdit(emptyStaffCandidateEdit);
       }
 
-      if (task.status === 'IN_REVIEW') {
-        const pendingSub = payload.data?.submissions?.find((s: any) => s.status === 'IN_REVIEW') ?? payload.data?.submissions?.[0];
+      if (task.status === 'IN_REVIEW' || task.status === 'DONE') {
+        const pendingSub = payload.data?.submissions?.find((s: any) => s.status === 'IN_REVIEW' || s.status === 'APPROVED') ?? payload.data?.submissions?.[0];
         const candId = pendingSub?.targetEntityId || payload.data?.candidateDrafts?.[0]?.candidateId;
         if (candId) {
           try {
             const candPayload = await candidateApi.getCandidateById(candId);
             setSubmittedCandidateData(candPayload.data);
           } catch (e) {
-            console.error('Failed to load in-review candidate data', e);
+            console.error('Failed to load in-review/approved candidate data', e);
           }
         }
       } else {
@@ -8340,7 +8360,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
               )}
 
-              {isCompanyDataInReview && (
+              {isCompanyDataReviewOrDone && (
                 (() => {
                   const candDraft = workbench?.candidateDrafts?.find((d) => d.candidateId === inReviewSubmittedCandId);
                   const displayDraftTitle = submittedCandidateData?.draftName
@@ -8354,6 +8374,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     : 'Round 1';
                   const submittedAtDate = inReviewPendingSub?.submittedAt || inReviewPendingSub?.createdAt;
                   const submittedByLabel = inReviewPendingSub?.submittedByName || selectedStaffTask.assignedToName || 'Staff';
+                  const approvedReviewerName = (submittedCandidateData ? getCandidateReviewerName(submittedCandidateData, projectMembers, currentUser) : null)
+                    || (inReviewPendingSub?.reviewedByUserId ? projectMembers.find((m) => m.accountId === inReviewPendingSub?.reviewedByUserId)?.fullName : null)
+                    || 'Manager';
+                  const approvedAtDate = inReviewPendingSub?.reviewedAt
+                    || (submittedCandidateData ? getCandidateReviewDate(submittedCandidateData) : null);
                   const sourceDocIds = (submittedCandidateData?.sourceDocumentIds || candDraft?.sourceDocumentIds || []) as string[];
                   const sourceDocs = projectDocuments.filter((d) =>
                     sourceDocIds.some((id) => String(id) === String(d.id) || (d.rawDocumentId && String(id) === String(d.rawDocumentId)))
@@ -8361,8 +8386,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
                   return (
                     <div style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
+                      background: isCompanyDataDone ? '#f0fdf4' : '#f8fafc',
+                      border: isCompanyDataDone ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
                       borderRadius: '8px',
                       padding: '20px 24px',
                       marginBottom: '20px',
@@ -8374,18 +8399,36 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                          <span style={{
-                            background: '#dbeafe',
-                            color: '#1e40af',
-                            fontWeight: 700,
-                            fontSize: '11px',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>
-                            Submitted for Review
-                          </span>
+                          {isCompanyDataDone ? (
+                            <span style={{
+                              background: '#dcfce7',
+                              color: '#15803d',
+                              fontWeight: 700,
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              <CheckCircle2 size={12} /> Approved by Manager
+                            </span>
+                          ) : (
+                            <span style={{
+                              background: '#dbeafe',
+                              color: '#1e40af',
+                              fontWeight: 700,
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Submitted for Review
+                            </span>
+                          )}
                           <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
                             {roundLabel}
                           </span>
@@ -8399,13 +8442,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
                           <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
                           <span><strong>Submitted By:</strong> {submittedByLabel}</span>
+                          {isCompanyDataDone && approvedAtDate && (
+                            <span><strong>Approved:</strong> {formatOptionalDate(approvedAtDate)}</span>
+                          )}
+                          {isCompanyDataDone && (
+                            <span><strong>Approved By:</strong> {approvedReviewerName}</span>
+                          )}
                           {sourceDocs.length > 0 && (
                             <span><strong>Source Documents:</strong> {sourceDocs.map((d) => d.fileName || `Doc #${d.id}`).join(', ')}</span>
                           )}
                         </div>
                       </div>
 
-                      {canCancelStaffSubmission && (
+                      {canCancelStaffSubmission && !isCompanyDataDone && (
                         <button
                           className={`${styles.button} ${styles.dangerButton}`}
                           type="button"
@@ -8423,7 +8472,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
               <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain}>
-                  {isCompanyDataInReview ? (
+                  {isCompanyDataReviewOrDone ? (
                     inReviewActiveCandId ? (
                       <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                         <CandidateReviewWorkspace
@@ -9276,9 +9325,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   )}
                 </main>
 
-                {(!staffCandidate || isCompanyDataInReview) && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
+                {(!staffCandidate || isCompanyDataReviewOrDone) && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
                 <aside className={styles.workbenchSidebar}>
-                  {isCompanyDataInReview ? (
+                  {isCompanyDataReviewOrDone ? (
                     <section className={styles.workbenchPanel}>
                       <h3>Drafts {inReviewDrafts.length > 0 ? `(${inReviewDrafts.length})` : ''}</h3>
                       <div className={styles.draftList}>
@@ -9335,7 +9384,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                     >
                                       {draftLabel}
                                     </strong>
-                                    {isSubmitted ? (
+                                    {isCompanyDataDone && (draft.isApproved || isSubmitted) ? (
+                                      <span
+                                        style={{
+                                          fontSize: '11px',
+                                          fontWeight: 600,
+                                          padding: '2px 8px',
+                                          borderRadius: '9999px',
+                                          background: '#dcfce7',
+                                          color: '#15803d',
+                                          border: '1px solid #bbf7d0',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        Approved
+                                      </span>
+                                    ) : isSubmitted ? (
                                       <span
                                         style={{
                                           fontSize: '11px',

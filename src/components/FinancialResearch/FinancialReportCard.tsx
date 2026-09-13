@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, Clock, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Edit3, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
 import styles from './FinancialResearchWorkbench.module.css';
 
@@ -7,6 +7,7 @@ interface Props {
   report: FinancialReportEntry;
   onExtract: (reportId: string) => void;
   onDelete: (reportId: string) => void;
+  onEdit?: (report: FinancialReportEntry) => void;
   onViewPdf: (documentId: string) => void;
   onCancelExtract?: (reportId: string) => void;
   isCancellingExtract?: boolean;
@@ -51,6 +52,7 @@ export default function FinancialReportCard({
   report,
   onExtract,
   onDelete,
+  onEdit,
   onViewPdf,
   isOpeningPdf = false,
   metricCount,
@@ -67,6 +69,7 @@ export default function FinancialReportCard({
   isManagerMode = false,
   hasTopReviewBanner = false,
 }: Props) {
+  const isManual = report.dataEntryMethod === 'MANUAL';
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isExtracted = report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
   const isFailed = report.extractionStatus === 'FAILED';
@@ -119,7 +122,7 @@ export default function FinancialReportCard({
           <label
             className={styles.cardSelectLabel}
             onClick={stop}
-            title={!isEligible ? 'Extract this report before adding it to the submission.' : 'Select this report for manager submission.'}
+            title={!isEligible ? (isManual ? 'Enter at least one metric before adding to submission.' : 'Extract this report before adding it to the submission.') : 'Select this report for manager submission.'}
           >
             <input
               type="checkbox"
@@ -133,23 +136,56 @@ export default function FinancialReportCard({
         )}
 
         {canEditCard && (
-          <button
-            className={styles.cardDeleteBtn}
-            type="button"
-            onClick={(event) => { stop(event); onDelete(report.id); }}
-            disabled={isExtracting || isAnyExtracting}
-            aria-label={`Delete ${report.title}`}
-            title={isAnyExtracting ? 'Không thể xóa khi đang có tài liệu trích xuất' : 'Delete report'}
-          >
-            <Trash2 size={15} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {onEdit && (
+              <button
+                className={styles.cardDeleteBtn}
+                type="button"
+                onClick={(event) => {
+                  stop(event);
+                  if (isAnyExtracting) return;
+                  onEdit(report);
+                }}
+                disabled={isExtracting || isAnyExtracting}
+                aria-label={`Edit ${report.title}`}
+                title={isAnyExtracting ? 'Không thể chỉnh sửa khi đang có tài liệu trích xuất' : 'Edit report details'}
+                style={isAnyExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : { color: '#2563eb' }}
+              >
+                <Edit3 size={15} />
+              </button>
+            )}
+
+            <button
+              className={styles.cardDeleteBtn}
+              type="button"
+              onClick={(event) => { stop(event); onDelete(report.id); }}
+              disabled={isExtracting || isAnyExtracting}
+              aria-label={`Delete ${report.title}`}
+              title={isAnyExtracting ? 'Không thể xóa khi đang có tài liệu trích xuất' : 'Delete report'}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
         )}
       </div>
 
       <div className={styles.cardMetaRow}>
+        <span
+          style={{
+            padding: '2px 7px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: 600,
+            background: isManual ? '#f1f5f9' : '#eff6ff',
+            color: isManual ? '#475569' : '#2563eb',
+            border: `1px solid ${isManual ? '#e2e8f0' : '#bfdbfe'}`,
+          }}
+        >
+          {isManual ? 'MANUAL ENTRY' : 'AI EXTRACTION'}
+        </span>
         {period && <span className={styles.cardPeriodPill}>{period}</span>}
-        {reportType && <span className={styles.cardPeriodPill}>{reportType}</span>}
-        <span>{formatDate(report.publicationDate)}</span>
+        {!isManual && reportType && <span className={styles.cardPeriodPill}>{reportType}</span>}
+        {!isManual && report.publicationDate && <span>{formatDate(report.publicationDate)}</span>}
       </div>
 
       <h4 className={styles.cardTitle}>{report.title}</h4>
@@ -165,44 +201,62 @@ export default function FinancialReportCard({
         </div>
       )}
 
-      {report.documentId && (
+      {report.documentId ? (
         <button
           className={styles.cardPdfLink}
           type="button"
           disabled={isOpeningPdf}
           onClick={(event) => {
             stop(event);
-            onViewPdf(report.documentId);
+            onViewPdf(report.documentId!);
           }}
         >
           {isOpeningPdf ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
-          {isOpeningPdf ? 'Opening PDF...' : 'View Source PDF'}
+          {isOpeningPdf ? 'Opening PDF...' : (report.fileName || (isManual ? 'View Reference PDF' : 'View Source PDF'))}
         </button>
-      )}
+      ) : isManual ? (
+        <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px', padding: '3px 0' }}>
+          <FileText size={12} />
+          <span>Không có tài liệu tham khảo</span>
+        </div>
+      ) : null}
 
       <div className={styles.cardFooter}>
-        <div className={`${styles.cardStatus} ${isExtracted ? styles.cardStatusSuccess : isFailed ? styles.cardStatusError : isExtracting ? styles.cardStatusExtracting : ''}`}>
-          {isExtracting ? (
-            <>
-              <Loader2 size={14} className={styles.spinIcon} />
-              <span>Extracting...</span>
-            </>
-          ) : isExtracted ? (
-            <>
-              <CheckCircle2 size={14} />
-              <span>{metricCount} metrics {needsReviewCount > 0 && `(${needsReviewCount} review)`}</span>
-            </>
-          ) : isFailed ? (
-            <>
-              <AlertCircle size={14} />
-              <span>Failed</span>
-            </>
-          ) : (
-            <span>Ready</span>
-          )}
-        </div>
+        {isManual ? (
+          <div className={`${styles.cardStatus} ${metricCount > 0 ? styles.cardStatusSuccess : ''}`}>
+            {metricCount > 0 ? (
+              <>
+                <CheckCircle2 size={14} />
+                <span>{metricCount} {metricCount === 1 ? 'metric' : 'metrics'}</span>
+              </>
+            ) : (
+              <span style={{ color: '#94a3b8' }}>No metrics entered</span>
+            )}
+          </div>
+        ) : (
+          <div className={`${styles.cardStatus} ${isExtracted ? styles.cardStatusSuccess : isFailed ? styles.cardStatusError : isExtracting ? styles.cardStatusExtracting : ''}`}>
+            {isExtracting ? (
+              <>
+                <Loader2 size={14} className={styles.spinIcon} />
+                <span>Extracting...</span>
+              </>
+            ) : isExtracted ? (
+              <>
+                <CheckCircle2 size={14} />
+                <span>{metricCount} metrics {needsReviewCount > 0 && `(${needsReviewCount} review)`}</span>
+              </>
+            ) : isFailed ? (
+              <>
+                <AlertCircle size={14} />
+                <span>Failed</span>
+              </>
+            ) : (
+              <span>Ready</span>
+            )}
+          </div>
+        )}
 
-        {canEditCard && (
+        {canEditCard && !isManual && (
           isExtracting && onCancelExtract ? (
             <button
               className={styles.secondaryButton}

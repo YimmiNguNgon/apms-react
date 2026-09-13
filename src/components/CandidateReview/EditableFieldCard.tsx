@@ -9,7 +9,7 @@ interface EditableFieldCardProps {
   label: string;
   fieldResult?: AiFieldResult;
   dirty?: boolean;
-  onSave: () => void;
+  onSave: () => void | boolean;
   onCancel: () => void;
   onConfirm: () => void;
   onRestore: () => void;
@@ -17,13 +17,15 @@ interface EditableFieldCardProps {
   children: React.ReactNode;
   isList?: boolean;
   disabled?: boolean;
+  isManual?: boolean;
 }
 
 export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({ 
   label, fieldResult, dirty, 
   onSave, onCancel, onConfirm, onRestore, 
   currentValueDisplay, children,
-  disabled
+  disabled,
+  isManual = false
 }) => {
   const [expandedEvidence, setExpandedEvidence] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,7 +73,11 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
 
   const handleEditClick = () => setIsEditing(true);
   const handleCancelClick = () => { setIsEditing(false); onCancel(); };
-  const handleSaveClick = () => { setIsEditing(false); onSave(); };
+  const handleSaveClick = () => {
+    const saveResult = onSave();
+    if (saveResult === false) return;
+    setIsEditing(false);
+  };
 
   return (
     <div className={`${styles.fieldRow} ${dirty ? styles.fieldRowDirty : ''} ${isValidationFail ? styles.fieldRowIssue : ''} ${confidence > 0 && confidence < 0.6 ? styles.fieldRowLowConfidence : ''}`}>
@@ -88,7 +94,7 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
               Changes Requested
             </span>
           )}
-          {confidence > 0 && (
+          {!isManual && confidence > 0 && (
             <span className={`${styles.confidenceBadge} ${confidenceClass}`}>
               {(confidence * 100).toFixed(0)}% &middot; {confidenceLabel}
             </span>
@@ -102,10 +108,10 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
             <div className={styles.editInline}>
               {children}
               <div className={styles.editActions}>
-                <button className={styles.btnSecondary} onClick={handleCancelClick}><X size={14}/> Cancel</button>
-                <button className={styles.btnPrimary} onClick={handleSaveClick}><Check size={14}/> Save</button>
+                <button type="button" className={styles.btnSecondary} onClick={handleCancelClick} disabled={disabled}><X size={14}/> Cancel</button>
+                <button type="button" className={styles.btnPrimary} onClick={handleSaveClick} disabled={disabled}><Check size={14}/> Save</button>
               </div>
-              {hasAiOriginal && (
+              {!isManual && hasAiOriginal && (
                 <div className={styles.editOriginal}>
                   <span><strong>AI Value:</strong> {typeof aiOriginal === 'string' ? aiOriginal : 'Structured data'}</span>
                   <button type="button" className={styles.restoreLink} onClick={() => { onRestore(); setIsEditing(false); }}>
@@ -116,18 +122,6 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
             </div>
           ) : (
             currentValueDisplay
-          )}
-
-          {isEditing && (
-            <div className={styles.editControls}>
-              <button className={`${styles.btnCompact} ${styles.btnSave}`} onClick={onSave} disabled={disabled}><Check size={14}/> Save</button>
-              <button className={styles.btnCompact} onClick={onCancel} disabled={disabled}><X size={14}/> Cancel</button>
-              {fieldResult?.staffReviewStatus === 'EDITED' && (
-                <button className={`${styles.btnCompact} ${styles.btnRestore}`} onClick={onRestore} disabled={disabled} title="Restore to extracted value">
-                  <Undo2 size={14}/> Restore
-                </button>
-              )}
-            </div>
           )}
         </div>
 
@@ -150,13 +144,15 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
               </div>
             )}
 
-            <EvidenceSection
-              evidenceText={fieldResult?.evidenceText}
-              evidenceItems={fieldResult?.evidence}
-              pageNumber={fieldResult?.pageNumber}
-              expanded={expandedEvidence}
-              onToggle={() => setExpandedEvidence(!expandedEvidence)}
-            />
+            {!isManual && (
+              <EvidenceSection
+                evidenceText={fieldResult?.evidenceText}
+                evidenceItems={fieldResult?.evidence}
+                pageNumber={fieldResult?.pageNumber}
+                expanded={expandedEvidence}
+                onToggle={() => setExpandedEvidence(!expandedEvidence)}
+              />
+            )}
 
             {isReturned && (
               <div className={styles.managerFeedbackInline}>
@@ -195,12 +191,12 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
                         <button className={styles.btnCompact} onClick={handleEditClick} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600 }}>
                           <Edit3 size={14}/> Edit
                         </button>
-                        {!isConfirmed && (
+                        {!isManual && !isConfirmed && (
                           <button className={`${styles.btnCompact} ${styles.btnConfirm}`} onClick={onConfirm} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontWeight: 600 }}>
                             <Check size={14}/> Confirm
                           </button>
                         )}
-                        {isConfirmed && (
+                        {!isManual && isConfirmed && (
                           <span className={styles.reviewConfirmed} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontWeight: 600 }}>
                             <Check size={14} /> Confirmed
                           </span>

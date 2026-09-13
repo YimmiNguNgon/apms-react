@@ -5,6 +5,7 @@ import type {
   UpdateFinancialMetricRequest,
   ProjectTaskSubmissionResponse,
   CreateFinancialReportRequest,
+  UpdateFinancialReportRequest,
 } from "../types/domain";
 
 export const financialResearchApi = {
@@ -18,6 +19,21 @@ export const financialResearchApi = {
       `/projects/${projectId}/tasks/${taskId}/financial-research/reports`,
       data
     ),
+
+  updateReport: (projectId: number, taskId: number, reportId: string, data: UpdateFinancialReportRequest) =>
+    api.put<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}`,
+      data
+    ),
+
+  replaceReportFile: (projectId: number, taskId: number, reportId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.put<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/file`,
+      formData
+    );
+  },
 
   removeReport: (projectId: number, taskId: number, reportId: string) =>
     api.delete<FinancialResearchResponse>(
@@ -48,6 +64,12 @@ export const financialResearchApi = {
   addMetric: (projectId: number, taskId: number, data: CreateFinancialMetricRequest) =>
     api.post<FinancialResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/financial-research/metrics`,
+      data
+    ),
+
+  saveManualMetricsBatch: (projectId: number, taskId: number, reportId: string, data: { metrics: CreateFinancialMetricRequest[] }) =>
+    api.post<FinancialResearchResponse>(
+      `/projects/${projectId}/tasks/${taskId}/financial-research/reports/${reportId}/manual-metrics/batch`,
       data
     ),
 

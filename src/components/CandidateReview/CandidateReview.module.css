@@ -1747,6 +1747,83 @@
   gap: 6px;
 }
 
+/* --- Manual Candidate Manager Tabs --- */
+.manualManagerTab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 8px 10px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+  text-align: left;
+  flex: 0 0 auto;
+}
+
+.manualManagerTab:hover .manualTabLabel {
+  color: #1e293b;
+}
+
+.manualTabActive {
+  border-bottom: 2px solid #2563eb !important;
+}
+
+.manualTabLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.manualTabLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.2;
+  transition: color 0.15s;
+}
+
+.manualTabActive .manualTabLabel {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.manualTabProgress {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+
+.manualTabActive .manualTabProgress {
+  color: #475569;
+}
+
+.manualTabComplete {
+  color: #16a34a !important;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.manualTabNoData {
+  color: #94a3b8;
+}
+
+.manualTabWarning {
+  color: #ea580c;
+  display: inline-flex;
+  align-items: center;
+}
+
 .quickFilterBar {
   display: flex;
   align-items: center;

@@ -158,3 +158,30 @@ export function areCandidateFieldValuesEqual(a: unknown, b: unknown): boolean {
 export function isCandidateFieldEdited(originalValue: unknown, submittedValue: unknown): boolean {
   return !areCandidateFieldValuesEqual(originalValue, submittedValue);
 }
+
+/**
+ * Authoritative check if a candidate is created via Manual Entry.
+ */
+export function isManualCandidate(candidate?: { extractionSource?: { extractionMethod?: string | null } | null } | null): boolean {
+  return candidate?.extractionSource?.extractionMethod?.toUpperCase() === 'MANUAL';
+}
+
+export const CANONICAL_EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6}$/;
+export const CANONICAL_URL_REGEX = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/.*)?$/;
+export const CANONICAL_PHONE_REGEX = /^[+0-9\s().-]{7,25}$/;
+
+export function isValidCandidateEmail(email: string): boolean {
+  if (!email || !email.trim()) return true;
+  return CANONICAL_EMAIL_REGEX.test(email.trim());
+}
+
+export function isValidCandidateUrl(url: string): boolean {
+  if (!url || !url.trim()) return true;
+  return CANONICAL_URL_REGEX.test(url.trim());
+}
+
+export function isValidCandidatePhone(phone: string): boolean {
+  if (!phone || !phone.trim()) return true;
+  return CANONICAL_PHONE_REGEX.test(phone.trim());
+}
+

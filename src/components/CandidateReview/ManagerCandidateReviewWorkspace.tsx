@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
 import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
-import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, type CandidateCategoryTab } from './candidateFieldDefinitions';
+import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, isManualCandidate, normalizeCandidateFieldValue, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
 import { parseEvidenceCitations } from './EvidenceSection';
 import styles from './CandidateReview.module.css';
@@ -114,11 +114,23 @@ interface ReviewStats {
   rejected: number;
   needsReview: number;
   pending: number;
+  notProvided: number;
   staffEdited: number;
   lowConfidence: number;
   percentage: number;
   canComplete: boolean;
   canSendBack: boolean;
+}
+
+interface SectionReviewSummary {
+  tab: TabType;
+  totalFields: number;
+  submittedCount: number;
+  reviewedCount: number;
+  pendingCount: number;
+  rejectedCount: number;
+  complete: boolean;
+  hasData: boolean;
 }
 
 function normalizeManagerStatus(status: unknown): ManagerUiStatus {
@@ -160,18 +172,71 @@ const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, k
     managerReviewStatus: normalizeManagerStatus(approval.status),
     managerReviewComment: approval.comment ?? field?.managerReviewComment,
     managerReviewedAt: approval.reviewedAt ?? field?.managerReviewedAt,
+    reviewedRevision: approval.reviewedRevision ?? field?.reviewedRevision,
     previousManagerReviewStatus: approval.previousStatus ? normalizeManagerStatus(approval.previousStatus) : field?.previousManagerReviewStatus,
     previousManagerReviewComment: approval.previousComment ?? field?.previousManagerReviewComment,
     previousSubmittedValue: approval.pendingValue ?? field?.previousSubmittedValue,
-    previousReviewedRevision: approval.reviewedRevision ?? field?.previousReviewedRevision,
+    previousReviewedRevision: approval.previousReviewedRevision ?? field?.previousReviewedRevision,
     changedInRevision: approval.changedInRevision ?? field?.changedInRevision,
   };
 };
 
+const getEffectiveReviewedValue = (field: any): unknown => {
+  if (!field) return undefined;
+  if (field.reviewedValue !== undefined) return field.reviewedValue;
+  if (field.staffReviewedValue !== undefined) return field.staffReviewedValue;
+  return field.value;
+};
+
+const getCandidateDomainValue = (candidate: CandidateResponse | null | undefined, key: string): unknown => {
+  if (!candidate) return undefined;
+  const c = candidate as any;
+  switch (key) {
+    case 'identity.legalName': return c.identity?.legalName;
+    case 'identity.tradeName': return c.identity?.tradeName;
+    case 'identity.taxCode': return c.identity?.taxCode;
+    case 'contact.website': return c.contact?.website;
+    case 'contact.address': return c.contact?.addresses?.[0] || c.contact?.address;
+    case 'contact.emails': return c.contact?.emails;
+    case 'contact.phones': return c.contact?.phones;
+    case 'business.businessModel': return c.business?.businessModel;
+    case 'business.industries': return c.business?.industries;
+    case 'business.products': return c.business?.products;
+    case 'business.markets': return c.business?.markets;
+    case 'business.targetCustomers': return c.business?.targetCustomers;
+    case 'companySize.employeeTier': return c.companySize?.employeeTier;
+    case 'companySize.employeeCount': return c.companySize?.employeeCount;
+    case 'companySize.revenueTier': return c.companySize?.revenueTier;
+    default: return undefined;
+  }
+};
+
+const isCandidateFieldProvided = (candidate: CandidateResponse | null | undefined, key: string): boolean => {
+  if (!candidate) return false;
+  const approval = fieldApprovalForKey(candidate, key);
+  if (approval && approval.status && approval.status !== 'STALE') {
+    return true;
+  }
+  const field = effectiveFieldForKey(candidate, key);
+  const effectiveVal = getEffectiveReviewedValue(field);
+  if (normalizeCandidateFieldValue(effectiveVal) !== null) {
+    return true;
+  }
+  const domainVal = getCandidateDomainValue(candidate, key);
+  return normalizeCandidateFieldValue(domainVal) !== null;
+};
+
 function getReviewStats(candidate: CandidateResponse | null | undefined): ReviewStats {
-  let total = 0, approved = 0, rejected = 0, needsReview = 0, pending = 0, staffEdited = 0, lowConfidence = 0;
+  const isManual = isManualCandidate(candidate);
+  let total = 0, approved = 0, rejected = 0, needsReview = 0, pending = 0, notProvided = 0, staffEdited = 0, lowConfidence = 0;
   const allKeys = Object.values(FIELD_DEFS).flat().map(f => f.key);
   for (const key of allKeys) {
+    const isProvided = !isManual || isCandidateFieldProvided(candidate, key);
+    if (isManual && !isProvided) {
+      notProvided++;
+      continue;
+    }
+
     const field = effectiveFieldForKey(candidate, key);
     const status = normalizeManagerStatus(field?.managerReviewStatus);
     total++;
@@ -180,10 +245,12 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
     else if (status === 'CHANGES_REQUESTED') needsReview++;
     else pending++;
 
-    const originalValue = field?.value;
-    const staffValue = field?.reviewedValue !== undefined ? field.reviewedValue : field?.staffReviewedValue;
-    if (isCandidateFieldEdited(originalValue, staffValue)) staffEdited++;
-    if (field?.confidence && field.confidence < 0.6) lowConfidence++;
+    if (!isManual) {
+      const originalValue = field?.value;
+      const staffValue = field?.reviewedValue !== undefined ? field.reviewedValue : field?.staffReviewedValue;
+      if (isCandidateFieldEdited(originalValue, staffValue)) staffEdited++;
+      if (field?.confidence && field.confidence < 0.6) lowConfidence++;
+    }
   }
   const reviewed = approved + rejected + needsReview;
   return {
@@ -193,10 +260,11 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
     rejected,
     needsReview,
     pending,
+    notProvided,
     staffEdited,
     lowConfidence,
-    percentage: total > 0 ? Math.round((reviewed / total) * 100) : 0,
-    canComplete: pending === 0 && rejected === 0 && needsReview === 0,
+    percentage: total > 0 ? Math.round((reviewed / total) * 100) : 100,
+    canComplete: total > 0 && pending === 0 && rejected === 0 && needsReview === 0,
     canSendBack: (rejected > 0 || needsReview > 0) && pending === 0,
   };
 }
@@ -293,13 +361,6 @@ const hasReviewedValue = (field: any): boolean => (
   field?.reviewedValue !== undefined || field?.staffReviewedValue !== undefined
 );
 
-const getEffectiveReviewedValue = (field: any): unknown => {
-  if (!field) return undefined;
-  if (field.reviewedValue !== undefined) return field.reviewedValue;
-  if (field.staffReviewedValue !== undefined) return field.staffReviewedValue;
-  return field.value;
-};
-
 /* ── Component ── */
 
 export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWorkspaceProps> = ({
@@ -331,6 +392,8 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [completingReview, setCompletingReview] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
+
+  const isManual = isManualCandidate(serverCandidate);
 
   const queryClient = useQueryClient();
 
@@ -411,17 +474,59 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   // ── Stats (reactive to serverCandidate) ──
   const stats = useMemo(() => getReviewStats(serverCandidate), [serverCandidate]);
 
+  const sectionSummaries = useMemo<Record<TabType, SectionReviewSummary>>(() => {
+    const map = {} as Record<TabType, SectionReviewSummary>;
+    for (const tab of CANDIDATE_TABS) {
+      const tabFields = FIELD_DEFS[tab];
+      const submittedFields = tabFields.filter(f => !isManual || isCandidateFieldProvided(serverCandidate, f.key));
+      let pendingCount = 0;
+      let reviewedCount = 0;
+      let rejectedCount = 0;
+
+      for (const f of submittedFields) {
+        const field = effectiveFieldForKey(serverCandidate, f.key);
+        const status = normalizeManagerStatus(field?.managerReviewStatus);
+        if (status === 'PENDING') {
+          pendingCount++;
+        } else {
+          reviewedCount++;
+          if (status === 'REJECTED' || status === 'CHANGES_REQUESTED') {
+            rejectedCount++;
+          }
+        }
+      }
+
+      const submittedCount = submittedFields.length;
+      map[tab] = {
+        tab,
+        totalFields: tabFields.length,
+        submittedCount,
+        reviewedCount,
+        pendingCount,
+        rejectedCount,
+        complete: submittedCount > 0 && reviewedCount === submittedCount,
+        hasData: submittedCount > 0,
+      };
+    }
+    return map;
+  }, [serverCandidate, isManual]);
+
+  const isActiveManagerReview =
+    serverCandidate?.status === 'PENDING_REVIEW' ||
+    serverCandidate?.status === 'CORRECTED';
+  const isEffectiveReadOnly = Boolean(isWorkspaceReadOnly) || !isActiveManagerReview;
+
   // ── Field Decision Handler (returns Promise for per-field loading) ──
   const handleFieldDecision = useCallback(async (
     dotKey: string,
-    decision: 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED',
+    decision: 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'PENDING',
     comment?: string,
     fieldLabel?: string
   ) => {
     const res = await candidateApi.reviewCandidateFields(projectId, candidateId, {
       [dotKey]: {
         managerReviewStatus: decision === 'CHANGES_REQUESTED' ? 'NEEDS_REVIEW' : decision,
-        managerReviewComment: comment,
+        managerReviewComment: decision === 'PENDING' ? undefined : comment,
         isManager: true,
         manager: true
       }
@@ -442,15 +547,20 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       addToast('Field approved', `${name} has been approved successfully.`);
     } else if (decision === 'REJECTED') {
       addToast('Field rejected', `${name} has been marked for revision.`);
+    } else if (decision === 'PENDING') {
+      addToast('Decision undone', `${name} has been returned to Pending Review.`);
     } else {
       addToast('Review requested', `${name} has been flagged for further review.`);
     }
   }, [projectId, candidateId, queryClient, addToast]);
 
   const handleApproveAllInTab = useCallback(async () => {
-    if (isWorkspaceReadOnly || !serverCandidate) return;
+    if (isEffectiveReadOnly || !serverCandidate) return;
 
     const pendingFields = FIELD_DEFS[activeTab].filter(f => {
+      if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) {
+        return false;
+      }
       const field = effectiveFieldForKey(serverCandidate, f.key);
       return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
     });
@@ -478,7 +588,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     } catch (e) {
       addToast('Error', 'Could not batch approve fields', 'error');
     }
-  }, [isWorkspaceReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast]);
+  }, [isEffectiveReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast, isManual]);
 
   // ── Complete Review ──
   const effectiveSubmissionId = submissionId || currentSubmission?.id;
@@ -504,7 +614,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       if (onReviewed) onReviewed();
     } catch (err: any) {
       const detail = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Please try again.';
-      const blockingMatch = /Field\s+([A-Za-z0-9_.]+)\s+is\s+(PENDING_REVIEW|REVISION_REQUIRED|STALE)/.exec(detail);
+      const blockingMatch = /Field\s+([A-Za-z0-9_.]+)\s+is\s+(PENDING_REVIEW|REVISION_REQUIRED|STALE|PENDING|REJECTED)/.exec(detail);
       if (blockingMatch) {
         const fieldKey = blockingMatch[1];
         const tab = tabForFieldKey(fieldKey);
@@ -562,6 +672,9 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const handleNextPending = useCallback(() => {
     for (const tab of CANDIDATE_TABS) {
       const pendingFields = FIELD_DEFS[tab].filter(f => {
+        if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) {
+          return false;
+        }
         const field = effectiveFieldForKey(serverCandidate, f.key);
         return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
       });
@@ -586,7 +699,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       }
     }
     addToast('All Done', 'No pending fields remaining.', 'success');
-  }, [activeTab, serverCandidate, addToast]);
+  }, [activeTab, serverCandidate, addToast, isManual]);
 
   // ── Tab Content ──
   const renderTabContent = () => {
@@ -618,12 +731,14 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             label={f.label}
             fieldKey={f.key}
             fieldResult={effectiveFieldForKey(serverCandidate, f.key)}
+            currentRevisionNumber={serverCandidate?.revisionNumber ?? 1}
             evidenceItems={evidenceItems}
             onDecision={async (decision, comment) => {
               await handleFieldDecision(f.key, decision, comment, f.label);
             }}
-            disabled={isWorkspaceReadOnly}
+            disabled={isEffectiveReadOnly}
             highlighted={highlightedField === f.key}
+            isManual={isManual}
           />
         </div>
       );
@@ -831,6 +946,14 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           </div>
 
           <div className={styles.managerReviewMeta}>
+            {isManual && (
+              <span
+                className={styles.managerReviewStatus}
+                style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe', fontWeight: 700 }}
+              >
+                MANUAL ENTRY
+              </span>
+            )}
             <span
               className={styles.managerReviewStatus}
               style={
@@ -867,7 +990,11 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
           <div className={styles.companyNameSubline}>
             Target Company: <strong>{companyLegalName}</strong>
-            {sourceDocNames.length > 0 && (
+            {isManual ? (
+              <span className={styles.sourceDocsInline}>
+                • Source: Manual Entry
+              </span>
+            ) : sourceDocNames.length > 0 && (
               <span className={styles.sourceDocsInline}>
                 • Source: {sourceDocNames.join(', ')}
               </span>
@@ -891,19 +1018,53 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         <div className={styles.mainContent}>
           <div className={styles.tabsContainer}>
             {CANDIDATE_TABS.map(tab => {
-              const tabPending = FIELD_DEFS[tab].filter(f => {
-                const field = effectiveFieldForKey(serverCandidate, f.key);
-                return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
-              }).length;
+              const summary = sectionSummaries[tab];
+              const isActive = activeTab === tab;
+
+              if (isManual) {
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`${styles.manualManagerTab} ${isActive ? styles.manualTabActive : ''}`}
+                    onClick={() => setActiveTab(tab)}
+                    title={`${tab}: ${summary.hasData ? `${summary.reviewedCount} of ${summary.submittedCount} reviewed` : 'No submitted data'}`}
+                  >
+                    <div className={styles.manualTabLabelRow}>
+                      <span className={styles.manualTabLabel}>{tab}</span>
+                      {summary.rejectedCount > 0 && (
+                        <span className={styles.manualTabWarning} title={`${summary.rejectedCount} field(s) need revision`}>
+                          <AlertTriangle size={12} />
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.manualTabProgress}>
+                      {!summary.hasData ? (
+                        <span className={styles.manualTabNoData}>No data</span>
+                      ) : summary.complete ? (
+                        <span className={styles.manualTabComplete}>
+                          <Check size={12} strokeWidth={2.5} /> {summary.reviewedCount}/{summary.submittedCount} reviewed
+                        </span>
+                      ) : (
+                        <span>
+                          {summary.reviewedCount}/{summary.submittedCount} reviewed
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              }
+
               return (
                 <button
                   key={tab}
-                  className={`${styles.tab} ${styles.managerTab} ${activeTab === tab ? styles.tabActive : ''}`}
+                  type="button"
+                  className={`${styles.tab} ${styles.managerTab} ${isActive ? styles.tabActive : ''}`}
                   onClick={() => setActiveTab(tab)}
                 >
                   {tab}
-                  <span className={styles.tabCount}>{FIELD_DEFS[tab].length}</span>
-                  {tabPending > 0 && <span className={styles.tabIssueDot}>{tabPending} pending</span>}
+                  <span className={styles.tabCount}>{summary.totalFields}</span>
+                  {summary.pendingCount > 0 && <span className={styles.tabIssueDot}>{summary.pendingCount} pending</span>}
                 </button>
               );
             })}
@@ -912,9 +1073,9 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           <div className={styles.quickFilterBar}>
             <div>
               <span>Review Fields</span>
-              <small>{stats.reviewed} / {stats.total} reviewed</small>
+              <small>{stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'}</small>
             </div>
-            {!isWorkspaceReadOnly && (
+            {!isEffectiveReadOnly && (
               <div className={styles.quickFilterActions}>
                 <button
                   type="button"
@@ -941,7 +1102,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             {/* Progress bar */}
             <div className={styles.progressBarWrap}>
               <div className={styles.managerProgressLabels}>
-                <span>{stats.reviewed} / {stats.total} reviewed</span>
+                <span>{stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'}</span>
               </div>
               <div className={styles.progressBarTrack}>
                 <div
@@ -967,6 +1128,15 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 <span className={styles.managerStatPending}>Pending</span>
                 <strong>{stats.pending}</strong>
               </div>
+
+              {isManual && stats.notProvided > 0 && (
+                <div className={styles.managerStatRow}>
+                  <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Not provided
+                  </span>
+                  <strong style={{ color: '#94a3b8' }}>{stats.notProvided}</strong>
+                </div>
+              )}
             </div>
 
             {/* Next Pending */}
@@ -1036,7 +1206,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                   <button
                     className={styles.btnCompleteDisabled}
                     disabled
-                    title={`${stats.pending} fields still need a decision`}
+                    title={isManual ? `${stats.pending} submitted field(s) still need a decision` : `${stats.pending} fields still need a decision`}
                   >
                     <CheckCircle size={16} /> Approve Candidate
                   </button>
