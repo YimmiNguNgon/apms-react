@@ -43,6 +43,7 @@ const writeActivePageToLocation = (pageWithPossibleQuery: string) => {
 import { ManagerCompanyProfiles } from './pages/ManagerCompanyProfiles';
 import { CompanyList }     from './pages/CompanyList';
 import { CompanyDetail }   from './pages/CompanyDetail';
+import { RelationshipAssessmentDetailPage } from './pages/RelationshipAssessmentDetailPage';
 import { OwnerProfilePage } from './pages/OwnerProfilePage';
 import { OwnerInternalNewsView } from './pages/OwnerInternalNewsView';
 import { VerifyQueue }     from './pages/VerifyQueue';
@@ -286,6 +287,7 @@ const MainApp: React.FC = () => {
       case 'companies':        return <CompanyList setActivePage={navigateToPage} />;
       case 'my-companies':     return <ManagerCompanyProfiles setActivePage={navigateToPage} />;
       case 'company-detail':   return <CompanyDetail setActivePage={navigateToPage} />;
+      case 'relationship-assessment-detail': return <RelationshipAssessmentDetailPage setActivePage={navigateToPage} />;
       case 'owner-profile':    return <OwnerProfilePage setActivePage={navigateToPage} />;
       case 'owner-internal-news': return <OwnerInternalNewsView />;
       case 'company-profiles': return <CompanyList setActivePage={navigateToPage} />;

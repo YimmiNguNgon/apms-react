@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ListingTabDef, ListingTabId } from './utils';
-import { LISTING_TABS } from './utils';
+import { LISTING_TABS, canUseRelationshipCloseness } from './utils';
 import styles from '../CompanyDetail.module.css';
 
 export type { ListingTabId };
@@ -12,18 +12,23 @@ interface ListingTabsProps {
   userRole?: string | null;
   isOwnerProfile?: boolean;
   isDrawerMode?: boolean;
+  relationshipType?: string | null;
+  canAccessRelationshipCloseness?: boolean;
   tabs?: ListingTabDef[];
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, tabs: customTabs }) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, relationshipType, canAccessRelationshipCloseness, tabs: customTabs }) => {
   const tabs = customTabs || LISTING_TABS.filter((tab) => {
-    if (isDrawerMode && (tab.id === 'internal-news' || tab.id === 'documents')) {
+    if (isDrawerMode && (tab.id === 'internal-news' || tab.id === 'documents' || tab.id === 'relationship-closeness')) {
       return false;
     }
     if (tab.id === 'internal-news' && userRole === 'BUSINESS_DEVELOPMENT_STAFF') {
       return false;
     }
-    if (isOwnerProfile && (tab.id === 'internal-news' || tab.id === 'documents')) {
+    if (isOwnerProfile && (tab.id === 'internal-news' || tab.id === 'documents' || tab.id === 'relationship-closeness')) {
+      return false;
+    }
+    if (tab.id === 'relationship-closeness' && !canUseRelationshipCloseness(relationshipType, isOwnerProfile, isDrawerMode, canAccessRelationshipCloseness)) {
       return false;
     }
     return true;

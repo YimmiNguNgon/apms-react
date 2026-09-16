@@ -5,12 +5,12 @@ import { companyProfileApi } from '../API/companyProfileApi';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
 import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse, UpdateCompanyProfileRequest, CompanyProfileMember } from '../types/domain';
-import { CompanyRelationshipClosenessPanel } from '../components/CompanyRelationshipClosenessPanel';
-import styles from './CompanyDetail.module.css';
+import { RelationshipClosenessTab } from '../components/RelationshipCloseness/RelationshipClosenessTab';
 import {
   ListingTabBar,
   type ListingTabId,
 } from './companyDetail/ListingTabs';
+import { canUseRelationshipCloseness } from './companyDetail/utils';
 import BoardMembersTab from './companyDetail/BoardMembersTab';
 import FinancialsTab from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
@@ -42,7 +42,7 @@ const C = {
     color: '#0F172A',
     fontFamily: 'Inter, system-ui, sans-serif',
   } as const,
-  container: { maxWidth: '1440px', margin: '0 auto' } as const,
+  container: { maxWidth: '1560px', margin: '0 auto' } as const,
   card: {
     background: '#FFFFFF',
     border: '1px solid #E2E8F0',
@@ -342,12 +342,14 @@ interface NavContext {
   source: CompanyDetailSource;
   projectId: number | null;
   companyId: string | null;
+  tab?: ListingTabId | null;
 }
 
 const parseNavContext = (propCompanyId?: string): NavContext => {
   let sourceParam: string | null = null;
   let projectIdParam: string | null = null;
   let companyIdParam: string | null = null;
+  let tabParam: ListingTabId | null = null;
 
   if (typeof window !== 'undefined') {
     const hash = window.location.hash;
@@ -358,6 +360,7 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
       sourceParam = params.get('source');
       projectIdParam = params.get('projectId');
       companyIdParam = params.get('companyId') || params.get('profileId');
+      tabParam = (params.get('tab') as ListingTabId) || null;
     }
   }
 
@@ -386,6 +389,7 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
     source,
     projectId,
     companyId: effectiveCompanyId,
+    tab: tabParam,
   };
 };
 
@@ -401,7 +405,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [exchangeDraft, setExchangeDraft] = useState('NONE');
   const [listingSaving, setListingSaving] = useState(false);
   const [listingMsg, setListingMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<ListingTabId>('overview');
+  const [activeTab, setActiveTab] = useState<ListingTabId>(() => parseNavContext(companyId).tab || 'overview');
   const [intelligence, setIntelligence] = useState<OwnerCompanyIntelligenceResponse | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
 
@@ -475,7 +479,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   useEffect(() => {
     const handleNavChange = () => {
-      setNavContext(parseNavContext(companyId));
+      const parsed = parseNavContext(companyId);
+      setNavContext(parsed);
+      if (parsed.tab) {
+        setActiveTab(parsed.tab);
+      }
     };
     handleNavChange();
     window.addEventListener('hashchange', handleNavChange);
@@ -604,6 +612,31 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       controller.abort();
     };
   }, [resolvedId, currentUser, reloadTrigger]);
+
+  // Defensive Route / Tab Guard:
+  // If company is not eligible for Relationship Closeness and current tab is relationship-closeness,
+  // automatically fallback to overview without mounting RelationshipClosenessTab or calling APIs.
+  useEffect(() => {
+    if (!profile) return;
+    const isEligible = canUseRelationshipCloseness(profile.relationshipType, isOwnerProfile, isDrawerMode, profile.canAccessRelationshipCloseness);
+    if (!isEligible && activeTab === 'relationship-closeness') {
+      setActiveTab('overview');
+      if (typeof window !== 'undefined') {
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.get('tab') === 'relationship-closeness') {
+            url.searchParams.set('tab', 'overview');
+            window.history.replaceState({}, '', url.toString());
+          }
+          if (window.location.hash.includes('tab=relationship-closeness')) {
+            window.location.hash = window.location.hash.replace('tab=relationship-closeness', 'tab=overview');
+          }
+        } catch {
+          // ignore URL rewrite error
+        }
+      }
+    }
+  }, [profile, activeTab, isOwnerProfile, isDrawerMode]);
 
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
@@ -934,11 +967,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
           )}
 
-          {/* Top Row: Legal & Identity Information + Relationship Closeness */}
-          <div className={!isOwnerProfile ? styles.overviewTopRow : styles.overviewTopRowSingle}>
-            {/* Panel 1: Legal Identity */}
-            <section style={C.card}>
-              <div style={C.cardHeader}>
+          {/* Panel 1: Legal Identity */}
+          <section style={C.card}>
+            <div style={C.cardHeader}>
               <h2 style={C.h2}>Legal & Identity Information</h2>
             </div>
             <div style={C.fieldGrid}>
@@ -1124,17 +1155,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div> */}
           </section>
 
-          {/* Relationship Closeness Panel (beside Legal & Identity for external companies) */}
-          {!isOwnerProfile && (
-            <CompanyRelationshipClosenessPanel
-              companyProfileId={relationshipClosenessProfileId}
-              currentUserRole={currentUser?.role}
-            />
-          )}
-        </div>
-
-        {/* Panel 2: Contact & Headquarters */}
-        <section style={C.card}>
+          {/* Panel 2: Contact & Headquarters */}
+          <section style={C.card}>
             <div style={C.cardHeader}>
               <h2 style={C.h2}>Contact & Size Information</h2>
             </div>
@@ -1824,6 +1846,18 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <DocumentsTab companyProfileId={relationshipClosenessProfileId} userRole={currentUser?.role} currentUserId={currentUser?.id} />
           </div>
         );
+      case 'relationship-closeness':
+        if (!canUseRelationshipCloseness(profile?.relationshipType, isOwnerProfile, isDrawerMode, profile?.canAccessRelationshipCloseness)) return null;
+        return (
+          <div style={{ padding: '4px 0' }}>
+            <RelationshipClosenessTab
+              companyProfileId={relationshipClosenessProfileId}
+              currentUserRole={currentUser?.role}
+              companyName={displayName}
+              setActivePage={setActivePage}
+            />
+          </div>
+        );
       default:
         return null;
     }
@@ -2303,7 +2337,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       )}
 
       {/* Navigation Tabs */}
-      <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId={resolvedId} userRole={currentUser?.role} isOwnerProfile={isOwnerProfile} isDrawerMode={isDrawerMode} />
+      <ListingTabBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        companyId={resolvedId}
+        userRole={currentUser?.role}
+        isOwnerProfile={isOwnerProfile}
+        isDrawerMode={isDrawerMode}
+        relationshipType={profile?.relationshipType}
+        canAccessRelationshipCloseness={profile?.canAccessRelationshipCloseness}
+      />
 
         {renderTabContent()}
 

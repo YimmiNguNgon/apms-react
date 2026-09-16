@@ -162,6 +162,7 @@ export interface ProfileResponse {
   canEditProfile?: boolean;
   canManageVisibility?: boolean;
   canPublish?: boolean;
+  canAccessRelationshipCloseness?: boolean;
 }
 
 export type CompanyProfileChangeSource =

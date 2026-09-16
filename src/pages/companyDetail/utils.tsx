@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, FileText, LayoutGrid, Newspaper, TrendingUp, Users, Shield } from 'lucide-react';
+import { Building2, FileText, LayoutGrid, Newspaper, TrendingUp, Users, Shield, Star } from 'lucide-react';
 import type { ListingTabResponse } from '../../types/listingData';
 
 export type ListingTabId =
@@ -11,6 +11,7 @@ export type ListingTabId =
   | 'financials'
   | 'news'
   | 'internal-news'
+  | 'relationship-closeness'
   | 'documents';
 
 export interface ListingTabDef {
@@ -28,6 +29,7 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'documents', label: 'Contract', icon: <FileText size={14} /> },
   { id: 'news', label: 'News', icon: <Newspaper size={14} /> },
   { id: 'internal-news', label: 'Internal News', icon: <Shield size={14} /> },
+  { id: 'relationship-closeness', label: 'Relationship Closeness', icon: <Star size={14} /> },
 ];
 
 const tabDataCache = new Map<string, unknown>();
@@ -134,4 +136,28 @@ export const DOC_TYPE_LABELS: Record<number, string> = {
   3: 'Báo cáo thường niên',
   4: 'Tài liệu kiểm toán',
   5: 'Tài liệu ĐHĐCĐ',
+};
+
+export const RELATIONSHIP_CLOSENESS_ELIGIBLE_TYPES = new Set<string>([
+  'PARTNER',
+  'PARTNER_WITH',
+  'CUSTOMER',
+  'CUSTOMER_OF',
+  'SUPPLIER',
+  'SUPPLIER_OF',
+]);
+
+export const canUseRelationshipCloseness = (
+  relationshipType?: string | null,
+  isOwnerProfile?: boolean,
+  isDrawerMode?: boolean,
+  canAccessRelationshipCloseness?: boolean
+): boolean => {
+  if (isOwnerProfile || isDrawerMode) return false;
+  if (canAccessRelationshipCloseness !== true) return false;
+  if (!relationshipType) return false;
+
+  return RELATIONSHIP_CLOSENESS_ELIGIBLE_TYPES.has(
+    relationshipType.trim().toUpperCase()
+  );
 };

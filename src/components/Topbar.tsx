@@ -25,6 +25,9 @@ export type NotificationItem = {
   actionType?: string | null;
   documentId?: string | null;
   rejectReason?: string | null;
+  companyProfileId?: string | null;
+  entityId?: string | null;
+  entityType?: string | null;
   isRead: boolean;
   createdAt?: string | null;
 };
@@ -36,6 +39,13 @@ const notificationColor: Record<NotificationItem['type'], string> = {
   AI: '#0EA5E9',
   REPORT: '#F59E0B',
   RISK: '#EF4444',
+};
+
+const getNotificationColor = (item: NotificationItem): string => {
+  if (item.actionType === 'COMPANY_PROFILE_UPDATED') return '#2563EB'; // Blue
+  if (item.actionType === 'RELATIONSHIP_ASSESSMENT_COMPLETED') return '#10B981'; // Green
+  if (item.actionType === 'RELATIONSHIP_ASSESSMENT_OWNER_ADJUSTED') return '#8B5CF6'; // Purple
+  return notificationColor[item.type] ?? '#2563EB';
 };
 
 function formatNotificationTime(value?: string | null): string {
@@ -110,6 +120,8 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
   const [showLogout, setShowLogout] = useState(false);
   const [searchVal, setSearchVal] = useState('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -132,10 +144,16 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     if (!currentUser) return;
     setNotificationsLoading(true);
     try {
-      const res = await api.get<PageResponse<NotificationItem>>('/notifications', {
-        params: { page: 0, size: 8 },
-      });
-      setNotifications(res.data?.content ?? []);
+      const [listRes, countRes] = await Promise.all([
+        api.get<PageResponse<NotificationItem>>('/notifications', {
+          params: { page: 0, size: 8 },
+        }),
+        api.get<PageResponse<NotificationItem>>('/notifications', {
+          params: { unreadOnly: true, page: 0, size: 1 },
+        }),
+      ]);
+      setNotifications(listRes.data?.content ?? []);
+      setUnreadCount(countRes.data?.totalElements ?? 0);
     } catch (error) {
       console.warn('Cannot load notifications:', error);
     } finally {
@@ -145,6 +163,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
   useEffect(() => {
     setNotifications([]);
+    setUnreadCount(0);
     if (!currentUser) return;
 
     void fetchNotifications();
@@ -166,8 +185,6 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
   if (!currentUser) return null;
 
   const pageLabelKey = PAGE_LABEL_KEYS[activePage] || 'topbar.dashboard';
-  const unreadCount = notifications.filter((item) => !item.isRead).length;
-  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   const handleMarkAllAsRead = async () => {
     if (unreadCount === 0 || isMarkingAllRead) return;
@@ -175,6 +192,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     setNotifications((current) =>
       current.map((notification) => ({ ...notification, isRead: true }))
     );
+    setUnreadCount(0);
     try {
       await api.patch('/notifications/read-all', {});
     } catch (error) {
@@ -190,6 +208,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
       setNotifications((current) => current.map((notification) => (
         notification.id === item.id ? { ...notification, isRead: true } : notification
       )));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
       try {
         await api.patch(`/notifications/${item.id}/read`, {});
       } catch (error) {
@@ -200,12 +219,21 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
 
     const destination = resolveNotificationDestination(item, currentUser.role);
     if (destination) {
-      localStorage.setItem('apms-active-project', String(destination.projectId));
-      localStorage.setItem('apms-project-detail-active-tab', destination.tab);
-      if (destination.taskId) {
-        localStorage.setItem('apms-project-detail-focus-task-id', String(destination.taskId));
+      if (destination.target) {
+        if (destination.companyProfileId) {
+          localStorage.setItem('apms-selected-company', destination.companyProfileId);
+        }
+        setActivePage(destination.target);
+      } else if (destination.projectId) {
+        localStorage.setItem('apms-active-project', String(destination.projectId));
+        if (destination.tab) {
+          localStorage.setItem('apms-project-detail-active-tab', destination.tab);
+        }
+        if (destination.taskId) {
+          localStorage.setItem('apms-project-detail-focus-task-id', String(destination.taskId));
+        }
+        setActivePage('project-detail');
       }
-      setActivePage('project-detail');
     }
     setShowNotif(false);
   };
@@ -298,7 +326,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
                       className={`notif-item ${item.isRead ? '' : 'unread'}`}
                       onClick={() => void handleNotificationClick(item)}
                     >
-                      <div className="notif-dot" style={{ background: notificationColor[item.type] ?? '#2563EB' }} />
+                      <div className="notif-dot" style={{ background: getNotificationColor(item) }} />
                       <div className="notif-content">
                         <div className="notif-title">{item.title}</div>
                         {item.message && <div className="notif-message">{item.message}</div>}

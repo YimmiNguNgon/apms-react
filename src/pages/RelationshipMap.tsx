@@ -2,7 +2,7 @@
 // 3-column Layout: Left Filters Sidebar | Center Interactive Network Graph | Right Analytics Sidebar
 // Top KPI Row | Below-Graph Drawer on Node Click | Level-based Circular Network Redesign
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Minus, Plus, RotateCcw, Building, Search, X, ArrowRight, CheckCircle2, AlertTriangle, AlertCircle, Play } from 'lucide-react';
 import { api } from '../services/api';
@@ -22,13 +22,82 @@ import { CompanyDetail } from './CompanyDetail';
 // ─── Types & Interfaces ────────────────────────────────────────────────────────
 export type GroupKey = 'ALL' | 'partner' | 'supplier' | 'competitor' | 'customer' | 'potential-partner';
 
+export type RelationshipGroupFilter =
+  | 'PARTNER'
+  | 'CUSTOMER'
+  | 'SUPPLIER'
+  | 'COMPETITOR'
+  | 'POTENTIAL_PARTNER';
+
+export const FILTER_TO_GROUP_KEY: Record<RelationshipGroupFilter, GroupKey> = {
+  PARTNER: 'partner',
+  CUSTOMER: 'customer',
+  SUPPLIER: 'supplier',
+  COMPETITOR: 'competitor',
+  POTENTIAL_PARTNER: 'potential-partner',
+};
+
+export const getGroupFilterLabel = (group: RelationshipGroupFilter): string => {
+  switch (group) {
+    case 'PARTNER': return 'Partner';
+    case 'CUSTOMER': return 'Customer';
+    case 'SUPPLIER': return 'Supplier';
+    case 'COMPETITOR': return 'Competitor';
+    case 'POTENTIAL_PARTNER': return 'Potential Partner';
+  }
+};
+
+export interface OwnerRelationshipClosenessSummary {
+  companyProfileId: string;
+  hasFinalizedAssessment: boolean;
+  score: number | null;
+  rank: 'A' | 'B' | 'C' | 'D' | null;
+  rankDescription: string | null;
+  versionNumber: number | null;
+  completedAt: string | null;
+  criteria: {
+    commercial: number | null;
+    interaction: number | null;
+    strategic: number | null;
+    network: number | null;
+    engagement: number | null;
+    trust: number | null;
+  } | null;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+const isClosenessEligibleGroup = (group: GroupKey): boolean => {
+  return group === 'partner' || group === 'customer' || group === 'supplier';
+};
+
+const formatDate = (isoString?: string | null): string => {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return isoString;
+  }
+};
+
+
 const toGroupKey = (relationshipType?: string): GroupKey => {
   const t = (relationshipType || '').toUpperCase();
   switch (t) {
+    case 'PARTNER':
     case 'PARTNER_WITH': return 'partner';
+    case 'COMPETITOR':
     case 'COMPETITOR_OF': return 'competitor';
+    case 'SUPPLIER':
     case 'SUPPLIER_OF': return 'supplier';
+    case 'CUSTOMER':
     case 'CUSTOMER_OF': return 'customer';
+    case 'POTENTIAL_PARTNER':
     case 'POTENTIAL_PARTNER_OF': return 'potential-partner';
     default: return 'partner';
   }
@@ -101,6 +170,114 @@ const getCurvePath = (x1: number, y1: number, x2: number, y2: number, bend = 20)
   };
 };
 
+export const SVG_VIEWBOX_WIDTH = 1400;
+export const SVG_VIEWBOX_HEIGHT = 900;
+
+export interface RingConfig {
+  radius: number;
+  count: number;
+  startAngleOffset: number;
+}
+
+export function computeRingDistribution(totalCount: number): RingConfig[] {
+  if (totalCount <= 0) return [];
+  if (totalCount <= 8) {
+    return [{ radius: 280, count: totalCount, startAngleOffset: 0 }];
+  }
+  if (totalCount <= 16) {
+    const count1 = Math.min(6, Math.max(3, Math.round(totalCount * (230 / (230 + 360)))));
+    const count2 = totalCount - count1;
+    return [
+      { radius: 230, count: count1, startAngleOffset: 0 },
+      { radius: 360, count: count2, startAngleOffset: Math.PI / count2 },
+    ];
+  }
+  if (totalCount <= 28) {
+    const sumR = 220 + 330 + 440;
+    const c1 = Math.min(6, Math.max(3, Math.round(totalCount * (220 / sumR))));
+    const c2 = Math.min(10, Math.max(5, Math.round(totalCount * (330 / sumR))));
+    const c3 = totalCount - c1 - c2;
+    return [
+      { radius: 220, count: c1, startAngleOffset: 0 },
+      { radius: 330, count: c2, startAngleOffset: Math.PI / c2 },
+      { radius: 440, count: c3, startAngleOffset: Math.PI / (2 * c3) },
+    ];
+  }
+  // 4 rings for 29+ nodes
+  const radii = [200, 310, 420, 530];
+  const sumR = radii.reduce((a, b) => a + b, 0);
+  let remaining = totalCount;
+  const rings: RingConfig[] = [];
+  radii.forEach((r, idx) => {
+    if (idx === radii.length - 1) {
+      rings.push({ radius: r, count: remaining, startAngleOffset: (idx % 2) * (Math.PI / Math.max(1, remaining)) });
+    } else {
+      const maxForRing = idx === 0 ? 6 : (idx === 1 ? 10 : 14);
+      const c = Math.min(maxForRing, Math.max(3, Math.round(totalCount * (r / sumR))));
+      const allocated = Math.min(remaining - (radii.length - 1 - idx), c);
+      rings.push({ radius: r, count: allocated, startAngleOffset: (idx % 2) * (Math.PI / Math.max(1, allocated)) });
+      remaining -= allocated;
+    }
+  });
+  return rings;
+}
+
+export const TOGGLE_GROUPS_CONFIG: Array<{
+  key: RelationshipGroupFilter;
+  labelKey: string;
+  defaultLabel: string;
+  color: string;
+  activeBg: string;
+  activeBorder: string;
+  activeText: string;
+}> = [
+  {
+    key: 'PARTNER',
+    labelKey: 'chips.partner',
+    defaultLabel: 'Partner',
+    color: '#10B981',
+    activeBg: '#ecfdf5',
+    activeBorder: '#10B981',
+    activeText: '#065f46',
+  },
+  {
+    key: 'CUSTOMER',
+    labelKey: 'chips.customer',
+    defaultLabel: 'Customer',
+    color: '#2563EB',
+    activeBg: '#eff6ff',
+    activeBorder: '#2563EB',
+    activeText: '#1e40af',
+  },
+  {
+    key: 'SUPPLIER',
+    labelKey: 'chips.supplier',
+    defaultLabel: 'Supplier',
+    color: '#F59E0B',
+    activeBg: '#fffbeb',
+    activeBorder: '#F59E0B',
+    activeText: '#92400e',
+  },
+  {
+    key: 'COMPETITOR',
+    labelKey: 'chips.competitor',
+    defaultLabel: 'Competitor',
+    color: '#EF4444',
+    activeBg: '#fef2f2',
+    activeBorder: '#EF4444',
+    activeText: '#991b1b',
+  },
+  {
+    key: 'POTENTIAL_PARTNER',
+    labelKey: 'chips.potentialPartner',
+    defaultLabel: 'Potential Partner',
+    color: '#8B5CF6',
+    activeBg: '#f5f3ff',
+    activeBorder: '#8B5CF6',
+    activeText: '#5b21b6',
+  },
+];
+
 interface RelationshipMapProps {
   setActivePage?: (page: string) => void;
 }
@@ -128,7 +305,23 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   // Filters (Shared between left sidebar & local toolbar)
   const [search, setSearch] = useState('');
-  const [groupFilter, setGroupFilter] = useState<GroupKey>('ALL');
+  const [activeRelationshipGroup, setActiveRelationshipGroup] = useState<RelationshipGroupFilter>('PARTNER');
+
+  const supportsRelationshipCloseness =
+    activeRelationshipGroup === 'PARTNER' ||
+    activeRelationshipGroup === 'CUSTOMER' ||
+    activeRelationshipGroup === 'SUPPLIER';
+
+  const handleSelectRelationshipGroup = (newGroup: RelationshipGroupFilter) => {
+    if (newGroup === activeRelationshipGroup) return;
+    setActiveRelationshipGroup(newGroup);
+    setSelectedNode(null);
+    setHoveredNodeId(null);
+    setTooltipNode(null);
+    setTooltipPos(null);
+    setExpandedL1Ids(new Set());
+    setClosenessFilter('ALL');
+  };
   const [minHealth, setMinHealth] = useState<number>(0);
   const [industryFilter, setIndustryFilter] = useState('All');
   const [depthFilter] = useState<'direct' | '2nd-degree' | 'all'>('2nd-degree');
@@ -136,6 +329,18 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   // Incremental Expansion (Initial state shows Level 0 + Level 1. Click L1 node to expand L2 nodes)
   const [expandedL1Ids, setExpandedL1Ids] = useState<Set<string>>(new Set());
+
+  // Closeness Real Data State & Filters
+  const [closenessMap, setClosenessMap] = useState<Map<string, OwnerRelationshipClosenessSummary>>(new Map());
+  const [isClosenessLoading, setIsClosenessLoading] = useState(false);
+  const [closenessFilter, setClosenessFilter] = useState<'ALL' | 'A' | 'B' | 'C' | 'D' | 'UNASSESSED'>('ALL');
+
+  // Compact Tooltip State (short delay)
+  const [tooltipNode, setTooltipNode] = useState<GraphNode | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+  const tooltipOpenTimerRef = useRef<any>(null);
+  const tooltipCloseTimerRef = useRef<any>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Interactive Graph Controls
   const [zoom, setZoom] = useState<number>(1);
@@ -297,6 +502,311 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     return found?.id || nodes[0]?.id || '';
   }, [ownerCompanyId, ownerName, nodes]);
 
+  // ── Real Relationship Closeness Fetching (Promise.allSettled + Cache) ──
+  useEffect(() => {
+    if (nodes.length === 0) return;
+
+    const eligibleNodes = nodes.filter(
+      (n) => n.id !== centerId && isClosenessEligibleGroup(n.group)
+    );
+
+    if (eligibleNodes.length === 0) return;
+
+    const missingNodes = eligibleNodes.filter((n) => !closenessMap.has(n.id));
+    if (missingNodes.length === 0) return;
+
+    setIsClosenessLoading(true);
+
+    void Promise.allSettled(
+      missingNodes.map(async (n) => {
+        const res = await api.get<any>(
+          `/company-profiles/${encodeURIComponent(n.id)}/relationship-assessments/overview`
+        );
+        return { nodeId: n.id, data: res.data };
+      })
+    ).then((results) => {
+      setClosenessMap((prev) => {
+        const next = new Map(prev);
+        results.forEach((result, idx) => {
+          const node = missingNodes[idx];
+          if (!node) return;
+
+          if (result.status === 'fulfilled' && result.value?.data) {
+            const overviewData = result.value.data;
+            const off = overviewData.officialFinalizedAssessment;
+            if (off && (off.officialScore !== null || off.managerTotalScore !== null)) {
+              next.set(node.id, {
+                companyProfileId: node.id,
+                hasFinalizedAssessment: true,
+                score: off.officialScore ?? off.managerTotalScore ?? null,
+                rank: (off.officialRank ?? off.managerRank ?? null) as any,
+                rankDescription: off.officialRankDescription ?? off.managerRankDescription ?? null,
+                versionNumber: off.versionNumber ?? null,
+                completedAt: off.finalizedAt ?? off.updatedAt ?? null,
+                criteria: {
+                  commercial: off.commercialAwardedScore ?? null,
+                  interaction: off.cooperationScore ?? null,
+                  strategic: off.strategicScore ?? null,
+                  network: off.relationshipNetworkScore ?? null,
+                  engagement: off.engagementScore ?? null,
+                  trust: off.qualitativeScore ?? null, // Correction 3: Explicitly qualitativeScore
+                },
+                isLoading: false,
+                isError: false,
+              });
+            } else {
+              next.set(node.id, {
+                companyProfileId: node.id,
+                hasFinalizedAssessment: false,
+                score: null,
+                rank: null,
+                rankDescription: null,
+                versionNumber: null,
+                completedAt: null,
+                criteria: null,
+                isLoading: false,
+                isError: false,
+              });
+            }
+          } else {
+            next.set(node.id, {
+              companyProfileId: node.id,
+              hasFinalizedAssessment: false,
+              score: null,
+              rank: null,
+              rankDescription: null,
+              versionNumber: null,
+              completedAt: null,
+              criteria: null,
+              isLoading: false,
+              isError: true,
+            });
+          }
+        });
+        return next;
+      });
+      setIsClosenessLoading(false);
+    });
+  }, [nodes, centerId, dataVersion]);
+
+  // ── Unfiltered Group Counts (Authoritative Real Graph Data) ────────
+  const groupCounts = useMemo(() => {
+    const uniqueNodesMap = new Map<string, GraphNode>();
+    nodes.forEach((n) => {
+      if (n.id && n.id !== centerId && !uniqueNodesMap.has(n.id)) {
+        uniqueNodesMap.set(n.id, n);
+      }
+    });
+
+    const uniqueNodes = Array.from(uniqueNodesMap.values());
+
+    return {
+      PARTNER: uniqueNodes.filter((n) => n.group === 'partner').length,
+      CUSTOMER: uniqueNodes.filter((n) => n.group === 'customer').length,
+      SUPPLIER: uniqueNodes.filter((n) => n.group === 'supplier').length,
+      COMPETITOR: uniqueNodes.filter((n) => n.group === 'competitor').length,
+      POTENTIAL_PARTNER: uniqueNodes.filter((n) => n.group === 'potential-partner').length,
+    };
+  }, [nodes, centerId]);
+
+  // ── Closeness Analytics (Derived Dynamically for Active Relationship Group) ────────
+  const activeGroupKey = FILTER_TO_GROUP_KEY[activeRelationshipGroup];
+  const isGroupEligibleForCloseness = isClosenessEligibleGroup(activeGroupKey);
+
+  const closenessAnalytics = useMemo(() => {
+    if (!isGroupEligibleForCloseness) {
+      return {
+        isEligible: false,
+        totalEligible: 0,
+        assessedCount: 0,
+        averageScore: 0,
+        rankA: 0,
+        rankB: 0,
+        rankC: 0,
+        rankD: 0,
+        unassessed: 0,
+        needsAttention: [] as Array<{ id: string; name: string; score: number; rank: string }>,
+        unassessedList: [] as Array<{ id: string; name: string }>,
+      };
+    }
+
+    const uniqueGroupNodes = Array.from(
+      new Map(
+        nodes
+          .filter((n) => n.id !== centerId && n.group === activeGroupKey)
+          .map((n) => [n.id, n])
+      ).values()
+    );
+
+    let assessedCount = 0;
+    let scoreSum = 0;
+    let rankA = 0;
+    let rankB = 0;
+    let rankC = 0;
+    let rankD = 0;
+    let unassessed = 0;
+
+    const needsAttention: Array<{ id: string; name: string; score: number; rank: string }> = [];
+    const unassessedList: Array<{ id: string; name: string }> = [];
+
+    uniqueGroupNodes.forEach((node) => {
+      const summary = closenessMap.get(node.id);
+      if (summary?.hasFinalizedAssessment && summary.score !== null) {
+        assessedCount++;
+        scoreSum += summary.score;
+        if (summary.rank === 'A') rankA++;
+        else if (summary.rank === 'B') rankB++;
+        else if (summary.rank === 'C') rankC++;
+        else if (summary.rank === 'D') rankD++;
+
+        // Correction 4: Rank C/D (score < 60)
+        if (summary.rank === 'C' || summary.rank === 'D' || summary.score < 60) {
+          needsAttention.push({
+            id: node.id,
+            name: node.name,
+            score: summary.score,
+            rank: summary.rank || 'C',
+          });
+        }
+      } else {
+        unassessed++;
+        unassessedList.push({ id: node.id, name: node.name });
+      }
+    });
+
+    const averageScore = assessedCount > 0 ? scoreSum / assessedCount : 0;
+
+    return {
+      isEligible: true,
+      totalEligible: uniqueGroupNodes.length,
+      assessedCount,
+      averageScore,
+      rankA,
+      rankB,
+      rankC,
+      rankD,
+      unassessed,
+      needsAttention,
+      unassessedList,
+    };
+  }, [nodes, centerId, closenessMap, activeGroupKey, isGroupEligibleForCloseness]);
+
+  // ── Closeness Tooltip Handlers (Short Open/Close Delays) ────────────
+  const handleNodeMouseEnter = (node: GraphNode, e: React.MouseEvent<HTMLDivElement>) => {
+    if (node.id === centerId || !isClosenessEligibleGroup(node.group)) {
+      return;
+    }
+    if (tooltipCloseTimerRef.current) {
+      clearTimeout(tooltipCloseTimerRef.current);
+    }
+    const containerRect = canvasContainerRef.current?.getBoundingClientRect();
+    const nodeRect = e.currentTarget.getBoundingClientRect();
+    if (containerRect) {
+      const top = nodeRect.bottom - containerRect.top + 6;
+      const left = nodeRect.left - containerRect.left + nodeRect.width / 2;
+      
+      // Short open delay (100ms)
+      tooltipOpenTimerRef.current = setTimeout(() => {
+        setTooltipPos({ top, left });
+        setTooltipNode(node);
+      }, 100);
+    }
+  };
+
+  const handleNodeMouseLeave = () => {
+    if (tooltipOpenTimerRef.current) {
+      clearTimeout(tooltipOpenTimerRef.current);
+    }
+    // Short close delay (150ms)
+    tooltipCloseTimerRef.current = setTimeout(() => {
+      setTooltipNode(null);
+      setTooltipPos(null);
+    }, 150);
+  };
+
+  // ── Closeness Filter Matching Helper ──────────────────────────────
+  const isNodeMatchingClosenessFilter = (nodeId: string): boolean => {
+    if (!supportsRelationshipCloseness || closenessFilter === 'ALL' || nodeId === centerId) return true;
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node || !isClosenessEligibleGroup(node.group)) return false;
+    const summary = closenessMap.get(nodeId);
+    if (closenessFilter === 'UNASSESSED') {
+      return !summary?.hasFinalizedAssessment;
+    }
+    return Boolean(summary?.hasFinalizedAssessment && summary.rank === closenessFilter);
+  };
+
+  // ── Closeness Badge Renderer ──────────────────────────────────────
+  const renderClosenessBadge = (node: GraphNode) => {
+    if (node.id === centerId || !isClosenessEligibleGroup(node.group)) {
+      return null;
+    }
+    const summary = closenessMap.get(node.id);
+    if (isClosenessLoading && !summary) {
+      return (
+        <span
+          style={{
+            fontSize: '8px',
+            fontWeight: 600,
+            color: '#94a3b8',
+            background: '#f1f5f9',
+            border: '1px solid #e2e8f0',
+            padding: '1px 4px',
+            borderRadius: '4px',
+          }}
+        >
+          ...
+        </span>
+      );
+    }
+    if (summary?.hasFinalizedAssessment && summary.rank && summary.score !== null) {
+      const badgeColors: Record<string, { bg: string; text: string; border: string }> = {
+        A: { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0' },
+        B: { bg: '#dbeafe', text: '#1d4ed8', border: '#bfdbfe' },
+        C: { bg: '#fef3c7', text: '#b45309', border: '#fde68a' },
+        D: { bg: '#fee2e2', text: '#b91c1c', border: '#fecaca' },
+      };
+      const c = badgeColors[summary.rank] || { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' };
+      return (
+        <span
+          style={{
+            fontSize: '8.5px',
+            fontWeight: 800,
+            color: c.text,
+            background: c.bg,
+            border: `1px solid ${c.border}`,
+            padding: '1px 5px',
+            borderRadius: '4px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            letterSpacing: '0.2px',
+          }}
+        >
+          [{summary.rank} · {summary.score}]
+        </span>
+      );
+    }
+    return (
+      <span
+        style={{
+          fontSize: '8px',
+          fontWeight: 600,
+          color: '#64748b',
+          background: '#f1f5f9',
+          border: '1px solid #e2e8f0',
+          padding: '1px 5px',
+          borderRadius: '4px',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        [Chưa đánh giá]
+      </span>
+    );
+  };
+
   const { positionedNodes, l1NodeIds, l2NodeIds, l2ParentMap } = useMemo(() => {
     if (nodes.length === 0) {
       return { positionedNodes: [], l1NodeIds: new Set<string>(), l2NodeIds: new Set<string>(), l2ParentMap: new Map<string, string>() };
@@ -366,10 +876,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     });
 
     // Apply Filter Criteria
+    const targetGroupKey = FILTER_TO_GROUP_KEY[activeRelationshipGroup];
     const matchedFilters = nodes.filter(n => {
       if (n.id === centerId) return true;
       const matchSearch = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.industry.toLowerCase().includes(search.toLowerCase());
-      const matchGroup = groupFilter === 'ALL' || n.group === groupFilter;
+      const matchGroup = n.group === targetGroupKey;
       const matchHealth = n.healthScore >= minHealth;
       const matchIndustry = industryFilter === 'All' || n.industry === industryFilter;
       return matchSearch && matchGroup && matchHealth && matchIndustry;
@@ -434,50 +945,54 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       return { positionedNodes: positioned, l1NodeIds: l1Ids, l2NodeIds: l2Ids, l2ParentMap: parentMap };
     }
 
-    // Radial layout coordinates calculations (Canvas size 1400x900 - Taller and Wider)
-    const centerX = 700;
-    const centerY = 450;
-    const R1 = 280; // Radius Level 1 (Expanded from 230)
-    const R2 = 490; // Radius Level 2 (Expanded from 410)
+    // Radial layout coordinates calculations (Canvas size 1400x900 responsive center)
+    const centerX = SVG_VIEWBOX_WIDTH / 2;
+    const centerY = SVG_VIEWBOX_HEIGHT / 2;
 
     const visibleL1 = filtered.filter(n => levels.get(n.id) === 1);
     const visibleL2 = filtered.filter(n => levels.get(n.id) === 2);
     const N1 = visibleL1.length;
 
-    const positions = new Map<string, { x: number; y: number; angle?: number }>();
+    const positions = new Map<string, { x: number; y: number; angle?: number; radius?: number }>();
     positions.set(centerId, { x: centerX, y: centerY });
 
-    // Level 1 positions
+    // Level 1 positions using count-aware multi-ring distribution
     const sortedL1 = [...visibleL1].sort((a, b) => {
       if (a.group !== b.group) return a.group.localeCompare(b.group);
       return a.name.localeCompare(b.name);
     });
 
-    sortedL1.forEach((node, idx) => {
-      const angle = N1 > 0 ? (idx * 2 * Math.PI) / N1 - Math.PI / 2 : 0;
-      const x = centerX + R1 * Math.cos(angle);
-      const y = centerY + R1 * Math.sin(angle);
-      positions.set(node.id, { x, y, angle });
+    const rings = computeRingDistribution(N1);
+    let nodeIndex = 0;
+    rings.forEach(ring => {
+      for (let i = 0; i < ring.count && nodeIndex < sortedL1.length; i++, nodeIndex++) {
+        const node = sortedL1[nodeIndex];
+        const angle = ring.count > 0 ? (i * 2 * Math.PI) / ring.count - Math.PI / 2 + ring.startAngleOffset : 0;
+        const x = centerX + ring.radius * Math.cos(angle);
+        const y = centerY + ring.radius * Math.sin(angle);
+        positions.set(node.id, { x, y, angle, radius: ring.radius });
+      }
     });
 
     // Level 2 positions fanned around Level 1 parent node
     visibleL2.forEach(node => {
       const parentId = parentMap.get(node.id);
       const parentPos = parentId ? positions.get(parentId) : null;
+      const l2Radius = (parentPos?.radius || 280) + 130;
       if (parentPos && parentPos.angle !== undefined) {
         const siblings = visibleL2.filter(n => parentId && parentMap.get(n.id) === parentId);
         const k = siblings.length;
         const idxInSiblings = siblings.findIndex(n => n.id === node.id);
         const spread = k > 1 ? Math.min(0.24, 0.85 / k) : 0;
         const childAngle = parentPos.angle + (idxInSiblings - (k - 1) / 2) * spread;
-        const x = centerX + R2 * Math.cos(childAngle);
-        const y = centerY + R2 * Math.sin(childAngle);
+        const x = centerX + l2Radius * Math.cos(childAngle);
+        const y = centerY + l2Radius * Math.sin(childAngle);
         positions.set(node.id, { x, y });
       } else {
         const idx = visibleL2.indexOf(node);
         const angle = visibleL2.length > 0 ? (idx * 2 * Math.PI) / visibleL2.length : 0;
-        const x = centerX + R2 * Math.cos(angle);
-        const y = centerY + R2 * Math.sin(angle);
+        const x = centerX + l2Radius * Math.cos(angle);
+        const y = centerY + l2Radius * Math.sin(angle);
         positions.set(node.id, { x, y });
       }
     });
@@ -494,7 +1009,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     });
 
     return { positionedNodes: positioned, l1NodeIds: l1Ids, l2NodeIds: l2Ids, l2ParentMap: parentMap };
-  }, [nodes, edges, centerId, search, groupFilter, minHealth, industryFilter, depthFilter, showAllL2, expandedL1Ids, layoutMode]);
+  }, [nodes, edges, centerId, search, activeRelationshipGroup, minHealth, industryFilter, depthFilter, showAllL2, expandedL1Ids, layoutMode]);
 
   const visibleNodeIds = useMemo(() => new Set(positionedNodes.map(n => n.id)), [positionedNodes]);
 
@@ -566,25 +1081,36 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   }, [activeHighlightId, edges, centerId, l1NodeIds, l2NodeIds, l2ParentMap]);
 
   const getNodeOpacity = (nodeId: string) => {
+    const matchesCloseness = isNodeMatchingClosenessFilter(nodeId);
+    if (!matchesCloseness) return 0.18;
+
     if (!activeHighlightId) return 1;
     return pathNodes.has(nodeId) ? 1 : 0.15;
   };
 
   const getEdgeOpacity = (edgeId: string) => {
+    const edge = edges.find((e) => e.id === edgeId);
+    if (edge) {
+      const fromMatches = isNodeMatchingClosenessFilter(edge.from);
+      const toMatches = isNodeMatchingClosenessFilter(edge.to);
+      if (!fromMatches || !toMatches) return 0.08;
+    }
+
     if (!activeHighlightId) return 0.6;
     return pathEdges.has(edgeId) ? 1 : 0.08;
   };
 
   // ── Metrics & Sidebar items ───────────────────────────────────────
   const filteredNodes = useMemo(() => {
+    const targetGroupKey = FILTER_TO_GROUP_KEY[activeRelationshipGroup];
     return nodes.filter((n) => {
       const matchSearch = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.industry.toLowerCase().includes(search.toLowerCase());
-      const matchGroup = groupFilter === 'ALL' || n.group === groupFilter;
+      const matchGroup = n.group === targetGroupKey;
       const matchHealth = n.healthScore >= minHealth;
       const matchIndustry = industryFilter === 'All' || n.industry === industryFilter;
       return matchSearch && matchGroup && matchHealth && matchIndustry;
     });
-  }, [nodes, search, groupFilter, minHealth, industryFilter]);
+  }, [nodes, search, activeRelationshipGroup, minHealth, industryFilter]);
 
   const filteredNodeIds = useMemo(() => new Set(filteredNodes.map((n) => n.id)), [filteredNodes]);
 
@@ -641,11 +1167,10 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     return ['All', ...Array.from(set)];
   }, [nodes]);
 
-  // Handle Node Click to open Drawer & Expand L2 connections (Incremental Graph Expansion)
+  // Handle Node Click to select company & Expand L2 connections (Incremental Graph Expansion)
   const handleNodeClick = (node: GraphNode) => {
     if (node.id === centerId) return;
-    setSelectedNode(node);
-    setDrawerOpen(true);
+    setSelectedNode(prev => prev?.id === node.id ? null : node);
 
     const level = node.id === centerId ? 0 : (l1NodeIds.has(node.id) ? 1 : 2);
     if (level === 1) {
@@ -1286,7 +1811,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
       <div style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '16px', background: '#ffffff', marginBottom: '16px', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
         
         {/* KPI Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', borderBottom: '1px dashed #cbd5e1', paddingBottom: '14px', marginBottom: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
           <div style={{ padding: '4px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('stats.directRelationships', 'Direct Relationships')}</span>
             <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{metrics.directRelationships}</div>
@@ -1313,12 +1838,10 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           </div>
         </div>
 
-
-
       </div>
 
       {/* 3. 2-Column Operations Layout: Center Graph Redesign (Stretched) | Right Analytics */}
-      <div className="relationship-map-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 240px', gap: '14px', alignItems: 'start', marginBottom: '16px' }}>
+      <div className="relationship-map-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '14px', alignItems: 'start', marginBottom: '16px' }}>
         
         {/* CENTER: REDESIGNED Circular Level Network panel */}
         <div className="relationship-network-panel" style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', position: 'relative', minWidth: 0 }}>
@@ -1362,27 +1885,6 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               </div>
 
               <select
-                value={groupFilter}
-                onChange={e => setGroupFilter(e.target.value as GroupKey)}
-                style={{
-                  padding: '4px 6px',
-                  fontSize: '11px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--cds-border-color, #cbd5e1)',
-                  background: 'var(--cds-layer-01, #f8fafc)',
-                  color: 'var(--cds-text-primary, #1e293b)',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="ALL">{t('chips.all', 'All Groups')}</option>
-                <option value="partner">{t('relationshipTypes.partnerWith', 'Partners')}</option>
-                <option value="customer">{t('relationshipTypes.customerOf', 'Customers')}</option>
-                <option value="supplier">{t('relationshipTypes.supplierOf', 'Suppliers')}</option>
-                <option value="competitor">{t('relationshipTypes.competitorOf', 'Competitors')}</option>
-                <option value="potential-partner">{t('relationshipTypes.potentialPartnerOf', 'Potential Partners')}</option>
-              </select>
-
-              <select
                 value={industryFilter}
                 onChange={e => setIndustryFilter(e.target.value)}
                 style={{
@@ -1399,6 +1901,29 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   <option key={ind} value={ind}>{ind === 'All' ? t('filters.allIndustries', 'All Industries') : ind}</option>
                 ))}
               </select>
+
+              {supportsRelationshipCloseness && (
+                <select
+                  value={closenessFilter}
+                  onChange={e => setClosenessFilter(e.target.value as any)}
+                  style={{
+                    padding: '4px 6px',
+                    fontSize: '11px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--cds-border-color, #cbd5e1)',
+                    background: 'var(--cds-layer-01, #f8fafc)',
+                    color: 'var(--cds-text-primary, #1e293b)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="ALL">All Closeness</option>
+                  <option value="A">Rank A (Rất thân thiết)</option>
+                  <option value="B">Rank B (Thân thiết)</option>
+                  <option value="C">Rank C (Trung bình)</option>
+                  <option value="D">Rank D (Xã giao)</option>
+                  <option value="UNASSESSED">Chưa đánh giá</option>
+                </select>
+              )}
             </div>
 
             {/* Controls */}
@@ -1409,11 +1934,15 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   setPan({ x: 0, y: 0 });
                   setSelectedNode(null);
                   setSearch('');
-                  setGroupFilter('ALL');
+                  setActiveRelationshipGroup('PARTNER');
                   setMinHealth(0);
                   setIndustryFilter('All');
+                  setClosenessFilter('ALL');
                   setShowAllL2(false);
                   setExpandedL1Ids(new Set());
+                  setHoveredNodeId(null);
+                  setTooltipNode(null);
+                  setTooltipPos(null);
                 }}
                 style={{
                   padding: '4px 6px',
@@ -1446,8 +1975,72 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             </div>
           </div>
 
+          {/* Relationship Type Toggle Bar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {TOGGLE_GROUPS_CONFIG.map((item) => {
+              const isActive = activeRelationshipGroup === item.key;
+              const count = groupCounts[item.key];
+              const label = t(item.labelKey, item.defaultLabel);
+
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => handleSelectRelationshipGroup(item.key)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 150ms ease',
+                    border: isActive ? `2px solid ${item.activeBorder}` : '1px solid var(--cds-border-color, #cbd5e1)',
+                    background: isActive ? item.activeBg : '#ffffff',
+                    color: isActive ? item.activeText : '#475569',
+                    fontWeight: isActive ? 700 : 500,
+                    boxShadow: isActive ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: item.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span>{label}</span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '1px 7px',
+                      borderRadius: '10px',
+                      background: isActive ? item.color : '#f1f5f9',
+                      color: isActive ? '#ffffff' : '#64748b',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Graph Canvas Container (Widened to 1400 viewbox and Heightened to 680px) */}
-          <div className="relationship-network-canvas" style={{ width: '100%', minHeight: '680px', background: '#f8fafc', borderRadius: '6px', border: '1px solid var(--cds-border-subtle-00)', overflow: 'hidden', position: 'relative' }}>
+          <div ref={canvasContainerRef} className="relationship-network-canvas" style={{ width: '100%', minHeight: '680px', background: '#f8fafc', borderRadius: '6px', border: '1px solid var(--cds-border-subtle-00)', overflow: 'hidden', position: 'relative' }}>
             {loadError ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div><AlertCircle size={36} style={{ color: '#dc2626', marginBottom: '12px' }} /><strong style={{ display: 'block', fontSize: '14px', color: '#991b1b' }}>Không thể tải dữ liệu mạng lưới quan hệ.</strong><span style={{ fontSize: '12px', color: '#64748b' }}>{loadError}</span></div>
@@ -1682,17 +2275,23 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             // REGULAR TIERS: Level 1 and Level 2 (No fabricated scores)
                             <div
                               onClick={() => handleNodeClick(node)}
-                              onMouseEnter={() => setHoveredNodeId(node.id)}
-                              onMouseLeave={() => setHoveredNodeId(null)}
+                              onMouseEnter={(e) => {
+                                setHoveredNodeId(node.id);
+                                handleNodeMouseEnter(node, e);
+                              }}
+                              onMouseLeave={() => {
+                                setHoveredNodeId(null);
+                                handleNodeMouseLeave();
+                              }}
                               style={{
                                 width: '100%',
                                 height: '100%',
                                 background: '#ffffff',
                                 borderRadius: level === 1 ? '10px' : '8px',
-                                border: `2px solid ${isSelected ? '#3b82f6' : (level === 1 ? (isExpandedL1 ? '#3b82f6' : style.color) : '#e2e8f0')}`,
+                                border: `2px solid ${level === 1 ? style.color : (isSelected ? style.color : '#e2e8f0')}`,
                                 boxShadow: isSelected 
-                                  ? '0 0 10px 2px rgba(59, 130, 246, 0.3)' 
-                                  : '0 2px 6px rgba(15, 23, 42, 0.02)',
+                                  ? '0 0 0 3px rgba(37, 99, 235, 0.22), 0 4px 12px rgba(15, 23, 42, 0.12)' 
+                                  : (isHovered ? '0 4px 12px rgba(15, 23, 42, 0.08)' : '0 2px 6px rgba(15, 23, 42, 0.02)'),
                                 display: 'flex',
                                 flexDirection: 'column',
                                 justifyContent: 'center',
@@ -1739,6 +2338,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                     {t('network.level2', 'Level 2')}
                                   </span>
                                 )}
+
+                                {renderClosenessBadge(node)}
                                 
                                 <span style={{ fontSize: '9px', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                   {node.connections} {t('topographyAnalytics.links', 'links')}
@@ -1801,38 +2402,536 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     </button>
                   </div>
                 )}
+
+                {/* Empty state for active relationship group (Correction 7) */}
+                {positionedNodes.filter(n => n.id !== centerId).length === 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '24px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      padding: '10px 20px',
+                      background: 'rgba(255, 255, 255, 0.96)',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 14px rgba(0, 0, 0, 0.08)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '12.5px',
+                      color: '#334155',
+                      zIndex: 10,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <Building size={16} style={{ color: '#64748b', flexShrink: 0 }} />
+                    <span>
+                      {groupCounts[activeRelationshipGroup] === 0
+                        ? `Chưa có doanh nghiệp thuộc nhóm ${getGroupFilterLabel(activeRelationshipGroup)}.`
+                        : 'Không có doanh nghiệp phù hợp với bộ lọc hiện tại.'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Ultra-Compact Hover Tooltip (Short Delays, Score/Rank Only, No Buttons) */}
+                {tooltipNode && tooltipPos && (() => {
+                  const summary = closenessMap.get(tooltipNode.id);
+                  const isAssessed = Boolean(summary?.hasFinalizedAssessment && summary.score !== null);
+
+                  const canvasW = canvasContainerRef.current?.clientWidth || 800;
+                  const canvasH = canvasContainerRef.current?.clientHeight || 680;
+                  const tooltipW = 180;
+                  const left = Math.max(tooltipW / 2 + 8, Math.min(canvasW - tooltipW / 2 - 8, tooltipPos.left));
+                  const top = (tooltipPos.top + 50 > canvasH) ? Math.max(10, tooltipPos.top - 55) : tooltipPos.top;
+
+                  return (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `${top}px`,
+                        left: `${left}px`,
+                        transform: 'translateX(-50%)',
+                        zIndex: 1000,
+                        width: `${tooltipW}px`,
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        fontSize: '11px',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.25)',
+                        pointerEvents: 'none',
+                        textAlign: 'center',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {tooltipNode.name}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: isAssessed ? '#86efac' : '#94a3b8', marginTop: '2px', fontWeight: 600 }}>
+                        {isAssessed && summary
+                          ? `${summary.score} / 100 · Rank ${summary.rank}`
+                          : t('closeness.unassessed', 'Chưa đánh giá')}
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
         </div>
 
-        {/* RIGHT SIDEBAR: Topography Analytics (Original kept - slightly narrowed) */}
-        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
-            {t('topographyAnalytics.title', 'Topography Analytics')}
-          </h3>
+        {/* RIGHT SIDEBAR: Topography Analytics (Default) OR Company Relationship Summary (Selected) */}
+        <div style={{ background: 'var(--cds-background)', border: '1px solid var(--cds-border-color)', borderRadius: 'var(--cds-border-radius)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {selectedNode ? (
+            /* ========================================================================= */
+            /* SELECTED COMPANY MODE                                                     */
+            /* ========================================================================= */
+            (() => {
+              const isEligible = isClosenessEligibleGroup(selectedNode.group);
+              const summary = closenessMap.get(selectedNode.id);
+              const isAssessed = Boolean(isEligible && summary?.hasFinalizedAssessment && summary.score !== null);
+              const groupColor = RELATIONSHIP_STYLES[selectedNode.group]?.color || '#475569';
+              const badgeColors: Record<string, { bg: string; text: string; border: string }> = {
+                A: { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0' },
+                B: { bg: '#dbeafe', text: '#1d4ed8', border: '#bfdbfe' },
+                C: { bg: '#fef3c7', text: '#b45309', border: '#fde68a' },
+                D: { bg: '#fee2e2', text: '#b91c1c', border: '#fecaca' },
+              };
+              const rankStyle = summary?.rank ? (badgeColors[summary.rank] || { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' }) : null;
 
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Top Bar: Back Action & Close */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--cds-border-subtle-00)', paddingBottom: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNode(null)}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '2px 0',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      ← {t('sidebar.backToOverview', 'Tổng quan')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNode(null)}
+                      style={{
+                        border: 'none',
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        lineHeight: 1,
+                      }}
+                      title={t('common.close', 'Đóng')}
+                    >
+                      ✕
+                    </button>
+                  </div>
 
+                  {/* Company Header */}
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
+                      {selectedNode.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        {selectedNode.industry || '—'}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          color: groupColor,
+                          background: `${groupColor}15`,
+                          border: `1px solid ${groupColor}40`,
+                          borderRadius: '12px',
+                          padding: '2px 7px',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {getGroupLabel(selectedNode.group)}
+                      </span>
+                    </div>
+                  </div>
 
-          {/* Cluster Breakdown */}
-          <div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '8px' }}>{t('topographyAnalytics.ecosystemClusters', 'Ecosystem Clusters')}</div>
-            {[
-              { label: t('stats.partners', 'Partners'), count: metrics.partners, color: '#10B981' },
-              { label: t('stats.suppliers', 'Suppliers'), count: metrics.suppliers, color: '#F59E0B' },
-              { label: t('stats.competitors', 'Competitors'), count: metrics.competitors, color: '#EF4444' },
-              { label: t('stats.customers', 'Customers'), count: metrics.customers, color: '#2563EB' },
-              { label: t('stats.potentialPartners', 'Potential Partners'), count: metrics.potentialPartners, color: '#8B5CF6' },
-            ].map((cluster, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--cds-border-subtle-00)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cluster.color }} />
-                  <span style={{ color: 'var(--cds-text-secondary)' }}>{cluster.label}</span>
+                  {/* Closeness Section */}
+                  <div style={{ borderTop: '1px solid var(--cds-border-subtle-00)', paddingTop: '10px' }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.4px', marginBottom: '8px' }}>
+                      {t('closeness.headerTitle', 'Mức độ thân thiết')}
+                    </div>
+
+                    {!isEligible ? (
+                      /* Ineligible (Competitor / Potential Partner) */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ fontSize: '11.5px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          {t('closeness.notApplicable', 'Không áp dụng cho loại quan hệ này.')}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.hash = `#company-detail?companyId=${encodeURIComponent(selectedNode.id)}&tab=overview`;
+                            if (setActivePage) setActivePage('company-detail');
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            borderRadius: '5px',
+                            background: '#ffffff',
+                            color: '#334155',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {t('closeness.viewProfile', 'Xem hồ sơ')} →
+                        </button>
+                      </div>
+                    ) : isAssessed && summary ? (
+                      /* Eligible & Finalized */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* Score & Rank */}
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px' }}>
+                            <span style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>
+                              {summary.score}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>/ 100</span>
+                          </div>
+                          {rankStyle && (
+                            <div style={{ marginTop: '4px' }}>
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  color: rankStyle.text,
+                                  background: rankStyle.bg,
+                                  border: `1px solid ${rankStyle.border}`,
+                                  padding: '2px 7px',
+                                  borderRadius: '4px',
+                                  display: 'inline-block',
+                                }}
+                              >
+                                Rank {summary.rank}
+                              </span>
+                              {summary.rankDescription && (
+                                <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px', fontWeight: 500 }}>
+                                  {summary.rankDescription}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 6 Criteria Grid */}
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                            {t('closeness.criteriaBreakdown', 'Tiêu chí đánh giá')}
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                              background: '#ffffff',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              padding: '8px 10px',
+                              fontSize: '11px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ color: '#64748b' }}>Commercial</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.commercial ?? '—'} / 5</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ color: '#64748b' }}>Interaction</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.interaction ?? '—'} / 5</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ color: '#64748b' }}>Strategic</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.strategic ?? '—'} / 5</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ color: '#64748b' }}>Network</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.network ?? '—'} / 5</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ color: '#64748b' }}>Engagement</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.engagement ?? '—'} / 5</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                              <span style={{ color: '#64748b' }}>Trust & Reliability</span>
+                              <strong style={{ color: '#0f172a' }}>{summary.criteria?.trust ?? '—'} / 5</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Last Assessment Date */}
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          <span>{t('closeness.lastAssessment', 'Đánh giá gần nhất:')} </span>
+                          <strong style={{ color: '#334155' }}>{formatDate(summary.completedAt) || '—'}</strong>
+                        </div>
+
+                        {/* CTAs (Correction 3: Xem đánh giá & Xem hồ sơ) */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.location.hash = `#company-detail?companyId=${encodeURIComponent(selectedNode.id)}&tab=relationship-closeness`;
+                              if (setActivePage) setActivePage('company-detail');
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '7px 10px',
+                              borderRadius: '5px',
+                              background: '#2563eb',
+                              color: '#ffffff',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {t('closeness.viewAssessment', 'Xem đánh giá')} →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.location.hash = `#company-detail?companyId=${encodeURIComponent(selectedNode.id)}&tab=overview`;
+                              if (setActivePage) setActivePage('company-detail');
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '6px 10px',
+                              borderRadius: '5px',
+                              background: '#ffffff',
+                              color: '#334155',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {t('closeness.viewProfile', 'Xem hồ sơ')}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Eligible & Unassessed */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
+                            {t('closeness.notAssessedYet', 'Chưa có đánh giá chính thức.')}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            {t('closeness.unassessedDesc', 'Doanh nghiệp này chưa được đánh giá mức độ thân thiết.')}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.hash = `#company-detail?companyId=${encodeURIComponent(selectedNode.id)}&tab=overview`;
+                            if (setActivePage) setActivePage('company-detail');
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            borderRadius: '5px',
+                            background: '#ffffff',
+                            color: '#334155',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {t('closeness.viewProfile', 'Xem hồ sơ')} →
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <strong style={{ color: 'var(--cds-text-primary)' }}>{cluster.count}</strong>
+              );
+            })()
+          ) : (
+            /* ========================================================================= */
+            /* DEFAULT ECOSYSTEM ANALYTICS MODE                                          */
+            /* ========================================================================= */
+            <>
+              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--cds-text-primary)' }}>
+                {t('topographyAnalytics.title', 'Topography Analytics')}
+              </h3>
+
+              {/* Cluster Breakdown */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--cds-text-primary)', marginBottom: '8px' }}>
+                  {t('topographyAnalytics.ecosystemClusters', 'Ecosystem Clusters')}
+                </div>
+                {[
+                  { key: 'PARTNER' as RelationshipGroupFilter, label: t('stats.partners', 'Partners'), count: metrics.partners, color: '#10B981' },
+                  { key: 'SUPPLIER' as RelationshipGroupFilter, label: t('stats.suppliers', 'Suppliers'), count: metrics.suppliers, color: '#F59E0B' },
+                  { key: 'COMPETITOR' as RelationshipGroupFilter, label: t('stats.competitors', 'Competitors'), count: metrics.competitors, color: '#EF4444' },
+                  { key: 'CUSTOMER' as RelationshipGroupFilter, label: t('stats.customers', 'Customers'), count: metrics.customers, color: '#2563EB' },
+                  { key: 'POTENTIAL_PARTNER' as RelationshipGroupFilter, label: t('stats.potentialPartners', 'Potential Partners'), count: metrics.potentialPartners, color: '#8B5CF6' },
+                ].map((cluster, i) => {
+                  const isActive = activeRelationshipGroup === cluster.key;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '12px',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        background: isActive ? `${cluster.color}15` : 'transparent',
+                        borderBottom: isActive ? 'none' : '1px solid var(--cds-border-subtle-00)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cluster.color }} />
+                        <span style={{ color: isActive ? '#0f172a' : 'var(--cds-text-secondary)', fontWeight: isActive ? 600 : 400 }}>{cluster.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {isActive && (
+                          <span style={{ fontSize: '9px', fontWeight: 700, color: cluster.color, textTransform: 'uppercase' }}>Active</span>
+                        )}
+                        <strong style={{ color: 'var(--cds-text-primary)' }}>{cluster.count}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+
+              {/* Relationship Closeness Analytics (Derived Dynamically for Active Relationship Group) */}
+              <div style={{ borderTop: '1px solid var(--cds-border-subtle-00)', paddingTop: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--cds-text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {t('closeness.title', 'Relationship Closeness')}
+                    <span style={{ marginLeft: '4px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'none' }}>
+                      ({getGroupFilterLabel(activeRelationshipGroup)})
+                    </span>
+                  </span>
+                  {isClosenessLoading && (
+                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>{t('closeness.loading', 'Loading...')}</span>
+                  )}
+                </div>
+
+                {!closenessAnalytics.isEligible ? (
+                  <div style={{ background: 'var(--cds-layer-01, #f8fafc)', border: '1px solid var(--cds-border-subtle-00, #e2e8f0)', borderRadius: '6px', padding: '12px', fontSize: '11.5px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.4 }}>
+                    Relationship Closeness không áp dụng cho nhóm {getGroupFilterLabel(activeRelationshipGroup)}.
+                  </div>
+                ) : (
+                  <>
+                    {/* Average Score */}
+                    <div style={{ background: 'var(--cds-layer-01, #f8fafc)', border: '1px solid var(--cds-border-subtle-00, #e2e8f0)', borderRadius: '6px', padding: '8px 10px', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary, #64748b)' }}>{t('closeness.averageScore', 'Average Score')}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '2px' }}>
+                        <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--cds-text-primary, #0f172a)' }}>
+                          {closenessAnalytics.assessedCount > 0 ? Math.round(closenessAnalytics.averageScore) : '—'}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>/ 100</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--cds-text-secondary, #64748b)' }}>
+                          {closenessAnalytics.assessedCount}/{closenessAnalytics.totalEligible} {t('closeness.assessed', 'assessed')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Rank Distribution */}
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-primary, #475569)', marginBottom: '6px' }}>
+                      {t('closeness.rankDistribution', 'Rank Distribution')}
+                    </div>
+                    {[
+                      { label: 'Rank A', count: closenessAnalytics.rankA, color: '#10B981' },
+                      { label: 'Rank B', count: closenessAnalytics.rankB, color: '#2563EB' },
+                      { label: 'Rank C', count: closenessAnalytics.rankC, color: '#F59E0B' },
+                      { label: 'Rank D', count: closenessAnalytics.rankD, color: '#EF4444' },
+                      { label: t('closeness.unassessed', 'Chưa đánh giá'), count: closenessAnalytics.unassessed, color: '#94A3B8' },
+                    ].map((r, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '3px 0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.color }} />
+                          <span style={{ color: 'var(--cds-text-secondary)' }}>{r.label}</span>
+                        </div>
+                        <span style={{ fontWeight: 700, color: 'var(--cds-text-primary)' }}>{r.count}</span>
+                      </div>
+                    ))}
+
+                    {/* Needs Attention (Correction 4 & 9: Rank C/D only) */}
+                    <div style={{ borderTop: '1px dashed var(--cds-border-subtle-00, #e2e8f0)', marginTop: '10px', paddingTop: '8px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: '#b45309', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>⚠️</span>
+                        <span>{t('closeness.needsAttention', 'Needs Attention (Rank C/D)')}</span>
+                      </div>
+                      {closenessAnalytics.needsAttention.length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary, #64748b)', fontStyle: 'italic', padding: '2px 0' }}>
+                          {t('closeness.noAttentionNeeded', 'Không có mối quan hệ cần chú ý.')}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {closenessAnalytics.needsAttention.slice(0, 3).map((item) => (
+                            <div
+                              key={item.id}
+                              onClick={() => {
+                                const n = nodes.find(x => x.id === item.id);
+                                if (n) setSelectedNode(n);
+                              }}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                fontSize: '11px',
+                                background: '#fffbeb',
+                                border: '1px solid #fef3c7',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                cursor: 'pointer',
+                              }}
+                              title={item.name}
+                            >
+                              <span style={{ fontWeight: 600, color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                                {item.name}
+                              </span>
+                              <span style={{ fontWeight: 700, color: '#b45309', fontSize: '10px' }}>
+                                {item.score} / 100 • {item.rank}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
       </div>

@@ -251,85 +251,99 @@ export const CompanyRelationshipClosenessPanel: React.FC<CompanyRelationshipClos
       </div>
 
       <div className={styles.body}>
-        <div className={styles.scoreRow}>
-          <div className={styles.starGroup} aria-label="Relationship closeness stars">
-            {[1, 2, 3, 4, 5].map((value) => {
-              const activeStars = editing ? draftStars : data?.stars ?? 0;
-              const filled = value <= activeStars;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  className={[
-                    styles.starButton,
-                    filled ? styles.starFilled : '',
-                    editing && canEdit ? styles.starButtonEditable : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={() => editing && canEdit && setDraftStars(value)}
-                  disabled={!editing || !canEdit || saving}
-                  title={`${value} sao`}
-                  aria-label={`${value} sao`}
-                >
-                  <Star size={13} fill={filled ? 'currentColor' : 'none'} />
-                </button>
-              );
-            })}
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Current Relationship Rating</div>
+          <div className={styles.scoreRow}>
+            <div className={styles.starGroup} aria-label="Relationship closeness stars">
+              {[1, 2, 3, 4, 5].map((value) => {
+                const activeStars = editing ? draftStars : data?.stars ?? 0;
+                const filled = value <= activeStars;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={[
+                      styles.starButton,
+                      filled ? styles.starFilled : '',
+                      editing && canEdit ? styles.starButtonEditable : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => editing && canEdit && setDraftStars(value)}
+                    disabled={!editing || !canEdit || saving}
+                    title={`${value} sao`}
+                    aria-label={`${value} sao`}
+                  >
+                    <Star size={16} fill={filled ? 'currentColor' : 'none'} />
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.scoreMeta}>
+              <span className={styles.levelText}>
+                {describeStars(editing ? draftStars : data?.stars)}
+              </span>
+              {data?.stars && formatTime(effectiveTime) ? (
+                <span className={styles.timestamp}>
+                  · {formatTime(effectiveTime)}
+                </span>
+              ) : null}
+            </div>
           </div>
 
-          <div className={styles.scoreMeta}>
-            <span className={styles.levelText}>
-              {describeStars(editing ? draftStars : data?.stars)}
-            </span>
-            {data?.stars && formatTime(effectiveTime) ? (
-              <span className={styles.timestamp}>
-                · {formatTime(effectiveTime)}
-              </span>
-            ) : null}
-          </div>
+          {managerLockedByOwner ? (
+            <div className={styles.finalNotice}>
+              <Lock size={14} />
+              <span>Owner has finalized this rating. Manager view only.</span>
+            </div>
+          ) : null}
         </div>
 
-        {managerLockedByOwner ? (
-          <div className={styles.finalNotice}>
-            <Lock size={12} />
-            <span>Owner has finalized this rating. Manager view only.</span>
-          </div>
-        ) : null}
-
         {(data?.managerStars || data?.ownerStars) ? (
-          <div className={styles.ratingTrail}>
-            {data?.managerStars ? (
-              <div className={styles.trailItem}>
-                <span className={styles.trailLabel}>Manager:</span>
-                <span>{describeStars(data.managerStars)}{formatTime(data.managerRatedAt) ? ` · ${formatTime(data.managerRatedAt)}` : ''}</span>
-              </div>
-            ) : null}
-            {data?.ownerStars ? (
-              <div className={styles.trailItem}>
-                <span className={styles.trailLabel}>Owner (Final):</span>
-                <span>{describeStars(data.ownerStars)}{formatTime(data.ownerRatedAt) ? ` · ${formatTime(data.ownerRatedAt)}` : ''}</span>
-              </div>
-            ) : null}
+          <div className={styles.sectionDivider}>
+            <div className={styles.sectionTitle}>Assessment History</div>
+            <div className={styles.ratingTrail}>
+              {data?.managerStars ? (
+                <div className={styles.trailItem}>
+                  <span className={styles.trailLabel}>Manager Assessment</span>
+                  <span className={styles.trailValue}>
+                    {describeStars(data.managerStars)}
+                    {formatTime(data.managerRatedAt) ? ` · ${formatTime(data.managerRatedAt)}` : ''}
+                  </span>
+                </div>
+              ) : null}
+              {data?.ownerStars ? (
+                <div className={styles.trailItem}>
+                  <span className={styles.trailLabel}>Owner Final Assessment</span>
+                  <span className={styles.trailValue}>
+                    {describeStars(data.ownerStars)}
+                    {formatTime(data.ownerRatedAt) ? ` · ${formatTime(data.ownerRatedAt)}` : ''}
+                  </span>
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
-        {editing ? (
-          <div className={styles.editor}>
-            <textarea
-              className={styles.textarea}
-              value={draftNote}
-              maxLength={1000}
-              onChange={(event) => setDraftNote(event.target.value)}
-              placeholder="Enter note regarding relationship, collaboration history, or key context..."
-              disabled={saving}
-            />
-            <div className={styles.charCount}>{draftNote.length}/1000</div>
-          </div>
-        ) : data?.note ? (
-          <div className={styles.compactNote} title={data.note}>
-            <span className={styles.noteLabel}>Note: </span>
-            <span>{data.note}</span>
-          </div>
-        ) : null}
+        <div className={styles.sectionDivider}>
+          <div className={styles.sectionTitle}>Notes & Context</div>
+          {editing ? (
+            <div className={styles.editor}>
+              <textarea
+                className={styles.textarea}
+                value={draftNote}
+                maxLength={1000}
+                onChange={(event) => setDraftNote(event.target.value)}
+                placeholder="Enter note regarding relationship, collaboration history, or key context..."
+                disabled={saving}
+              />
+              <div className={styles.charCount}>{draftNote.length}/1000</div>
+            </div>
+          ) : (
+            <div className={`${styles.noteBox} ${data?.note ? '' : styles.noteMuted}`}>
+              {data?.note || 'No notes recorded for this relationship rating.'}
+            </div>
+          )}
+        </div>
 
         {message && (
           <div className={`${styles.message} ${message.type === 'ok' ? styles.messageOk : styles.messageError}`}>

@@ -1,12 +1,12 @@
 .panel {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 8px 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  max-width: 880px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   box-sizing: border-box;
 }
 
@@ -14,75 +14,106 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 12px;
+  margin-bottom: 16px;
   border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 4px;
+  padding-bottom: 12px;
 }
 
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
+}
+
+.iconBox {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .title {
   margin: 0;
   color: #0f172a;
-  font-size: 0.82rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .subtitle {
-  margin: 0;
+  margin: 2px 0 0;
   color: #64748b;
-  font-size: 0.62rem;
+  font-size: 0.74rem;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   color: #475569;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .body {
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  justify-content: space-between;
+  gap: 14px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionDivider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 14px;
+}
+
+.sectionTitle {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .scoreRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .starGroup {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
 .starButton {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
   color: #cbd5e1;
@@ -113,93 +144,100 @@
 .scoreMeta {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
 .levelText {
   color: #0f172a;
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 0.92rem;
+  font-weight: 800;
 }
 
 .timestamp {
   color: #94a3b8;
-  font-size: 0.6rem;
+  font-size: 0.72rem;
   font-weight: 500;
-}
-
-.compactNote {
-  font-size: 0.68rem;
-  color: #475569;
-  line-height: 1.35;
-  background: #f8fafc;
-  border: 1px solid #f1f5f9;
-  border-radius: 6px;
-  padding: 4px 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.noteLabel {
-  font-weight: 700;
-  color: #334155;
 }
 
 .finalNotice {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: 1px solid #bfdbfe;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #eff6ff;
   color: #1d4ed8;
-  font-size: 0.62rem;
+  font-size: 0.74rem;
   font-weight: 600;
-  padding: 3px 6px;
+  padding: 6px 10px;
+  margin-top: 4px;
 }
 
 .ratingTrail {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 0.62rem;
-  color: #64748b;
+  gap: 6px;
 }
 
 .trailItem {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
 }
 
 .trailLabel {
   color: #334155;
   font-weight: 700;
+  font-size: 0.76rem;
+}
+
+.trailValue {
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.76rem;
+}
+
+.noteBox {
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 10px 14px;
+  word-break: break-word;
+}
+
+.noteMuted {
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .editor {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .textarea {
   width: 100%;
-  min-height: 46px;
+  min-height: 70px;
   resize: vertical;
   box-sizing: border-box;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 4px 6px;
+  border-radius: 8px;
+  padding: 8px 10px;
   color: #0f172a;
   background: #ffffff;
-  font-size: 0.7rem;
-  line-height: 1.35;
+  font-size: 0.78rem;
+  line-height: 1.45;
   outline: none;
 }
 
@@ -210,7 +248,7 @@
 
 .charCount {
   color: #94a3b8;
-  font-size: 0.58rem;
+  font-size: 0.65rem;
   font-weight: 600;
   text-align: right;
 }
@@ -219,21 +257,21 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .button {
-  min-height: 24px;
+  min-height: 28px;
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #334155;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 0.66rem;
+  gap: 5px;
+  padding: 4px 12px;
+  font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -272,12 +310,11 @@
 }
 
 .message {
-  margin-top: 4px;
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 0.62rem;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .messageOk {
@@ -295,8 +332,8 @@
 .locked {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: #64748b;
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   font-weight: 600;
 }

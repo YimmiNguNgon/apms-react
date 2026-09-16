@@ -216,6 +216,8 @@ const isItemActive = (itemId: string, activePage: string): boolean => {
       // Default / source === 'company-profiles' / source === 'companies'
       effectiveActive = 'companies';
     }
+  } else if (activePage === 'relationship-assessment-detail') {
+    effectiveActive = 'companies';
   }
 
   if (itemId === effectiveActive) return true;
