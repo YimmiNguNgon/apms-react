@@ -6,6 +6,8 @@ import type {
   ProjectTaskSubmissionResponse,
   CreateFinancialReportRequest,
   UpdateFinancialReportRequest,
+  CompanyProfileFinancialRow,
+  BatchUpdateCompanyFinancialsRequest,
 } from "../types/domain";
 
 export const financialResearchApi = {
@@ -130,5 +132,21 @@ export const financialResearchApi = {
   getApprovedFinancials: (companyProfileId: string) =>
     api.get<FinancialResearchResponse[]>(
       `/company-profiles/${companyProfileId}/financials/research`
+    ),
+
+  getCanonicalFinancials: (companyProfileId: string) =>
+    api.get<CompanyProfileFinancialRow[]>(
+      `/company-profiles/${companyProfileId}/financials`
+    ),
+
+  updateCanonicalFinancials: (companyProfileId: string, data: BatchUpdateCompanyFinancialsRequest) =>
+    api.put<CompanyProfileFinancialRow[]>(
+      `/company-profiles/${companyProfileId}/financials`,
+      data
+    ),
+
+  backfillCanonicalFinancials: (companyProfileId: string) =>
+    api.post<number>(
+      `/company-profiles/${companyProfileId}/financials/backfill`
     ),
 };

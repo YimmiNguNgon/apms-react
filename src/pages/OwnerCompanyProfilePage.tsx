@@ -152,6 +152,7 @@ export const OwnerCompanyProfilePage: React.FC = () => {
           initials={initials}
           reviewStatus={profile.reviewStatus || 'APPROVED'}
           version={profile.version}
+          versionLabel={profile.versionLabel}
           isHidden={profile.isHidden}
           topRow={
             <>

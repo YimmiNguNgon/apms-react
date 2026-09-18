@@ -366,6 +366,27 @@ export const projectApi = {
       throw error;
     }
   },
+  checkOpenProject: async (options: { companyProfileId?: string; taxCode?: string; excludeProjectId?: number }) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.companyProfileId) params.append('companyProfileId', options.companyProfileId);
+      if (options.taxCode) params.append('taxCode', options.taxCode);
+      if (options.excludeProjectId) params.append('excludeProjectId', String(options.excludeProjectId));
+      const response = await fetch(`${BASE_URL}/check-open-project?${params.toString()}`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Failed to check open project');
+      }
+      return payload as ApiResponse<import('../types/domain').OpenProjectCheckResponse>;
+    } catch (error) {
+      console.error('Error checking open project:', error);
+      throw error;
+    }
+  },
   extractMultiDocuments: async (projectId: number, taskId: number, rawDocumentIds: string[]) => {
     try {
       const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi`, {

@@ -732,6 +732,20 @@ export function formatFinancialUnit(unit?: string | null): string {
   }
 }
 
+export const CANONICAL_FINANCIAL_UNITS = [
+  'Triệu VNĐ',
+  'Tỷ VNĐ',
+  'VNĐ',
+  'Triệu USD',
+  'USD',
+  '%',
+  'Tỷ lệ',
+  'Lần',
+  'Số lượng',
+] as const;
+
+export type CanonicalFinancialUnit = typeof CANONICAL_FINANCIAL_UNITS[number];
+
 export type FinancialStatementSectionKey =
   | 'BALANCE_SHEET'
   | 'INCOME_STATEMENT'

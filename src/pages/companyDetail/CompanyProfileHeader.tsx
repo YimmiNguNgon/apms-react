@@ -8,9 +8,11 @@ interface CompanyProfileHeaderProps {
   reviewStatus?: string;
   source?: string;
   version?: string;
+  versionLabel?: string;
   topRow?: React.ReactNode;
   isHidden?: boolean;
   canPublish?: boolean;
+  publishBlockReason?: string | null;
   onToggleVisibility?: () => void;
   isVisibilityLoading?: boolean;
 }
@@ -26,9 +28,11 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
   reviewStatus,
   source,
   version,
+  versionLabel,
   topRow,
   isHidden,
   canPublish,
+  publishBlockReason,
   onToggleVisibility,
   isVisibilityLoading,
 }) => {
@@ -119,13 +123,15 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
                   {isHidden ? 'Hidden' : 'Published'}
                 </span>
               )}
-              {version && <span style={{ color: '#6366F1' }}>• v{version}</span>}
+              {(versionLabel || version) && (
+                <span style={{ color: '#6366F1' }}>• {versionLabel || (version?.startsWith('v') ? version : `v${version}`)}</span>
+              )}
               {onToggleVisibility && (
                 <button
                   type="button"
                   onClick={onToggleVisibility}
                   disabled={isVisibilityLoading || (isHidden && canPublish === false)}
-                  title={isHidden && canPublish === false ? 'Profile requires Legal Name and Tax Code before it can be published.' : undefined}
+                  title={isHidden && canPublish === false ? (publishBlockReason || 'Profile requires Legal Name and Tax Code before it can be published.') : undefined}
                   style={{
                     background: '#fff',
                     border: '1px solid #cbd5e1',

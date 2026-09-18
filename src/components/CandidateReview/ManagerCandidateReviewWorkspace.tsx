@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, CheckCircle, XCircle, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle, XCircle, Clock, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
 import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
@@ -141,44 +141,53 @@ function normalizeManagerStatus(status: unknown): ManagerUiStatus {
   return 'PENDING';
 }
 
+const DOT_TO_FLAT: Record<string, string> = {
+  'identity.tradeName': 'tradeName',
+  'identity.legalName': 'legalName',
+  'identity.taxCode': 'taxCode',
+  'contact.address': 'address',
+  'contact.website': 'website',
+  'contact.emails': 'emails',
+  'contact.phones': 'phones',
+  'business.businessModel': 'businessModel',
+  'business.industries': 'industries',
+  'business.markets': 'markets',
+  'business.targetCustomers': 'targetCustomers',
+  'business.products': 'products',
+  'companySize.employeeTier': 'employeeTier',
+  'companySize.employeeCount': 'employeeCount',
+  'companySize.revenueTier': 'revenueTier',
+};
+
 const fieldApprovalForKey = (candidate: CandidateResponse | null | undefined, key: string): FieldApprovalRecord | undefined => {
   const approvals = candidate?.fieldApprovals;
   if (!approvals) return undefined;
+  const flatKey = DOT_TO_FLAT[key] || (key.includes('.') ? key.split('.').pop() : undefined);
   if (Array.isArray(approvals)) {
-    return approvals.find((record) => record?.fieldPath === key);
+    return approvals.find(a =>
+      a.fieldPath === key ||
+      a.fieldPath === key.replace('.', '_') ||
+      (flatKey && a.fieldPath === flatKey)
+    );
   }
-  return approvals[key] || approvals[key.replace('.', '_')];
+  return approvals[key]
+    || approvals[key.replace('.', '_')]
+    || (flatKey ? approvals[flatKey] : undefined);
 };
 
-const fieldForKey = (fieldResults: Record<string, AiFieldResult> | undefined, key: string): AiFieldResult | undefined => (
-  fieldResults?.[key] || fieldResults?.[key.replace('.', '_')]
-);
+const fieldForKey = (fieldResults: Record<string, AiFieldResult> | undefined, key: string): AiFieldResult | undefined => {
+  if (!fieldResults) return undefined;
+  const flatKey = DOT_TO_FLAT[key] || (key.includes('.') ? key.split('.').pop() : undefined);
+  return fieldResults[key]
+    || fieldResults[key.replace('.', '_')]
+    || (flatKey ? fieldResults[flatKey] : undefined);
+};
 
 const evidenceMapForKey = (candidate: CandidateResponse | null | undefined, key: string): EvidenceItem[] => {
   const map = candidate?.fieldEvidence;
   if (!map || Array.isArray(map)) return [];
   const items = map[key] || map[key.replace('.', '_')] || [];
   return Array.isArray(items) ? items.filter(Boolean) as EvidenceItem[] : [];
-};
-
-const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, key: string): AiFieldResult | undefined => {
-  const field = fieldForKey(candidate?.fieldResults, key);
-  const approval = fieldApprovalForKey(candidate, key);
-  if (!approval) {
-    return field;
-  }
-  return {
-    ...(field || { fieldName: key }),
-    managerReviewStatus: normalizeManagerStatus(approval.status),
-    managerReviewComment: approval.comment ?? field?.managerReviewComment,
-    managerReviewedAt: approval.reviewedAt ?? field?.managerReviewedAt,
-    reviewedRevision: approval.reviewedRevision ?? field?.reviewedRevision,
-    previousManagerReviewStatus: approval.previousStatus ? normalizeManagerStatus(approval.previousStatus) : field?.previousManagerReviewStatus,
-    previousManagerReviewComment: approval.previousComment ?? field?.previousManagerReviewComment,
-    previousSubmittedValue: approval.pendingValue ?? field?.previousSubmittedValue,
-    previousReviewedRevision: approval.previousReviewedRevision ?? field?.previousReviewedRevision,
-    changedInRevision: approval.changedInRevision ?? field?.changedInRevision,
-  };
 };
 
 const getEffectiveReviewedValue = (field: any): unknown => {
@@ -192,29 +201,88 @@ const getCandidateDomainValue = (candidate: CandidateResponse | null | undefined
   if (!candidate) return undefined;
   const c = candidate as any;
   switch (key) {
-    case 'identity.legalName': return c.identity?.legalName;
-    case 'identity.tradeName': return c.identity?.tradeName;
-    case 'identity.taxCode': return c.identity?.taxCode;
-    case 'contact.website': return c.contact?.website;
-    case 'contact.address': return c.contact?.addresses?.[0] || c.contact?.address;
-    case 'contact.emails': return c.contact?.emails;
-    case 'contact.phones': return c.contact?.phones;
-    case 'business.businessModel': return c.business?.businessModel;
-    case 'business.industries': return c.business?.industries;
-    case 'business.products': return c.business?.products;
-    case 'business.markets': return c.business?.markets;
-    case 'business.targetCustomers': return c.business?.targetCustomers;
-    case 'companySize.employeeTier': return c.companySize?.employeeTier;
-    case 'companySize.employeeCount': return c.companySize?.employeeCount;
-    case 'companySize.revenueTier': return c.companySize?.revenueTier;
+    case 'identity.legalName': return c.identity?.legalName ?? c.legalName;
+    case 'identity.tradeName': return c.identity?.tradeName ?? c.tradeName;
+    case 'identity.taxCode': return c.identity?.taxCode ?? c.identity?.taxId ?? c.taxCode;
+    case 'contact.website': return c.contact?.website ?? c.website;
+    case 'contact.address': {
+      const addrs = c.contact?.addresses ?? c.addresses;
+      if (Array.isArray(addrs) && addrs.length > 0) {
+        const first = addrs[0];
+        if (typeof first === 'string') return first;
+        if (first && typeof first === 'object') return first.fullAddress || first.address;
+      }
+      return c.contact?.address ?? c.address;
+    }
+    case 'contact.emails': return c.contact?.emails ?? c.emails ?? c.email;
+    case 'contact.phones': return c.contact?.phones ?? c.phones ?? c.phone;
+    case 'business.businessModel': return c.business?.businessModel ?? c.businessModel;
+    case 'business.industries': return c.business?.industries ?? c.industries;
+    case 'business.products': return c.business?.products ?? c.products;
+    case 'business.markets': return c.business?.markets ?? c.markets;
+    case 'business.targetCustomers': return c.business?.targetCustomers ?? c.targetCustomers;
+    case 'companySize.employeeTier': return c.companySize?.employeeTier ?? c.employeeTier;
+    case 'companySize.employeeCount': return c.companySize?.employeeCount ?? c.employeeCount;
+    case 'companySize.revenueTier': return c.companySize?.revenueTier ?? c.revenueTier ?? c.companySize;
     default: return undefined;
   }
+};
+
+const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, key: string): AiFieldResult | undefined => {
+  const field = fieldForKey(candidate?.fieldResults, key);
+  const approval = fieldApprovalForKey(candidate, key);
+  const domainVal = getCandidateDomainValue(candidate, key);
+
+  const rawPending = normalizeCandidateFieldValue(approval?.pendingValue) !== null ? approval?.pendingValue : undefined;
+  const rawStaffReviewed = normalizeCandidateFieldValue(field?.staffReviewedValue) !== null ? field?.staffReviewedValue : undefined;
+  const rawReviewed = normalizeCandidateFieldValue(field?.reviewedValue) !== null ? field?.reviewedValue : undefined;
+  const rawFieldValue = normalizeCandidateFieldValue(field?.value) !== null ? field?.value : undefined;
+  const rawDomain = normalizeCandidateFieldValue(domainVal) !== null ? domainVal : undefined;
+
+  const effectiveValue = rawPending ?? rawStaffReviewed ?? rawReviewed ?? rawFieldValue ?? rawDomain;
+
+  if (!approval) {
+    if (!field) {
+      if (domainVal !== undefined) {
+        return {
+          fieldName: key,
+          value: domainVal,
+          staffReviewedValue: domainVal,
+          managerReviewStatus: 'PENDING',
+        };
+      }
+      return undefined;
+    }
+    return {
+      ...field,
+      value: effectiveValue !== undefined ? effectiveValue : field.value,
+      staffReviewedValue: effectiveValue !== undefined ? effectiveValue : field.staffReviewedValue,
+    };
+  }
+
+  return {
+    ...(field || { fieldName: key }),
+    value: effectiveValue !== undefined ? effectiveValue : field?.value,
+    staffReviewedValue: effectiveValue !== undefined ? effectiveValue : field?.staffReviewedValue,
+    managerReviewStatus: normalizeManagerStatus(approval.status),
+    managerReviewComment: approval.comment ?? field?.managerReviewComment,
+    managerReviewedAt: approval.reviewedAt ?? field?.managerReviewedAt,
+    reviewedRevision: approval.reviewedRevision ?? field?.reviewedRevision,
+    previousManagerReviewStatus: approval.previousStatus ? normalizeManagerStatus(approval.previousStatus) : field?.previousManagerReviewStatus,
+    previousManagerReviewComment: approval.previousComment ?? field?.previousManagerReviewComment,
+    previousSubmittedValue: approval.pendingValue ?? field?.previousSubmittedValue,
+    previousReviewedRevision: approval.previousReviewedRevision ?? field?.previousReviewedRevision,
+    changedInRevision: approval.changedInRevision ?? field?.changedInRevision,
+  };
 };
 
 const isCandidateFieldProvided = (candidate: CandidateResponse | null | undefined, key: string): boolean => {
   if (!candidate) return false;
   const approval = fieldApprovalForKey(candidate, key);
-  if (approval && approval.status && approval.status !== 'STALE') {
+  if (approval && approval.status && approval.status !== 'STALE' && approval.status !== 'PENDING_REVIEW') {
+    return true;
+  }
+  if (approval && normalizeCandidateFieldValue(approval.pendingValue) !== null) {
     return true;
   }
   const field = effectiveFieldForKey(candidate, key);
@@ -263,9 +331,9 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
     notProvided,
     staffEdited,
     lowConfidence,
-    percentage: total > 0 ? Math.round((reviewed / total) * 100) : 100,
+    percentage: total > 0 ? Math.round((reviewed / total) * 100) : 0,
     canComplete: total > 0 && pending === 0 && rejected === 0 && needsReview === 0,
-    canSendBack: (rejected > 0 || needsReview > 0) && pending === 0,
+    canSendBack: (total === 0 || rejected > 0 || needsReview > 0) && pending === 0,
   };
 }
 
@@ -395,6 +463,14 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
   const isManual = isManualCandidate(serverCandidate);
 
+  const isReadOnly = Boolean(
+    isWorkspaceReadOnly ||
+    serverCandidate?.status === 'APPROVED' ||
+    serverCandidate?.status === 'REJECTED' ||
+    currentSubmission?.status === 'APPROVED' ||
+    currentSubmission?.status === 'APPLIED'
+  );
+
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -449,8 +525,8 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           if (!currentSubmission && subList.length > 0) {
             const matched = (submissionId ? subList.find(s => s.id === submissionId) : null)
               || subList.find(s => s.targetEntityId === candidateId && s.status === 'IN_REVIEW')
-              || subList.find(s => s.status === 'IN_REVIEW')
               || subList.find(s => s.targetEntityId === candidateId)
+              || subList.find(s => s.status === 'IN_REVIEW')
               || subList[0];
             if (matched) {
               setCurrentSubmission(matched);
@@ -526,7 +602,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     const res = await candidateApi.reviewCandidateFields(projectId, candidateId, {
       [dotKey]: {
         managerReviewStatus: decision === 'CHANGES_REQUESTED' ? 'NEEDS_REVIEW' : decision,
-        managerReviewComment: decision === 'PENDING' ? undefined : comment,
+        managerReviewComment: decision === 'PENDING' ? null : comment,
         isManager: true,
         manager: true
       }
@@ -555,7 +631,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   }, [projectId, candidateId, queryClient, addToast]);
 
   const handleApproveAllInTab = useCallback(async () => {
-    if (isEffectiveReadOnly || !serverCandidate) return;
+    if (isReadOnly || isEffectiveReadOnly || !serverCandidate) return;
 
     const pendingFields = FIELD_DEFS[activeTab].filter(f => {
       if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) {
@@ -588,7 +664,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     } catch (e) {
       addToast('Error', 'Could not batch approve fields', 'error');
     }
-  }, [isEffectiveReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast, isManual]);
+  }, [isReadOnly, isEffectiveReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast, isManual]);
 
   // ── Complete Review ──
   const effectiveSubmissionId = submissionId || currentSubmission?.id;
@@ -736,7 +812,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             onDecision={async (decision, comment) => {
               await handleFieldDecision(f.key, decision, comment, f.label);
             }}
-            disabled={isEffectiveReadOnly}
+            disabled={isReadOnly || isEffectiveReadOnly}
             highlighted={highlightedField === f.key}
             isManual={isManual}
           />
@@ -855,11 +931,12 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
   // ── Header Information ──
   const draftTitle = serverCandidate.draftName
-    || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : (currentSubmission?.submittedRevisionNumber ? `Draft ${currentSubmission.submittedRevisionNumber}` : 'Draft 1'));
+    || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft');
   const roundNumber = currentSubmission?.submittedRevisionNumber || serverCandidate.revisionNumber || 1;
   const submittedBy = currentSubmission?.submittedByName || serverCandidate.metadata?.createdBy || 'Staff';
   const submittedAt = currentSubmission?.submittedAt || currentSubmission?.createdAt || serverCandidate.lastSubmittedAt || serverCandidate.metadata?.createdAt;
   const companyLegalName = serverCandidate.identity?.legalName || 'Unknown Company';
+  const reviewedAt = serverCandidate.review?.reviewedAt || currentSubmission?.reviewedAt || (isReadOnly ? serverCandidate.metadata?.updatedAt : null);
 
   // Extract source document info if present
   const sourceDocNames: string[] = [];
@@ -883,6 +960,12 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     sidebarMessage = (
       <div className={styles.sidebarWarnBanner}>
         Candidate was rejected.
+      </div>
+    );
+  } else if (stats.total === 0) {
+    sidebarMessage = (
+      <div className={styles.sidebarWarnBanner}>
+        No fields were submitted by Staff. Send back to Staff for revision.
       </div>
     );
   } else if (stats.pending > 0) {
@@ -915,146 +998,111 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         </div>
       )}
 
-      {/* Header */}
-      <div className={styles.managerReviewHeader}>
-        <div className={styles.headerInfo}>
-          <div className={styles.candidateEyebrowRow}>
-            <span className={styles.candidateEyebrow}>REVIEW CANDIDATE</span>
-            <span className={styles.taskTitleTag}>• {taskTitle || 'Research Basic Company Information'}</span>
-          </div>
-
-          <div className={styles.titleWithDraftRow}>
-            <h2 className={styles.managerReviewTitle}>
-              {draftTitle}
-            </h2>
-            {allActiveSubmissions && allActiveSubmissions.length > 1 && onSelectCandidate && (
-              <div className={styles.legacyDraftSelector}>
-                <label htmlFor="candidate-select">Submitted candidate:</label>
-                <select
-                  id="candidate-select"
-                  value={candidateId}
-                  onChange={(e) => onSelectCandidate(e.target.value)}
-                >
-                  {allActiveSubmissions.map((sub, idx) => (
-                    <option key={sub.id} value={sub.targetEntityId || ''}>
-                      Draft {sub.submittedRevisionNumber || idx + 1} ({sub.submittedByName || 'Staff'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.managerReviewMeta}>
-            {isManual && (
-              <span
-                className={styles.managerReviewStatus}
-                style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe', fontWeight: 700 }}
-              >
-                MANUAL ENTRY
-              </span>
-            )}
+      {/* ── Top Task Header (matches Staff Workspace inviteHead style) ── */}
+      <div className={styles.managerTaskHeader}>
+        <div className={styles.managerTaskHeaderInfo}>
+          <h2 className={styles.managerTaskTitle}>
+            {taskTitle || 'Research Basic Company Information'}
+          </h2>
+          <div className={styles.managerTaskMeta}>
             <span
-              className={styles.managerReviewStatus}
-              style={
-                serverCandidate.status === 'APPROVED'
-                  ? { backgroundColor: '#dcfce7', color: '#166534', borderColor: '#bbf7d0' }
-                  : serverCandidate.status === 'REJECTED'
-                  ? { backgroundColor: '#fee2e2', color: '#991b1b', borderColor: '#fecaca' }
-                  : undefined
+              className={
+                isReadOnly
+                  ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
+                      ? styles.managerReviewStatusDone
+                      : serverCandidate?.status === 'REVISION_REQUIRED' || serverCandidate?.status === 'REJECTED' || currentSubmission?.status === 'CHANGES_REQUESTED'
+                      ? styles.managerReviewStatusChanges
+                      : styles.managerReviewStatusDefault)
+                  : styles.inReviewBadge
               }
             >
-              {serverCandidate.status === 'APPROVED'
-                ? 'APPROVED'
-                : serverCandidate.status === 'REJECTED'
-                ? 'REJECTED'
+              {isReadOnly
+                ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
+                    ? 'DONE'
+                    : serverCandidate?.status === 'REVISION_REQUIRED'
+                    ? 'CHANGES REQUESTED'
+                    : serverCandidate?.status || currentSubmission?.status || 'DONE')
                 : 'IN REVIEW'}
             </span>
-            <span>•</span>
-            <span>Round {roundNumber}</span>
-            <span>•</span>
-            <span>Submitted by {submittedBy}</span>
-            {submittedAt && (
-              <>
-                <span>•</span>
-                <span>{formatReviewDate(submittedAt)}</span>
-              </>
-            )}
+
             {taskDueDate && (
               <>
-                <span>•</span>
-                <span>Due {formatReviewDate(taskDueDate)}</span>
+                <span className={styles.metaSeparator}>&bull;</span>
+                <span className={styles.metaItem}>Due {formatReviewDate(taskDueDate)}</span>
               </>
             )}
-          </div>
 
-          <div className={styles.companyNameSubline}>
-            Target Company: <strong>{companyLegalName}</strong>
-            {isManual ? (
-              <span className={styles.sourceDocsInline}>
-                • Source: Manual Entry
-              </span>
-            ) : sourceDocNames.length > 0 && (
-              <span className={styles.sourceDocsInline}>
-                • Source: {sourceDocNames.join(', ')}
-              </span>
+            {companyLegalName && (
+              <>
+                <span className={styles.metaSeparator}>&bull;</span>
+                <span className={styles.metaItem}>Target: <strong>{companyLegalName}</strong></span>
+              </>
             )}
           </div>
         </div>
+
         {!unifiedTopBar && (
           <button
-            className={styles.closeButton}
+            type="button"
+            className={styles.iconCloseButton}
             onClick={onCancel}
             aria-label="Close review workspace"
           >
-            <XIcon size={22} />
+            <XIcon size={18} />
           </button>
         )}
       </div>
 
+      {/* ── Submission Summary Card (matches Staff Workspace draft summary) ── */}
+      <div className={styles.submissionSummaryCard}>
+        <div className={styles.submissionSummaryTop}>
+          <div className={styles.submissionSummaryBadges}>
+            <span className={isManual ? styles.manualEntryBadge : styles.aiExtractedBadge}>
+              {isManual ? 'MANUAL ENTRY' : 'AI EXTRACTED'}
+            </span>
+            <span className={styles.inReviewSubBadge}>
+              {isReadOnly
+                ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
+                    ? 'APPROVED'
+                    : serverCandidate?.status === 'REVISION_REQUIRED'
+                    ? 'CHANGES REQUESTED'
+                    : serverCandidate?.status || 'REVIEWED')
+                : 'IN REVIEW'}
+            </span>
+            <span className={styles.metaSeparator}>&bull;</span>
+            <span className={styles.summaryRoundText}>Round {roundNumber}</span>
+          </div>
+        </div>
+
+        <h3 className={styles.submissionDraftTitle}>
+          {draftTitle}
+        </h3>
+
+        <div className={styles.submissionSummaryMetaRow}>
+          {submittedAt && (
+            <span><strong>Submitted:</strong> {formatReviewDate(submittedAt)}</span>
+          )}
+          <span><strong>Submitted by:</strong> {submittedBy}</span>
+          {isReadOnly && reviewedAt && (
+            <span><strong>Reviewed:</strong> {formatReviewDate(reviewedAt)}</span>
+          )}
+          <span>
+            <strong>Source:</strong>{' '}
+            {isManual
+              ? 'Manual Entry'
+              : (sourceDocNames.length > 0 ? sourceDocNames.join(', ') : 'AI Extraction')}
+          </span>
+        </div>
+      </div>
+
       {/* Main Layout */}
-      <div className={styles.layoutContainer}>
-        {/* Left Column */}
+      <div className={`${styles.layoutContainer} ${isReadOnly ? styles.layoutContainerReadOnly : ''}`}>
+        {/* Left Column (Full width when read-only) */}
         <div className={styles.mainContent}>
           <div className={styles.tabsContainer}>
             {CANDIDATE_TABS.map(tab => {
               const summary = sectionSummaries[tab];
               const isActive = activeTab === tab;
-
-              if (isManual) {
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    className={`${styles.manualManagerTab} ${isActive ? styles.manualTabActive : ''}`}
-                    onClick={() => setActiveTab(tab)}
-                    title={`${tab}: ${summary.hasData ? `${summary.reviewedCount} of ${summary.submittedCount} reviewed` : 'No submitted data'}`}
-                  >
-                    <div className={styles.manualTabLabelRow}>
-                      <span className={styles.manualTabLabel}>{tab}</span>
-                      {summary.rejectedCount > 0 && (
-                        <span className={styles.manualTabWarning} title={`${summary.rejectedCount} field(s) need revision`}>
-                          <AlertTriangle size={12} />
-                        </span>
-                      )}
-                    </div>
-                    <div className={styles.manualTabProgress}>
-                      {!summary.hasData ? (
-                        <span className={styles.manualTabNoData}>No data</span>
-                      ) : summary.complete ? (
-                        <span className={styles.manualTabComplete}>
-                          <Check size={12} strokeWidth={2.5} /> {summary.reviewedCount}/{summary.submittedCount} reviewed
-                        </span>
-                      ) : (
-                        <span>
-                          {summary.reviewedCount}/{summary.submittedCount} reviewed
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              }
-
               return (
                 <button
                   key={tab}
@@ -1062,54 +1110,151 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                   className={`${styles.tab} ${styles.managerTab} ${isActive ? styles.tabActive : ''}`}
                   onClick={() => setActiveTab(tab)}
                 >
-                  {tab}
-                  <span className={styles.tabCount}>{summary.totalFields}</span>
-                  {summary.pendingCount > 0 && <span className={styles.tabIssueDot}>{summary.pendingCount} pending</span>}
+                  <span>{tab}</span>
+                  <span className={styles.tabCount}>
+                    {isManual ? summary.submittedCount : summary.totalFields}
+                  </span>
+                  {!isReadOnly && summary.pendingCount > 0 && (
+                    <span className={styles.tabPendingDot}>{summary.pendingCount} pending</span>
+                  )}
+                  {!isReadOnly && summary.rejectedCount > 0 && (
+                    <span className={styles.tabRejectedDot} title={`${summary.rejectedCount} field(s) rejected`}>
+                      {summary.rejectedCount} rejected
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
 
-          <div className={styles.quickFilterBar}>
-            <div>
-              <span>Review Fields</span>
-              <small>{stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'}</small>
-            </div>
-            {!isEffectiveReadOnly && (
-              <div className={styles.quickFilterActions}>
-                <button
-                  type="button"
-                  className={styles.approveAllBtn}
-                  onClick={handleApproveAllInTab}
-                  title={`Approve all pending fields in ${activeTab}`}
-                >
-                  <CheckCheck size={16} /> Approve All
-                </button>
+          {(() => {
+            const hasPendingInTab = FIELD_DEFS[activeTab].some(f => {
+              if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) return false;
+              const field = effectiveFieldForKey(serverCandidate, f.key);
+              return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
+            });
+            return (
+              <div className={styles.quickFilterBar}>
+                <div>
+                  <span className={styles.quickFilterTitle}>Reviewed fields</span>
+                  <small className={styles.quickFilterSubtitle}>
+                    {stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'} &middot;{' '}
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>{stats.approved} approved</span> &middot;{' '}
+                    <span style={{ color: stats.rejected > 0 ? '#dc2626' : undefined, fontWeight: stats.rejected > 0 ? 600 : undefined }}>{stats.rejected} rejected</span>
+                    {stats.pending > 0 && (
+                      <> &middot; <span style={{ color: '#64748b' }}>{stats.pending} pending</span></>
+                    )}
+                  </small>
+                </div>
+                {!isReadOnly && !isEffectiveReadOnly && hasPendingInTab && (
+                  <div className={styles.quickFilterActions}>
+                    <button
+                      type="button"
+                      className={styles.approveAllBtn}
+                      onClick={handleApproveAllInTab}
+                      title={`Approve all pending fields in ${activeTab}`}
+                    >
+                      <CheckCheck size={14} /> Approve All
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <div className={styles.tabContent}>
+            {renderTabContent()}
+
+            {isReadOnly && (
+              <div className={styles.readonlyHistorySection}>
+                <h3 className={styles.readonlyHistoryTitle}>Review history</h3>
+                <div className={styles.readonlyHistoryTimeline}>
+                  {submissionHistory.length > 0 ? (
+                    submissionHistory.map((sub, idx) => {
+                      const isApproved = sub.status === 'APPROVED';
+                      const isChanges = sub.status === 'CHANGES_REQUESTED' || sub.status === 'REVISION_REQUESTED' || sub.status === 'REJECTED';
+                      return (
+                        <article key={sub.id || idx} className={styles.readonlyHistoryItem}>
+                          <div className={styles.readonlyHistoryItemHeader}>
+                            <div className={styles.readonlyHistoryItemTitle}>
+                              <strong>Round {sub.submittedRevisionNumber || idx + 1}</strong>
+                              <span
+                                className={styles.readonlyHistoryBadge}
+                                style={{
+                                  backgroundColor: isApproved ? '#dcfce7' : isChanges ? '#fee2e2' : '#dbeafe',
+                                  color: isApproved ? '#166534' : isChanges ? '#991b1b' : '#1e40af',
+                                }}
+                              >
+                                {sub.status}
+                              </span>
+                            </div>
+                            <span className={styles.readonlyHistoryDate}>
+                              {formatReviewDate(sub.reviewedAt || sub.submittedAt || sub.createdAt)}
+                            </span>
+                          </div>
+                          <div className={styles.readonlyHistorySubtext}>
+                            {sub.reviewedAt ? 'Reviewed by Business Manager' : (sub.submittedByName ? `Submitted by ${sub.submittedByName}` : 'Business Manager')}
+                          </div>
+                          {sub.reviewComment && (
+                            <div className={styles.readonlyHistoryComment}>
+                              &ldquo;{sub.reviewComment}&rdquo;
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <article className={styles.readonlyHistoryItem}>
+                      <div className={styles.readonlyHistoryItemHeader}>
+                        <div className={styles.readonlyHistoryItemTitle}>
+                          <strong>Round {roundNumber}</strong>
+                          <span
+                            className={styles.readonlyHistoryBadge}
+                            style={{
+                              backgroundColor: serverCandidate.status === 'APPROVED' ? '#dcfce7' : '#fee2e2',
+                              color: serverCandidate.status === 'APPROVED' ? '#166534' : '#991b1b',
+                            }}
+                          >
+                            {serverCandidate.status}
+                          </span>
+                        </div>
+                        <span className={styles.readonlyHistoryDate}>
+                          {formatReviewDate(serverCandidate.review?.reviewedAt || serverCandidate.metadata?.updatedAt)}
+                        </span>
+                      </div>
+                      <div className={styles.readonlyHistorySubtext}>
+                        Reviewed by {serverCandidate.review?.reviewedBy || 'Business Manager'}
+                      </div>
+                      {serverCandidate.review?.rejectionReason && (
+                        <div className={styles.readonlyHistoryComment}>
+                          &ldquo;{serverCandidate.review.rejectionReason}&rdquo;
+                        </div>
+                      )}
+                    </article>
+                  )}
+                </div>
               </div>
             )}
           </div>
-          
-          <div className={styles.tabContent}>
-            {renderTabContent()}
-          </div>
         </div>
 
-        {/* Right Sidebar */}
-        <div className={styles.sidebar}>
-          <div className={styles.managerReviewPanel}>
-            <h3>Review Progress</h3>
+        {/* Right Sidebar - ONLY in active review mode */}
+        {!isReadOnly && (
+          <div className={styles.sidebar}>
+            <div className={styles.managerReviewPanel}>
+              <h3 className={styles.managerPanelHeading}>Review Progress</h3>
 
             {/* Progress bar */}
             <div className={styles.progressBarWrap}>
               <div className={styles.managerProgressLabels}>
                 <span>{stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'}</span>
+                <strong>{stats.percentage}%</strong>
               </div>
               <div className={styles.progressBarTrack}>
                 <div
                   className={styles.progressBarFill}
                   style={{ width: `${stats.percentage}%` }}
                 />
-                <span className={styles.progressBarLabel}>{stats.percentage}%</span>
               </div>
             </div>
 
@@ -1125,13 +1270,13 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
               </div>
 
               <div className={styles.managerStatRow}>
-                <span className={styles.managerStatPending}>Pending</span>
+                <span className={styles.managerStatPending}><Clock size={13} /> Pending</span>
                 <strong>{stats.pending}</strong>
               </div>
 
               {isManual && stats.notProvided > 0 && (
                 <div className={styles.managerStatRow}>
-                  <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className={styles.managerStatNotProvided}>
                     Not provided
                   </span>
                   <strong style={{ color: '#94a3b8' }}>{stats.notProvided}</strong>
@@ -1140,7 +1285,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             </div>
 
             {/* Next Pending */}
-            {stats.pending > 0 && !isWorkspaceReadOnly && (
+            {stats.pending > 0 && (
               <div className={styles.managerNextPending}>
                 <button onClick={handleNextPending}>
                   Next pending field &rarr;
@@ -1154,109 +1299,90 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             </div>
 
             {/* Actions */}
-            {isWorkspaceReadOnly ? (
-              serverCandidate.status === 'APPROVED' && (
-                <div className={styles.managerSidebarActions}>
-                  {onViewCompanyProfile ? (
-                    <button
-                      type="button"
-                      className={styles.btnCompleteReview}
-                      onClick={() => onViewCompanyProfile(serverCandidate.lifecycle?.convertedCompanyProfileId)}
-                    >
-                      <ExternalLink size={16} /> View Company Profile
-                    </button>
+            <div className={styles.managerSidebarActions}>
+              {stats.canComplete && (
+                <button
+                  className={styles.btnCompleteReview}
+                  onClick={handleCompleteReview}
+                  disabled={completingReview}
+                >
+                  {completingReview ? (
+                    <><Loader2 size={16} className={styles.spin} /> Approving&hellip;</>
                   ) : (
-                    <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, color: '#166534', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <CheckCircle size={15} color="#16a34a" /> Candidate Approved (Read-only)
+                    <><CheckCircle size={16} /> Approve Candidate</>
+                  )}
+                </button>
+              )}
+
+              {!stats.canComplete && stats.pending === 0 && (stats.total === 0 || stats.rejected > 0 || stats.needsReview > 0) && (
+                <button
+                  className={styles.btnSendBack}
+                  onClick={handleSendBack}
+                  disabled={sendingBack}
+                >
+                  {sendingBack ? (
+                    <><Loader2 size={15} className={styles.spin} /> Sending&hellip;</>
+                  ) : (
+                    <><Send size={15} /> Send Back to Staff</>
+                  )}
+                </button>
+              )}
+
+              {stats.pending > 0 && (
+                <button
+                  className={styles.btnCompleteDisabled}
+                  disabled
+                  title={isManual ? `${stats.pending} submitted field(s) still need a decision` : `${stats.pending} fields still need a decision`}
+                >
+                  <CheckCircle size={16} /> Approve Candidate
+                </button>
+              )}
+            </div>
+
+              {/* Collapsible submission history (if history exists) */}
+              {submissionHistory.length > 0 && (
+                <div className={styles.historySection}>
+                  <button
+                    type="button"
+                    className={styles.historyToggle}
+                    onClick={() => setHistoryOpen(prev => !prev)}
+                  >
+                    {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    View submission history ({submissionHistory.length})
+                  </button>
+                  {historyOpen && (
+                    <div className={styles.historyTimeline}>
+                      {submissionHistory.map((sub) => (
+                        <article key={sub.id} className={styles.historyItem}>
+                          <div className={styles.historyItemHeader}>
+                            <span
+                              className={styles.historyItemStatus}
+                              style={{
+                                backgroundColor: sub.status === 'APPROVED' ? '#dcfce7' : sub.status === 'REJECTED' ? '#fee2e2' : '#dbeafe',
+                                color: sub.status === 'APPROVED' ? '#166534' : sub.status === 'REJECTED' ? '#991b1b' : '#1e40af',
+                              }}
+                            >
+                              {sub.status}
+                            </span>
+                            <span className={styles.historyItemDate}>{formatReviewDate(sub.submittedAt || sub.createdAt)}</span>
+                          </div>
+                          <div className={styles.historyItemNote}>
+                            Round {sub.submittedRevisionNumber || 1} &bull; {sub.submittedByName || 'Staff'}
+                          </div>
+                          {sub.reviewComment && (
+                            <div style={{ marginTop: 4, color: '#64748b', fontStyle: 'italic' }}>
+                              Review: &ldquo;{sub.reviewComment}&rdquo;
+                            </div>
+                          )}
+                        </article>
+                      ))}
                     </div>
                   )}
                 </div>
-              )
-            ) : (
-              <div className={styles.managerSidebarActions}>
-                {stats.canComplete && (
-                  <button
-                    className={styles.btnCompleteReview}
-                    onClick={handleCompleteReview}
-                    disabled={completingReview}
-                  >
-                    {completingReview ? (
-                      <><Loader2 size={16} className={styles.spin} /> Approving&hellip;</>
-                    ) : (
-                      <><CheckCircle size={16} /> Approve Candidate</>
-                    )}
-                  </button>
-                )}
-
-                {!stats.canComplete && stats.pending === 0 && (stats.rejected > 0 || stats.needsReview > 0) && (
-                  <button
-                    className={styles.btnSendBack}
-                    onClick={handleSendBack}
-                    disabled={sendingBack}
-                  >
-                    {sendingBack ? (
-                      <><Loader2 size={16} className={styles.spin} /> Sending&hellip;</>
-                    ) : (
-                      <><Send size={16} /> Send Back to Staff</>
-                    )}
-                  </button>
-                )}
-
-                {stats.pending > 0 && (
-                  <button
-                    className={styles.btnCompleteDisabled}
-                    disabled
-                    title={isManual ? `${stats.pending} submitted field(s) still need a decision` : `${stats.pending} fields still need a decision`}
-                  >
-                    <CheckCircle size={16} /> Approve Candidate
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Collapsible submission history (if history exists) */}
-            {submissionHistory.length > 0 && (
-              <div className={styles.historySection}>
-                <button
-                  type="button"
-                  className={styles.historyToggle}
-                  onClick={() => setHistoryOpen(prev => !prev)}
-                >
-                  {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  View submission history ({submissionHistory.length})
-                </button>
-                {historyOpen && (
-                  <div className={styles.historyTimeline}>
-                    {submissionHistory.map((sub) => (
-                      <article key={sub.id} className={styles.historyItem}>
-                        <div className={styles.historyItemHeader}>
-                          <span
-                            className={styles.historyItemStatus}
-                            style={{
-                              backgroundColor: sub.status === 'APPROVED' ? '#dcfce7' : sub.status === 'REJECTED' ? '#fee2e2' : '#dbeafe',
-                              color: sub.status === 'APPROVED' ? '#166534' : sub.status === 'REJECTED' ? '#991b1b' : '#1e40af',
-                            }}
-                          >
-                            {sub.status}
-                          </span>
-                          <span className={styles.historyItemDate}>{formatReviewDate(sub.submittedAt || sub.createdAt)}</span>
-                        </div>
-                        <div className={styles.historyItemNote}>
-                          Round {sub.submittedRevisionNumber || 1} &bull; {sub.submittedByName || 'Staff'}
-                        </div>
-                        {sub.reviewComment && (
-                          <div style={{ marginTop: 4, color: '#64748b', fontStyle: 'italic' }}>
-                            Review: &ldquo;{sub.reviewComment}&rdquo;
-                          </div>
-                        )}
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
     </div>

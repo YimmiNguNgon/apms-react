@@ -6,6 +6,8 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
+  RefreshCw,
   Bot,
   Building2,
   CalendarDays,
@@ -60,6 +62,13 @@ import { candidateApi } from '../API/candidateApi';
 import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
 import { EditProjectModal } from '../components/EditProjectModal';
 import { ConfirmModal } from '../components/Shared/ConfirmModal';
+import {
+  RELATIONSHIP_OPTIONS,
+  normalizeRelationshipInput,
+  getProfileCanonicalRelationship,
+  findCompanyProfile,
+  profileName,
+} from '../utils/deliverableUtils';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
 import type {
@@ -70,6 +79,7 @@ import type {
 } from '../types/domain';
 import { CandidateReviewWorkspace } from '../components/CandidateReview/CandidateReviewWorkspace';
 import { ManagerCandidateReviewWorkspace } from '../components/CandidateReview/ManagerCandidateReviewWorkspace';
+import { isManualCandidate } from '../components/CandidateReview/candidateFieldDefinitions';
 import { CompanyNewsResearchWorkspace } from '../components/CompanyNewsResearchWorkspace';
 import { ManagerNewsReviewWorkspace } from '../components/CompanyNewsResearch/ManagerNewsReviewWorkspace';
 import FinancialResearchWorkbench from '../components/FinancialResearch/FinancialResearchWorkbench';
@@ -103,6 +113,7 @@ import type {
   StaffWorkHistoryItemResponse,
   TaskHistoryDetailResponse,
   TaskTimelineEventResponse,
+  FieldApprovalRecord,
 } from '../types/domain';
 
 const tabs = ['Kanban Board', 'Review History', 'Members'];
@@ -528,9 +539,9 @@ const CandidateInfoPanel: React.FC<{ title: string; data: unknown; preferredOrde
 
   const entries = source
     ? [
-        ...(preferredOrder ?? []).filter((key) => key in source).map((key) => [key, source[key]] as const),
-        ...Object.entries(source).filter(([key]) => !(preferredOrder ?? []).includes(key)),
-      ]
+      ...(preferredOrder ?? []).filter((key) => key in source).map((key) => [key, source[key]] as const),
+      ...Object.entries(source).filter(([key]) => !(preferredOrder ?? []).includes(key)),
+    ]
     : [['summary', data] as const];
 
   const visibleEntries = entries
@@ -768,17 +779,17 @@ const EvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence }> = ({ evide
     ? evidence.sources
     : evidence.sourceFileName
       ? [{
-          fileName: evidence.sourceFileName,
-          importJobId: evidence.sourceImportJobId,
-          rawDocumentId: evidence.sourceRawDocumentId,
-          extractionId: evidence.sourceExtractionId,
-          confidenceScore: evidence.confidenceScore,
-          evidenceText: evidence.evidenceText,
-          pageNumber: evidence.pageNumber,
-          validationStatus: evidence.validationStatus,
-          validationMessages: evidence.validationMessages,
-          reviewStatus: evidence.reviewStatus,
-        }]
+        fileName: evidence.sourceFileName,
+        importJobId: evidence.sourceImportJobId,
+        rawDocumentId: evidence.sourceRawDocumentId,
+        extractionId: evidence.sourceExtractionId,
+        confidenceScore: evidence.confidenceScore,
+        evidenceText: evidence.evidenceText,
+        pageNumber: evidence.pageNumber,
+        validationStatus: evidence.validationStatus,
+        validationMessages: evidence.validationMessages,
+        reviewStatus: evidence.reviewStatus,
+      }]
       : [];
 
   return (
@@ -1518,11 +1529,11 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
   const fallbackMember = assignedMember
     ? makeTaskMember(assignedMember)
     : {
-        ...members[2],
-        id: task.assignedToUserId ?? task.id,
-        name: task.assignedToName || 'Unassigned',
-        avatar: (task.assignedToName || 'UN').slice(0, 2).toUpperCase(),
-      };
+      ...members[2],
+      id: task.assignedToUserId ?? task.id,
+      name: task.assignedToName || 'Unassigned',
+      avatar: (task.assignedToName || 'UN').slice(0, 2).toUpperCase(),
+    };
 
   return {
     id: `APMS-${task.id}`,
@@ -1556,6 +1567,7 @@ const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemb
 const TaskCard: React.FC<{
   task: ProjectTask;
   onOpen: (task: ProjectTask) => void;
+  onViewDetails?: (task: ProjectTask) => void;
   onDelete?: (task: ProjectTask) => void;
   onRelease?: (task: ProjectTask) => void;
   onReview?: (task: ProjectTask) => void;
@@ -1566,6 +1578,7 @@ const TaskCard: React.FC<{
 }> = ({
   task,
   onOpen,
+  onViewDetails,
   onDelete,
   onRelease,
   onReview,
@@ -1573,107 +1586,126 @@ const TaskCard: React.FC<{
   deleting = false,
   releasing = false,
   claiming = false,
-}) => (
-  <motion.article
-    layout
-    className={`${styles.taskCard} ${task.status === 'done' || task.status === 'DONE' ? styles.taskCardDone : ''}`}
-    onClick={() => onOpen(task)}
-    whileHover={{ y: -3 }}
-    transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-  >
-    <div className={styles.taskTop}>
-      <span className={styles.taskKey}>{task.id}</span>
-      <div className={styles.taskCardActions}>
-        {task.aiGenerated && (
-          <span className={styles.aiDot} title="AI generated task">
-            <Bot size={15} />
-          </span>
-        )}
-      </div>
-    </div>
-    <h4 className={styles.taskTitle}>{task.title}</h4>
-    <div className={styles.labels}>
-      {!task.keyResult && (
-        <span className={`${styles.priority} ${priorityClass[task.priority]}`}>{task.priority}</span>
-      )}
-      {task.labels.map((label) => (
-        <span className={styles.label} key={label}>{label}</span>
-      ))}
-    </div>
-    <div className={styles.taskFooter}>
-      <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />
-      <div className={styles.taskStats}>
-        <span title="Due date"><CalendarDays size={14} />{formatDate(task.dueDate)}</span>
-        <span title="Attachments"><Paperclip size={14} />{task.attachments.length}</span>
-        <span title="Comments"><MessageSquare size={14} />{task.comments.length}</span>
-      </div>
-    </div>
-    {(() => {
-      const hasRelease = onRelease && task.availableActions?.includes('RELEASE_TASK');
-      const hasClaim = onClaim && task.availableActions?.includes('CLAIM_TASK');
-      if (!hasRelease && !onReview && !hasClaim) return null;
-      return (
-        <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', gap: '8px' }}>
-          {hasRelease && (
-            <button
-              className={styles.button}
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onRelease(task);
-              }}
-              disabled={releasing}
-            >
-              {releasing ? 'Releasing...' : 'Release Task'}
-            </button>
-          )}
-          {onReview && (
-            <button
-              className={`${styles.button} ${styles.primaryButton}`}
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onReview(task);
-              }}
-            >
-              Review
-            </button>
-          )}
-          {hasClaim && (
-            <button
-              className={`${styles.button} ${styles.primaryButton}`}
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onClaim(task.id.replace('APMS-', ''));
-              }}
-              disabled={claiming}
-            >
-              {claiming ? 'Taking...' : 'Take Task'}
-            </button>
-          )}
+}) => {
+    const isDone = task.status === 'done' || task.status === 'DONE';
+    return (
+      <motion.article
+        layout
+        className={`${styles.taskCard} ${isDone ? styles.taskCardDone : ''}`}
+        onClick={() => onOpen(task)}
+        whileHover={{ y: -3 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+      >
+        <div className={styles.taskTop}>
+          <span className={styles.taskKey}>{task.id}</span>
+          <div className={styles.taskCardActions}>
+            {isDone && <span className={styles.taskDoneBadge}>Done</span>}
+            {task.aiGenerated && (
+              <span className={styles.aiDot} title="AI generated task">
+                <Bot size={15} />
+              </span>
+            )}
+          </div>
         </div>
-      );
-    })()}
-  </motion.article>
-);
+        <h4 className={styles.taskTitle}>{task.title}</h4>
+        <div className={styles.labels}>
+          {!task.keyResult && (
+            <span className={`${styles.priority} ${priorityClass[task.priority]}`}>{task.priority}</span>
+          )}
+          {task.labels.map((label) => (
+            <span className={styles.label} key={label}>{label}</span>
+          ))}
+        </div>
+        <div className={styles.taskFooter}>
+          <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />
+          <div className={styles.taskStats}>
+            <span title="Due date"><CalendarDays size={14} />{formatDate(task.dueDate)}</span>
+            {task.attachments.length > 0 && (
+              <span title="Attachments"><Paperclip size={14} />{task.attachments.length}</span>
+            )}
+            {task.comments.length > 0 && (
+              <span title="Comments"><MessageSquare size={14} />{task.comments.length}</span>
+            )}
+          </div>
+        </div>
+        {(() => {
+          const hasRelease = onRelease && task.availableActions?.includes('RELEASE_TASK');
+          const hasClaim = onClaim && task.availableActions?.includes('CLAIM_TASK');
+          return (
+            <div style={{ marginTop: '10px', borderTop: '1px solid var(--border)', paddingTop: '10px', display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className={styles.button}
+                style={{ flex: 1, height: '34px', fontSize: '13px', justifyContent: 'center' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  (onViewDetails ?? onOpen)(task);
+                }}
+              >
+                View Details
+              </button>
+              {hasRelease && (
+                <button
+                  type="button"
+                  className={styles.button}
+                  style={{ flex: 1, height: '34px', fontSize: '13px', justifyContent: 'center' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRelease(task);
+                  }}
+                  disabled={releasing}
+                >
+                  {releasing ? 'Releasing...' : 'Release Task'}
+                </button>
+              )}
+              {onReview && (
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.primaryButton}`}
+                  style={{ flex: 1, height: '34px', fontSize: '13px', justifyContent: 'center' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReview(task);
+                  }}
+                >
+                  Review
+                </button>
+              )}
+              {hasClaim && (
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.primaryButton}`}
+                  style={{ flex: 1, height: '34px', fontSize: '13px', justifyContent: 'center' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClaim(task.id.replace('APMS-', ''));
+                  }}
+                  disabled={claiming}
+                >
+                  {claiming ? 'Taking...' : 'Take Task'}
+                </button>
+              )}
+            </div>
+          );
+        })()}
+      </motion.article>
+    );
+  };
 
 const TaskDetailModal: React.FC<{
   task: ProjectTask | null;
   onClose: () => void;
-  onOpenWorkbench?: (task: ProjectTask) => void;
-  onRelease?: (task: ProjectTask) => void;
-}> = ({ task, onClose, onOpenWorkbench, onRelease }) => {
+}> = ({ task, onClose }) => {
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
 
   useEffect(() => {
     if (!task) return;
-    
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    
+
     return () => {
       document.body.style.overflow = previousOverflow;
     };
@@ -1723,129 +1755,113 @@ const TaskDetailModal: React.FC<{
       case 'PROJECT_TASK_CLAIMED': return 'Claimed this task';
       case 'PROJECT_TASK_RELEASED': return 'Released this task';
       case 'PROJECT_TASK_SUBMITTED': return 'Submitted this task for review';
-      case 'PROJECT_TASK_SUBMISSION_REVISION_REQUESTED': return 'Requested changes';
+      case 'PROJECT_TASK_SUBMISSION_REVISION_REQUESTED':
+      case 'PROJECT_TASK_REVISION_REQUESTED':
+        return 'Requested changes';
       case 'PROJECT_TASK_SUBMISSION_APPROVED': return 'Approved this task';
-      default: return action;
+      case 'PROJECT_TASK_SUBMISSION_REJECTED': return 'Rejected submission';
+      case 'PROJECT_TASK_SUBMISSION_CANCELLED': return 'Submission cancelled';
+      case 'PROJECT_TASK_STATUS_CHANGED': return detail || 'Task status changed';
+      case 'PROJECT_TASK_ASSIGNED': return detail || 'Task assigned';
+      case 'PROJECT_TASK_UPDATED': return detail || 'Task details updated';
+      default: return detail || action;
     }
   };
 
   return typeof document !== 'undefined'
     ? createPortal(
-        <AnimatePresence>
-          {task && (
-            <motion.div className={`${styles.overlay} ${styles.taskDetailOverlay}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-        <motion.aside
-          className={styles.drawer}
-          initial={{ opacity: 0, y: 18, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 18, scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className={styles.drawerHeader}>
-            <div>
-              <span className={styles.taskKey}>{task.id}</span>
-              <h2>{task.title}</h2>
-            </div>
-            <button className={styles.iconButton} type="button" aria-label="Close task detail modal" onClick={onClose}>
-              <X size={18} />
-            </button>
-          </div>
-
-          <section className={styles.drawerSection}>
-            <h3><FileText size={16} /> Basic Information</h3>
-            <p className={styles.description}>{task.description}</p>
-            <div className={styles.infoGrid}>
-              <div><span>Status</span><strong>
-                {task.status === 'AVAILABLE' ? 'Available' :
-                 task.status === 'IN_PROGRESS' ? 'In Progress' :
-                 task.status === 'IN_REVIEW' ? 'In Review' :
-                 task.status === 'DONE' ? 'Done' :
-                 task.status === 'CANCELLED' ? 'Cancelled' :
-                 task.status === 'TODO' || task.status === 'todo' ? 'To Do' :
-                 task.status === 'progress' ? 'In Progress' :
-                 task.status === 'review' ? 'In Review' :
-                 task.status === 'done' ? 'Done' :
-                 task.status}
-              </strong></div>
-              {task.keyResult ? (
-                <>
-                  <div><span>Deliverable</span><strong>{task.keyResult.name}</strong></div>
-                  <div><span>Progress Weight</span><strong>{task.keyResult.weight != null ? `${task.keyResult.weight} %` : ''}</strong></div>
-                </>
-              ) : null}
-              {!task.keyResult && (
-                <div><span>Priority</span><strong>{task.priority}</strong></div>
-              )}
-              <div><span>Assignee</span><strong>{task.assignee.name}</strong></div>
-              {!task.keyResult && (
-                <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
-              )}
-              <div><span>Due date</span><strong>{formatDate(task.dueDate)}</strong></div>
-              {!task.keyResult && (
-                <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
-              )}
-            </div>
-          </section>
-
-          <section className={styles.drawerSection}>
-            <h3><Activity size={16} /> Activity History</h3>
-            {activityLoading ? (
-              <p className={styles.description}>Loading activity...</p>
-            ) : activityError ? (
-              <p className={styles.description}>Unable to load activity.</p>
-            ) : activityLogs.length > 0 ? (
-              <div className={styles.timeline}>
-                {activityLogs.map((item) => (
-                  <div key={item.id} className={styles.timelineItem}>
-                    <div className={styles.timelineDot} />
-                    <div className={styles.timelineContent}>
-                      <div className={styles.timelineHeader}>
-                        <strong>{item.actorName}</strong>
-                      </div>
-                      <div className={styles.timelineAction}>
-                        {getActionText(item.action, item.detail)}
-                      </div>
-                      <div className={styles.timelineTime}>
-                        {formatDateWithTime(item.occurredAt)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.description}>No activity yet.</p>
-            )}
-          </section>
-
-          {(onOpenWorkbench || onRelease || task?.status === 'IN_REVIEW' || task?.status === 'DONE') && (
-            <section className={styles.drawerSection}>
-              {onOpenWorkbench && task?.availableActions?.includes('SUBMIT_TASK') && (
-                <button
-                  className={styles.primaryButton}
-                  onClick={() => {
-                    onOpenWorkbench(task);
-                    onClose();
-                  }}
-                  style={{ marginRight: '8px' }}
-                >
-                  Open Workbench
+      <AnimatePresence>
+        {task && (
+          <motion.div className={`${styles.overlay} ${styles.taskDetailOverlay}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+            <motion.aside
+              className={styles.drawer}
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.97 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.drawerHeader}>
+                <div>
+                  <span className={styles.taskKey}>{task.id}</span>
+                  <h2>{task.title}</h2>
+                </div>
+                <button className={styles.iconButton} type="button" aria-label="Close task detail modal" onClick={onClose}>
+                  <X size={18} />
                 </button>
-              )}
-              {task?.status === 'IN_REVIEW' && (
-                <p className={styles.statusMessage}>Waiting for Manager Review</p>
-              )}
-              {(task?.status === 'DONE' || task?.status === 'done') && (
-                <p className={styles.statusMessage}>Completed</p>
-              )}
-            </section>
-          )}
-        </motion.aside>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )
+              </div>
+
+              <section className={styles.drawerSection}>
+                <h3><FileText size={16} /> Basic Information</h3>
+                <p className={styles.description}>{task.description}</p>
+                <div className={styles.infoGrid}>
+                  <div><span>Status</span><strong>
+                    {task.status === 'AVAILABLE' ? 'Available' :
+                      task.status === 'IN_PROGRESS' ? 'In Progress' :
+                        task.status === 'IN_REVIEW' ? 'In Review' :
+                          task.status === 'DONE' ? 'Done' :
+                            task.status === 'CANCELLED' ? 'Cancelled' :
+                              task.status === 'TODO' || task.status === 'todo' ? 'To Do' :
+                                task.status === 'progress' ? 'In Progress' :
+                                  task.status === 'review' ? 'In Review' :
+                                    task.status === 'done' ? 'Done' :
+                                      task.status}
+                  </strong></div>
+                  {task.keyResult ? (
+                    <>
+                      <div><span>Deliverable</span><strong>{task.keyResult.name}</strong></div>
+                      <div><span>Progress Weight</span><strong>{task.keyResult.weight != null ? `${task.keyResult.weight} %` : ''}</strong></div>
+                    </>
+                  ) : null}
+                  {!task.keyResult && (
+                    <div><span>Priority</span><strong>{task.priority}</strong></div>
+                  )}
+                  <div><span>Assignee</span><strong>{task.status === 'AVAILABLE' ? 'Unassigned' : (task.assignee.name || 'Unassigned')}</strong></div>
+                  {!task.keyResult && (
+                    <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
+                  )}
+                  <div><span>Due date</span><strong>{formatDate(task.dueDate)}</strong></div>
+                  {!task.keyResult && (
+                    <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
+                  )}
+                </div>
+              </section>
+
+              <section className={styles.drawerSection}>
+                <h3><Activity size={16} /> Activity History</h3>
+                {activityLoading ? (
+                  <p className={styles.description}>Loading activity...</p>
+                ) : activityError ? (
+                  <p className={styles.description}>Unable to load activity.</p>
+                ) : activityLogs.length > 0 ? (
+                  <div className={styles.timeline}>
+                    {activityLogs.map((item) => (
+                      <div key={item.id} className={styles.timelineItem}>
+                        <div className={styles.timelineDot} />
+                        <div className={styles.timelineContent}>
+                          <div className={styles.timelineHeader}>
+                            <strong>{item.actorName}</strong>
+                          </div>
+                          <div className={styles.timelineAction}>
+                            {getActionText(item.action, item.detail)}
+                          </div>
+                          <div className={styles.timelineTime}>
+                            {formatDateWithTime(item.occurredAt)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={styles.description}>No activity yet.</p>
+                )}
+              </section>
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )
     : null;
 };
 
@@ -2831,9 +2847,9 @@ const candidateConfidenceScore = (candidate: CandidateResponse) => {
 
   return normalizeConfidenceScore(
     candidate.relationshipConfidenceScore
-      ?? candidateWithScores.confidenceScore
-      ?? candidateWithScores.scorePreview?.relationshipConfidenceScore
-      ?? candidateWithScores.scorePreview?.confidenceScore
+    ?? candidateWithScores.confidenceScore
+    ?? candidateWithScores.scorePreview?.relationshipConfidenceScore
+    ?? candidateWithScores.scorePreview?.confidenceScore
   );
 };
 
@@ -3170,17 +3186,17 @@ const FieldEvidencePanel: React.FC<{ evidence?: StaffExtractionEvidence; fieldKe
     ? evidence.sources
     : evidence.sourceFileName
       ? [{
-          fileName: evidence.sourceFileName,
-          importJobId: evidence.sourceImportJobId,
-          rawDocumentId: evidence.sourceRawDocumentId,
-          extractionId: evidence.sourceExtractionId,
-          confidenceScore: evidence.confidenceScore,
-          evidenceText: evidence.evidenceText,
-          pageNumber: evidence.pageNumber,
-          validationStatus: evidence.validationStatus,
-          validationMessages: evidence.validationMessages,
-          reviewStatus: evidence.reviewStatus,
-        }]
+        fileName: evidence.sourceFileName,
+        importJobId: evidence.sourceImportJobId,
+        rawDocumentId: evidence.sourceRawDocumentId,
+        extractionId: evidence.sourceExtractionId,
+        confidenceScore: evidence.confidenceScore,
+        evidenceText: evidence.evidenceText,
+        pageNumber: evidence.pageNumber,
+        validationStatus: evidence.validationStatus,
+        validationMessages: evidence.validationMessages,
+        reviewStatus: evidence.reviewStatus,
+      }]
       : [];
   const hasSourceEvidence = sources.some((source) => Boolean(source.evidenceText?.trim()));
   const statusItems = [
@@ -3468,17 +3484,17 @@ const CompanyMemberLayerBoard: React.FC<{
                   background: statusLabel === 'Approved'
                     ? '#dcfce7'
                     : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
-                    ? '#ffedd5'
-                    : statusLabel === 'Submitted'
-                    ? '#dbeafe'
-                    : '#f1f5f9',
+                      ? '#ffedd5'
+                      : statusLabel === 'Submitted'
+                        ? '#dbeafe'
+                        : '#f1f5f9',
                   color: statusLabel === 'Approved'
                     ? '#15803d'
                     : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
-                    ? '#c2410c'
-                    : statusLabel === 'Submitted'
-                    ? '#1e40af'
-                    : '#475569',
+                      ? '#c2410c'
+                      : statusLabel === 'Submitted'
+                        ? '#1e40af'
+                        : '#475569',
                   fontSize: '11px',
                   fontWeight: 600,
                   textTransform: 'uppercase',
@@ -3540,6 +3556,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     allActiveSubmissions?: ProjectTaskSubmissionResponse[];
     taskDueDate?: string | null;
     taskTitle?: string | null;
+    isReadOnly?: boolean;
   } | null>(null);
   const [reviewSubmissionError, setReviewSubmissionError] = useState<{ task: ProjectTaskResponse; message: string } | null>(null);
   const [resolvingSubmission, setResolvingSubmission] = useState(false);
@@ -3557,6 +3574,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [closeReason, setCloseReason] = useState('');
   const [closeLoading, setCloseLoading] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
 
   // Async Multi-Document Extraction States
@@ -3748,6 +3768,85 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const projectAlreadyOverdueWarning = projectEndDateInput && new Date(projectEndDateInput).getTime() < new Date(toInputDate(new Date().toISOString())).getTime()
     ? 'This project has already passed its planned end date.'
     : null;
+  const [targetCompanyProfile, setTargetCompanyProfile] = useState<ProfileResponse | null>(null);
+
+  useEffect(() => {
+    if (apiProject?.projectType !== 'UPDATE_EXISTING_COMPANY') {
+      setTargetCompanyProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadTargetProfile = async () => {
+      const targetId = apiProject.targetCompanyProfileId;
+      if (targetId) {
+        try {
+          const res = await api.get<ProfileResponse>(`/profiles/${targetId}`);
+          if (!cancelled && res.data) {
+            setTargetCompanyProfile(res.data);
+            return;
+          }
+        } catch {
+          // fallback to /profiles list
+        }
+      }
+      try {
+        const res = await api.get<PageResult<ProfileResponse>>('/profiles', {
+          params: { page: 0, size: 100, excludeOwner: true },
+        });
+        if (!cancelled && res.data?.content) {
+          const found = findCompanyProfile(res.data.content, targetId) ||
+            res.data.content.find(
+              (p) =>
+                (apiProject.targetCompanyName && profileName(p).toLowerCase() === apiProject.targetCompanyName.toLowerCase()) ||
+                (apiProject.targetCompanyTaxCode && p.identity?.taxCode === apiProject.targetCompanyTaxCode)
+            );
+          if (found) {
+            setTargetCompanyProfile(found);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load target company profile for relationship check', err);
+      }
+    };
+
+    void loadTargetProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiProject?.projectType, apiProject?.targetCompanyProfileId, apiProject?.targetCompanyName, apiProject?.targetCompanyTaxCode]);
+
+  const rawCurrentRel = apiProject?.currentRelationshipType || apiProject?.originalRelationshipType || getProfileCanonicalRelationship(targetCompanyProfile);
+  const normalizedCurrentRel = normalizeRelationshipInput(rawCurrentRel);
+  const normalizedTargetRel = normalizeRelationshipInput(apiProject?.targetRelationshipType);
+
+  const isUpdateExisting = apiProject?.projectType === 'UPDATE_EXISTING_COMPANY';
+  const isRelationshipChangeProject = isUpdateExisting &&
+    !!normalizedCurrentRel &&
+    !!normalizedTargetRel &&
+    normalizedCurrentRel !== normalizedTargetRel;
+
+  const currentRelOption = RELATIONSHIP_OPTIONS.find((o) => o.value === normalizedCurrentRel);
+  const currentRelLabel = currentRelOption?.label || (rawCurrentRel ? String(rawCurrentRel).replace(/_/g, ' ') : '—');
+
+  const targetRelOption = RELATIONSHIP_OPTIONS.find((o) => o.value === normalizedTargetRel);
+  const targetRelLabel = targetRelOption?.label || (apiProject?.targetRelationshipType ? String(apiProject.targetRelationshipType).replace(/_/g, ' ') : '—');
+
+  const isCompletedProject = apiProject?.status === 'COMPLETED';
+
+  const relChangeTitle = (() => {
+    switch (apiProject?.status) {
+      case 'COMPLETED':
+        return 'Relationship updated';
+      case 'CLOSED':
+        return 'Relationship update closed';
+      case 'DRAFT':
+      case 'ACTIVE':
+      default:
+        return 'Relationship change';
+    }
+  })();
+
   const [candidates, setCandidates] = useState<CandidateResponse[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidateError, setCandidateError] = useState<string | null>(null);
@@ -3807,33 +3906,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isCompanyDataReviewOrDone = isCompanyDataInReview || isCompanyDataDone;
   const inReviewPendingSub = isCompanyDataReviewOrDone
     ? (workbench?.submissions?.find((s) => s.status === 'IN_REVIEW')
-       ?? workbench?.submissions?.find((s) => s.status === 'APPROVED')
-       ?? workbench?.submissions?.[0])
+      ?? workbench?.submissions?.find((s) => s.status === 'APPROVED')
+      ?? workbench?.submissions?.[0])
     : undefined;
   const inReviewSubmittedCandId = inReviewPendingSub?.targetEntityId || workbench?.candidateDrafts?.[0]?.candidateId;
   const inReviewDrafts = isCompanyDataReviewOrDone
     ? (() => {
-        let list = [...(workbench?.candidateDrafts || [])];
-        if (list.length === 0 && inReviewPendingSub?.targetEntityId) {
-          list = [{
-            candidateId: inReviewPendingSub.targetEntityId,
-            draftName: submittedCandidateData?.draftName || 'Approved Candidate Profile',
-            candidateName: submittedCandidateData?.identity?.legalName || 'Target Company Profile',
-            status: isCompanyDataDone ? 'APPROVED' : 'PENDING_REVIEW',
-            isApproved: isCompanyDataDone,
-            isUnderReview: isCompanyDataInReview,
-            createdAt: inReviewPendingSub.createdAt,
-          } as any];
-        }
-        return list.sort((a, b) => {
-          const seqA = a.draftSequence ?? 0;
-          const seqB = b.draftSequence ?? 0;
-          if (seqA !== seqB) return seqB - seqA;
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-      })()
+      let list = [...(workbench?.candidateDrafts || [])];
+      if (list.length === 0 && inReviewPendingSub?.targetEntityId) {
+        list = [{
+          candidateId: inReviewPendingSub.targetEntityId,
+          draftName: submittedCandidateData?.draftName || 'Approved Candidate Profile',
+          candidateName: submittedCandidateData?.identity?.legalName || 'Target Company Profile',
+          status: isCompanyDataDone ? 'APPROVED' : 'PENDING_REVIEW',
+          isApproved: isCompanyDataDone,
+          isUnderReview: isCompanyDataInReview,
+          createdAt: inReviewPendingSub.createdAt,
+        } as any];
+      }
+      return list.sort((a, b) => {
+        const seqA = a.draftSequence ?? 0;
+        const seqB = b.draftSequence ?? 0;
+        if (seqA !== seqB) return seqB - seqA;
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+    })()
     : [];
   const inReviewActiveCandId = (inReviewSelectedCandidateId && inReviewDrafts.some((d) => d.candidateId === inReviewSelectedCandidateId))
     ? inReviewSelectedCandidateId
@@ -4448,10 +4547,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         if (isReviewed) {
           const mappedStatus: SubmissionStatus =
             c.status === 'APPROVED' ? 'APPROVED'
-            : c.status === 'REVISION_REQUIRED' ? 'CHANGES_REQUESTED'
-            : c.status === 'REJECTED' ? 'REJECTED'
-            : c.status === 'PENDING_REVIEW' ? 'IN_REVIEW'
-            : 'DRAFT';
+              : c.status === 'REVISION_REQUIRED' ? 'CHANGES_REQUESTED'
+                : c.status === 'REJECTED' ? 'REJECTED'
+                  : c.status === 'PENDING_REVIEW' ? 'IN_REVIEW'
+                    : 'DRAFT';
 
           const candName = c.identity?.legalName || c.draftName || `Candidate #${c.candidateOrder || c.id.slice(-6)}`;
           list.push({
@@ -4583,7 +4682,248 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const renderReviewHistoryBanner = (_onClose?: () => void) => {
+  const getCandidateFieldFeedback = (candidate?: CandidateResponse | null): string | null => {
+    if (!candidate?.fieldApprovals) return null;
+    const records: FieldApprovalRecord[] = Array.isArray(candidate.fieldApprovals)
+      ? candidate.fieldApprovals
+      : Object.values(candidate.fieldApprovals);
+
+    const feedbackLines: string[] = [];
+    for (const rec of records) {
+      if ((rec.status === 'REVISION_REQUIRED' || rec.status === 'REJECTED') && rec.comment?.trim()) {
+        const fieldPath = rec.fieldPath || '';
+        const cleanPath = fieldPath.replace(/^identity\./, '').replace(/^business\./, '').replace(/^contact\./, '');
+        let label = cleanPath;
+        if (cleanPath === 'products' || cleanPath === 'services') label = 'Products & Services';
+        else if (cleanPath === 'legalName') label = 'Legal Name';
+        else if (cleanPath === 'tradingName') label = 'Trading Name';
+        else if (cleanPath === 'industry') label = 'Industry';
+        else if (cleanPath === 'description') label = 'Company Description';
+        else if (cleanPath === 'shortDescription') label = 'Short Description';
+        else if (cleanPath === 'taxId') label = 'Tax ID';
+        else if (cleanPath === 'website') label = 'Website';
+        else if (cleanPath === 'email') label = 'Email';
+        else if (cleanPath === 'phone') label = 'Phone';
+        else {
+          label = cleanPath.replace(/([A-Z])/g, ' $1').replace(/[._]/g, ' ').replace(/^./, (s) => s.toUpperCase()).trim();
+        }
+        feedbackLines.push(`${label}\n"${rec.comment.trim()}"`);
+      }
+    }
+    return feedbackLines.length > 0 ? feedbackLines.join('\n\n') : null;
+  };
+
+  const buildSynthesizedTimeline = (
+    item: ManagerReviewHistoryItem,
+    matchedCand: CandidateResponse | null | undefined,
+    draftOrItemName: string
+  ): TaskTimelineEventResponse[] => {
+    const events: TaskTimelineEventResponse[] = [];
+    const revNum = item.submittedRevisionNumber || 1;
+    const submitterName = item.submittedByName || 'Research Staff';
+    const reviewerName = item.reviewedByName || 'Business Manager';
+    const submittedTime = item.submittedAt || matchedCand?.lastSubmittedAt || matchedCand?.metadata?.createdAt || new Date().toISOString();
+    const reviewedTime = item.reviewedAt || matchedCand?.review?.reviewedAt || submittedTime;
+
+    if (revNum > 1) {
+      const r1Detail = draftOrItemName ? `${draftOrItemName} · Round 1` : 'Round 1';
+      events.push({
+        type: 'SUBMITTED',
+        submissionNumber: 1,
+        title: 'Submitted for review',
+        detail: r1Detail,
+        actorName: submitterName,
+        occurredAt: matchedCand?.metadata?.createdAt || submittedTime,
+      });
+
+      const r1Note = matchedCand?.review?.rejectionReason || 'Some fields require revision.';
+      events.push({
+        type: 'REVISION_REQUESTED',
+        submissionNumber: 1,
+        title: 'Changes requested by Manager',
+        detail: r1Detail,
+        note: r1Note,
+        actorName: reviewerName,
+        occurredAt: submittedTime,
+      });
+    }
+
+    const currentRoundDetail = draftOrItemName ? `${draftOrItemName} · Round ${revNum}` : `Round ${revNum}`;
+    events.push({
+      type: revNum > 1 ? 'RESUBMITTED' : 'SUBMITTED',
+      submissionNumber: revNum,
+      title: revNum > 1 ? 'Resubmitted for review' : 'Submitted for review',
+      detail: currentRoundDetail,
+      note: item.note || undefined,
+      actorName: submitterName,
+      occurredAt: submittedTime,
+    });
+
+    const isApproved = item.status === 'APPROVED';
+    const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
+
+    if (isChangesRequested) {
+      const fieldFeedback = getCandidateFieldFeedback(matchedCand);
+      const feedbackNote = fieldFeedback || item.reviewComment || 'Some fields require revision.';
+      events.push({
+        type: 'REVISION_REQUESTED',
+        submissionNumber: revNum,
+        title: 'Changes requested by Manager',
+        detail: currentRoundDetail,
+        note: feedbackNote,
+        actorName: reviewerName,
+        occurredAt: reviewedTime,
+      });
+    } else if (isApproved) {
+      events.push({
+        type: 'APPROVED',
+        submissionNumber: revNum,
+        title: 'Task approved by Manager',
+        detail: currentRoundDetail,
+        note: item.reviewComment || 'Submission approved by Manager.',
+        actorName: reviewerName,
+        occurredAt: reviewedTime,
+      });
+    }
+
+    return events;
+  };
+
+  const handleOpenManagerReviewHistory = async (item: ManagerReviewHistoryItem) => {
+    let targetTaskId = item.taskId ?? null;
+    if (!targetTaskId && item.targetEntityId) {
+      const matchedCandidate = candidates.find((c) => c.id === item.targetEntityId);
+      if (matchedCandidate?.taskId) {
+        targetTaskId = matchedCandidate.taskId;
+      }
+    }
+    if (!targetTaskId) {
+      const matchedTask = apiTasks.find((t) => t.taskType === item.taskType || (item.submissionType === 'COMPANY_CANDIDATE' && t.taskType === 'COMPANY_DATA_PREPARATION'))
+        ?? availableTasks.find((t) => t.taskType === item.taskType || (item.submissionType === 'COMPANY_CANDIDATE' && t.taskType === 'COMPANY_DATA_PREPARATION'));
+      if (matchedTask) {
+        targetTaskId = matchedTask.id;
+      }
+    }
+
+    const currentTask = targetTaskId
+      ? (apiTasks.find((t) => t.id === targetTaskId) ?? availableTasks.find((t) => t.id === targetTaskId))
+      : null;
+
+    const matchedCand = item.targetEntityId ? candidates.find((c) => c.id === item.targetEntityId) : null;
+    const draftOrItemName = item.targetEntityName || matchedCand?.draftName || matchedCand?.identity?.legalName || '';
+    const deliverableLabel = currentTask?.keyResult?.name || formatDeliverableType(item.submissionType || item.taskType || currentTask?.taskType);
+    const taskTitle = currentTask?.title || item.taskTitle || 'Research Basic Company Information';
+
+    const isApproved = item.status === 'APPROVED';
+    const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
+    const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
+
+    const mappedTaskStatus: ApiTaskStatus = isApproved ? 'DONE' : isPending ? 'IN_REVIEW' : 'IN_PROGRESS';
+
+    const historyTaskItem: StaffWorkHistoryItemResponse = {
+      taskId: targetTaskId || 0,
+      taskCode: targetTaskId ? `APMS-${targetTaskId}` : 'APMS',
+      title: taskTitle,
+      deliverable: deliverableLabel,
+      taskType: currentTask?.taskType || item.taskType || 'COMPANY_DATA_PREPARATION',
+      priority: (currentTask?.priority as ApiTaskPriority) ?? 'MEDIUM',
+      status: mappedTaskStatus,
+      claimedAt: currentTask?.createdAt || item.submittedAt || null,
+      lastSubmittedAt: item.submittedAt || null,
+      completedAt: item.reviewedAt || (isApproved ? (item.submittedAt || null) : null),
+      revisionCount: item.submittedRevisionNumber && item.submittedRevisionNumber > 1 ? item.submittedRevisionNumber - 1 : 0,
+      latestReviewStatus: item.status,
+    };
+
+    setSelectedHistoryTask(historyTaskItem);
+    setTaskHistoryDetail(null);
+    setTaskHistoryError(null);
+    setTaskHistoryLoading(true);
+
+    try {
+      let activities: TaskTimelineEventResponse[] = [];
+      let loadedRevisionCount = historyTaskItem.revisionCount;
+      let loadedLastSubmitted = historyTaskItem.lastSubmittedAt;
+      let loadedCompletedAt = historyTaskItem.completedAt;
+
+      if (currentProjectId && targetTaskId) {
+        try {
+          const payload = await taskApi.getTaskHistory(currentProjectId, targetTaskId);
+          const wrapped = payload as { data?: TaskHistoryDetailResponse } | null;
+          const data = (wrapped?.data ?? payload) as TaskHistoryDetailResponse;
+          if (data?.activities && data.activities.length > 0) {
+            activities = data.activities;
+            if (data.revisionCount != null) loadedRevisionCount = data.revisionCount;
+            if (data.lastSubmittedAt) loadedLastSubmitted = data.lastSubmittedAt;
+            if (data.completedAt) loadedCompletedAt = data.completedAt;
+          }
+        } catch {
+          // fallback to synthesized activities
+        }
+      }
+
+      if (activities.length > 0) {
+        activities = activities.map((act) => {
+          let enrichedDetail = act.detail;
+          if (draftOrItemName && act.submissionNumber != null) {
+            if (enrichedDetail && !enrichedDetail.includes(draftOrItemName)) {
+              enrichedDetail = `${draftOrItemName} · Round ${act.submissionNumber}`;
+            }
+          }
+          let enrichedNote = act.note;
+          if (act.type === 'REVISION_REQUESTED' || act.type === 'CHANGES_REQUESTED') {
+            const fieldFeedback = getCandidateFieldFeedback(matchedCand);
+            if (fieldFeedback) {
+              if (!enrichedNote || enrichedNote.includes('Some fields require revision')) {
+                enrichedNote = fieldFeedback;
+              } else if (!enrichedNote.includes(fieldFeedback)) {
+                enrichedNote = `${enrichedNote}\n\n${fieldFeedback}`;
+              }
+            } else if (!enrichedNote && item.reviewComment) {
+              enrichedNote = item.reviewComment;
+            }
+          }
+          return {
+            ...act,
+            detail: enrichedDetail,
+            note: enrichedNote,
+          };
+        });
+      } else {
+        activities = buildSynthesizedTimeline(item, matchedCand, draftOrItemName);
+      }
+
+      const calculatedRevisionCount = activities.filter((a) => a.type === 'REVISION_REQUESTED' || a.type === 'CHANGES_REQUESTED').length;
+      const finalRevisionCount = Math.max(loadedRevisionCount, calculatedRevisionCount);
+
+      setSelectedHistoryTask((prev) => prev ? {
+        ...prev,
+        revisionCount: finalRevisionCount,
+        lastSubmittedAt: loadedLastSubmitted || prev.lastSubmittedAt,
+        completedAt: loadedCompletedAt || prev.completedAt,
+      } : prev);
+
+      setTaskHistoryDetail({
+        taskId: targetTaskId || 0,
+        taskCode: historyTaskItem.taskCode || 'APMS',
+        title: taskTitle,
+        deliverable: deliverableLabel,
+        taskType: currentTask?.taskType || item.taskType || 'COMPANY_DATA_PREPARATION',
+        status: mappedTaskStatus,
+        revisionCount: finalRevisionCount,
+        claimedAt: historyTaskItem.claimedAt,
+        lastSubmittedAt: loadedLastSubmitted || historyTaskItem.lastSubmittedAt,
+        completedAt: loadedCompletedAt || historyTaskItem.completedAt,
+        activities,
+      });
+    } catch (err) {
+      setTaskHistoryError(err instanceof Error ? err.message : 'Failed to load task review history.');
+    } finally {
+      setTaskHistoryLoading(false);
+    }
+  };
+
+  const renderReviewHistoryBanner = (onClose?: () => void) => {
     if (!selectedReviewHistoryItem) return null;
     const item = selectedReviewHistoryItem;
     const isApproved = item.status === 'APPROVED';
@@ -4614,8 +4954,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           background: isApproved
             ? 'linear-gradient(90deg, #064e3b 0%, #065f46 60%, #047857 100%)'
             : isChangesRequested
-            ? 'linear-gradient(90deg, #c2410c 0%, #ea580c 50%, #f97316 100%)'
-            : 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
+              ? 'linear-gradient(90deg, #c2410c 0%, #ea580c 50%, #f97316 100%)'
+              : 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)',
           border: isApproved ? '1px solid #059669' : isChangesRequested ? '1px solid #ea580c' : '1px solid #334155',
           color: isApproved ? '#ecfdf5' : isChangesRequested ? '#ffffff' : '#f8fafc',
         }}
@@ -4642,14 +4982,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 background: isApproved
                   ? 'rgba(167, 243, 208, 0.2)'
                   : isChangesRequested
-                  ? 'rgba(255, 255, 255, 0.22)'
-                  : 'rgba(255, 255, 255, 0.15)',
+                    ? 'rgba(255, 255, 255, 0.22)'
+                    : 'rgba(255, 255, 255, 0.15)',
                 color: isApproved ? '#6ee7b7' : isChangesRequested ? '#ffffff' : '#cbd5e1',
                 border: isApproved
                   ? '1px solid rgba(167, 243, 208, 0.35)'
                   : isChangesRequested
-                  ? '1px solid rgba(255, 255, 255, 0.4)'
-                  : '1px solid rgba(255, 255, 255, 0.25)',
+                    ? '1px solid rgba(255, 255, 255, 0.4)'
+                    : '1px solid rgba(255, 255, 255, 0.25)',
                 flexShrink: 0,
               }}
             >
@@ -4669,14 +5009,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 background: isApproved
                   ? 'rgba(16, 185, 129, 0.25)'
                   : isChangesRequested
-                  ? 'rgba(0, 0, 0, 0.2)'
-                  : 'rgba(255, 255, 255, 0.15)',
+                    ? 'rgba(0, 0, 0, 0.2)'
+                    : 'rgba(255, 255, 255, 0.15)',
                 color: isApproved ? '#a7f3d0' : isChangesRequested ? '#ffffff' : '#e2e8f0',
                 border: isApproved
                   ? '1px solid rgba(167, 243, 208, 0.3)'
                   : isChangesRequested
-                  ? '1px solid rgba(255, 255, 255, 0.35)'
-                  : '1px solid rgba(255, 255, 255, 0.25)',
+                    ? '1px solid rgba(255, 255, 255, 0.35)'
+                    : '1px solid rgba(255, 255, 255, 0.25)',
                 flexShrink: 0,
               }}
             >
@@ -4853,10 +5193,52 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setToast({ kind: 'success', message: `Project ${is100Percent ? 'completed' : 'closed'} successfully.` });
       // Refetch
       setProjectRefreshTick(prev => prev + 1);
+      window.dispatchEvent(new CustomEvent('apms-profile-updated', { detail: { companyProfileId: updatedProject?.targetCompanyProfileId } }));
     } catch (error) {
       setCloseError(error instanceof Error ? error.message : 'Failed to close project.');
     } finally {
       setCloseLoading(false);
+    }
+  };
+
+  const handleDeleteDraftProject = async () => {
+    if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) {
+      setDeleteError('Cannot find selected project id.');
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      await projectApi.deleteProject(currentProjectId);
+      setShowDeleteModal(false);
+
+      // Invalidate queries
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+      void queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+      void queryClient.invalidateQueries({ queryKey: ['check-open-project'] });
+
+      // Clean up localStorage active project
+      const activeStored = localStorage.getItem('apms-active-project');
+      if (activeStored === String(currentProjectId)) {
+        localStorage.removeItem('apms-active-project');
+      }
+
+      sessionStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      sessionStorage.setItem('apms-toast-message', 'Draft project deleted successfully.');
+      setToast({ kind: 'success', message: 'Draft project deleted successfully.' });
+
+      if (setActivePage) {
+        setActivePage('project-management');
+      } else {
+        window.history.back();
+      }
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete draft project.');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -5054,6 +5436,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   );
 
   const openManagerCandidateReview = async (candidateId: string) => {
+    if (selectedManagerReviewTask?.status === 'DONE') {
+      return;
+    }
     const task = selectedManagerReviewTask || (candidateReviewTaskContext ? {
       projectId: candidateReviewTaskContext.projectId,
       id: candidateReviewTaskContext.taskId,
@@ -5551,7 +5936,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const openDirectManagerCandidateReview = async (apiTask: ProjectTaskResponse) => {
+  const openDirectManagerCandidateReview = async (apiTask: ProjectTaskResponse, isReadOnly = false) => {
     setResolvingSubmission(true);
     setReviewSubmissionError(null);
     try {
@@ -5559,21 +5944,30 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const submissions = 'content' in payload.data ? payload.data.content : payload.data;
       const submissionList = Array.isArray(submissions) ? submissions : [];
 
-      const activeSub = submissionList.find((s) => s.status === 'IN_REVIEW');
-      if (!activeSub || !activeSub.targetEntityId) {
-        setReviewSubmissionError({
-          task: apiTask,
-          message: 'Review submission could not be loaded.',
-        });
+      const targetSub = isReadOnly || apiTask.status === 'DONE'
+        ? (submissionList.find((s) => s.status === 'APPROVED') || submissionList[0])
+        : submissionList.find((s) => s.status === 'IN_REVIEW');
+
+      let targetEntityId = targetSub?.targetEntityId;
+      if (!targetEntityId) {
+        const matchCandidate = candidates.find((c) => c.taskId === apiTask.id) || candidates[0];
+        if (matchCandidate) {
+          targetEntityId = matchCandidate.id;
+        }
+      }
+
+      if (!targetEntityId) {
+        setSelectedManagerReviewTask(apiTask);
+        setManagerReviewComment('');
+        void loadManagerWorkbench(apiTask);
         return;
       }
 
-      const candidateRes = await candidateApi.getCandidateById(activeSub.targetEntityId);
+      const candidateRes = await candidateApi.getCandidateById(targetEntityId);
       if (!candidateRes?.data) {
-        setReviewSubmissionError({
-          task: apiTask,
-          message: 'Review submission could not be loaded.',
-        });
+        setSelectedManagerReviewTask(apiTask);
+        setManagerReviewComment('');
+        void loadManagerWorkbench(apiTask);
         return;
       }
 
@@ -5582,19 +5976,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setCandidateReviewTaskContext({
         projectId: apiTask.projectId,
         taskId: apiTask.id,
-        submissionId: activeSub.id,
-        submission: activeSub,
-        allActiveSubmissions: submissionList.filter((s) => s.status === 'IN_REVIEW' && s.targetEntityId),
+        submissionId: targetSub?.id,
+        submission: targetSub,
+        allActiveSubmissions: submissionList,
         taskDueDate: apiTask.dueDate,
         taskTitle: apiTask.title,
+        isReadOnly: isReadOnly || apiTask.status === 'DONE',
       });
 
       updateCandidateInList(candidateRes.data);
     } catch {
-      setReviewSubmissionError({
-        task: apiTask,
-        message: 'Review submission could not be loaded.',
-      });
+      setSelectedManagerReviewTask(apiTask);
+      setManagerReviewComment('');
+      void loadManagerWorkbench(apiTask);
     } finally {
       setResolvingSubmission(false);
     }
@@ -5605,7 +5999,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const apiTask = apiTasks.find((t) => t.id === rawId);
     if (apiTask) {
       if (apiTask.taskType === 'COMPANY_DATA_PREPARATION' && apiTask.status === 'IN_REVIEW') {
-        void openDirectManagerCandidateReview(apiTask);
+        void openDirectManagerCandidateReview(apiTask, false);
         return;
       }
       setSelectedManagerReviewTask(apiTask);
@@ -5621,8 +6015,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     if (!isStaffView) {
       if (apiTask && (apiTask.status === 'IN_REVIEW' || apiTask.status === 'DONE')) {
-        if (apiTask.taskType === 'COMPANY_DATA_PREPARATION' && apiTask.status === 'IN_REVIEW') {
-          void openDirectManagerCandidateReview(apiTask);
+        if (apiTask.taskType === 'COMPANY_DATA_PREPARATION') {
+          void openDirectManagerCandidateReview(apiTask, apiTask.status === 'DONE');
           return;
         }
         setSelectedManagerReviewTask(apiTask);
@@ -5905,7 +6299,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setRemoveMemberLoading(true);
     try {
       await projectApi.removeMember(currentProjectId, memberToRemove.accountId);
-      
+
       setApiProject((current) => {
         if (!current) return current;
         return {
@@ -6448,7 +6842,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     try {
       const workflowPayload = await candidateApi.submitCandidateWorkflow(staffCandidate.id, selectedStaffTask.id);
       const { candidateStatus, taskStatus, candidateDetail } = workflowPayload.data;
-      
+
       const updatedTask: ProjectTaskResponse = { ...selectedStaffTask, status: taskStatus };
       updateTaskInState(updatedTask);
 
@@ -6825,12 +7219,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <div className={styles.keyLine}>
                   <span className={`${styles.statusPill} ${apiProject?.status === 'ACTIVE' && apiProject?.isOverdue ? styles.overduePill : ''}`}>
                     {apiProject?.status === 'DRAFT' ? 'Draft' :
-                     apiProject?.status === 'ACTIVE' ? (apiProject?.isOverdue ? 'Overdue' : 'Active') :
-                     apiProject?.status === 'COMPLETED' ? 'Completed' :
-                     apiProject?.status === 'CLOSED' ? 'Closed' :
-                     displayedProject.status}
+                      apiProject?.status === 'ACTIVE' ? (apiProject?.isOverdue ? 'Overdue' : 'Active') :
+                        apiProject?.status === 'COMPLETED' ? 'Completed' :
+                          apiProject?.status === 'CLOSED' ? 'Closed' :
+                            displayedProject.status}
                   </span>
-                  <span className={styles.badge}>{displayedProject.type === 'RESEARCH_NEW_COMPANY' ? 'New Company Research' : displayedProject.type === 'UPDATE_EXISTING_COMPANY' ? 'Existing Company Update' : displayedProject.type}</span>
+                  <span className={styles.badge}>{displayedProject.type === 'RESEARCH_NEW_COMPANY' ? 'New Company Research' : displayedProject.type === 'UPDATE_EXISTING_COMPANY' ? 'Existing Company' : displayedProject.type}</span>
+                  {isRelationshipChangeProject && (
+                    <span className={`${styles.badge} ${styles.relChangeHeaderBadge}`}>
+                      Relationship Change
+                    </span>
+                  )}
                 </div>
               </div>
               <div className={styles.actions}>
@@ -6872,10 +7271,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     <UserPlus size={16} />Invite Member
                   </button>
                 )}
+                {isManager && isDraftProject && (
+                  <button
+                    className={`${styles.button} ${styles.dangerButton}`}
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setShowDeleteModal(true);
+                    }}
+                  >
+                    <Trash2 size={16} />Delete Project
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className={styles.summaryMetaGrid}>
+            <div className={`${styles.summaryMetaGrid} ${isRelationshipChangeProject ? styles.summaryMetaGrid5Col : ''}`}>
               <div className={styles.summaryMetaItem}>
                 <div className={styles.summaryMetaLabel}>Target Company</div>
                 <div className={styles.summaryMetaValue}>{displayedProject.targetCompanyName || 'N/A'}</div>
@@ -6884,15 +7295,44 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <div className={styles.summaryMetaLabel}>Tax Code</div>
                 <div className={styles.summaryMetaValue}>{displayedProject.targetCompanyTaxCode || apiProject?.targetCompanyTaxCode || 'N/A'}</div>
               </div>
-              <div className={styles.summaryMetaItem}>
-                <div className={styles.summaryMetaLabel}>Relationship</div>
-                <div className={styles.summaryMetaValue}>{apiProject?.targetRelationshipType || 'N/A'}</div>
-              </div>
+              {isRelationshipChangeProject ? (
+                <>
+                  <div className={styles.summaryMetaItem}>
+                    <div className={styles.summaryMetaLabel}>Current Relationship</div>
+                    <div className={styles.summaryMetaValue}>{currentRelLabel}</div>
+                  </div>
+                  <div className={styles.summaryMetaItem}>
+                    <div className={styles.summaryMetaLabel}>Target Relationship</div>
+                    <div className={styles.summaryMetaValue}>{targetRelLabel}</div>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.summaryMetaItem}>
+                  <div className={styles.summaryMetaLabel}>Relationship</div>
+                  <div className={styles.summaryMetaValue}>{targetRelLabel !== '—' ? targetRelLabel : (apiProject?.targetRelationshipType || 'N/A')}</div>
+                </div>
+              )}
               <div className={styles.summaryMetaItem}>
                 <div className={styles.summaryMetaLabel}>Due Date</div>
                 <div className={styles.summaryMetaValue}>{displayedProject.dueDate || 'N/A'}</div>
               </div>
             </div>
+
+            {isRelationshipChangeProject && (
+              <div className={`${styles.relChangeBanner} ${isCompletedProject ? styles.relChangeBannerCompleted : ''}`}>
+                <div className={styles.relChangeBannerTitle}>{relChangeTitle}</div>
+                <div className={styles.relChangeDirection}>
+                  <span className={styles.relChangeFrom}>{currentRelLabel}</span>
+                  <ArrowRight size={14} className={styles.relChangeArrow} />
+                  <span className={styles.relChangeTo}>{targetRelLabel}</span>
+                </div>
+                {apiProject?.status === 'DRAFT' && (
+                  <div className={styles.relChangeNote}>
+                    Contract Information is required for this relationship update.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className={styles.summaryGoalSection}>
               <div className={styles.summarySectionLabel}>Project Goal</div>
@@ -6957,7 +7397,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 {apiProject.keyResults.map(kr => {
                   const weight = kr.weight || 0;
                   const linkedTask = apiTasks.find(t => t.keyResult?.id === kr.id) ?? availableTasks.find(t => t.keyResult?.id === kr.id);
-                  
+
                   // Map status based on linked task and kr completion
                   const isTaskDone = linkedTask?.status === 'DONE' || kr.progress === 100;
                   let statusLabel = 'Available';
@@ -7052,6 +7492,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               key={task.id}
                               task={task}
                               onOpen={handleOpenTask}
+                              onViewDetails={(task) => setSelectedTask(task)}
                               onDelete={!isStaffView && !task.keyResultType ? handleDeleteTask : undefined}
                               onRelease={isStaffView && !isTerminalProject ? handleReleaseTask : undefined}
                               onReview={!isTerminalProject && task.availableActions?.includes('REVIEW_SUBMISSION') ? handleReviewTask : undefined}
@@ -7074,7 +7515,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={styles.memberPanelHead}>
                 <div>
                   <h2>Review History</h2>
-                  <p>Historical records of all manager review actions, task approvals, change requests, and candidate decisions in this project.</p>
+                  <p>Review decisions and status changes recorded for this project.</p>
                 </div>
                 <span className={styles.count}>{filteredReviewHistory.length}/{reviewStats.total}</span>
               </div>
@@ -7082,19 +7523,75 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               {reviewHistoryError && !/403|denied|forbidden/i.test(reviewHistoryError) && <div className={styles.inlineError}>{reviewHistoryError}</div>}
               {candidateActionMessage && <div className={styles.inlineSuccess}>{candidateActionMessage}</div>}
 
-              <div className={styles.candidateStats}>
-                <div><span>Total Reviews</span><strong>{reviewStats.total}</strong></div>
-                <div><span>Approved</span><strong>{reviewStats.approved}</strong></div>
-                <div><span>Changes Requested</span><strong>{reviewStats.changesRequested}</strong></div>
-                <div><span>Pending Review</span><strong>{reviewStats.pending}</strong></div>
+              <div className={styles.candidateStats} style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: reviewDecisionFilter === 'ALL' ? '#2563eb' : undefined,
+                    boxShadow: reviewDecisionFilter === 'ALL' ? '0 0 0 2px rgba(37, 99, 235, 0.18)' : undefined,
+                    background: reviewDecisionFilter === 'ALL' ? '#f8faff' : undefined,
+                  }}
+                  onClick={() => setReviewDecisionFilter('ALL')}
+                >
+                  <span>Total Reviews</span>
+                  <strong>{reviewStats.total}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: reviewDecisionFilter === 'APPROVED' ? '#16a34a' : undefined,
+                    boxShadow: reviewDecisionFilter === 'APPROVED' ? '0 0 0 2px rgba(22, 163, 74, 0.18)' : undefined,
+                    background: reviewDecisionFilter === 'APPROVED' ? '#f0fdf4' : undefined,
+                  }}
+                  onClick={() => setReviewDecisionFilter('APPROVED')}
+                >
+                  <span>Approved</span>
+                  <strong style={{ color: reviewStats.approved > 0 ? '#15803d' : undefined }}>{reviewStats.approved}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: reviewDecisionFilter === 'CHANGES_REQUESTED' ? '#ef4444' : undefined,
+                    boxShadow: reviewDecisionFilter === 'CHANGES_REQUESTED' ? '0 0 0 2px rgba(239, 68, 68, 0.18)' : undefined,
+                    background: reviewDecisionFilter === 'CHANGES_REQUESTED' ? '#fff5f5' : undefined,
+                  }}
+                  onClick={() => setReviewDecisionFilter('CHANGES_REQUESTED')}
+                >
+                  <span>Changes Requested</span>
+                  <strong style={{ color: reviewStats.changesRequested > 0 ? '#b91c1c' : undefined }}>{reviewStats.changesRequested}</strong>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    borderColor: reviewDecisionFilter === 'PENDING_REVIEW' ? '#2563eb' : undefined,
+                    boxShadow: reviewDecisionFilter === 'PENDING_REVIEW' ? '0 0 0 2px rgba(37, 99, 235, 0.18)' : undefined,
+                    background: reviewDecisionFilter === 'PENDING_REVIEW' ? '#f8faff' : undefined,
+                  }}
+                  onClick={() => setReviewDecisionFilter('PENDING_REVIEW')}
+                >
+                  <span>Pending Review</span>
+                  <strong style={{ color: reviewStats.pending > 0 ? '#2563eb' : undefined }}>{reviewStats.pending}</strong>
+                </div>
               </div>
 
-              <div className={styles.candidateToolbar}>
+              <div className={styles.workHistoryToolbar}>
                 <label className={styles.candidateSearch}>
                   <Search size={16} />
                   <input
                     value={reviewSearch}
-                    placeholder="Search task, deliverable, candidate, reviewer, comment..."
+                    placeholder="Search history..."
                     onChange={(event) => setReviewSearch(event.target.value)}
                   />
                 </label>
@@ -7136,15 +7633,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     {!reviewHistoryLoading && filteredReviewHistory.length === 0 && (
                       <tr>
                         <td colSpan={9}>
-                          <div className={styles.empty} style={{ padding: '36px 16px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                          <div className={styles.empty} style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                             <strong>
                               {reviewStats.total === 0
                                 ? 'No review history records found yet.'
                                 : 'No review records match your current search and filter.'}
                             </strong>
-                            <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.85rem' }}>
+                            <span style={{ color: '#64748b', fontSize: '0.8125rem' }}>
                               {reviewStats.total === 0
-                                ? 'Review decisions, approved tasks, and changes requested by Manager will appear here.'
+                                ? 'Review decisions and status changes recorded for this project will appear here.'
                                 : 'Try changing your keyword or clearing the decision filter.'}
                             </span>
                           </div>
@@ -7155,27 +7652,28 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       const isApproved = item.status === 'APPROVED';
                       const isChangesRequested = item.status === 'CHANGES_REQUESTED' || item.status === 'REVISION_REQUESTED' || item.status === 'REJECTED';
                       const isPending = item.status === 'IN_REVIEW' || item.status === 'SUBMITTED';
-                      const isCandidate = item.submissionType === 'COMPANY_CANDIDATE' || item.targetEntityType === 'CompanyCandidate';
 
                       const statusClass = isApproved
-                        ? styles.candidateAPPROVED
-                        : isChangesRequested
-                        ? styles.candidateREJECTED
-                        : isPending
-                        ? styles.candidatePENDING_REVIEW
-                        : styles.candidateDRAFT;
+                        ? styles.historyBadgeApproved
+                        : item.status === 'REJECTED'
+                          ? styles.historyBadgeRejected
+                          : isChangesRequested
+                            ? styles.historyBadgeChanges
+                            : isPending
+                              ? styles.historyBadgePending
+                              : styles.historyBadgeDefault;
 
                       const statusLabel = isApproved
                         ? 'Approved'
                         : item.status === 'REVISION_REQUESTED'
-                        ? 'Needs revision'
-                        : isChangesRequested
-                        ? 'Changes requested'
-                        : item.status === 'REJECTED'
-                        ? 'Rejected'
-                        : isPending
-                        ? 'Pending review'
-                        : item.status;
+                          ? 'Needs revision'
+                          : isChangesRequested
+                            ? 'Changes requested'
+                            : item.status === 'REJECTED'
+                              ? 'Rejected'
+                              : isPending
+                                ? 'Pending review'
+                                : item.status;
 
                       const targetDisplayName = item.targetEntityName || item.targetCompanyName || item.taskTitle;
                       const deliverableLabel = formatDeliverableType(item.submissionType || item.taskType);
@@ -7188,10 +7686,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           </td>
                           <td>
                             <div className={styles.candidateNameCell}>
-                              <strong style={{ fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                              <strong style={{ fontSize: '0.8125rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
                                 {item.taskTitle}
                               </strong>
-                              <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.74rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.72rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
                                 {deliverableLabel}
                               </span>
                             </div>
@@ -7199,7 +7697,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <td>
                             <div className={styles.candidateNameCell}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                                <span style={{ fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <span style={{ fontSize: '0.8125rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {targetDisplayName}
                                 </span>
                                 {item.submittedRevisionNumber != null && (
@@ -7212,18 +7710,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           </td>
                           <td>
                             <div className={styles.decisionCell}>
-                              <span className={`${styles.candidateStatus} ${statusClass}`} style={{ fontSize: '0.74rem', padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                              <span className={`${styles.historyBadge} ${statusClass}`}>
                                 {statusLabel}
                               </span>
                             </div>
                           </td>
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <span style={{ fontSize: '0.8125rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {item.submittedByName || 'Staff'}
                               </span>
                               {item.submittedAt && (
-                                <small style={{ color: '#94a3b8', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                                <small style={{ color: '#94a3b8', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
                                   {formatDateTime(item.submittedAt)}
                                 </small>
                               )}
@@ -7231,14 +7729,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           </td>
                           <td>
                             <div style={{ minWidth: 0 }}>
-                              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                                {item.reviewedByName || (item.reviewedAt ? 'Manager' : '—')}
+                              <span style={{ fontSize: '0.8125rem', color: isPending ? '#94a3b8' : (item.reviewedByName ? '#0f172a' : '#94a3b8'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                {isPending ? '—' : (item.reviewedByName || (item.reviewedAt ? 'Manager' : '—'))}
                               </span>
                             </div>
                           </td>
                           <td>
-                            <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                              {item.reviewedAt ? formatDateTime(item.reviewedAt) : '—'}
+                            <span style={{ fontSize: '0.75rem', color: isPending ? '#94a3b8' : (item.reviewedAt ? '#475569' : '#94a3b8'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                              {isPending ? '—' : (item.reviewedAt ? formatDateTime(item.reviewedAt) : '—')}
                             </span>
                           </td>
                           <td style={{ minWidth: 0, textAlign: 'left' }}>
@@ -7251,44 +7749,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 color: isChangesRequested ? '#b91c1c' : '#475569',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 wordBreak: 'break-word',
-                                lineHeight: '1.25',
+                                lineHeight: '1.3',
                               }}
                             >
                               {item.reviewComment || '—'}
                             </span>
                           </td>
-                          <td style={{ textAlign: 'right' }}>
-                            {isPending ? (
-                              <button
-                                className={`${styles.reviewActionBtn} ${styles.reviewActionBtnPrimary}`}
-                                type="button"
-                                onClick={() => {
-                                  if (isCandidate && item.targetEntityId) {
-                                    void openCandidateDetailById(item.targetEntityId, item);
-                                  } else {
-                                    void openTaskReviewByTaskId(item.taskId, item);
-                                  }
-                                }}
-                              >
-                                Review
-                              </button>
-                            ) : (
-                              <button
-                                className={styles.reviewActionBtn}
-                                type="button"
-                                onClick={() => {
-                                  if (isCandidate && item.targetEntityId) {
-                                    void openCandidateDetailById(item.targetEntityId, item);
-                                  } else {
-                                    void openTaskReviewByTaskId(item.taskId, item);
-                                  }
-                                }}
-                              >
-                                View details
-                              </button>
-                            )}
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button
+                              type="button"
+                              className={styles.reviewHistoryViewBtn}
+                              onClick={() => void handleOpenManagerReviewHistory(item)}
+                              title="View task review history"
+                            >
+                              View History
+                            </button>
                           </td>
                         </tr>
                       );
@@ -7499,20 +7976,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       const statusClass = isDone
                         ? styles.candidateAPPROVED
                         : isRevision
-                        ? styles.candidateREJECTED
-                        : isInReview
-                        ? styles.candidatePENDING_REVIEW
-                        : styles.candidateDRAFT;
+                          ? styles.candidateREJECTED
+                          : isInReview
+                            ? styles.candidatePENDING_REVIEW
+                            : styles.candidateDRAFT;
 
                       const statusLabel = isDone
                         ? 'Done'
                         : isRevision
-                        ? 'Changes Requested'
-                        : isInReview
-                        ? 'In Review'
-                        : isInProgress
-                        ? 'In Progress'
-                        : item.status;
+                          ? 'Changes Requested'
+                          : isInReview
+                            ? 'In Review'
+                            : isInProgress
+                              ? 'In Progress'
+                              : item.status;
 
                       return (
                         <tr key={item.taskId}>
@@ -7789,10 +8266,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   <MoreVertical size={16} />
                                 </button>
                               )}
-                              
+
                               {openMemberMenuId === member.accountId && (
                                 <>
-                                  <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5}} onClick={() => setOpenMemberMenuId(null)} />
+                                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5 }} onClick={() => setOpenMemberMenuId(null)} />
                                   <div className={styles.actionMenuDropdown}>
                                     {canManageMembers && isCurrentLeader && member.projectRole === 'MEMBER' && (
                                       <button
@@ -8370,8 +8847,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   const roundLabel = inReviewPendingSub?.submittedRevisionNumber
                     ? `Round ${inReviewPendingSub.submittedRevisionNumber}`
                     : submittedCandidateData?.revisionNumber
-                    ? `Round ${submittedCandidateData.revisionNumber}`
-                    : 'Round 1';
+                      ? `Round ${submittedCandidateData.revisionNumber}`
+                      : 'Round 1';
                   const submittedAtDate = inReviewPendingSub?.submittedAt || inReviewPendingSub?.createdAt;
                   const submittedByLabel = inReviewPendingSub?.submittedByName || selectedStaffTask.assignedToName || 'Staff';
                   const approvedReviewerName = (submittedCandidateData ? getCandidateReviewerName(submittedCandidateData, projectMembers, currentUser) : null)
@@ -8490,349 +8967,340 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <div className={styles.empty}>No active submission details found.</div>
                     )
                   ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
-                  <>
-                  {!staffCandidate && (
-                  <>
-                  <section className={styles.workbenchPanel}>
-                    <div className={styles.workbenchPanelHead}>
-                      <div>
-                        <h3>Project document library</h3>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          className={styles.button}
-                          type="button"
-                          onClick={() => void handleCreateManualCandidate()}
-                          disabled={!canUseStaffWorkbench || staffCandidateLoading}
-                        >
-                          {staffCandidateLoading ? 'Creating...' : 'Enter Manually'}
-                        </button>
-                        <button
-                          className={`${styles.button} ${styles.primaryButton}`}
-                          type="button"
-                          onClick={() => void handleExtractSelectedProjectDocuments()}
-                          disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
-                        >
-                          <Sparkles size={16} />
-                          {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
-                        </button>
-                      </div>
-                    </div>
-
-                    <label className={styles.workbenchUploadBox} style={{ marginTop: '16px', marginBottom: '16px' }}>
-                      <input
-                        type="file"
-                        onChange={(event) => {
-                          void handleUploadEvidence(event.target.files?.[0] ?? null);
-                          event.currentTarget.value = '';
-                        }}
-                        disabled={!canUseStaffWorkbench || uploadingEvidence}
-                      />
-                      <FileText size={24} />
-                      <strong>{uploadingEvidence ? 'Uploading document...' : 'Upload document'}</strong>
-                      <span>Upload a new file to the project document library.</span>
-                    </label>
-
-                    <div className={styles.documentSelectionSummary}>
-                      <span>{projectDocuments.length} project document{projectDocuments.length !== 1 ? 's' : ''}</span>
-                    </div>
-
-                    {extractionJob && (
-                      <div className={styles.aiProgressPanel}>
-                        <div className={styles.aiProgressHead}>
-                          <div>
-                            <strong>AI Extraction</strong>
-                            <span>Processing {extractionJob.totalDocuments > 0 ? extractionJob.totalDocuments : (selectedProjectDocumentIds.length || 1)} document(s)</span>
-                          </div>
-                          <b>
-                            {extractionJob.status === 'COMPLETED' ? '100%' :
-                             extractionJob.status === 'FAILED' ? 'Failed' :
-                             extractionJob.progress != null ? `${extractionJob.progress}%` :
-                             'Processing...'}
-                          </b>
-                        </div>
-                        
-                        <div className={styles.aiProgressTrack}>
-                          {extractionJob.status === 'COMPLETED' ? (
-                            <span style={{ width: '100%' }} />
-                          ) : extractionJob.status === 'FAILED' ? (
-                            <span style={{ width: '100%', backgroundColor: 'var(--error)' }} />
-                          ) : extractionJob.progress != null ? (
-                            <span style={{ width: `${extractionJob.progress}%` }} />
-                          ) : (
-                            <span className={styles.indeterminateBar} />
-                          )}
-                        </div>
-
-                        <div className={styles.aiProgressChecklist}>
-                          <div className={styles.checklistRow}>
-                            <span>{extractionJob.stage === 'PREPARING' || extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
-                          </div>
-                          <div className={styles.checklistRow}>
-                            <span>{extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> AI analysis in progress
-                          </div>
-                          <div className={styles.checklistRow}>
-                            <span>{extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Merging results
-                          </div>
-                          <div className={styles.checklistRow}>
-                            <span>{extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Creating candidate draft
-                          </div>
-                        </div>
-
-                        {extractionJob.status === 'FAILED' && (
-                          <div className={styles.aiProgressError}>
-                            {extractionJob.errorMessage || 'Extraction failed.'}
-                          </div>
-                        )}
-                        
-                        {extractionJob.status !== 'COMPLETED' && extractionJob.status !== 'FAILED' && (
-                          <small>Please keep this modal open while AI is processing.</small>
-                        )}
-                      </div>
-                    )}
-
-                    <div className={styles.projectDocumentList}>
-                      {projectDocumentsError && (
-                        <div className={styles.inlineError} style={{ margin: '0.5rem 1rem' }}>
-                          Unable to load project documents. {projectDocumentsError}
-                        </div>
-                      )}
-                      {projectDocumentsLoading && <div className={styles.empty}>Loading project documents...</div>}
-                      {!projectDocumentsLoading && !projectDocumentsError && projectDocuments.length === 0 && (
-                        <div className={styles.empty}>No project documents found. Upload documents from the project document screen first.</div>
-                      )}
-                      {projectDocuments.map((document) => {
-                        const selected = selectedProjectDocumentIds.includes(document.id);
-                        return (
-                        <article className={`${styles.documentItem} ${selected ? styles.documentItemSelected : ''}`} key={document.id}>
-                          <label className={styles.documentCheckbox}>
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => toggleProjectDocumentSelection(document.id)}
-                              disabled={!canUseStaffWorkbench || extractingSelectedDocuments}
-                            />
-                          </label>
-                          <div className={styles.documentIcon}><FileText size={18} /></div>
-                          <div className={styles.documentInfo}>
-                            <strong>{document.fileName || `Import job #${document.id}`}</strong>
-                            <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
-                            {/* <small>
-                              Import job: {document.id} | Raw document: {document.rawDocumentId || 'N/A'}
-                            </small> */}
-                          </div>
-                          <div className={styles.documentActions}>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'open')}
-                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                            >
-                              <ExternalLink size={16} />Open
-                            </button>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'download')}
-                              disabled={!canUseStaffWorkbench || !document.rawDocumentId}
-                            >
-                              <Download size={16} />Download
-                            </button>
-                            <button
-                              className={`${styles.button} ${styles.dangerButton}`}
-                              type="button"
-                              onClick={() => setDocumentPendingDelete(document)}
-                              disabled={!canUseStaffWorkbench || !document.rawDocumentId || staffTaskStatus !== 'IN_PROGRESS'}
-                            >
-                              <Trash2 size={16} />Delete
-                            </button>
-                          </div>
-                        </article>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  {pendingExtractionReviews.length > 0 && (
-                    <section className={styles.workbenchPanel}>
-                      <div className={styles.workbenchPanelHead}>
-                        <div>
-                          <h3>Review AI extraction</h3>
-                          <p>Correct extracted fields first. APMS will mark the extraction as reviewed before creating the candidate draft.</p>
-                        </div>
-                      </div>
-
-                      <div className={styles.extractionReviewList}>
-                        {mergedPendingExtractionReview && (
-                          <article className={styles.extractionReviewCard} key={mergedPendingExtractionReview.id}>
-                            <div className={styles.extractionReviewHead}>
+                    <>
+                      {!staffCandidate && (
+                        <>
+                          <section className={styles.workbenchPanel}>
+                            <div className={styles.workbenchPanelHead}>
                               <div>
-                                <span>Merged AI extraction review</span>
-                                <strong>{pendingExtractionReviews.length} source document(s)</strong>
-                                <div className={styles.extractionSourceChips}>
-                                  {pendingExtractionReviews.map((review) => (
-                                    <small key={review.id}>{review.fileName}</small>
-                                  ))}
-                                </div>
+                                <h3>Project document library</h3>
                               </div>
-                              <small>
-                                {mergedPendingExtractionReview.qualityStatus || 'Pending staff review'}
-                                {typeof mergedPendingExtractionReview.evidenceCoverageRate === 'number' ? ` | Evidence coverage ${Math.round(mergedPendingExtractionReview.evidenceCoverageRate)}%` : ''}
-                              </small>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                  className={styles.button}
+                                  type="button"
+                                  onClick={() => void handleCreateManualCandidate()}
+                                  disabled={!canUseStaffWorkbench || staffCandidateLoading}
+                                >
+                                  {staffCandidateLoading ? 'Creating...' : 'Enter Manually'}
+                                </button>
+                                <button
+                                  className={`${styles.button} ${styles.primaryButton}`}
+                                  type="button"
+                                  onClick={() => void handleExtractSelectedProjectDocuments()}
+                                  disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
+                                >
+                                  <Sparkles size={16} />
+                                  {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
+                                </button>
+                              </div>
                             </div>
 
-                            <StaffAiExtractResult
-                              review={mergedPendingExtractionReview}
-                              onChange={updateMergedPendingExtractionEdit}
-                              onAskAi={openFieldAiAssist}
-                              isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
-                            />
-                          </article>
-                        )}
-                      </div>
+                            <label className={styles.workbenchUploadBox} style={{ marginTop: '16px', marginBottom: '16px' }}>
+                              <input
+                                type="file"
+                                onChange={(event) => {
+                                  void handleUploadEvidence(event.target.files?.[0] ?? null);
+                                  event.currentTarget.value = '';
+                                }}
+                                disabled={!canUseStaffWorkbench || uploadingEvidence}
+                              />
+                              <FileText size={24} />
+                              <strong>{uploadingEvidence ? 'Uploading document...' : 'Upload document'}</strong>
+                              <span>Upload a new file to the project document library.</span>
+                            </label>
 
-                      <div className={styles.extractionReviewActions}>
-                        <button
-                          className={`${styles.button} ${styles.primaryButton}`}
-                          type="button"
-                          onClick={() => void handleCreateCandidateFromReviewedExtractions()}
-                          disabled={!canUseStaffWorkbench || staffCandidateLoading}
-                        >
-                          <CheckCircle2 size={16} />
-                          {staffCandidateLoading ? 'Creating...' : 'Save review & create candidate'}
-                        </button>
-                      </div>
-                    </section>
-                  )}
-                  </>
-                  )}
+                            <div className={styles.documentSelectionSummary}>
+                              <span>{projectDocuments.length} project document{projectDocuments.length !== 1 ? 's' : ''}</span>
+                            </div>
 
-                  {staffCandidate && (
-                  <section className={`${styles.workbenchPanel} ${styles.candidateWorkbenchPanel}`}>
-                    <div className={styles.workbenchPanelHead}>
-                      <div>
-                        <h3>Candidate detail</h3>
-                        <p>Review and correct extracted fields before sending it to the manager.</p>
-                      </div>
-                      <div className={styles.workbenchPanelActions}>
-                        {staffCandidate.status === 'DRAFT' && lastExtractionReviews.length > 0 && pendingExtractionReviews.length === 0 && (
-                          <button
-                            className={styles.button}
-                            type="button"
-                            onClick={restoreLastExtractionReview}
-                            disabled={!canUseStaffWorkbench}
-                          >
-                            <ArrowLeft size={16} />
-                            Back to AI extraction
-                          </button>
-                        )}
-                        <span className={`${styles.candidateStatus} ${candidateStatusClass[staffCandidate.status]}`}>
-                          {candidateStatusLabel[staffCandidate.status]}
-                        </span>
-                        <button
-                          className={styles.iconButton}
-                          type="button"
-                          aria-label="Close candidate detail"
-                          title="Close candidate detail"
-                          onClick={() => {
-                            setStaffCandidate(null);
-                            setStaffCandidateEdit(emptyStaffCandidateEdit);
-                          }}
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    </div>
+                            {extractionJob && (
+                              <div className={styles.aiProgressPanel}>
+                                <div className={styles.aiProgressHead}>
+                                  <div>
+                                    <strong>AI Extraction</strong>
+                                    <span>Processing {extractionJob.totalDocuments > 0 ? extractionJob.totalDocuments : (selectedProjectDocumentIds.length || 1)} document(s)</span>
+                                  </div>
+                                  <b>
+                                    {extractionJob.status === 'COMPLETED' ? '100%' :
+                                      extractionJob.status === 'FAILED' ? 'Failed' :
+                                        extractionJob.progress != null ? `${extractionJob.progress}%` :
+                                          'Processing...'}
+                                  </b>
+                                </div>
 
-                        <CandidateReviewWorkspace
-                          projectId={String(currentProjectId)}
-                          candidateId={staffCandidate.id}
-                          taskId={selectedStaffTask.id}
-                          role="STAFF"
-                          targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
-                          readOnly={staffTaskStatus !== 'IN_PROGRESS' || !isStaffEditableCandidateStatus(staffCandidate.status)}
-                          isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
-                          onDraftRenamed={(updated) => {
-                            setStaffCandidate(updated);
-                            taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
-                              .then((payload: any) => setWorkbench(payload.data))
-                              .catch(console.error);
-                          }}
-                          onReviewed={() => {
-                            taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
-                              .then((payload: any) => setWorkbench(payload.data))
-                              .catch(console.error);
-                          }}
-                          onCancel={() => {
-                            setStaffCandidate(null);
-                            setStaffCandidateEdit(emptyStaffCandidateEdit);
-                          }}
-                          onSubmit={() => void handleSubmitStaffCandidate()}
-                          submitLoading={staffSubmitLoading}
-                        />
-                  </section>
-                  )}
-                  </>
+                                <div className={styles.aiProgressTrack}>
+                                  {extractionJob.status === 'COMPLETED' ? (
+                                    <span style={{ width: '100%' }} />
+                                  ) : extractionJob.status === 'FAILED' ? (
+                                    <span style={{ width: '100%', backgroundColor: 'var(--error)' }} />
+                                  ) : extractionJob.progress != null ? (
+                                    <span style={{ width: `${extractionJob.progress}%` }} />
+                                  ) : (
+                                    <span className={styles.indeterminateBar} />
+                                  )}
+                                </div>
+
+                                <div className={styles.aiProgressChecklist}>
+                                  <div className={styles.checklistRow}>
+                                    <span>{extractionJob.stage === 'PREPARING' || extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
+                                  </div>
+                                  <div className={styles.checklistRow}>
+                                    <span>{extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> AI analysis in progress
+                                  </div>
+                                  <div className={styles.checklistRow}>
+                                    <span>{extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Merging results
+                                  </div>
+                                  <div className={styles.checklistRow}>
+                                    <span>{extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Creating candidate draft
+                                  </div>
+                                </div>
+
+                                {extractionJob.status === 'FAILED' && (
+                                  <div className={styles.aiProgressError}>
+                                    {extractionJob.errorMessage || 'Extraction failed.'}
+                                  </div>
+                                )}
+
+                                {extractionJob.status !== 'COMPLETED' && extractionJob.status !== 'FAILED' && (
+                                  <small>Please keep this modal open while AI is processing.</small>
+                                )}
+                              </div>
+                            )}
+
+                            <div className={styles.projectDocumentList}>
+                              {projectDocumentsError && (
+                                <div className={styles.inlineError} style={{ margin: '0.5rem 1rem' }}>
+                                  Unable to load project documents. {projectDocumentsError}
+                                </div>
+                              )}
+                              {projectDocumentsLoading && <div className={styles.empty}>Loading project documents...</div>}
+                              {!projectDocumentsLoading && !projectDocumentsError && projectDocuments.length === 0 && (
+                                <div className={styles.empty}>No project documents found. Upload documents from the project document screen first.</div>
+                              )}
+                              {projectDocuments.map((document) => {
+                                const selected = selectedProjectDocumentIds.includes(document.id);
+                                return (
+                                  <article className={`${styles.documentItem} ${selected ? styles.documentItemSelected : ''}`} key={document.id}>
+                                    <label className={styles.documentCheckbox}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        onChange={() => toggleProjectDocumentSelection(document.id)}
+                                        disabled={!canUseStaffWorkbench || extractingSelectedDocuments}
+                                      />
+                                    </label>
+                                    <div className={styles.documentIcon}><FileText size={18} /></div>
+                                    <div className={styles.documentInfo}>
+                                      <strong>{document.fileName || `Import job #${document.id}`}</strong>
+                                      <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
+                                      {/* <small>
+                              Import job: {document.id} | Raw document: {document.rawDocumentId || 'N/A'}
+                            </small> */}
+                                    </div>
+                                    <div className={styles.documentActions}>
+                                      <button
+                                        className={styles.button}
+                                        type="button"
+                                        onClick={() => void handleDocumentFileAction(document, 'open')}
+                                        disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                                      >
+                                        <ExternalLink size={16} />Open
+                                      </button>
+                                      <button
+                                        className={styles.button}
+                                        type="button"
+                                        onClick={() => void handleDocumentFileAction(document, 'download')}
+                                        disabled={!canUseStaffWorkbench || !document.rawDocumentId}
+                                      >
+                                        <Download size={16} />Download
+                                      </button>
+                                      <button
+                                        className={`${styles.button} ${styles.dangerButton}`}
+                                        type="button"
+                                        onClick={() => setDocumentPendingDelete(document)}
+                                        disabled={!canUseStaffWorkbench || !document.rawDocumentId || staffTaskStatus !== 'IN_PROGRESS'}
+                                      >
+                                        <Trash2 size={16} />Delete
+                                      </button>
+                                    </div>
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          </section>
+
+                          {pendingExtractionReviews.length > 0 && (
+                            <section className={styles.workbenchPanel}>
+                              <div className={styles.workbenchPanelHead}>
+                                <div>
+                                  <h3>Review AI extraction</h3>
+                                  <p>Correct extracted fields first. APMS will mark the extraction as reviewed before creating the candidate draft.</p>
+                                </div>
+                              </div>
+
+                              <div className={styles.extractionReviewList}>
+                                {mergedPendingExtractionReview && (
+                                  <article className={styles.extractionReviewCard} key={mergedPendingExtractionReview.id}>
+                                    <div className={styles.extractionReviewHead}>
+                                      <div>
+                                        <span>Merged AI extraction review</span>
+                                        <strong>{pendingExtractionReviews.length} source document(s)</strong>
+                                        <div className={styles.extractionSourceChips}>
+                                          {pendingExtractionReviews.map((review) => (
+                                            <small key={review.id}>{review.fileName}</small>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <small>
+                                        {mergedPendingExtractionReview.qualityStatus || 'Pending staff review'}
+                                        {typeof mergedPendingExtractionReview.evidenceCoverageRate === 'number' ? ` | Evidence coverage ${Math.round(mergedPendingExtractionReview.evidenceCoverageRate)}%` : ''}
+                                      </small>
+                                    </div>
+
+                                    <StaffAiExtractResult
+                                      review={mergedPendingExtractionReview}
+                                      onChange={updateMergedPendingExtractionEdit}
+                                      onAskAi={openFieldAiAssist}
+                                      isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
+                                    />
+                                  </article>
+                                )}
+                              </div>
+
+                              <div className={styles.extractionReviewActions}>
+                                <button
+                                  className={`${styles.button} ${styles.primaryButton}`}
+                                  type="button"
+                                  onClick={() => void handleCreateCandidateFromReviewedExtractions()}
+                                  disabled={!canUseStaffWorkbench || staffCandidateLoading}
+                                >
+                                  <CheckCircle2 size={16} />
+                                  {staffCandidateLoading ? 'Creating...' : 'Save review & create candidate'}
+                                </button>
+                              </div>
+                            </section>
+                          )}
+                        </>
+                      )}
+
+                      {staffCandidate && (
+                        <section className={`${styles.workbenchPanel} ${styles.candidateWorkbenchPanel}`}>
+                          {staffCandidate.status !== 'REVISION_REQUIRED' && (
+                            <div className={styles.workbenchPanelHead}>
+                              <div>
+                                <h3>Candidate detail</h3>
+                                <p>
+                                  {isManualCandidate(staffCandidate)
+                                    ? 'Enter and review company information before sending to the manager.'
+                                    : 'Review and correct AI-extracted fields before sending to the manager.'}
+                                </p>
+                              </div>
+                              <div className={styles.workbenchPanelActions}>
+                                {staffCandidate.status === 'DRAFT' && lastExtractionReviews.length > 0 && pendingExtractionReviews.length === 0 && (
+                                  <button
+                                    className={styles.button}
+                                    type="button"
+                                    onClick={restoreLastExtractionReview}
+                                    disabled={!canUseStaffWorkbench}
+                                  >
+                                    <ArrowLeft size={16} />
+                                    Back to AI extraction
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <CandidateReviewWorkspace
+                            projectId={String(currentProjectId)}
+                            candidateId={staffCandidate.id}
+                            taskId={selectedStaffTask.id}
+                            role="STAFF"
+                            targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                            readOnly={staffTaskStatus !== 'IN_PROGRESS' || !isStaffEditableCandidateStatus(staffCandidate.status)}
+                            isResearchNewCompany={apiProject?.projectType === 'RESEARCH_NEW_COMPANY'}
+                            onDraftRenamed={(updated) => {
+                              setStaffCandidate(updated);
+                              taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
+                                .then((payload: any) => setWorkbench(payload.data))
+                                .catch(console.error);
+                            }}
+                            onReviewed={() => {
+                              taskApi.getTaskWorkbench(currentProjectId, selectedStaffTask.id)
+                                .then((payload: any) => setWorkbench(payload.data))
+                                .catch(console.error);
+                            }}
+                            onCancel={() => {
+                              setStaffCandidate(null);
+                              setStaffCandidateEdit(emptyStaffCandidateEdit);
+                            }}
+                            onSubmit={() => void handleSubmitStaffCandidate()}
+                            submitLoading={staffSubmitLoading}
+                          />
+                        </section>
+                      )}
+                    </>
                   ) : selectedStaffTask.taskType === 'COMPANY_NEWS_RESEARCH' ? (
-                  <CompanyNewsResearchWorkspace
-                    projectId={currentProjectId}
-                    taskId={selectedStaffTask.id}
-                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
-                    canEdit={canUseStaffWorkbench}
-                    onDraftCountChange={setNewsResearchDraftCount}
-                    onSubmitSuccess={() => {
-                      void loadStaffWorkbench(selectedStaffTask);
-                      setTaskRefreshTick((current) => current + 1);
-                      setSelectedStaffTask(null);
-                    }}
-                    onClose={() => setSelectedStaffTask(null)}
-                  />
+                    <CompanyNewsResearchWorkspace
+                      projectId={currentProjectId}
+                      taskId={selectedStaffTask.id}
+                      targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                      canEdit={canUseStaffWorkbench}
+                      onDraftCountChange={setNewsResearchDraftCount}
+                      onSubmitSuccess={() => {
+                        void loadStaffWorkbench(selectedStaffTask);
+                        setTaskRefreshTick((current) => current + 1);
+                        setSelectedStaffTask(null);
+                      }}
+                      onClose={() => setSelectedStaffTask(null)}
+                    />
                   ) : selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' ? (
-                  <FinancialResearchWorkbench
-                    projectId={selectedStaffTask.projectId}
-                    taskId={selectedStaffTask.id}
-                    taskTitle={selectedStaffTask.title}
-                    taskStatus={workbench?.taskStatus || selectedStaffTask.status}
-                    taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
-                    dueDate={selectedStaffTask.dueDate}
-                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
-                    documents={projectDocuments}
-                    canEdit={canUseStaffWorkbench}
-                    uploadingDocument={uploadingEvidence}
-                    onUploadDocument={(file: File) => handleUploadEvidence(file)}
-                    onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
-                    onRecallSuccess={() => {
-                      void loadStaffWorkbench(selectedStaffTask);
-                      setTaskRefreshTick((current) => current + 1);
-                    }}
-                    onSubmitSuccess={() => {
-                      void loadStaffWorkbench(selectedStaffTask);
-                      setTaskRefreshTick((current) => current + 1);
-                      setSelectedStaffTask(null);
-                    }}
-                  />
+                    <FinancialResearchWorkbench
+                      projectId={selectedStaffTask.projectId}
+                      taskId={selectedStaffTask.id}
+                      taskTitle={selectedStaffTask.title}
+                      taskStatus={workbench?.taskStatus || selectedStaffTask.status}
+                      taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
+                      dueDate={selectedStaffTask.dueDate}
+                      targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                      documents={projectDocuments}
+                      canEdit={canUseStaffWorkbench}
+                      uploadingDocument={uploadingEvidence}
+                      onUploadDocument={(file: File) => handleUploadEvidence(file)}
+                      onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
+                      onRecallSuccess={() => {
+                        void loadStaffWorkbench(selectedStaffTask);
+                        setTaskRefreshTick((current) => current + 1);
+                      }}
+                      onSubmitSuccess={() => {
+                        void loadStaffWorkbench(selectedStaffTask);
+                        setTaskRefreshTick((current) => current + 1);
+                        setSelectedStaffTask(null);
+                      }}
+                    />
                   ) : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? (
-                  <ContractResearchWorkbench
-                    projectId={selectedStaffTask.projectId}
-                    taskId={selectedStaffTask.id}
-                    taskTitle={selectedStaffTask.title}
-                    taskStatus={workbench?.taskStatus || selectedStaffTask.status}
-                    taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
-                    dueDate={selectedStaffTask.dueDate}
-                    targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
-                    canEdit={canUseStaffWorkbench}
-                    onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
-                    onRecallSuccess={() => {
-                      void loadStaffWorkbench(selectedStaffTask);
-                      setTaskRefreshTick((current) => current + 1);
-                    }}
-                    onSubmitSuccess={() => {
-                      void loadStaffWorkbench(selectedStaffTask);
-                      setTaskRefreshTick((current) => current + 1);
-                      setSelectedStaffTask(null);
-                    }}
-                    onClose={() => setSelectedStaffTask(null)}
-                  />
+                    <ContractResearchWorkbench
+                      projectId={selectedStaffTask.projectId}
+                      taskId={selectedStaffTask.id}
+                      taskTitle={selectedStaffTask.title}
+                      taskStatus={workbench?.taskStatus || selectedStaffTask.status}
+                      taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
+                      dueDate={selectedStaffTask.dueDate}
+                      targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
+                      canEdit={canUseStaffWorkbench}
+                      onRefreshWorkbench={() => void loadStaffWorkbench(selectedStaffTask)}
+                      onRecallSuccess={() => {
+                        void loadStaffWorkbench(selectedStaffTask);
+                        setTaskRefreshTick((current) => current + 1);
+                      }}
+                      onSubmitSuccess={() => {
+                        void loadStaffWorkbench(selectedStaffTask);
+                        setTaskRefreshTick((current) => current + 1);
+                        setSelectedStaffTask(null);
+                      }}
+                      onClose={() => setSelectedStaffTask(null)}
+                    />
                   ) : selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? (
                     staffTaskStatus === 'IN_REVIEW' ? (
                       (() => {
@@ -9178,414 +9646,414 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       </section>
                     )
                   ) : (
-                  <section className={styles.workbenchPanel}>
-                    <div className={styles.workbenchPanelHead}>
-                      <div>
-                        <h3>
-                          {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Document package'}
-                          {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Evaluation result'}
-                          {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Task result'}
-                        </h3>
-                        <p>
-                          {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit them directly to the project.'}
-                          {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Write your evaluation notes and attach evidence before sending it for manager review.'}
-                          {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Add a clear result note so the manager knows what has been completed.'}
-                        </p>
+                    <section className={styles.workbenchPanel}>
+                      <div className={styles.workbenchPanelHead}>
+                        <div>
+                          <h3>
+                            {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Document package'}
+                            {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Evaluation result'}
+                            {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Task result'}
+                          </h3>
+                          <p>
+                            {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && 'Confirm the uploaded documents are enough, then submit them directly to the project.'}
+                            {selectedStaffTask.taskType === 'ROLE_EVALUATION' && 'Write your evaluation notes and attach evidence before sending it for manager review.'}
+                            {selectedStaffTask.taskType === 'GENERAL_TASK' && 'Add a clear result note so the manager knows what has been completed.'}
+                          </p>
+                        </div>
+                        <span className={styles.taskTypeBadge}>{taskTypeText[selectedStaffTask.taskType].title}</span>
                       </div>
-                      <span className={styles.taskTypeBadge}>{taskTypeText[selectedStaffTask.taskType].title}</span>
-                    </div>
 
-                    {selectedStaffTask.taskType === 'GENERAL_TASK' && (
-                      <div className={styles.taskSpecificPanel}>
-                        <div className={styles.taskSpecificHead}>
-                          <CheckCircle2 size={20} />
-                          <div>
-                            <strong>General task workspace</strong>
-                            <span>Record the result clearly so the manager can approve without asking for extra context.</span>
+                      {selectedStaffTask.taskType === 'GENERAL_TASK' && (
+                        <div className={styles.taskSpecificPanel}>
+                          <div className={styles.taskSpecificHead}>
+                            <CheckCircle2 size={20} />
+                            <div>
+                              <strong>General task workspace</strong>
+                              <span>Record the result clearly so the manager can approve without asking for extra context.</span>
+                            </div>
+                          </div>
+
+                          <div className={styles.roleEvaluationGrid}>
+                            <label className={`${styles.inviteField} ${styles.fullField}`}>
+                              <span>Result summary</span>
+                              <textarea
+                                value={generalTaskForm.resultSummary}
+                                placeholder="What did you complete?"
+                                onChange={(event) => setGeneralTaskForm((current) => ({ ...current, resultSummary: event.target.value }))}
+                                disabled={!canUseStaffWorkbench}
+                              />
+                            </label>
+
+                            <label className={styles.inviteField}>
+                              <span>Next step</span>
+                              <input
+                                value={generalTaskForm.nextStep}
+                                placeholder="Optional next action"
+                                onChange={(event) => setGeneralTaskForm((current) => ({ ...current, nextStep: event.target.value }))}
+                                disabled={!canUseStaffWorkbench}
+                              />
+                            </label>
+
+                            <label className={styles.inviteField}>
+                              <span>Blocker</span>
+                              <input
+                                value={generalTaskForm.blocker}
+                                placeholder="No blocker"
+                                onChange={(event) => setGeneralTaskForm((current) => ({ ...current, blocker: event.target.value }))}
+                                disabled={!canUseStaffWorkbench}
+                              />
+                            </label>
+                          </div>
+
+                          <div className={styles.generalChecklist}>
+                            {[
+                              ['workDone', 'Work completed'],
+                              ['evidenceAttached', 'Evidence attached if needed'],
+                              ['readyForReview', 'Ready for manager review'],
+                            ].map(([key, label]) => (
+                              <label key={key}>
+                                <input
+                                  type="checkbox"
+                                  checked={generalTaskForm.checklist[key as keyof typeof generalTaskForm.checklist]}
+                                  disabled={!canUseStaffWorkbench}
+                                  onChange={(event) => setGeneralTaskForm((current) => ({
+                                    ...current,
+                                    checklist: {
+                                      ...current.checklist,
+                                      [key]: event.target.checked,
+                                    },
+                                  }))}
+                                />
+                                <span>{label}</span>
+                              </label>
+                            ))}
                           </div>
                         </div>
+                      )}
 
-                        <div className={styles.roleEvaluationGrid}>
-                          <label className={`${styles.inviteField} ${styles.fullField}`}>
-                            <span>Result summary</span>
-                            <textarea
-                              value={generalTaskForm.resultSummary}
-                              placeholder="What did you complete?"
-                              onChange={(event) => setGeneralTaskForm((current) => ({ ...current, resultSummary: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            />
-                          </label>
-
-                          <label className={styles.inviteField}>
-                            <span>Next step</span>
-                            <input
-                              value={generalTaskForm.nextStep}
-                              placeholder="Optional next action"
-                              onChange={(event) => setGeneralTaskForm((current) => ({ ...current, nextStep: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            />
-                          </label>
-
-                          <label className={styles.inviteField}>
-                            <span>Blocker</span>
-                            <input
-                              value={generalTaskForm.blocker}
-                              placeholder="No blocker"
-                              onChange={(event) => setGeneralTaskForm((current) => ({ ...current, blocker: event.target.value }))}
-                              disabled={!canUseStaffWorkbench}
-                            />
-                          </label>
+                      <div className={styles.workbenchResultGrid}>
+                        <div className={styles.workbenchResultCard}>
+                          <FileText size={22} />
+                          <span>Evidence files</span>
+                          <strong>{workbench?.documents?.length ?? 0}</strong>
                         </div>
-
-                        <div className={styles.generalChecklist}>
-                          {[
-                            ['workDone', 'Work completed'],
-                            ['evidenceAttached', 'Evidence attached if needed'],
-                            ['readyForReview', 'Ready for manager review'],
-                          ].map(([key, label]) => (
-                            <label key={key}>
-                              <input
-                                type="checkbox"
-                                checked={generalTaskForm.checklist[key as keyof typeof generalTaskForm.checklist]}
-                                disabled={!canUseStaffWorkbench}
-                                onChange={(event) => setGeneralTaskForm((current) => ({
-                                  ...current,
-                                  checklist: {
-                                    ...current.checklist,
-                                    [key]: event.target.checked,
-                                  },
-                                }))}
-                              />
-                              <span>{label}</span>
-                            </label>
-                          ))}
+                        <div className={styles.workbenchResultCard}>
+                          <MessageSquare size={22} />
+                          <span>Submissions</span>
+                          <strong>{workbench?.submissions?.length ?? 0}</strong>
+                        </div>
+                        <div className={styles.workbenchResultCard}>
+                          <Clock size={22} />
+                          <span>Current status</span>
+                          <strong>{workbench?.taskStatus || selectedStaffTask.status}</strong>
                         </div>
                       </div>
-                    )}
 
-                    <div className={styles.workbenchResultGrid}>
-                      <div className={styles.workbenchResultCard}>
-                        <FileText size={22} />
-                        <span>Evidence files</span>
-                        <strong>{workbench?.documents?.length ?? 0}</strong>
-                      </div>
-                      <div className={styles.workbenchResultCard}>
-                        <MessageSquare size={22} />
-                        <span>Submissions</span>
-                        <strong>{workbench?.submissions?.length ?? 0}</strong>
-                      </div>
-                      <div className={styles.workbenchResultCard}>
-                        <Clock size={22} />
-                        <span>Current status</span>
-                        <strong>{workbench?.taskStatus || selectedStaffTask.status}</strong>
-                      </div>
-                    </div>
+                      <label className={`${styles.inviteField} ${styles.fullField}`}>
+                        <span>
+                          {selectedStaffTask.taskType === 'ROLE_EVALUATION' ? 'Evaluation note' : 'Completion note'}
+                        </span>
+                        <textarea
+                          value={staffTaskNote}
+                          placeholder={
+                            selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
+                              ? 'Example: Uploaded annual report and registration evidence. Ready to add to project documents.'
+                              : selectedStaffTask.taskType === 'ROLE_EVALUATION'
+                                ? 'Example: Based on the uploaded evidence, this company fits the partner role because...'
+                                : 'Example: Completed the assigned work and attached supporting evidence.'
+                          }
+                          onChange={(event) => setStaffTaskNote(event.target.value)}
+                          disabled={!canUseStaffWorkbench}
+                        />
+                      </label>
 
-                    <label className={`${styles.inviteField} ${styles.fullField}`}>
-                      <span>
-                        {selectedStaffTask.taskType === 'ROLE_EVALUATION' ? 'Evaluation note' : 'Completion note'}
-                      </span>
-                      <textarea
-                        value={staffTaskNote}
-                        placeholder={
-                          selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Example: Uploaded annual report and registration evidence. Ready to add to project documents.'
-                            : selectedStaffTask.taskType === 'ROLE_EVALUATION'
-                              ? 'Example: Based on the uploaded evidence, this company fits the partner role because...'
-                              : 'Example: Completed the assigned work and attached supporting evidence.'
-                        }
-                        onChange={(event) => setStaffTaskNote(event.target.value)}
-                        disabled={!canUseStaffWorkbench}
-                      />
-                    </label>
-
-                    <div className={styles.modalActions}>
-                      <button
-                        className={`${styles.button} ${styles.primaryButton}`}
-                        type="button"
-                        onClick={() => void handleSubmitStaffTaskReview(
-                          selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' ? 'DOCUMENT_COLLECTION' : 'OTHER',
-                          selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Documents submitted for manager review.'
-                            : 'Task result submitted for manager review.'
-                        )}
-                        disabled={!canUseStaffWorkbench || staffSubmitLoading || selectedStaffTask.taskType === 'ROLE_EVALUATION'}
-                      >
-                        <CheckCircle2 size={16} />
-                        {staffSubmitLoading
-                          ? 'Submitting...'
-                          : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
-                            ? 'Submit for manager review'
-                            : selectedStaffTask.taskType === 'ROLE_EVALUATION'
-                              ? 'Use evaluation submit'
-                              : 'Submit to manager'}
-                      </button>
-                    </div>
-                  </section>
+                      <div className={styles.modalActions}>
+                        <button
+                          className={`${styles.button} ${styles.primaryButton}`}
+                          type="button"
+                          onClick={() => void handleSubmitStaffTaskReview(
+                            selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' ? 'DOCUMENT_COLLECTION' : 'OTHER',
+                            selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
+                              ? 'Documents submitted for manager review.'
+                              : 'Task result submitted for manager review.'
+                          )}
+                          disabled={!canUseStaffWorkbench || staffSubmitLoading || selectedStaffTask.taskType === 'ROLE_EVALUATION'}
+                        >
+                          <CheckCircle2 size={16} />
+                          {staffSubmitLoading
+                            ? 'Submitting...'
+                            : selectedStaffTask.taskType === 'DOCUMENT_COLLECTION'
+                              ? 'Submit for manager review'
+                              : selectedStaffTask.taskType === 'ROLE_EVALUATION'
+                                ? 'Use evaluation submit'
+                                : 'Submit to manager'}
+                        </button>
+                      </div>
+                    </section>
                   )}
                 </main>
 
                 {(!staffCandidate || isCompanyDataReviewOrDone) && !['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) && (
-                <aside className={styles.workbenchSidebar}>
-                  {isCompanyDataReviewOrDone ? (
-                    <section className={styles.workbenchPanel}>
-                      <h3>Drafts {inReviewDrafts.length > 0 ? `(${inReviewDrafts.length})` : ''}</h3>
-                      <div className={styles.draftList}>
-                        {inReviewDrafts.length === 0 ? (
-                          <div className={styles.empty}>No active candidate draft yet.</div>
-                        ) : (
-                          inReviewDrafts.map((draft) => {
-                            const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
-                            const isSubmitted = Boolean(inReviewSubmittedCandId && draft.candidateId === inReviewSubmittedCandId);
-                            const isSelected = draft.candidateId === inReviewActiveCandId;
+                  <aside className={styles.workbenchSidebar}>
+                    {isCompanyDataReviewOrDone ? (
+                      <section className={styles.workbenchPanel}>
+                        <h3>Drafts {inReviewDrafts.length > 0 ? `(${inReviewDrafts.length})` : ''}</h3>
+                        <div className={styles.draftList}>
+                          {inReviewDrafts.length === 0 ? (
+                            <div className={styles.empty}>No active candidate draft yet.</div>
+                          ) : (
+                            inReviewDrafts.map((draft) => {
+                              const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+                              const isSubmitted = Boolean(inReviewSubmittedCandId && draft.candidateId === inReviewSubmittedCandId);
+                              const isSelected = draft.candidateId === inReviewActiveCandId;
 
-                            return (
-                              <article
-                                className={`${styles.draftItem} ${isSelected ? styles.draftItemActive : ''}`}
-                                key={draft.candidateId}
-                                style={
-                                  isSelected
-                                    ? {
+                              return (
+                                <article
+                                  className={`${styles.draftItem} ${isSelected ? styles.draftItemActive : ''}`}
+                                  key={draft.candidateId}
+                                  style={
+                                    isSelected
+                                      ? {
                                         borderColor: '#2563eb',
                                         background: '#eff6ff',
                                         cursor: 'pointer',
                                       }
-                                    : { cursor: 'pointer' }
-                                }
-                              >
-                                <button
-                                  className={styles.draftItemMain}
-                                  type="button"
-                                  onClick={() => setInReviewSelectedCandidateId(draft.candidateId)}
-                                  style={{
-                                    textAlign: 'left',
-                                    width: '100%',
-                                    background: 'transparent',
-                                    border: 'none',
-                                    padding: 0,
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      gap: '8px',
-                                    }}
-                                  >
-                                    <strong
-                                      style={{
-                                        margin: 0,
-                                        color: isSelected ? '#1d4ed8' : '#1e293b',
-                                        fontSize: '14px',
-                                        fontWeight: isSelected ? 700 : 600,
-                                      }}
-                                    >
-                                      {draftLabel}
-                                    </strong>
-                                    {isCompanyDataDone && (draft.isApproved || isSubmitted) ? (
-                                      <span
-                                        style={{
-                                          fontSize: '11px',
-                                          fontWeight: 600,
-                                          padding: '2px 8px',
-                                          borderRadius: '9999px',
-                                          background: '#dcfce7',
-                                          color: '#15803d',
-                                          border: '1px solid #bbf7d0',
-                                          whiteSpace: 'nowrap',
-                                        }}
-                                      >
-                                        Approved
-                                      </span>
-                                    ) : isSubmitted ? (
-                                      <span
-                                        style={{
-                                          fontSize: '11px',
-                                          fontWeight: 600,
-                                          padding: '2px 8px',
-                                          borderRadius: '9999px',
-                                          background: '#dbeafe',
-                                          color: '#1e40af',
-                                          border: '1px solid #bfdbfe',
-                                          whiteSpace: 'nowrap',
-                                        }}
-                                      >
-                                        Submitted for Review
-                                      </span>
-                                    ) : (
-                                      <span
-                                        style={{
-                                          fontSize: '11px',
-                                          fontWeight: 500,
-                                          padding: '2px 8px',
-                                          borderRadius: '9999px',
-                                          background: '#f1f5f9',
-                                          color: '#475569',
-                                          border: '1px solid #e2e8f0',
-                                          whiteSpace: 'nowrap',
-                                        }}
-                                      >
-                                        Draft
-                                      </span>
-                                    )}
-                                  </div>
-                                  {draft.createdAt && (
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        marginTop: '6px',
-                                        color: '#64748b',
-                                        fontSize: '12px',
-                                      }}
-                                    >
-                                      <span>Created {formatOptionalDate(draft.createdAt)}</span>
-                                    </div>
-                                  )}
-                                </button>
-                              </article>
-                            );
-                          })
-                        )}
-                      </div>
-                    </section>
-                  ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
-                    <>
-                    <section className={styles.workbenchPanel}>
-                      <h3>Drafts</h3>
-                      <div className={styles.draftList}>
-                        {(() => {
-                          const sortedDrafts = [...(workbench?.candidateDrafts || [])]
-                            .filter((draft) => draft.status === 'DRAFT')
-                            .sort((a, b) => {
-                              const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                              const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                              return dateB - dateA; // Descending: Newest first
-                            });
-
-                          if (sortedDrafts.length === 0) {
-                            return <div className={styles.empty}>No active candidate draft yet.</div>;
-                          }
-
-                          return sortedDrafts.map((draft) => {
-                            const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
-                            const isDeleting = deletingCandidateDraftId === draft.candidateId;
-
-                            return (
-                              <article
-                                className={`${styles.draftItem} ${styles.draftItemWithActions}`}
-                                key={draft.candidateId}
-                              >
-                                <button
-                                  className={styles.draftItemMain}
-                                  type="button"
-                                  onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                  disabled={!canUseStaffWorkbench || isDeleting}
-                                >
-                                  <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
-                                    <span>{candidateStatusLabel[draft.status] || 'Draft'}</span>
-                                    {draft.createdAt && (
-                                      <>
-                                        <span>•</span>
-                                        <span>{formatOptionalDate(draft.createdAt)}</span>
-                                      </>
-                                    )}
-                                  </div>
-                                </button>
-                                <button
-                                  className={styles.draftDeleteButton}
-                                  type="button"
-                                  onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
-                                  disabled={!canUseStaffWorkbench || isDeleting}
-                                  aria-label={`Delete ${draftLabel}`}
-                                  title="Delete draft"
-                                >
-                                  <Trash2 size={15} />
-                                  {isDeleting ? 'Deleting...' : 'Delete'}
-                                </button>
-                              </article>
-                            );
-                          });
-                        })()}
-                      </div>
-                    </section>
-
-                    {(() => {
-                      const returnedDrafts = workbench?.candidateDrafts?.filter((draft) => draft.status === 'REVISION_REQUIRED') ?? [];
-                      if (returnedDrafts.length === 0) return null;
-
-                      return (
-                        <section className={styles.workbenchPanel}>
-                          <h3>Changes requested</h3>
-                          <div className={styles.draftList}>
-                            {returnedDrafts.map((draft) => {
-                              const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
-
-                              return (
-                                <article
-                                  className={styles.draftItem}
-                                  key={draft.candidateId}
+                                      : { cursor: 'pointer' }
+                                  }
                                 >
                                   <button
                                     className={styles.draftItemMain}
                                     type="button"
-                                    onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                    disabled={!canUseStaffWorkbench}
+                                    onClick={() => setInReviewSelectedCandidateId(draft.candidateId)}
+                                    style={{
+                                      textAlign: 'left',
+                                      width: '100%',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      padding: 0,
+                                      cursor: 'pointer',
+                                    }}
                                   >
-                                    <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
-                                      <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>Changes requested</span>
-                                      {draft.createdAt && (
-                                        <>
-                                          <span>•</span>
-                                          <span>{formatOptionalDate(draft.createdAt)}</span>
-                                        </>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '8px',
+                                      }}
+                                    >
+                                      <strong
+                                        style={{
+                                          margin: 0,
+                                          color: isSelected ? '#1d4ed8' : '#1e293b',
+                                          fontSize: '14px',
+                                          fontWeight: isSelected ? 700 : 600,
+                                        }}
+                                      >
+                                        {draftLabel}
+                                      </strong>
+                                      {isCompanyDataDone && (draft.isApproved || isSubmitted) ? (
+                                        <span
+                                          style={{
+                                            fontSize: '11px',
+                                            fontWeight: 600,
+                                            padding: '2px 8px',
+                                            borderRadius: '9999px',
+                                            background: '#dcfce7',
+                                            color: '#15803d',
+                                            border: '1px solid #bbf7d0',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          Approved
+                                        </span>
+                                      ) : isSubmitted ? (
+                                        <span
+                                          style={{
+                                            fontSize: '11px',
+                                            fontWeight: 600,
+                                            padding: '2px 8px',
+                                            borderRadius: '9999px',
+                                            background: '#dbeafe',
+                                            color: '#1e40af',
+                                            border: '1px solid #bfdbfe',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          Submitted for Review
+                                        </span>
+                                      ) : (
+                                        <span
+                                          style={{
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            padding: '2px 8px',
+                                            borderRadius: '9999px',
+                                            background: '#f1f5f9',
+                                            color: '#475569',
+                                            border: '1px solid #e2e8f0',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          Draft
+                                        </span>
                                       )}
                                     </div>
+                                    {draft.createdAt && (
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          marginTop: '6px',
+                                          color: '#64748b',
+                                          fontSize: '12px',
+                                        }}
+                                      >
+                                        <span>Created {formatOptionalDate(draft.createdAt)}</span>
+                                      </div>
+                                    )}
                                   </button>
                                 </article>
                               );
-                            })}
+                            })
+                          )}
+                        </div>
+                      </section>
+                    ) : ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType) ? (
+                      <>
+                        <section className={styles.workbenchPanel}>
+                          <h3>Drafts</h3>
+                          <div className={styles.draftList}>
+                            {(() => {
+                              const sortedDrafts = [...(workbench?.candidateDrafts || [])]
+                                .filter((draft) => draft.status === 'DRAFT')
+                                .sort((a, b) => {
+                                  const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                                  const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                                  return dateB - dateA; // Descending: Newest first
+                                });
+
+                              if (sortedDrafts.length === 0) {
+                                return <div className={styles.empty}>No active candidate draft yet.</div>;
+                              }
+
+                              return sortedDrafts.map((draft) => {
+                                const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+                                const isDeleting = deletingCandidateDraftId === draft.candidateId;
+
+                                return (
+                                  <article
+                                    className={`${styles.draftItem} ${styles.draftItemWithActions}`}
+                                    key={draft.candidateId}
+                                  >
+                                    <button
+                                      className={styles.draftItemMain}
+                                      type="button"
+                                      onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                      disabled={!canUseStaffWorkbench || isDeleting}
+                                    >
+                                      <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
+                                        <span>{candidateStatusLabel[draft.status] || 'Draft'}</span>
+                                        {draft.createdAt && (
+                                          <>
+                                            <span>•</span>
+                                            <span>{formatOptionalDate(draft.createdAt)}</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </button>
+                                    <button
+                                      className={styles.draftDeleteButton}
+                                      type="button"
+                                      onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
+                                      disabled={!canUseStaffWorkbench || isDeleting}
+                                      aria-label={`Delete ${draftLabel}`}
+                                      title="Delete draft"
+                                    >
+                                      <Trash2 size={15} />
+                                      {isDeleting ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                  </article>
+                                );
+                              });
+                            })()}
                           </div>
                         </section>
-                      );
-                    })()}
 
-                    </>
-                  ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) ? null : (
-                    <section className={styles.workbenchPanel}>
-                      <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
-                      <div className={styles.workbenchHintList}>
-                        {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && (
-                          <>
-                            <span>Upload all required company evidence.</span>
-                            <span>Check file names and source clarity.</span>
-                            <span>Submit once the package is ready.</span>
-                          </>
-                        )}
-                        {selectedStaffTask.taskType === 'ROLE_EVALUATION' && (
-                          <>
-                            <span>Review project relationship and target company.</span>
-                            <span>Attach sources that support the evaluation.</span>
-                            <span>Submit clear notes for manager approval.</span>
-                          </>
-                        )}
-                        {selectedStaffTask.taskType === 'GENERAL_TASK' && (
-                          <>
-                            <span>Complete the assigned work.</span>
-                            <span>Add a short result note.</span>
-                            <span>Attach evidence when useful.</span>
-                          </>
-                        )}
-                      </div>
-                    </section>
-                  )}
+                        {(() => {
+                          const returnedDrafts = workbench?.candidateDrafts?.filter((draft) => draft.status === 'REVISION_REQUIRED') ?? [];
+                          if (returnedDrafts.length === 0) return null;
 
-                  {/* <section className={styles.workbenchPanel}>
+                          return (
+                            <section className={styles.workbenchPanel}>
+                              <h3>Changes requested</h3>
+                              <div className={styles.draftList}>
+                                {returnedDrafts.map((draft) => {
+                                  const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+
+                                  return (
+                                    <article
+                                      className={styles.draftItem}
+                                      key={draft.candidateId}
+                                    >
+                                      <button
+                                        className={styles.draftItemMain}
+                                        type="button"
+                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                        disabled={!canUseStaffWorkbench}
+                                      >
+                                        <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
+                                          <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>Changes requested</span>
+                                          {draft.createdAt && (
+                                            <>
+                                              <span>•</span>
+                                              <span>{formatOptionalDate(draft.createdAt)}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </button>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          );
+                        })()}
+
+                      </>
+                    ) : ['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedStaffTask.taskType) ? null : (
+                      <section className={styles.workbenchPanel}>
+                        <h3>{taskTypeText[selectedStaffTask.taskType].title}</h3>
+                        <div className={styles.workbenchHintList}>
+                          {selectedStaffTask.taskType === 'DOCUMENT_COLLECTION' && (
+                            <>
+                              <span>Upload all required company evidence.</span>
+                              <span>Check file names and source clarity.</span>
+                              <span>Submit once the package is ready.</span>
+                            </>
+                          )}
+                          {selectedStaffTask.taskType === 'ROLE_EVALUATION' && (
+                            <>
+                              <span>Review project relationship and target company.</span>
+                              <span>Attach sources that support the evaluation.</span>
+                              <span>Submit clear notes for manager approval.</span>
+                            </>
+                          )}
+                          {selectedStaffTask.taskType === 'GENERAL_TASK' && (
+                            <>
+                              <span>Complete the assigned work.</span>
+                              <span>Add a short result note.</span>
+                              <span>Attach evidence when useful.</span>
+                            </>
+                          )}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* <section className={styles.workbenchPanel}>
                     <h3>Review history</h3>
                     <div className={styles.workbenchTimeline}>
                       {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
@@ -9598,7 +10066,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       ))}
                     </div>
                   </section> */}
-                </aside>
+                  </aside>
                 )}
               </div>
             </motion.div>
@@ -9626,7 +10094,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <h3>Release task?</h3>
                 <p>
                   This task will return to the Available pool and another Staff member may claim it.
-                  <br/><br/>
+                  <br /><br />
                   Saved research/workbench data will not be deleted.
                 </p>
                 {releaseTaskError && (
@@ -9655,7 +10123,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             </motion.div>
           )}
 
-      {cancelTaskConfirmOpen && selectedStaffTask && (
+          {cancelTaskConfirmOpen && selectedStaffTask && (
             <motion.div
               className={styles.nestedConfirmOverlay}
               initial={{ opacity: 0 }}
@@ -9766,74 +10234,74 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           {candidateDraftPendingDelete && (
             <motion.div
               className={styles.nestedConfirmOverlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => {
-              if (!deletingCandidateDraftId) setCandidateDraftPendingDelete(null);
-            }}
-          >
-            <motion.div
-              className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="delete-candidate-draft-title"
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
-              onClick={(event) => event.stopPropagation()}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!deletingCandidateDraftId) setCandidateDraftPendingDelete(null);
+              }}
             >
-              <div className={styles.inviteHead}>
-                <div>
-                  <span className={styles.taskKey}>Delete candidate</span>
-                  <h2 id="delete-candidate-draft-title">Confirm candidate deletion</h2>
-                  <p>
-                    Are you sure you want to delete <strong>{candidateDraftPendingDelete.label}</strong>? Only Draft or Rejected candidates can be removed.
-                  </p>
+              <motion.div
+                className={`${styles.inviteModal} ${styles.deleteConfirmModal}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-candidate-draft-title"
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 18, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className={styles.inviteHead}>
+                  <div>
+                    <span className={styles.taskKey}>Delete candidate</span>
+                    <h2 id="delete-candidate-draft-title">Confirm candidate deletion</h2>
+                    <p>
+                      Are you sure you want to delete <strong>{candidateDraftPendingDelete.label}</strong>? Only Draft or Rejected candidates can be removed.
+                    </p>
+                  </div>
+                  <button
+                    className={styles.iconButton}
+                    type="button"
+                    aria-label="Close candidate delete confirmation"
+                    onClick={() => setCandidateDraftPendingDelete(null)}
+                    disabled={Boolean(deletingCandidateDraftId)}
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
-                <button
-                  className={styles.iconButton}
-                  type="button"
-                  aria-label="Close candidate delete confirmation"
-                  onClick={() => setCandidateDraftPendingDelete(null)}
-                  disabled={Boolean(deletingCandidateDraftId)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
 
-              <div className={styles.deleteTaskPreview}>
-                <Trash2 size={20} />
-                <div>
-                  <strong>{candidateDraftPendingDelete.label}</strong>
-                  <span className={`${styles.draftStatusBadge} ${candidateStatusClass[candidateDraftPendingDelete.status]}`}>
-                    {candidateStatusLabel[candidateDraftPendingDelete.status]}
-                  </span>
+                <div className={styles.deleteTaskPreview}>
+                  <Trash2 size={20} />
+                  <div>
+                    <strong>{candidateDraftPendingDelete.label}</strong>
+                    <span className={`${styles.draftStatusBadge} ${candidateStatusClass[candidateDraftPendingDelete.status]}`}>
+                      {candidateStatusLabel[candidateDraftPendingDelete.status]}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className={styles.modalActions}>
-                <button
-                  className={styles.button}
-                  type="button"
-                  onClick={() => setCandidateDraftPendingDelete(null)}
-                  disabled={Boolean(deletingCandidateDraftId)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className={`${styles.button} ${styles.dangerButton}`}
-                  type="button"
-                  onClick={() => void confirmDeleteStaffCandidateDraft()}
-                  disabled={Boolean(deletingCandidateDraftId)}
-                >
-                  {deletingCandidateDraftId ? 'Deleting...' : 'Delete candidate'}
-                </button>
-              </div>
+                <div className={styles.modalActions}>
+                  <button
+                    className={styles.button}
+                    type="button"
+                    onClick={() => setCandidateDraftPendingDelete(null)}
+                    disabled={Boolean(deletingCandidateDraftId)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className={`${styles.button} ${styles.dangerButton}`}
+                    type="button"
+                    onClick={() => void confirmDeleteStaffCandidateDraft()}
+                    disabled={Boolean(deletingCandidateDraftId)}
+                  >
+                    {deletingCandidateDraftId ? 'Deleting...' : 'Delete candidate'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          )}
         </AnimatePresence>,
         document.body
       )}
@@ -9847,7 +10315,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
             onClick={() => closeManagerReviewModal()}
           >
             <motion.div
-              className={`${styles.inviteModal} ${styles.staffWorkbenchModal} ${(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchModal : ''}`}
+              className={`${styles.inviteModal} ${selectedManagerReviewTask.status === 'DONE' ? styles.completedTaskModal : styles.staffWorkbenchModal} ${(selectedManagerReviewTask.taskType === 'FINANCIAL_RESEARCH' || selectedManagerReviewTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchModal : ''}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="manager-task-review-title"
@@ -9961,318 +10429,383 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     setToast({ kind: 'success', message: 'Contract review submitted successfully.' });
                   }}
                 />
-              ) : (
-                <>
-              {selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
-                <div className={styles.inviteHead}>
-                  <div>
-                    <span className={styles.taskKey}>
-                      {selectedReviewHistoryItem
-                        ? `Task APMS-${selectedManagerReviewTask.id} • ${taskTypeText[selectedManagerReviewTask.taskType].title}`
-                        : (selectedManagerReviewTask.status === 'DONE' ? 'Completed task' : 'Manager review') + ` - APMS-${selectedManagerReviewTask.id}`}
-                    </span>
-                    <h2 id="manager-task-review-title">{selectedManagerReviewTask.title}</h2>
-                    <p>
-                      {selectedManagerReviewTask.status === 'DONE'
-                        ? 'View the submitted evidence, candidate drafts, and review history for this completed task.'
-                        : 'Review submitted evidence, candidate drafts, and staff notes before approving this task.'}
-                    </p>
-                  </div>
-                  <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
-                    <X size={18} />
-                  </button>
-                </div>
-              )}
-
-              {workbenchError && <div className={styles.inlineError}>{workbenchError}</div>}
-              {workbenchMessage && <div className={styles.inlineSuccess}>{workbenchMessage}</div>}
-
-              {!['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
-                <div className={styles.workbenchStatusRow}>
-                  <div><span>Status</span><strong>{workbench?.taskStatus || selectedManagerReviewTask.status}</strong></div>
-                  <div><span>Task type</span><strong>{taskTypeText[selectedManagerReviewTask.taskType].title}</strong></div>
-                  <div><span>Assignee</span><strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong></div>
-                  <div><span>Due date</span><strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong></div>
-                </div>
-              )}
-
-              <div className={`${styles.staffWorkbenchGrid} ${(selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' || Boolean(selectedReviewHistoryItem)) ? styles.companyMemberWorkbenchGrid : ''}`}>
-                <main className={styles.workbenchMain}>
-                  {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
-                  <section className={styles.workbenchPanel}>
-                    <div className={styles.workbenchPanelHead}>
-                      <div>
-                        <h3>Uploaded evidence</h3>
-                        <p>
-                          These are the files uploaded by staff for this task.
-                        </p>
-                      </div>
-                      <span className={styles.taskTypeBadge}>{managerReviewDocuments.length} file(s)</span>
-                    </div>
-
-                    <div className={styles.documentList}>
-                      {workbenchLoading && <div className={styles.empty}>Loading review data...</div>}
-                      {!workbenchLoading && managerReviewDocuments.length === 0 && (
-                        <div className={styles.empty}>No uploaded files found for this task.</div>
-                      )}
-                      {managerReviewDocuments.map((document) => (
-                        <article className={styles.documentItem} key={document.id}>
-                          <div className={styles.documentIcon}><FileText size={18} /></div>
-                          <div className={styles.documentInfo}>
-                            <strong>{document.fileName || `Import job #${document.id}`}</strong>
-                            <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
-                            <small>
-                              {`Raw document: ${document.rawDocumentId || 'N/A'} | Extraction: ${document.latestExtractionId || 'Not generated'}`}
-                            </small>
-                          </div>
-                          <div className={styles.documentActions}>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'open')}
-                              disabled={!document.rawDocumentId}
-                            >
-                              <ExternalLink size={16} />Open
-                            </button>
-                            <button
-                              className={styles.button}
-                              type="button"
-                              onClick={() => void handleDocumentFileAction(document, 'download')}
-                              disabled={!document.rawDocumentId}
-                            >
-                              <Download size={16} />Download
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                  )}
-
-                  {selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (() => {
-                    const latestSub = workbench?.submissions?.[0];
-                    const historyItem = selectedReviewHistoryItem;
-
-                    const roundNumber = historyItem?.submittedRevisionNumber || latestSub?.submittedRevisionNumber;
-                    const roundLabel = roundNumber ? `Round ${roundNumber}` : 'Round 1';
-
-                    const submittedAtDate = historyItem?.submittedAt || latestSub?.submittedAt || latestSub?.createdAt;
-                    const submittedByLabel = historyItem?.submittedByName || latestSub?.submittedByName || selectedManagerReviewTask.assignedToName || 'Staff';
-
-                    const isApproved = historyItem?.status === 'APPROVED' || selectedManagerReviewTask.status === 'DONE';
-                    const isChangesRequested = ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(historyItem?.status as string)
-                      || ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(latestSub?.status as string);
-
-                    const badgeText = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted for Review';
-                    const badgeStyle = isApproved
-                      ? { background: '#dcfce7', color: '#15803d' }
-                      : isChangesRequested
-                      ? { background: '#ffedd5', color: '#c2410c' }
-                      : { background: '#dbeafe', color: '#1e40af' };
-
-                    const memberCount = managerCompanyMemberDraft?.members?.length ?? 0;
-                    const headingText = isApproved
-                      ? `Approved Members (${memberCount})`
-                      : `Submitted Members (${memberCount})`;
-
-                    const statusLabel = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted';
-
-                    return (
-                      <section className={styles.workbenchPanel} style={{ width: '100%' }}>
-                        <div style={{
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          padding: '20px 24px',
-                          marginBottom: '20px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          gap: '16px',
-                          flexWrap: 'wrap'
-                        }}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                              <span style={{
-                                ...badgeStyle,
-                                fontWeight: 700,
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.5px'
-                              }}>
-                                {badgeText}
-                              </span>
-                              <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
-                                {roundLabel}
-                              </span>
-                            </div>
-                            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#0f172a' }}>
-                              {headingText}
-                            </h3>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
-                              <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
-                              <span><strong>Submitted By:</strong> {submittedByLabel}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {managerCompanyMemberLoading ? (
-                          <div className={styles.empty}>Loading submitted members...</div>
-                        ) : !managerCompanyMemberDraft?.members?.length ? (
-                          <div className={styles.empty}>No company members were submitted for review.</div>
-                        ) : (
-                          <CompanyMemberLayerBoard
-                            members={managerCompanyMemberDraft.members}
-                            emptyText="No company members were submitted for review."
-                            statusLabel={statusLabel}
-                          />
-                        )}
-                      </section>
-                    );
-                  })()}
-
-                  {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
-                    <section className={styles.workbenchPanel}>
-                      <div className={styles.workbenchPanelHead}>
+              ) : (() => {
+                const isCompletedTask = selectedManagerReviewTask.status === 'DONE';
+                return (
+                  <>
+                    {selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                      <div className={styles.inviteHead}>
                         <div>
-                          <h3>{selectedManagerReviewTask.status === 'DONE' ? 'Candidate result' : 'Candidate drafts'}</h3>
+                          <span className={styles.taskKey}>
+                            {selectedReviewHistoryItem
+                              ? `Task APMS-${selectedManagerReviewTask.id} • ${taskTypeText[selectedManagerReviewTask.taskType].title}`
+                              : (isCompletedTask ? 'Completed task' : 'Manager review') + ` - APMS-${selectedManagerReviewTask.id}`}
+                          </span>
+                          <h2 id="manager-task-review-title">{selectedManagerReviewTask.title}</h2>
                           <p>
-                            {selectedManagerReviewTask.status === 'DONE'
-                              ? 'Final candidate decision linked to this completed task.'
-                              : 'Candidate drafts associated with this task.'}
+                            {isCompletedTask
+                              ? 'View submitted evidence, candidate result, and review history.'
+                              : 'Review submitted evidence, candidate drafts, and staff notes before approving this task.'}
                           </p>
                         </div>
-                        <span className={styles.taskTypeBadge}>
-                          {managerCandidateDrafts.length} {selectedManagerReviewTask.status === 'DONE' ? 'result(s)' : 'submitted draft(s)'}
-                        </span>
-                      </div>
-                      <div className={styles.draftList}>
-                        {managerCandidateDrafts.length === 0 && (
-                          <div className={styles.empty}>
-                            {selectedManagerReviewTask.status === 'DONE'
-                              ? 'No approved or rejected candidate result linked to this task.'
-                              : 'No submitted candidate draft linked to this task.'}
-                          </div>
-                        )}
-                        {managerCandidateDrafts.map((draft) => (
-                          <button
-                            className={styles.draftItem}
-                            type="button"
-                            key={draft.candidateId}
-                            onClick={() => void openManagerCandidateReview(draft.candidateId)}
-                          >
-                            <strong>{draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`)}</strong>
-                            {draft.candidateIndustry && <small>{draft.candidateIndustry}</small>}
-                            <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
-                            {draft.isUnderReview && <small>Submitted for review</small>}
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-
-
-                  {!['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH', 'COMPANY_DATA_PREPARATION'].includes(selectedManagerReviewTask.taskType) && (
-                  <section className={styles.workbenchPanel}>
-                    <div className={styles.workbenchPanelHead}>
-                      <div>
-                          <h3>{selectedManagerReviewTask.status === 'DONE' ? 'Final decision' : 'Decision'}</h3>
-                          <p>
-                            {selectedManagerReviewTask.status === 'DONE'
-                              ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
-                                ? 'This document collection has been approved. The submitted documents remain available in the project.'
-                                : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
-                                  ? 'This company member research has been approved. The members were applied to the Company Profile.'
-                                : 'This task has already been approved. The submitted evidence remains available for audit.'
-                              : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
-                                ? 'Review the submitted documents before approving. Approval completes this task.'
-                                : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
-                                  ? 'Review the submitted members and source URLs, then approve to apply them to the Company Profile or reject to return it to staff.'
-                                : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
-                          </p>
-                      </div>
-                    </div>
-
-                    {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
-                      <div className={styles.inlineSuccess}>
-                        Documents were approved and are available in the project Documents tab.
-                      </div>
-                    ) : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status !== 'DONE' ? (
-                      <div className={styles.modalActions}>
-                        <button
-                          className={`${styles.button} ${styles.primaryButton}`}
-                          type="button"
-                          onClick={() => {
-                            const draft = managerCandidateDrafts[0];
-                            if (draft) void openManagerCandidateReview(draft.candidateId);
-                          }}
-                          disabled={managerCandidateDrafts.length === 0}
-                        >
-                          <CheckCircle2 size={16} />Review candidate
+                        <button className={styles.iconButton} type="button" aria-label="Close manager review" onClick={() => closeManagerReviewModal()}>
+                          <X size={18} />
                         </button>
                       </div>
-                    ) : (
-                      <>
-                        <label className={`${styles.inviteField} ${styles.fullField}`}>
-                          <span>Review comment</span>
-                          <textarea
-                            value={managerReviewComment}
-                            placeholder="Add approval note or explain what staff needs to fix..."
-                            onChange={(event) => setManagerReviewComment(event.target.value)}
-                            readOnly={selectedManagerReviewTask.status === 'DONE'}
-                          />
-                        </label>
-
-                        <div className={styles.modalActions}>
-                          <button
-                            className={`${styles.button} ${styles.dangerButton}`}
-                            type="button"
-                            onClick={() => void handleManagerReviewSubmission('REJECT')}
-                            disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
-                            title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
-                          >
-                            {managerReviewLoading ? 'Saving...' : 'Request Changes'}
-                          </button>
-                          <button
-                            className={`${styles.button} ${styles.primaryButton}`}
-                            type="button"
-                            onClick={() => void handleManagerReviewSubmission('APPROVE')}
-                            disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
-                            title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
-                          >
-                            <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : selectedManagerReviewTask.status === 'DONE' ? 'Approved' : 'Approve'}
-                          </button>
-                        </div>
-                      </>
                     )}
-                  </section>
-                  )}
-                </main>
 
-                {!['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && !selectedReviewHistoryItem && (
-                  <aside className={styles.workbenchSidebar}>
-                    <section className={styles.workbenchPanel}>
-                      <h3>Submission history</h3>
-                      <div className={styles.workbenchTimeline}>
-                        {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
-                        {workbench?.submissions?.map((submission) => (
-                          <article key={submission.id}>
-                            <strong>{submission.status}</strong>
-                            <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
-                            <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
-                            {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
-                          </article>
-                        ))}
+                    {workbenchError && <div className={styles.inlineError}>{workbenchError}</div>}
+                    {workbenchMessage && <div className={styles.inlineSuccess}>{workbenchMessage}</div>}
+
+                    {isCompletedTask ? (
+                      <div className={styles.completedMetadataStrip}>
+                        <div className={styles.completedMetaCol}>
+                          <span>Status</span>
+                          <strong className={styles.statusDoneTag}>DONE</strong>
+                        </div>
+                        <div className={styles.completedMetaCol}>
+                          <span>Task type</span>
+                          <strong>{taskTypeText[selectedManagerReviewTask.taskType]?.title || selectedManagerReviewTask.taskType}</strong>
+                        </div>
+                        <div className={styles.completedMetaCol}>
+                          <span>Assignee</span>
+                          <strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong>
+                        </div>
+                        <div className={styles.completedMetaCol}>
+                          <span>Due date</span>
+                          <strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong>
+                        </div>
                       </div>
-                    </section>
-                  </aside>
-                )}
-              </div>
-                </>
-              )}
+                    ) : !['FINANCIAL_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) ? (
+                      <div className={styles.workbenchStatusRow}>
+                        <div><span>Status</span><strong>{workbench?.taskStatus || selectedManagerReviewTask.status}</strong></div>
+                        <div><span>Task type</span><strong>{taskTypeText[selectedManagerReviewTask.taskType].title}</strong></div>
+                        <div><span>Assignee</span><strong>{selectedManagerReviewTask.assignedToName || 'Unassigned'}</strong></div>
+                        <div><span>Due date</span><strong>{formatOptionalDate(selectedManagerReviewTask.dueDate)}</strong></div>
+                      </div>
+                    ) : null}
+
+                    <div className={`${styles.staffWorkbenchGrid} ${(selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' || Boolean(selectedReviewHistoryItem)) ? styles.companyMemberWorkbenchGrid : ''}`}>
+                      <main className={styles.workbenchMain}>
+                        {!['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'COMPANY_NEWS_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                          <section className={styles.workbenchPanel}>
+                            <div className={styles.workbenchPanelHead}>
+                              <div>
+                                <h3>Uploaded evidence</h3>
+                                <p>
+                                  These are the files uploaded by staff for this task.
+                                </p>
+                              </div>
+                              <span className={styles.taskTypeBadge}>{managerReviewDocuments.length} file(s)</span>
+                            </div>
+
+                            <div className={styles.documentList}>
+                              {workbenchLoading && <div className={styles.empty}>Loading review data...</div>}
+                              {!workbenchLoading && managerReviewDocuments.length === 0 && (
+                                <div className={styles.empty}>No uploaded files found for this task.</div>
+                              )}
+                              {managerReviewDocuments.map((document) => (
+                                <article className={styles.documentItem} key={document.id}>
+                                  <div className={styles.documentIcon}><FileText size={18} /></div>
+                                  <div className={styles.documentInfo}>
+                                    <strong>{document.fileName || `Import job #${document.id}`}</strong>
+                                    <span>{document.status} - uploaded {formatOptionalDate(document.createdAt)}</span>
+                                    <small>
+                                      {`Raw document: ${document.rawDocumentId || 'N/A'} | Extraction: ${document.latestExtractionId || 'Not generated'}`}
+                                    </small>
+                                  </div>
+                                  <div className={styles.documentActions}>
+                                    <button
+                                      className={styles.button}
+                                      type="button"
+                                      onClick={() => void handleDocumentFileAction(document, 'open')}
+                                      disabled={!document.rawDocumentId}
+                                    >
+                                      <ExternalLink size={16} />Open
+                                    </button>
+                                    <button
+                                      className={styles.button}
+                                      type="button"
+                                      onClick={() => void handleDocumentFileAction(document, 'download')}
+                                      disabled={!document.rawDocumentId}
+                                    >
+                                      <Download size={16} />Download
+                                    </button>
+                                  </div>
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        )}
+
+                        {selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH' && (() => {
+                          const latestSub = workbench?.submissions?.[0];
+                          const historyItem = selectedReviewHistoryItem;
+
+                          const roundNumber = historyItem?.submittedRevisionNumber || latestSub?.submittedRevisionNumber;
+                          const roundLabel = roundNumber ? `Round ${roundNumber}` : 'Round 1';
+
+                          const submittedAtDate = historyItem?.submittedAt || latestSub?.submittedAt || latestSub?.createdAt;
+                          const submittedByLabel = historyItem?.submittedByName || latestSub?.submittedByName || selectedManagerReviewTask.assignedToName || 'Staff';
+
+                          const isApproved = historyItem?.status === 'APPROVED' || selectedManagerReviewTask.status === 'DONE';
+                          const isChangesRequested = ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(historyItem?.status as string)
+                            || ['CHANGES_REQUESTED', 'REVISION_REQUESTED', 'REJECTED'].includes(latestSub?.status as string);
+
+                          const badgeText = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted for Review';
+                          const badgeStyle = isApproved
+                            ? { background: '#dcfce7', color: '#15803d' }
+                            : isChangesRequested
+                              ? { background: '#ffedd5', color: '#c2410c' }
+                              : { background: '#dbeafe', color: '#1e40af' };
+
+                          const memberCount = managerCompanyMemberDraft?.members?.length ?? 0;
+                          const headingText = isApproved
+                            ? `Approved Members (${memberCount})`
+                            : `Submitted Members (${memberCount})`;
+
+                          const statusLabel = isApproved ? 'Approved' : isChangesRequested ? 'Changes Requested' : 'Submitted';
+
+                          return (
+                            <section className={styles.workbenchPanel} style={{ width: '100%' }}>
+                              <div style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '20px 24px',
+                                marginBottom: '20px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                gap: '16px',
+                                flexWrap: 'wrap'
+                              }}>
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                    <span style={{
+                                      ...badgeStyle,
+                                      fontWeight: 700,
+                                      fontSize: '11px',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px'
+                                    }}>
+                                      {badgeText}
+                                    </span>
+                                    <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 600 }}>
+                                      {roundLabel}
+                                    </span>
+                                  </div>
+                                  <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#0f172a' }}>
+                                    {headingText}
+                                  </h3>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#475569', fontSize: '13px' }}>
+                                    <span><strong>Submitted:</strong> {formatOptionalDate(submittedAtDate)}</span>
+                                    <span><strong>Submitted By:</strong> {submittedByLabel}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {managerCompanyMemberLoading ? (
+                                <div className={styles.empty}>Loading submitted members...</div>
+                              ) : !managerCompanyMemberDraft?.members?.length ? (
+                                <div className={styles.empty}>No company members were submitted for review.</div>
+                              ) : (
+                                <CompanyMemberLayerBoard
+                                  members={managerCompanyMemberDraft.members}
+                                  emptyText="No company members were submitted for review."
+                                  statusLabel={statusLabel}
+                                />
+                              )}
+                            </section>
+                          );
+                        })()}
+
+                        {['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && (
+                          <section className={isCompletedTask ? styles.completedContentCard : styles.workbenchPanel}>
+                            <div className={isCompletedTask ? styles.completedCardHeader : styles.workbenchPanelHead}>
+                              <div>
+                                <h3>{isCompletedTask ? 'Candidate result' : 'Candidate drafts'}</h3>
+                                {!isCompletedTask && (
+                                  <p>Candidate drafts associated with this task.</p>
+                                )}
+                              </div>
+                              {!isCompletedTask && (
+                                <span className={styles.taskTypeBadge}>
+                                  {managerCandidateDrafts.length} submitted draft(s)
+                                </span>
+                              )}
+                              {isCompletedTask && managerCandidateDrafts.length > 1 && (
+                                <span className={styles.taskTypeBadge}>
+                                  {managerCandidateDrafts.length} results
+                                </span>
+                              )}
+                            </div>
+                            <div className={styles.draftList}>
+                              {managerCandidateDrafts.length === 0 && (
+                                <div className={styles.empty}>
+                                  {isCompletedTask
+                                    ? 'No approved or rejected candidate result linked to this task.'
+                                    : 'No submitted candidate draft linked to this task.'}
+                                </div>
+                              )}
+                              {managerCandidateDrafts.map((draft) => (
+                                isCompletedTask ? (
+                                  <div
+                                    className={styles.completedCandidateResultCard}
+                                    key={draft.candidateId}
+                                  >
+                                    <div className={styles.completedResultHeader}>
+                                      <strong>{draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`)}</strong>
+                                      <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                    </div>
+                                    {draft.candidateIndustry && (
+                                      <div className={styles.completedResultSummary}>{draft.candidateIndustry}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button
+                                    className={styles.draftItem}
+                                    type="button"
+                                    key={draft.candidateId}
+                                    onClick={() => void openManagerCandidateReview(draft.candidateId)}
+                                  >
+                                    <div>
+                                      <strong>{draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`)}</strong>
+                                      <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>{candidateStatusLabel[draft.status]}</span>
+                                    </div>
+                                    {draft.candidateIndustry && (
+                                      <small>{draft.candidateIndustry}</small>
+                                    )}
+                                    {draft.isUnderReview && <small>Submitted for review</small>}
+                                  </button>
+                                )
+                              ))}
+                            </div>
+                          </section>
+                        )}
+
+                        {!isCompletedTask && !['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH', 'COMPANY_DATA_PREPARATION'].includes(selectedManagerReviewTask.taskType) && (
+                          <section className={styles.workbenchPanel}>
+                            <div className={styles.workbenchPanelHead}>
+                              <div>
+                                <h3>{selectedManagerReviewTask.status === 'DONE' ? 'Final decision' : 'Decision'}</h3>
+                                <p>
+                                  {selectedManagerReviewTask.status === 'DONE'
+                                    ? selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
+                                      ? 'This document collection has been approved. The submitted documents remain available in the project.'
+                                      : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
+                                        ? 'This company member research has been approved. The members were applied to the Company Profile.'
+                                        : 'This task has already been approved. The submitted evidence remains available for audit.'
+                                    : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION'
+                                      ? 'Review the submitted documents before approving. Approval completes this task.'
+                                      : selectedManagerReviewTask.taskType === 'COMPANY_MEMBER_RESEARCH'
+                                        ? 'Review the submitted members and source URLs, then approve to apply them to the Company Profile or reject to return it to staff.'
+                                        : 'Approve to move the task to Done, or reject to return it to staff for correction.'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status === 'DONE' ? (
+                              <div className={styles.inlineSuccess}>
+                                Documents were approved and are available in the project Documents tab.
+                              </div>
+                            ) : selectedManagerReviewTask.taskType === 'DOCUMENT_COLLECTION' && selectedManagerReviewTask.status !== 'DONE' ? (
+                              <div className={styles.modalActions}>
+                                <button
+                                  className={`${styles.button} ${styles.primaryButton}`}
+                                  type="button"
+                                  onClick={() => {
+                                    const draft = managerCandidateDrafts[0];
+                                    if (draft) void openManagerCandidateReview(draft.candidateId);
+                                  }}
+                                  disabled={managerCandidateDrafts.length === 0}
+                                >
+                                  <CheckCircle2 size={16} />Review candidate
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <label className={`${styles.inviteField} ${styles.fullField}`}>
+                                  <span>Review comment</span>
+                                  <textarea
+                                    value={managerReviewComment}
+                                    placeholder="Add approval note or explain what staff needs to fix..."
+                                    onChange={(event) => setManagerReviewComment(event.target.value)}
+                                    readOnly={selectedManagerReviewTask.status === 'DONE'}
+                                  />
+                                </label>
+
+                                <div className={styles.modalActions}>
+                                  <button
+                                    className={`${styles.button} ${styles.dangerButton}`}
+                                    type="button"
+                                    onClick={() => void handleManagerReviewSubmission('REJECT')}
+                                    disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
+                                    title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
+                                  >
+                                    {managerReviewLoading ? 'Saving...' : 'Request Changes'}
+                                  </button>
+                                  <button
+                                    className={`${styles.button} ${styles.primaryButton}`}
+                                    type="button"
+                                    onClick={() => void handleManagerReviewSubmission('APPROVE')}
+                                    disabled={managerReviewLoading || (workbench?.submissions?.length === 0) || selectedManagerReviewTask.status === 'DONE'}
+                                    title={selectedManagerReviewTask.status === 'DONE' ? 'Task has already been completed.' : undefined}
+                                  >
+                                    <CheckCircle2 size={16} />{managerReviewLoading ? 'Approving...' : selectedManagerReviewTask.status === 'DONE' ? 'Approved' : 'Approve'}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </section>
+                        )}
+                      </main>
+
+                      {!['COMPANY_MEMBER_RESEARCH', 'COMPANY_NEWS_RESEARCH', 'FINANCIAL_RESEARCH', 'PARTNER_CONTRACT_COLLECTION'].includes(selectedManagerReviewTask.taskType) && !selectedReviewHistoryItem && (
+                        <aside className={styles.workbenchSidebar}>
+                          <section className={styles.workbenchPanel}>
+                            <h3>Submission history</h3>
+                            <div className={styles.workbenchTimeline}>
+                              {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
+                              {workbench?.submissions?.map((submission) => (
+                                <article key={submission.id}>
+                                  <strong>{submission.status}</strong>
+                                  <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
+                                  <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
+                                  {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        </aside>
+                      )}
+                      <aside className={styles.workbenchSidebar}>
+                        <section className={isCompletedTask ? styles.completedContentCard : styles.workbenchPanel}>
+                          <div className={isCompletedTask ? styles.completedCardHeader : undefined}>
+                            <h3>Submission history</h3>
+                          </div>
+                          <div className={styles.workbenchTimeline}>
+                            {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
+                            {workbench?.submissions?.map((submission) => (
+                              <article key={submission.id} className={isCompletedTask ? styles.completedTimelineItem : undefined}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                  <strong style={{ color: submission.status === 'APPROVED' ? '#15803d' : '#0f172a' }}>{submission.status}</strong>
+                                  <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
+                                </div>
+                                <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
+                                {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
+                              </article>
+                            ))}
+                          </div>
+                        </section>
+
+                      </aside>
+                    </div>
+                  </>
+                );
+              })()}
             </motion.div>
           </motion.div>
         )}
@@ -10350,7 +10883,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               onCancel={() => {
                 closeCandidateModal();
               }}
-              isWorkspaceReadOnly={selectedCandidate.status === 'APPROVED' || selectedCandidate.status === 'REJECTED' || Boolean(selectedReviewHistoryItem)}
+              isWorkspaceReadOnly={Boolean(candidateReviewTaskContext?.isReadOnly || selectedCandidate.status === 'APPROVED' || selectedCandidate.status === 'REJECTED' || selectedReviewHistoryItem)}
               onViewCompanyProfile={(profileId) => {
                 const targetId = profileId
                   || selectedCandidate.lifecycle?.convertedCompanyProfileId
@@ -10943,8 +11476,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       <TaskDetailModal
         task={selectedTask}
         onClose={() => setSelectedTask(null)}
-        onOpenWorkbench={isStaffView && !isTerminalProject ? handleOpenWorkbenchFromModal : undefined}
-        onRelease={isStaffView && !isTerminalProject ? handleReleaseTaskFromModal : undefined}
       />
       {showCloseModal && apiProject && createPortal(
         <AnimatePresence>
@@ -10954,15 +11485,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 <h2 className={styles.closeModalTitle}>{apiProject.progressPercentage === 100 ? 'Complete project?' : 'Close project?'}</h2>
                 <button className={styles.closeModalCloseBtn} onClick={() => setShowCloseModal(false)}><X size={20} /></button>
               </div>
-              
+
               <div className={styles.closeModalBody}>
                 <p className={styles.closeModalDesc}>
-                  {apiProject.progressPercentage === 100 
+                  {apiProject.progressPercentage === 100
                     ? 'The project has reached 100% of its planned deliverables. Closing it will mark the project as Completed and make the workspace read-only.'
                     : `This project is currently ${apiProject.progressPercentage || 0}% complete. Closing it will stop further work and make the project workspace read-only.`
                   }
                 </p>
-                
+
                 {apiProject.progressPercentage !== 100 && (
                   <div className={styles.formGroup}>
                     <label>Reason for closing *</label>
@@ -10975,7 +11506,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                     />
                   </div>
                 )}
-  
+
                 {closeError && <div className={styles.inlineError}>{closeError}</div>}
               </div>
 
@@ -10987,6 +11518,47 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   disabled={closeLoading || (apiProject.progressPercentage !== 100 && !closeReason.trim())}
                 >
                   {closeLoading ? 'Processing...' : apiProject.progressPercentage === 100 ? 'Complete Project' : 'Close Project'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+      {showDeleteModal && apiProject && createPortal(
+        <AnimatePresence>
+          <motion.div className={styles.modalOverlay} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div className={styles.closeProjectModal} initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()}>
+              <div className={styles.closeModalHeader}>
+                <h2 className={styles.closeModalTitle}>Delete draft project?</h2>
+                <button className={styles.closeModalCloseBtn} onClick={() => !deleteLoading && setShowDeleteModal(false)} disabled={deleteLoading}><X size={20} /></button>
+              </div>
+
+              <div className={styles.closeModalBody}>
+                <p className={styles.closeModalDesc}>
+                  This will permanently delete this draft project and its generated draft work.
+                  <br />
+                  This action cannot be undone.
+                </p>
+
+                <div style={{ marginTop: '14px', padding: '10px 14px', background: 'var(--surface-color, #F8FAFC)', border: '1px solid var(--border-color, #E2E8F0)', borderRadius: '6px' }}>
+                  <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-secondary, #64748B)', fontWeight: 600, letterSpacing: '0.05em' }}>Project:</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary, #1E293B)', marginTop: '2px' }}>
+                    {apiProject.projectName}
+                  </div>
+                </div>
+
+                {deleteError && <div className={styles.inlineError} style={{ marginTop: '12px' }}>{deleteError}</div>}
+              </div>
+
+              <div className={styles.closeModalFooter}>
+                <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setShowDeleteModal(false)} disabled={deleteLoading}>Cancel</button>
+                <button
+                  className={`${styles.button} ${styles.dangerButton}`}
+                  onClick={() => void handleDeleteDraftProject()}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Deleting...' : 'Delete Project'}
                 </button>
               </div>
             </motion.div>
@@ -11021,24 +11593,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       <Target size={12} /> {selectedHistoryTask.deliverable}
                     </span>
                     <span
-                      className={`${styles.candidateStatus} ${
-                        selectedHistoryTask.status === 'DONE'
+                      className={`${styles.candidateStatus} ${selectedHistoryTask.status === 'DONE'
                           ? styles.candidateAPPROVED
                           : selectedHistoryTask.latestReviewStatus === 'CHANGES_REQUESTED' || (selectedHistoryTask.status as string) === 'REVISION_REQUESTED'
-                          ? styles.candidateREJECTED
-                          : selectedHistoryTask.status === 'IN_REVIEW'
-                          ? styles.candidatePENDING_REVIEW
-                          : styles.candidateDRAFT
-                      }`}
+                            ? styles.candidateREJECTED
+                            : selectedHistoryTask.status === 'IN_REVIEW'
+                              ? styles.candidatePENDING_REVIEW
+                              : styles.candidateDRAFT
+                        }`}
                       style={{ fontSize: '0.72rem', padding: '2px 8px' }}
                     >
                       {selectedHistoryTask.status === 'DONE'
                         ? 'Done'
                         : selectedHistoryTask.latestReviewStatus === 'CHANGES_REQUESTED' || (selectedHistoryTask.status as string) === 'REVISION_REQUESTED'
-                        ? 'Changes Requested'
-                        : selectedHistoryTask.status === 'IN_REVIEW'
-                        ? 'In Review'
-                        : 'In Progress'}
+                          ? 'Changes Requested'
+                          : selectedHistoryTask.status === 'IN_REVIEW'
+                            ? 'In Review'
+                            : 'In Progress'}
                     </span>
                   </div>
                   <button
@@ -11061,10 +11632,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={styles.historyModalMetaGrid}>
                 <div className={styles.historyMetaCard}>
                   <span className={styles.historyMetaLabel}>
-                    <Clock size={12} style={{ color: '#3b82f6' }} /> Claimed At
+                    <Clock size={12} style={{ color: '#3b82f6' }} /> Submitted / Claimed
                   </span>
-                  <span className={styles.historyMetaValue} title={selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : undefined}>
-                    {selectedHistoryTask.claimedAt ? formatDateTime(selectedHistoryTask.claimedAt) : '—'}
+                  <span
+                    className={styles.historyMetaValue}
+                    title={
+                      selectedHistoryTask.claimedAt
+                        ? formatDateTime(selectedHistoryTask.claimedAt)
+                        : selectedHistoryTask.lastSubmittedAt
+                          ? formatDateTime(selectedHistoryTask.lastSubmittedAt)
+                          : undefined
+                    }
+                  >
+                    {selectedHistoryTask.claimedAt
+                      ? formatDateTime(selectedHistoryTask.claimedAt)
+                      : selectedHistoryTask.lastSubmittedAt
+                        ? formatDateTime(selectedHistoryTask.lastSubmittedAt)
+                        : '—'}
                   </span>
                 </div>
                 <div className={styles.historyMetaCard}>
@@ -11077,10 +11661,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 </div>
                 <div className={styles.historyMetaCard}>
                   <span className={styles.historyMetaLabel}>
-                    <CheckCircle2 size={12} style={{ color: '#16a34a' }} /> Completed
+                    <CheckCircle2 size={12} style={{ color: '#16a34a' }} /> Completed / Reviewed
                   </span>
-                  <span className={styles.historyMetaValue} style={{ color: selectedHistoryTask.completedAt ? '#15803d' : undefined }} title={selectedHistoryTask.completedAt ? formatDateTime(selectedHistoryTask.completedAt) : undefined}>
-                    {selectedHistoryTask.completedAt ? formatDateTime(selectedHistoryTask.completedAt) : (selectedHistoryTask.status === 'DONE' ? 'Done' : 'In Progress')}
+                  <span
+                    className={styles.historyMetaValue}
+                    style={{ color: selectedHistoryTask.completedAt ? '#15803d' : undefined }}
+                    title={
+                      selectedHistoryTask.completedAt
+                        ? formatDateTime(selectedHistoryTask.completedAt)
+                        : undefined
+                    }
+                  >
+                    {selectedHistoryTask.completedAt
+                      ? formatDateTime(selectedHistoryTask.completedAt)
+                      : (selectedHistoryTask.status === 'DONE' ? 'Done' : '—')}
                   </span>
                 </div>
                 <div className={styles.historyMetaCard}>
@@ -11125,18 +11719,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       const iconClass = isRevision
                         ? styles.historyTimelineIconRevision
                         : isApproved
-                        ? styles.historyTimelineIconApproved
-                        : isResubmitted
-                        ? styles.historyTimelineIconResubmitted
-                        : isRecalled
-                        ? styles.historyTimelineIconRecalled
-                        : isSubmitted
-                        ? styles.historyTimelineIconSubmitted
-                        : styles.historyTimelineIconClaimed;
+                          ? styles.historyTimelineIconApproved
+                          : isResubmitted
+                            ? styles.historyTimelineIconResubmitted
+                            : isRecalled
+                              ? styles.historyTimelineIconRecalled
+                              : isSubmitted
+                                ? styles.historyTimelineIconSubmitted
+                                : styles.historyTimelineIconClaimed;
 
-                      const contentCardClass = `${styles.historyTimelineContent} ${
-                        isRevision ? styles.historyTimelineContentRevision : isApproved ? styles.historyTimelineContentApproved : ''
-                      }`;
+                      const contentCardClass = `${styles.historyTimelineContent} ${isRevision ? styles.historyTimelineContentRevision : isApproved ? styles.historyTimelineContentApproved : ''
+                        }`;
 
                       return (
                         <div key={idx} className={styles.historyTimelineNode}>

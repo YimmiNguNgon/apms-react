@@ -381,6 +381,7 @@ export const StaffMonitoringReviewPage: React.FC<{
           industry={localProfile.business?.industries?.[0]}
           reviewStatus={localProfile.reviewStatus || 'UNVERIFIED'}
           version={localProfile.version}
+          versionLabel={localProfile.versionLabel}
           isHidden={localProfile.isHidden}
           topRow={
             <>

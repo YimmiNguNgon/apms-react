@@ -18,6 +18,7 @@ interface EditableFieldCardProps {
   isList?: boolean;
   disabled?: boolean;
   isManual?: boolean;
+  revisionMode?: boolean;
 }
 
 export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({ 
@@ -25,7 +26,8 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
   onSave, onCancel, onConfirm, onRestore, 
   currentValueDisplay, children,
   disabled,
-  isManual = false
+  isManual = false,
+  revisionMode
 }) => {
   const [expandedEvidence, setExpandedEvidence] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -78,6 +80,34 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
     if (saveResult === false) return;
     setIsEditing(false);
   };
+
+  if (revisionMode) {
+    return (
+      <div className={`${styles.fieldRow} ${styles.revisionFieldCard} ${isValidationFail ? styles.fieldRowIssue : ''}`}>
+        <div className={styles.fieldRowHeader}>
+          <span className={styles.fieldLabel}>{label.toUpperCase()}</span>
+          <div className={styles.fieldBadges}>
+            <span className={`${styles.reviewBadge} ${styles.reviewReturned}`}>
+              Changes requested
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.fieldBody} style={{ marginTop: '8px' }}>
+          {managerFeedback && (
+            <div className={styles.revisionFieldFeedback}>
+              <span className={styles.feedbackLabel}>Manager feedback:</span>
+              <span className={styles.feedbackText}>"{managerFeedback}"</span>
+            </div>
+          )}
+
+          <div className={styles.fieldValue}>
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`${styles.fieldRow} ${dirty ? styles.fieldRowDirty : ''} ${isValidationFail ? styles.fieldRowIssue : ''} ${confidence > 0 && confidence < 0.6 ? styles.fieldRowLowConfidence : ''}`}>

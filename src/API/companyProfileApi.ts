@@ -38,6 +38,32 @@ export const companyProfileApi = {
     return res.data;
   },
 
+  getVisibilityManagementProfiles: async (params?: {
+    keyword?: string;
+    visibility?: 'PUBLISHED' | 'HIDDEN';
+    eligibility?: 'ALL' | 'ELIGIBLE' | 'BLOCKED';
+    page?: number;
+    size?: number;
+  }) => {
+    const res = await api.get<PageResponse<ProfileResponse>>('/profiles/visibility-management', {
+      params: {
+        keyword: params?.keyword?.trim() || undefined,
+        visibility: params?.visibility || undefined,
+        eligibility: params?.eligibility || undefined,
+        page: params?.page ?? 0,
+        size: params?.size ?? 20,
+      },
+    });
+    return res.data;
+  },
+
+  getVisibilityManagementSummary: async () => {
+    const res = await api.get<import('../types/domain').ProfileVisibilitySummaryDto>(
+      '/profiles/visibility-management/summary'
+    );
+    return res.data;
+  },
+
   getAdminMyEnterprise: async () => {
     const res = await api.get<ProfileResponse>('/admin/my-enterprise');
     return res.data;

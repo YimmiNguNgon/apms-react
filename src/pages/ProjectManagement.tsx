@@ -4,7 +4,18 @@ import { api } from '../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../API/projectApi';
 import { ROLES, useUser } from '../context/UserContext';
-import { balanceDeliverableWeights } from '../utils/deliverableUtils';
+import {
+  balanceDeliverableWeights,
+  RELATIONSHIP_OPTIONS,
+  CONTRACT_ELIGIBLE_RELATIONSHIPS,
+  isRelationshipContractEligible,
+  normalizeRelationshipInput,
+  getProfileCanonicalRelationship,
+  filterAndRebalanceDeliverables,
+  findCompanyProfile,
+  isDeliverableMandatory,
+  getDeliverableMandatoryReason,
+} from '../utils/deliverableUtils';
 import type {
   CreateProjectRequest,
   DuplicateCompanyCheckResponse,
@@ -46,6 +57,19 @@ type DuplicateTaxCodeState = {
   projectId?: number;
   companyName?: string;
   taxCode?: string;
+  hasOpenProject?: boolean;
+  openProjectId?: number;
+  openProjectName?: string;
+  openProjectStatus?: string;
+} | null;
+
+type OpenProjectConflictState = {
+  loading: boolean;
+  hasOpenProject: boolean;
+  projectId?: number;
+  projectName?: string;
+  status?: string;
+  companyName?: string;
 } | null;
 
 type FeedbackState = {
@@ -100,38 +124,12 @@ const PROJECT_STATUS_TONES: Record<ProjectStatus, 'neutral' | 'info' | 'success'
   CLOSED: 'neutral',
 };
 
-const RELATIONSHIP_OPTIONS: Array<{ value: RelationshipType; label: string }> = [
-  { value: 'PARTNER_WITH', label: 'Partner' },
-  { value: 'COMPETITOR_OF', label: 'Competitor' },
-  { value: 'SUPPLIER_OF', label: 'Supplier' },
-  { value: 'CUSTOMER_OF', label: 'Customer' },
-  { value: 'POTENTIAL_PARTNER_OF', label: 'Potential partner' },
-];
-
-const normalizeRelationshipInput = (input: string): RelationshipType | null => {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return null;
-
-  const aliases: Record<string, RelationshipType> = {
-    partner: 'PARTNER_WITH',
-    'partner with': 'PARTNER_WITH',
-    competitor: 'COMPETITOR_OF',
-    'competitor of': 'COMPETITOR_OF',
-    supplier: 'SUPPLIER_OF',
-    'supplier of': 'SUPPLIER_OF',
-    customer: 'CUSTOMER_OF',
-    'customer of': 'CUSTOMER_OF',
-    'potential partner': 'POTENTIAL_PARTNER_OF',
-    'potential partner of': 'POTENTIAL_PARTNER_OF',
-  };
-  if (aliases[normalized]) return aliases[normalized];
-
-  const matched = RELATIONSHIP_OPTIONS.find((option) =>
-    option.label.toLowerCase() === normalized || option.value.toLowerCase() === normalized
-  );
-
-  return matched?.value ?? null;
+const formatProjectStatus = (status?: string | null) => {
+  if (!status) return 'Active';
+  return PROJECT_STATUS_LABELS[status as ProjectStatus] || status;
 };
+
+
 
 const initialProjectForm = (): ProjectFormState => ({
   projectName: '',
@@ -143,7 +141,7 @@ const initialProjectForm = (): ProjectFormState => ({
   description: '',
   objective: '',
   plannedEndDate: '',
-  keyResults: [],
+  keyResults: [{ type: 'BASIC_COMPANY_INFORMATION', weight: 100 }],
 });
 
 type ProjectManagementProps = {
@@ -192,12 +190,21 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [taxCodeCheck, setTaxCodeCheck] = useState<DuplicateTaxCodeState>(null);
+  const [openProjectConflict, setOpenProjectConflict] = useState<OpenProjectConflictState>(null);
 
   useEffect(() => {
     if (!toast) return;
     const timeout = window.setTimeout(() => setToast(null), 3200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    const storedToast = sessionStorage.getItem('apms-toast-message');
+    if (storedToast) {
+      sessionStorage.removeItem('apms-toast-message');
+      setToast({ kind: 'success', message: storedToast });
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedProject && sessionStorage.getItem('apms-focus-workspace') === 'true') {
@@ -286,12 +293,17 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       const res = await projectApi.getTargetRelationshipTypes();
       const options = Array.isArray(res.data) && res.data.length > 0 ? res.data : RELATIONSHIP_OPTIONS;
       setRelationshipOptions(options);
-      setProjectForm((current) => ({
-        ...current,
-        targetRelationshipType: options.some((option) => option.value === current.targetRelationshipType)
-          ? current.targetRelationshipType
-          : options[0]?.value ?? 'PARTNER_WITH',
-      }));
+      setProjectForm((current) => {
+        if (current.projectType === 'UPDATE_EXISTING_COMPANY') {
+          return current;
+        }
+        return {
+          ...current,
+          targetRelationshipType: options.some((option) => option.value === current.targetRelationshipType)
+            ? current.targetRelationshipType
+            : options[0]?.value ?? 'PARTNER_WITH',
+        };
+      });
     } catch {
       setRelationshipOptions(RELATIONSHIP_OPTIONS);
     } finally {
@@ -389,6 +401,27 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   }, [reloadCompanyOptions, reloadKrReference, showCreateForm]);
 
   useEffect(() => {
+    if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && projectForm.targetCompanyProfileId && companyOptions.length > 0) {
+      const profile = findCompanyProfile(companyOptions, projectForm.targetCompanyProfileId);
+      if (profile) {
+        const canonicalRel = getProfileCanonicalRelationship(profile);
+        if (canonicalRel && !projectForm.targetRelationshipType) {
+          setProjectForm((current) => {
+            const rebalancedKrs = filterAndRebalanceDeliverables(current.keyResults, canonicalRel, krReference, 'UPDATE_EXISTING_COMPANY', false);
+            return {
+              ...current,
+              targetRelationshipType: canonicalRel,
+              targetCompanyName: current.targetCompanyName || profileName(profile),
+              targetCompanyTaxCode: current.targetCompanyTaxCode || profile.identity?.taxCode || '',
+              keyResults: rebalancedKrs,
+            };
+          });
+        }
+      }
+    }
+  }, [companyOptions, projectForm.projectType, projectForm.targetCompanyProfileId, projectForm.targetRelationshipType, krReference]);
+
+  useEffect(() => {
     const controller = new AbortController();
     if (!selectedProjectId) {
       setSelectedProject(null);
@@ -447,13 +480,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   };
 
   const canDeleteProject = (project: ProjectResponse) =>
-    project.status === 'DRAFT' || project.status === 'COMPLETED';
+    project.status === 'DRAFT';
 
   const openDeleteProjectModal = (project: ProjectResponse) => {
     if (!canDeleteProject(project)) {
       setToast({
         kind: 'error',
-        message: 'Only Draft and Done projects can be deleted. In progress projects cannot be deleted.',
+        message: 'Only draft projects can be deleted.',
       });
       return;
     }
@@ -468,7 +501,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       setProjectToDelete(null);
       setToast({
         kind: 'error',
-        message: 'Only Draft and Done projects can be deleted. In progress projects cannot be deleted.',
+        message: 'Only draft projects can be deleted.',
       });
       return;
     }
@@ -494,10 +527,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         }
       }
 
-      setToast({ kind: 'success', message: 'Project deleted successfully.' });
+      setToast({ kind: 'success', message: 'Draft project deleted successfully.' });
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
       void queryClient.invalidateQueries({ queryKey: ['projectDetails', deletedId] });
       void queryClient.invalidateQueries({ queryKey: ['project', deletedId] });
+      void queryClient.invalidateQueries({ queryKey: ['check-open-project'] });
     } catch (err) {
       setToast({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to delete project.' });
     } finally {
@@ -524,6 +558,10 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           projectId: data.projectId,
           companyName: data.companyName,
           taxCode: data.taxCode,
+          hasOpenProject: data.hasOpenProject,
+          openProjectId: data.openProjectId,
+          openProjectName: data.openProjectName,
+          openProjectStatus: data.openProjectStatus,
         });
       }
     } catch (err) {
@@ -536,7 +574,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     const targetCompanyProfileId = projectForm.targetCompanyProfileId.trim();
     const description = projectForm.description.trim();
     const objective = projectForm.objective.trim();
-    const selectedCompany = companyOptions.find((profile) => profile.companyId === targetCompanyProfileId || profile.id === targetCompanyProfileId);
+    const selectedCompany = findCompanyProfile(companyOptions, targetCompanyProfileId);
     const targetRelationshipType = normalizeRelationshipInput(projectForm.targetRelationshipType);
 
     if (!projectName) {
@@ -544,13 +582,36 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
-    if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && (!targetCompanyProfileId || !selectedCompany)) {
-      setFeedback({ kind: 'error', message: 'Please select an existing company.' });
-      return;
+    if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY') {
+      if (!targetCompanyProfileId || !selectedCompany) {
+        setFeedback({ kind: 'error', message: 'Please select an existing company.' });
+        return;
+      }
+      const currentRel = getProfileCanonicalRelationship(selectedCompany);
+      const isRelChanged = currentRel && targetRelationshipType && currentRel !== targetRelationshipType;
+      const isEligible = isRelationshipContractEligible(targetRelationshipType);
+      if (isRelChanged && isEligible) {
+        const hasContract = projectForm.keyResults.some((kr) => kr.type === 'CONTRACT_INFORMATION' && kr.weight > 0);
+        if (!hasContract) {
+          setFeedback({
+            kind: 'error',
+            message: 'Contract Information is required when changing the company relationship.',
+          });
+          return;
+        }
+      }
     }
 
     if (!targetRelationshipType) {
       setFeedback({ kind: 'error', message: 'Please enter a valid target relationship.' });
+      return;
+    }
+
+    if (hasProjectConflict) {
+      setFeedback({
+        kind: 'error',
+        message: 'An unfinished project already exists for this company. Complete or close the existing project before creating another one.',
+      });
       return;
     }
 
@@ -564,10 +625,29 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
-    const selectedKRs = projectForm.keyResults.filter((kr) => kr.weight > 0);
+    const isTargetContractEligible = isRelationshipContractEligible(targetRelationshipType);
+    const sanitizedKRs = projectForm.keyResults.filter((kr) => {
+      if (kr.type === 'CONTRACT_INFORMATION' && !isTargetContractEligible) {
+        return false;
+      }
+      if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY') {
+        return kr.type === 'FINANCIAL_INFORMATION' || kr.type === 'CONTRACT_INFORMATION';
+      }
+      return true;
+    });
+
+    const selectedKRs = sanitizedKRs.filter((kr) => kr.weight > 0);
     if (selectedKRs.length === 0) {
       setFeedback({ kind: 'error', message: 'At least one Project Deliverable must be selected.' });
       return;
+    }
+
+    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY') {
+      const hasBasic = selectedKRs.some((kr) => kr.type === 'BASIC_COMPANY_INFORMATION');
+      if (!hasBasic) {
+        setFeedback({ kind: 'error', message: 'Basic Company Information is mandatory for New Company Research projects.' });
+        return;
+      }
     }
 
     const totalWeight = selectedKRs.reduce((sum, kr) => sum + kr.weight, 0);
@@ -610,10 +690,14 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         ? (selectedCompany?.identity?.taxCode || projectForm.targetCompanyTaxCode || undefined)
         : (projectForm.targetCompanyTaxCode || undefined);
 
+      const canonicalTargetId = projectForm.projectType === 'UPDATE_EXISTING_COMPANY'
+        ? (selectedCompany?.companyId || targetCompanyProfileId)
+        : null;
+
       const payload: CreateProjectRequest = {
         projectName,
         projectType: projectForm.projectType,
-        targetCompanyProfileId: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? targetCompanyProfileId : null,
+        targetCompanyProfileId: canonicalTargetId,
         targetCompanyName: projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && selectedCompany ? profileName(selectedCompany) : projectForm.targetCompanyName,
         targetCompanyTaxCode: taxCode,
         targetRelationshipType,
@@ -722,6 +806,118 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const pageEnd = Math.min((currentPage + 1) * pageSize, totalElements);
   const pageCount = Math.max(totalPages, 1);
 
+  const selectedCompanyForRel = projectForm.projectType === 'UPDATE_EXISTING_COMPANY'
+    ? findCompanyProfile(companyOptions, projectForm.targetCompanyProfileId)
+    : null;
+  const currentRelationship = getProfileCanonicalRelationship(selectedCompanyForRel);
+  const currentRelOption = RELATIONSHIP_OPTIONS.find((o) => o.value === currentRelationship);
+  const currentRelLabel = currentRelOption?.label || (currentRelationship ? currentRelationship.replace(/_/g, ' ') : '—');
+
+  const normalizedTargetRel = normalizeRelationshipInput(projectForm.targetRelationshipType);
+  const targetRelOption = relationshipOptions.find((o) => o.value === projectForm.targetRelationshipType) ||
+                          RELATIONSHIP_OPTIONS.find((o) => o.value === normalizedTargetRel);
+  const targetRelLabel = targetRelOption?.label || (projectForm.targetRelationshipType ? projectForm.targetRelationshipType.replace(/_/g, ' ') : '—');
+
+  const isRelationshipChanged = projectForm.projectType === 'UPDATE_EXISTING_COMPANY' &&
+    !!projectForm.targetCompanyProfileId &&
+    !!currentRelationship &&
+    !!normalizedTargetRel &&
+    normalizedTargetRel !== currentRelationship;
+
+  const isTargetContractEligible = isRelationshipContractEligible(normalizedTargetRel);
+  const isContractMandatory = isRelationshipChanged && isTargetContractEligible;
+
+  const hasProjectConflict =
+    (projectForm.projectType === 'UPDATE_EXISTING_COMPANY' && !!openProjectConflict?.hasOpenProject) ||
+    (projectForm.projectType === 'RESEARCH_NEW_COMPANY' &&
+      !!taxCodeCheck?.checked &&
+      !!taxCodeCheck.exists &&
+      (taxCodeCheck.matchType === 'ACTIVE_PROJECT' || !!taxCodeCheck.hasOpenProject));
+
+  const handleExistingTargetCompanyChange = (selectedId: string) => {
+    const profile = findCompanyProfile(companyOptions, selectedId);
+    const canonicalRel = getProfileCanonicalRelationship(profile);
+
+    if (!selectedId) {
+      setOpenProjectConflict(null);
+    } else {
+      setOpenProjectConflict({ loading: true, hasOpenProject: false });
+      projectApi
+        .checkOpenProject({
+          companyProfileId: selectedId,
+          taxCode: profile?.identity?.taxCode || undefined,
+        })
+        .then((res) => {
+          const data = res?.data;
+          if (data && data.hasOpenProject) {
+            setOpenProjectConflict({
+              loading: false,
+              hasOpenProject: true,
+              projectId: data.projectId,
+              projectName: data.projectName,
+              status: data.status,
+              companyName: data.companyName,
+            });
+          } else {
+            setOpenProjectConflict(null);
+          }
+        })
+        .catch(() => {
+          setOpenProjectConflict(null);
+        });
+    }
+
+    setProjectForm((current) => {
+      const newRelationship = canonicalRel || '';
+      const allowedKrs = current.keyResults.filter(
+        (k) => k.type === 'FINANCIAL_INFORMATION' || k.type === 'CONTRACT_INFORMATION'
+      );
+      const rebalancedKrs = filterAndRebalanceDeliverables(
+        allowedKrs,
+        canonicalRel,
+        krReference,
+        'UPDATE_EXISTING_COMPANY',
+        false
+      );
+      return {
+        ...current,
+        targetCompanyProfileId: selectedId,
+        targetCompanyName: profile ? profileName(profile) : '',
+        targetCompanyTaxCode: profile?.identity?.taxCode || '',
+        targetRelationshipType: newRelationship,
+        keyResults: rebalancedKrs,
+      };
+    });
+  };
+
+  const handleExistingTargetRelationshipChange = (newTargetRel: string) => {
+    const selectedCompany = findCompanyProfile(companyOptions, projectForm.targetCompanyProfileId);
+    const currentRel = getProfileCanonicalRelationship(selectedCompany);
+    const normalizedTarget = normalizeRelationshipInput(newTargetRel);
+    const isChanged = !!projectForm.targetCompanyProfileId &&
+      !!currentRel &&
+      !!normalizedTarget &&
+      normalizedTarget !== currentRel;
+    const contractEligible = isRelationshipContractEligible(normalizedTarget);
+    const contractRequired = isChanged && contractEligible;
+
+    setProjectForm((current) => {
+      const rebalancedKrs = filterAndRebalanceDeliverables(
+        current.keyResults,
+        normalizedTarget,
+        krReference,
+        'UPDATE_EXISTING_COMPANY',
+        contractRequired
+      );
+
+      return {
+        ...current,
+        targetRelationshipType: newTargetRel,
+        keyResults: rebalancedKrs,
+      };
+    });
+  };
+
   return (
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page" id="page-project-management">
       {toast && <div className={`apms-toast ${toast.kind}`}>{toast.message}</div>}
@@ -733,14 +929,20 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           </div>
           <div className="workspace-head-actions">
             {!isStaffView && (
-              <button className="btn btn-primary" onClick={() => setShowCreateForm((current) => !current)}>{t('create.submit') || 'Create project'}</button>
+              <button className="btn btn-primary" onClick={() => {
+                setProjectForm(initialProjectForm());
+                setFeedback(null);
+                setTaxCodeCheck(null);
+                setOpenProjectConflict(null);
+                setShowCreateForm(true);
+              }}>{t('create.submit') || 'Create project'}</button>
             )}
           </div>
         </div>
         {projectsError && <div className="workspace-inline-error">{projectsError}</div>}
 
         {showCreateForm && (
-          <div className="modal-overlay project-modal-overlay" onClick={() => setShowCreateForm(false)}>
+          <div className="modal-overlay project-modal-overlay" onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); }}>
           <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="project-modal-head" style={{ flexShrink: 0 }}>
               <div>
@@ -748,7 +950,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 <h3 id="create-project-title">Create new project</h3>
                 <p>Define the project goal, target company, and deliverables.</p>
               </div>
-              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => setShowCreateForm(false)}>&times;</button>
+              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); }}>&times;</button>
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
@@ -774,14 +976,29 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                       className="search-input"
                       value={projectForm.projectType}
                       onChange={(event) => {
-                        const projectType = event.target.value as ProjectType;
-                        setProjectForm((current) => ({
-                          ...current,
-                          projectType,
-                          targetCompanyName: '',
-                          targetCompanyProfileId: '',
-                          targetCompanyTaxCode: '',
-                        }));
+                        const nextType = event.target.value as ProjectType;
+                        setProjectForm((current) => {
+                          const isUpdate = nextType === 'UPDATE_EXISTING_COMPANY';
+                          const nextRel = isUpdate ? '' : 'PARTNER_WITH';
+                          const rebalancedKrs = filterAndRebalanceDeliverables(
+                            current.keyResults,
+                            normalizeRelationshipInput(nextRel),
+                            krReference,
+                            nextType,
+                            false
+                          );
+                          return {
+                            ...current,
+                            projectType: nextType,
+                            targetCompanyName: '',
+                            targetCompanyProfileId: '',
+                            targetCompanyTaxCode: '',
+                            targetRelationshipType: nextRel,
+                            keyResults: rebalancedKrs,
+                          };
+                        });
+                        setTaxCodeCheck(null);
+                        setOpenProjectConflict(null);
                       }}
                     >
                       <option value="RESEARCH_NEW_COMPANY">{t('create.typeNewCompany')}</option>
@@ -791,38 +1008,36 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                   <label>
                     <span>Target Company</span>
                     {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
-                      <select
-                        className="search-input"
-                        value={projectForm.targetCompanyProfileId}
-                        onChange={(event) => {
-                          const selectedId = event.target.value;
-                          const profile = companyOptions.find((item) => item.companyId === selectedId || item.id === selectedId);
-                          setProjectForm((current) => {
-                            const newRelationship = profile?.relationshipType || current.targetRelationshipType;
-                            const normalizedRel = normalizeRelationshipInput(newRelationship);
-                            const validKrs = current.keyResults.filter((kr) => {
-                              const ref = krReference.find((r) => r.type === kr.type);
-                              return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
-                            });
-                            const rebalancedKrs = validKrs.length !== current.keyResults.length ? balanceDeliverableWeights(validKrs) : validKrs;
-                            return {
-                              ...current,
-                              targetCompanyProfileId: selectedId,
-                              targetCompanyName: profile ? profileName(profile) : '',
-                              targetCompanyTaxCode: profile?.identity?.taxCode || '',
-                              targetRelationshipType: newRelationship,
-                              keyResults: rebalancedKrs,
-                            };
-                          });
-                        }}
-                      >
-                        <option value="">{companyOptionsLoading ? t('create.loadingCompanies') : t('create.selectCompany')}</option>
-                        {companyOptions.map((profile) => (
-                          <option key={profile.companyId || profile.id} value={profile.companyId}>
-                            {profileName(profile)} - {profileRoleLabel(profile)}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          className="search-input"
+                          value={projectForm.targetCompanyProfileId}
+                          onChange={(event) => handleExistingTargetCompanyChange(event.target.value)}
+                        >
+                          <option value="">{companyOptionsLoading ? t('create.loadingCompanies') : t('create.selectCompany')}</option>
+                          {companyOptions.map((profile) => {
+                            const profileId = profile.companyId || profile.id;
+                            return (
+                              <option key={profileId} value={profileId}>
+                                {profileName(profile)} - {profileRoleLabel(profile)}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {openProjectConflict?.hasOpenProject && (
+                          <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', padding: '8px 12px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '6px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '2px' }}>Project already in progress</div>
+                            <div style={{ marginBottom: '2px' }}>
+                              This company already has an unfinished project:
+                              <br />
+                              <strong>{openProjectConflict.projectName || (openProjectConflict.projectId ? `Project #${openProjectConflict.projectId}` : 'Existing Project')}</strong> — {formatProjectStatus(openProjectConflict.status)}
+                            </div>
+                            <div>
+                              Complete or close the existing project before creating another project for this company.
+                            </div>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <input
                         className="search-input"
@@ -833,43 +1048,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     )}
                   </label>
                   <label>
-                    <span>Target Relationship</span>
-                    <select
-                      className="search-input"
-                      value={projectForm.targetRelationshipType}
-                      onChange={(event) => {
-                        const newRelationship = event.target.value;
-                        const normalizedRel = normalizeRelationshipInput(newRelationship);
-                        setProjectForm((current) => {
-                          const validKrs = current.keyResults.filter((kr) => {
-                            const ref = krReference.find((r) => r.type === kr.type);
-                            return !ref || ref.supportedRelationshipTypes.length === 0 || ref.supportedRelationshipTypes.includes(normalizedRel as RelationshipType);
-                          });
-                          const rebalancedKrs = validKrs.length !== current.keyResults.length ? balanceDeliverableWeights(validKrs) : validKrs;
-                          return {
-                            ...current,
-                            targetRelationshipType: newRelationship,
-                            keyResults: rebalancedKrs,
-                          };
-                        });
-                      }}
-                      disabled={relationshipOptionsLoading || projectForm.projectType === 'UPDATE_EXISTING_COMPANY'}
-                    >
-                      <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
-                      {relationshipOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
                     <span>Tax Code</span>
                     {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
                       <input
                         className="search-input"
                         placeholder="No tax code available"
-                        value={companyOptions.find(item => item.companyId === projectForm.targetCompanyProfileId || item.id === projectForm.targetCompanyProfileId)?.identity?.taxCode || ''}
+                        value={findCompanyProfile(companyOptions, projectForm.targetCompanyProfileId)?.identity?.taxCode || projectForm.targetCompanyTaxCode || ''}
                         readOnly
                         style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)', cursor: 'default' }}
                       />
@@ -884,18 +1068,35 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                         />
                         {taxCodeCheck?.loading && <span style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px', display: 'block' }}>Checking tax code...</span>}
                         {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'COMPANY_PROFILE' && (
-                          <div style={{ backgroundColor: '#fff3cd', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '4px' }}>
-                            Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
-                            <button type="button" onClick={() => {
-                              setProjectForm(current => ({
-                                ...current, 
-                                projectType: 'UPDATE_EXISTING_COMPANY',
-                                targetCompanyProfileId: taxCodeCheck.companyProfileId || ''
-                              }));
-                            }} style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                              Use existing company
-                            </button>
-                          </div>
+                          taxCodeCheck.hasOpenProject ? (
+                            <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', padding: '8px 12px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '6px' }}>
+                              <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                                Existing company found: {taxCodeCheck.companyName || 'Company'}
+                              </div>
+                              <div style={{ marginBottom: '2px' }}>
+                                An unfinished project already exists for this company:
+                                <br />
+                                <strong>{taxCodeCheck.openProjectName || (taxCodeCheck.openProjectId ? `Project #${taxCodeCheck.openProjectId}` : 'Existing Project')}</strong> — {formatProjectStatus(taxCodeCheck.openProjectStatus)}
+                              </div>
+                              <div>
+                                Complete or close the existing project before creating another project.
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ backgroundColor: '#fff3cd', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '4px' }}>
+                              Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
+                              <button type="button" onClick={() => {
+                                const existingId = taxCodeCheck.companyProfileId || '';
+                                handleExistingTargetCompanyChange(existingId);
+                                setProjectForm((prev) => ({
+                                  ...prev,
+                                  projectType: 'UPDATE_EXISTING_COMPANY',
+                                }));
+                              }} style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                                Use existing company
+                              </button>
+                            </div>
+                          )
                         )}
                         {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT' && (
                           <div style={{ backgroundColor: '#f8d7da', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#721c24', marginTop: '4px' }}>
@@ -905,6 +1106,92 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                       </div>
                     )}
                   </label>
+
+                  {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
+                    <>
+                      <label>
+                        <span>Current Relationship</span>
+                        <input
+                          className="search-input"
+                          value={projectForm.targetCompanyProfileId ? currentRelLabel : 'Select an existing company'}
+                          readOnly
+                          style={{ backgroundColor: 'var(--surface-color)', color: 'var(--text-secondary)', cursor: 'default' }}
+                        />
+                      </label>
+                      <label>
+                        <span>Target Relationship</span>
+                        <select
+                          className="search-input"
+                          value={projectForm.targetRelationshipType}
+                          onChange={(event) => handleExistingTargetRelationshipChange(event.target.value)}
+                          disabled={relationshipOptionsLoading || !projectForm.targetCompanyProfileId}
+                        >
+                          <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : (!projectForm.targetCompanyProfileId ? 'Select an existing company first' : t('create.selectRelationship'))}</option>
+                          {relationshipOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {isRelationshipChanged && (
+                        <div
+                          style={{
+                            gridColumn: '1 / -1',
+                            backgroundColor: '#fff3cd',
+                            border: '1px solid #ffeeba',
+                            borderRadius: '6px',
+                            padding: '8px 12px',
+                            color: '#856404',
+                            fontSize: '0.85rem',
+                            lineHeight: '1.4',
+                            marginTop: '4px',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>Relationship change detected</span>
+                          </div>
+                          <div style={{ marginTop: '2px' }}>
+                            <strong>{currentRelLabel}</strong> &rarr; <strong>{targetRelLabel}</strong>
+                          </div>
+                          {isContractMandatory && (
+                            <div style={{ marginTop: '2px', fontSize: '0.8rem', color: '#664d03' }}>
+                              Contract Information is required for this relationship change.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <label>
+                      <span>Target Relationship</span>
+                      <select
+                        className="search-input"
+                        value={projectForm.targetRelationshipType}
+                        onChange={(event) => {
+                          const newRelationship = event.target.value;
+                          const normalizedRel = normalizeRelationshipInput(newRelationship);
+                          setProjectForm((current) => {
+                            const rebalancedKrs = filterAndRebalanceDeliverables(current.keyResults, normalizedRel, krReference, 'RESEARCH_NEW_COMPANY', false);
+                            return {
+                              ...current,
+                              targetRelationshipType: newRelationship,
+                              keyResults: rebalancedKrs,
+                            };
+                          });
+                        }}
+                        disabled={relationshipOptionsLoading}
+                      >
+                        <option value="">{relationshipOptionsLoading ? t('create.loadingRelationships') : t('create.selectRelationship')}</option>
+                        {relationshipOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
                   <label>
                     <span>Due Date</span>
                     <input
@@ -1003,80 +1290,111 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                   <div>Loading Project Deliverables...</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {krReference.map((kr) => {
-                      const isSupported = kr.supportedRelationshipTypes.length === 0 || kr.supportedRelationshipTypes.includes(normalizeRelationshipInput(projectForm.targetRelationshipType) as RelationshipType);
-                      const selectedKr = projectForm.keyResults.find((k) => k.type === kr.type);
-                      const isSelected = !!selectedKr;
-                      const supportedLabels = kr.supportedRelationshipTypes.map(rt => relationshipOptions.find(o => o.value === rt)?.label || rt).join(', ');
+                    {krReference
+                      .filter((kr) => {
+                        if (projectForm.projectType === 'UPDATE_EXISTING_COMPANY') {
+                          return kr.type === 'FINANCIAL_INFORMATION' || kr.type === 'CONTRACT_INFORMATION';
+                        }
+                        return true;
+                      })
+                      .map((kr) => {
+                        const isDeliverableMandatoryVal = isDeliverableMandatory(kr.type, projectForm.projectType, isContractMandatory);
+                        const isContract = kr.type === 'CONTRACT_INFORMATION';
+                        const isContractEligible = !isContract || isTargetContractEligible;
+                        const isSupported = isContract
+                          ? isContractEligible
+                          : kr.supportedRelationshipTypes.length === 0 || kr.supportedRelationshipTypes.includes(normalizeRelationshipInput(projectForm.targetRelationshipType) as RelationshipType);
+                        const selectedKr = projectForm.keyResults.find((k) => k.type === kr.type);
+                        const isSelected = isDeliverableMandatoryVal || (isSupported && !!selectedKr);
+                        const supportedLabels = kr.supportedRelationshipTypes.map(rt => relationshipOptions.find(o => o.value === rt)?.label || rt).join(', ');
+                        const mandatoryReason = getDeliverableMandatoryReason(kr.type, projectForm.projectType, isContractMandatory, currentRelLabel, targetRelLabel);
 
-                      return (
-                        <div
-                          key={kr.type}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                            background: isSelected ? 'var(--primary-light)' : 'transparent',
-                            opacity: isSupported ? 1 : 0.6,
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            id={`kr-checkbox-${kr.type}`}
-                            checked={isSelected}
-                            disabled={!isSupported}
-                            onChange={(e) => {
-                              if (!isSupported) return;
-                              const checked = e.target.checked;
-                              setProjectForm((current) => {
-                                const withoutCurrent = current.keyResults.filter((k) => k.type !== kr.type);
-                                const updatedList = checked ? [...withoutCurrent, { type: kr.type, weight: 0 }] : withoutCurrent;
-                                const rebalanced = balanceDeliverableWeights(updatedList);
-                                return { ...current, keyResults: rebalanced };
-                              });
-                            }}
+                        return (
+                          <div
+                            key={kr.type}
                             style={{
-                              width: '18px',
-                              height: '18px',
-                              cursor: isSupported ? 'pointer' : 'not-allowed',
-                              flexShrink: 0,
-                              margin: 0
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                              background: isSelected ? 'var(--primary-light)' : 'transparent',
+                              opacity: isSupported ? 1 : 0.6,
+                              transition: 'all 0.15s ease',
                             }}
-                          />
-                          <label htmlFor={`kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{kr.description}</div>
-                            {!isSupported && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--danger-text)', marginTop: '4px' }}>
-                                Available only for {supportedLabels} projects.
+                          >
+                            <input
+                              type="checkbox"
+                              id={`kr-checkbox-${kr.type}`}
+                              checked={isSelected}
+                              disabled={isDeliverableMandatoryVal || !isSupported}
+                              onChange={(e) => {
+                                if (isDeliverableMandatoryVal || !isSupported) return;
+                                const checked = e.target.checked;
+                                setProjectForm((current) => {
+                                  const withoutCurrent = current.keyResults.filter((k) => k.type !== kr.type);
+                                  const updatedList = checked ? [...withoutCurrent, { type: kr.type, weight: 0 }] : withoutCurrent;
+                                  const rebalanced = filterAndRebalanceDeliverables(
+                                    updatedList,
+                                    normalizeRelationshipInput(current.targetRelationshipType),
+                                    krReference,
+                                    current.projectType,
+                                    isContractMandatory
+                                  );
+                                  return { ...current, keyResults: rebalanced };
+                                });
+                              }}
+                              style={{
+                                width: '18px',
+                                height: '18px',
+                                cursor: isDeliverableMandatoryVal ? 'not-allowed' : isSupported ? 'pointer' : 'not-allowed',
+                                flexShrink: 0,
+                                margin: 0
+                              }}
+                            />
+                            <label htmlFor={`kr-checkbox-${kr.type}`} style={{ flex: 1, cursor: isDeliverableMandatoryVal ? 'default' : isSupported ? 'pointer' : 'not-allowed', margin: 0, display: 'block' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: isSelected ? 'var(--primary-dark)' : 'inherit' }}>{kr.displayName}</span>
+                                {isDeliverableMandatoryVal && (
+                                  <span style={{ fontSize: '0.72rem', color: '#856404', background: '#fff3cd', border: '1px solid #ffeeba', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                    Required
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{kr.description}</div>
+                              {isDeliverableMandatoryVal && mandatoryReason && (
+                                <div style={{ fontSize: '0.75rem', color: '#856404', marginTop: '3px', fontWeight: 500 }}>
+                                  {mandatoryReason}
+                                </div>
+                              )}
+                              {!isSupported && !isDeliverableMandatoryVal && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--danger-text)', marginTop: '4px' }}>
+                                  Available only for {supportedLabels || 'Partner, Customer, Supplier'} projects.
+                                </div>
+                              )}
+                            </label>
+                            {isSelected && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                <input
+                                  type="number"
+                                  title="Progress Weight"
+                                  className="search-input"
+                                  style={{ width: '70px', padding: '5px 8px', textAlign: 'center', height: '32px' }}
+                                  value={selectedKr ? selectedKr.weight : (projectForm.keyResults.length === 1 ? 100 : 50)}
+                                  min={1}
+                                  max={100}
+                                  onChange={(e) => {
+                                    const newWeight = parseInt(e.target.value, 10) || 0;
+                                    setProjectForm((current) => ({
+                                      ...current,
+                                      keyResults: current.keyResults.map((k) => (k.type === kr.type ? { ...k, weight: newWeight } : k)),
+                                    }));
+                                  }}
+                                />
+                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-dark)' }}>%</span>
                               </div>
                             )}
-                          </label>
-                          {isSelected && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                              <input
-                                type="number"
-                                title="Progress Weight"
-                                className="search-input"
-                                style={{ width: '70px', padding: '5px 8px', textAlign: 'center', height: '32px' }}
-                                value={selectedKr.weight}
-                                min={1}
-                                max={100}
-                                onChange={(e) => {
-                                  const newWeight = parseInt(e.target.value, 10) || 0;
-                                  setProjectForm((current) => ({
-                                    ...current,
-                                    keyResults: current.keyResults.map((k) => (k.type === kr.type ? { ...k, weight: newWeight } : k)),
-                                  }));
-                                }}
-                              />
-                              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-dark)' }}>%</span>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1086,11 +1404,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
             </div>
 
             <div className="workspace-head-actions" style={{ flexShrink: 0, padding: '16px 24px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-main)' }}>
-              <button className="btn btn-outline" onClick={() => setShowCreateForm(false)}>{t('create.cancel')}</button>
+              <button className="btn btn-outline" onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); }}>{t('create.cancel')}</button>
               <button
                 className="btn btn-primary"
                 onClick={() => void handleCreateProject()}
-                disabled={createLoading || projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0) !== 100}
+                disabled={createLoading || hasProjectConflict || projectForm.keyResults.reduce((sum, kr) => sum + kr.weight, 0) !== 100}
               >
                 {createLoading ? t('create.submitting') : 'Create project'}
               </button>
@@ -1115,7 +1433,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 <span className={`workspace-badge ${PROJECT_STATUS_TONES[projectToDelete.status]}`}>
                   {PROJECT_STATUS_LABELS[projectToDelete.status]}
                 </span>
-                <p>Only Draft and Done projects are allowed to be deleted. This project is eligible for deletion.</p>
+                <p>Only draft projects are allowed to be deleted. This project is eligible for deletion.</p>
               </div>
               <div className="workspace-head-actions">
                 <button className="btn btn-outline" onClick={() => setProjectToDelete(null)} disabled={deleteLoading}>Cancel</button>

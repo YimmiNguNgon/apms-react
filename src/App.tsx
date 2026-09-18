@@ -44,6 +44,7 @@ const writeActivePageToLocation = (pageWithPossibleQuery: string) => {
 import { ManagerCompanyProfiles } from './pages/ManagerCompanyProfiles';
 import { CompanyList }     from './pages/CompanyList';
 import { CompanyDetail }   from './pages/CompanyDetail';
+import { ProfileVisibilityPage } from './pages/ProfileVisibilityPage';
 import { RelationshipAssessmentDetailPage } from './pages/RelationshipAssessmentDetailPage';
 import { OwnerProfilePage } from './pages/OwnerProfilePage';
 import { OwnerInternalNewsView } from './pages/OwnerInternalNewsView';
@@ -288,6 +289,7 @@ const MainApp: React.FC = () => {
       case 'companies':        return <CompanyList setActivePage={navigateToPage} />;
       case 'my-companies':     return <ManagerCompanyProfiles setActivePage={navigateToPage} />;
       case 'company-detail':   return <CompanyDetail setActivePage={navigateToPage} />;
+      case 'profile-visibility': return <ProfileVisibilityPage setActivePage={navigateToPage} />;
       case 'relationship-assessment-detail': return <RelationshipAssessmentDetailPage setActivePage={navigateToPage} />;
       case 'owner-profile':    return <OwnerProfilePage setActivePage={navigateToPage} />;
       case 'owner-internal-news': return <OwnerInternalNewsView />;
@@ -297,8 +299,9 @@ const MainApp: React.FC = () => {
       case 'add-company':      return <AddCompany />;
       case 'company-monitoring': return <CompanyMonitoringPage setActivePage={navigateToPage} />;
       case 'admin-panel':      return <AdminPanel />;
+      case 'ai-assistant':
       case 'ai-agent':
-      case 'personal-ai-agent':return renderDashboard();
+      case 'personal-ai-agent': return <AIAgent setActivePage={navigateToPage} />;
       case 'news':             return <News setActivePage={navigateToPage} />;
       case 'article-detail':   return <ArticleDetail setActivePage={navigateToPage} />;
       case 'system-chat':      return <SystemChat />;
@@ -384,7 +387,6 @@ const MainApp: React.FC = () => {
             {renderPage()}
           </div>
         </div>
-        {activePage !== 'system-chat' && <AIAgent />}
         {notificationToast && (
           <div className="apms-toast success">
             <strong>{notificationToast.title}</strong>

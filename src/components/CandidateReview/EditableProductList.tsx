@@ -18,6 +18,7 @@ interface EditableProductListProps {
   onChange: (key: string, value: Product[], status?: string) => void;
   disabled?: boolean;
   isManual?: boolean;
+  revisionMode?: boolean;
 }
 
 export const EditableProductList: React.FC<EditableProductListProps> = ({
@@ -27,6 +28,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
   onChange,
   disabled,
   isManual = false,
+  revisionMode,
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const rawCurrentValue = hasStaffReviewedValue
@@ -84,19 +86,30 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
       setAdding(false);
       return;
     }
-    setDraftProducts([...draftProducts, draft]);
+    const newList = [...draftProducts, draft];
+    setDraftProducts(newList);
     setDraft({});
     setAdding(false);
-  };
-
-  const updateProduct = (index: number, field: keyof Product, val: string) => {
-    const updated = [...draftProducts];
-    updated[index] = { ...updated[index], [field]: val };
-    setDraftProducts(updated);
+    if (revisionMode) {
+      onChange(fieldKey, newList, 'EDITED');
+    }
   };
 
   const deleteProduct = (index: number) => {
-    setDraftProducts(draftProducts.filter((_, i) => i !== index));
+    const newList = draftProducts.filter((_, i) => i !== index);
+    setDraftProducts(newList);
+    if (revisionMode) {
+      onChange(fieldKey, newList, 'EDITED');
+    }
+  };
+
+  const updateProduct = (index: number, field: keyof Product, val: string) => {
+    const newList = [...draftProducts];
+    newList[index] = { ...newList[index], [field]: val };
+    setDraftProducts(newList);
+    if (revisionMode) {
+      onChange(fieldKey, newList, 'EDITED');
+    }
   };
 
   const displayList = (
@@ -142,6 +155,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
       isList
       disabled={disabled}
       isManual={isManual}
+      revisionMode={revisionMode}
     >
       <div className={styles.productGrid}>
         {draftProducts.map((p, idx) => (
