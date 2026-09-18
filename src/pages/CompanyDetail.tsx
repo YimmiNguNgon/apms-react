@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
 import { companyProfileApi } from '../API/companyProfileApi';
@@ -903,7 +903,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     if (!isInlineEditing) return false;
     const hasFinancialChanges = isFinancialsDirty;
     if (!editBaseline) return hasFinancialChanges;
-    const hasProfileChanges = (
+    const hasBasicChanges = (
       normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
       normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
       normalizeString(draftTaxCode) !== normalizeString(editBaseline.taxCode) ||
@@ -933,9 +933,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return (
       hasBasicChanges ||
       hasBusinessFieldsChanges ||
-      hasLeadershipChanges
+      hasLeadershipChanges ||
+      hasFinancialChanges
     );
-    return hasProfileChanges || hasFinancialChanges;
   }, [
     isInlineEditing,
     isFinancialsDirty,
@@ -992,14 +992,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
     // 1. Save Profile section if dirty
     if (hasProfileChanges && editBaseline) {
-      const validProducts = draftProducts
-        .map(p => ({
-          name: normalizeString(p.name),
-          category: normalizeString(p.category) || undefined,
-          description: normalizeString(p.description) || undefined,
-        }))
-        .filter(p => p.name);
-    if (isAdminMyEnterprise) {
+      if (isAdminMyEnterprise) {
       try {
         let updated: ProfileResponse | null = null;
 
