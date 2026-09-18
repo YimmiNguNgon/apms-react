@@ -49,6 +49,7 @@ import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 import contractStyles from './ContractResearchWorkbench.module.css';
 import { ManualContractEntryTemplate } from './ManualContractEntryTemplate';
 import { ManualContractSummaryView } from './ManualContractSummaryView';
+import { validateContractDates } from './contractValidation';
 
 export function hasMeaningfulContractData(contract?: ContractEntry | null): boolean {
   if (!contract || !contract.commonData) return false;
@@ -821,6 +822,35 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         type: 'error',
       });
       return;
+    }
+
+    if (manualContractDirty) {
+      setToast({
+        message: 'Bạn có thay đổi chưa lưu trên biểu mẫu nhập thủ công. Vui lòng lưu thông tin hợp đồng trước khi gửi duyệt.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Validate date relationships for all selected contracts
+    for (const c of selectedContractsForSubmission) {
+      const dates = {
+        signingDate: c.commonData?.signingDate?.value
+          ? String(c.commonData.signingDate.value)
+          : (c.documentDate ? String(c.documentDate) : null),
+        effectiveDate: c.commonData?.effectiveDate?.value ? String(c.commonData.effectiveDate.value) : null,
+        expiryDate: c.commonData?.expiryDate?.value ? String(c.commonData.expiryDate.value) : null,
+      };
+      const dateErrors = validateContractDates(dates);
+      if (dateErrors.effectiveDate || dateErrors.expiryDate) {
+        setSelectedContractId(c.id);
+        const errorDetail = dateErrors.effectiveDate || dateErrors.expiryDate;
+        setToast({
+          message: `Hợp đồng "${c.title}" có ngày không hợp lệ: ${errorDetail}`,
+          type: 'error',
+        });
+        return;
+      }
     }
 
     const emptyManualContract = selectedContractsForSubmission.find(

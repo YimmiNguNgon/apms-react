@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { CreateFinancialMetricRequest, FinancialMetricResponse, FinancialReportEntry } from '../../types/domain';
 import { findCanonicalByCodeOrAlias } from './canonicalFinancialTaxonomy';
+import { parseFinancialValue, FINANCIAL_NUMERIC_ERROR_MESSAGE } from './financialValidation';
 import { AlertCircle, ArrowRight, Check, Loader2, Plus, X } from 'lucide-react';
 
 interface Props {
@@ -90,17 +91,18 @@ export default function AddMetricModal({
     }
 
     // 3. Validate numeric value
-    if (!value || value.trim() === '') {
+    const parsedVal = parseFinancialValue(value);
+    if (!parsedVal.entered) {
       setValidationError('Vui lòng nhập giá trị cho chỉ số.');
       return;
     }
-
-    const rawStr = value.replace(/,/g, '').trim();
-    const numValue = Number(rawStr);
-    if (Number.isNaN(numValue)) {
-      setValidationError(`Giá trị "${value}" không phải là số hợp lệ.`);
+    if (!parsedVal.valid) {
+      setValidationError(FINANCIAL_NUMERIC_ERROR_MESSAGE);
       return;
     }
+
+    const normalizedStr = parsedVal.normalizedString ?? value.trim();
+    const numValue = Number(normalizedStr);
 
     const periodPayload = report.reportingPeriod ? {
       year: report.reportingPeriod.year,
@@ -117,9 +119,9 @@ export default function AddMetricModal({
       label: trimmedLabel,
       originalLabel: trimmedLabel,
       statementType: 'BALANCE_SHEET', // Fallback for DTO contract
-      rawValue: rawStr,
+      rawValue: normalizedStr,
       rawUnit: unit,
-      value: numValue,
+      value: Number.isNaN(numValue) ? undefined : numValue,
       unit,
       currency: ['VND', 'BILLION_VND', 'MILLION_VND'].includes(unit)
         ? 'VND'
@@ -276,6 +278,7 @@ export default function AddMetricModal({
               </label>
               <input
                 type="text"
+                inputMode="decimal"
                 required
                 value={value}
                 onChange={(e) => {
@@ -286,7 +289,7 @@ export default function AddMetricModal({
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  border: '1px solid #cbd5e1',
+                  border: validationError === FINANCIAL_NUMERIC_ERROR_MESSAGE ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                   borderRadius: 8,
                   fontSize: 13,
                   outline: 'none',

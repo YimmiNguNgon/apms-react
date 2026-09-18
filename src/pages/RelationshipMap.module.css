@@ -784,3 +784,43 @@
   .rmKpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rmFormGrid { grid-template-columns: 1fr; }
 }
+
+/* ── Unread Relationship Assessment Graph Card Highlight ── */
+.nodeCardUnread {
+  background: #FDF4FF !important;
+  outline: 2px solid rgba(192, 38, 211, 0.38);
+  outline-offset: 2px;
+  box-shadow: 0 6px 18px rgba(192, 38, 211, 0.14);
+}
+
+.unreadBadge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #C026D3;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  height: 18px;
+  padding: 0 7px;
+  box-shadow: 0 2px 6px rgba(192, 38, 211, 0.25);
+  z-index: 6;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.unreadDotInline {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #F5D0FE;
+  margin-right: 3.5px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+

@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import type { FinancialMetricResponse, ReportingPeriodType, UpdateFinancialMetricRequest } from '../../types/domain';
-import { formatFinancialUnit } from './canonicalFinancialTaxonomy';
-import { Edit3, Loader2, X } from 'lucide-react';
+import {
+  CANONICAL_FINANCIAL_TAXONOMY,
+  formatFinancialUnit,
+  findCanonicalByCodeOrAlias,
+} from './canonicalFinancialTaxonomy';
+import { parseFinancialValue, FINANCIAL_NUMERIC_ERROR_MESSAGE } from './financialValidation';
+import { Edit3, AlertCircle, AlertTriangle, Loader2, X } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -37,6 +42,7 @@ export default function EditFinancialMetricModal({
   const [periodType, setPeriodType] = useState<ReportingPeriodType>('QUARTER');
   const [period, setPeriod] = useState('Q1');
   const [evidence, setEvidence] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const unitOptions = React.useMemo(() => {
     if (unit && !UNIT_OPTIONS.some(opt => opt.value === unit)) {
@@ -82,6 +88,7 @@ export default function EditFinancialMetricModal({
       }
 
       setEvidence(metric.evidence || '');
+      setValidationError(null);
     }
   }, [open, metric]);
 
@@ -89,14 +96,24 @@ export default function EditFinancialMetricModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!label.trim() || value === '') return;
+    if (!label.trim()) return;
 
-    const rawStr = value.replace(/,/g, '').trim();
-    const numValue = Number(rawStr);
+    const parsedVal = parseFinancialValue(value);
+    if (!parsedVal.entered) {
+      setValidationError('Vui lòng nhập giá trị cho chỉ số.');
+      return;
+    }
+    if (!parsedVal.valid) {
+      setValidationError(FINANCIAL_NUMERIC_ERROR_MESSAGE);
+      return;
+    }
+
+    const normalizedStr = parsedVal.normalizedString ?? value.trim();
+    const numValue = Number(normalizedStr);
 
     const updateData: UpdateFinancialMetricRequest = {
       label: label.trim(),
-      rawValue: rawStr,
+      rawValue: normalizedStr,
       rawUnit: unit,
       value: Number.isNaN(numValue) ? undefined : numValue,
       unit,
@@ -217,12 +234,24 @@ export default function EditFinancialMetricModal({
             Value
             <input
               type="text"
+              inputMode="decimal"
               required
-              style={inputStyle}
+              style={{
+                ...inputStyle,
+                border: validationError ? '1.5px solid #ef4444' : inputStyle.border,
+              }}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                setValue(e.target.value);
+                if (validationError) setValidationError(null);
+              }}
               placeholder="e.g. 2657441000"
             />
+            {validationError && (
+              <span style={{ color: '#ef4444', fontSize: 11, marginTop: 4 }}>
+                {validationError}
+              </span>
+            )}
           </label>
 
           <label style={labelStyle}>

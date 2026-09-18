@@ -4,7 +4,6 @@ import {
   AlertCircle,
   Award,
   CheckCircle2,
-  Clock,
   FileCheck,
   FileText,
   Info,
@@ -2378,57 +2377,38 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
       {/* ========================================================================= */}
       <div className={styles.builderActions}>
         <div className={styles.builderActionsLeft}>
-          {/* Auto-save Status Indicator (Draft mode only) */}
-          {isDraft && !isOwnerReview && (
+          {/* Auto-save Error Notification (Silent on success/saving, error feedback on failure) */}
+          {isDraft && !isOwnerReview && autoSaveStatus === 'ERROR' && (
             <div className={styles.autoSaveStatus}>
-              {autoSaveStatus === 'SAVING' && (
-                <span className={styles.autoSaveStatusSaving}>
-                  <Loader2 size={14} className="spinIcon" />
-                  <span>Đang lưu...</span>
-                </span>
-              )}
-              {autoSaveStatus === 'DIRTY' && (
-                <span className={styles.autoSaveStatusUnsaved}>
-                  <Clock size={14} />
-                  <span>Có thay đổi chưa lưu...</span>
-                </span>
-              )}
-              {autoSaveStatus === 'SAVED' && (
-                <span className={styles.autoSaveStatusSaved}>
-                  <CheckCircle2 size={14} />
-                  <span>
-                    {lastSavedAt
-                      ? `Đã lưu tự động lúc ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Đã lưu'}
-                  </span>
-                </span>
-              )}
-              {autoSaveStatus === 'ERROR' && (
-                <span className={styles.autoSaveStatusError}>
-                  <AlertCircle size={14} />
-                  <span>Không thể lưu tự động</span>
-                  <button
-                    type="button"
-                    className={styles.retrySaveBtn}
-                    onClick={handleRetry}
-                  >
-                    Thử lại
-                  </button>
-                </span>
-              )}
+              <span className={styles.autoSaveStatusError}>
+                <AlertCircle size={14} />
+                <span>Không thể lưu thay đổi. Vui lòng thử lại.</span>
+                <button
+                  type="button"
+                  className={styles.retrySaveBtn}
+                  onClick={handleRetry}
+                >
+                  Thử lại
+                </button>
+              </span>
             </div>
           )}
 
-          {liveResult && (
+          {liveResult ? (
             <div className={styles.liveScorePreview}>
-              <CheckCircle2 size={16} className={styles.liveScorePreviewIcon} />
               <span>
                 <strong>6/6 tiêu chí</strong> · Điểm dự kiến:{' '}
                 <strong>{liveResult.displayScore}/100</strong> · Rank{' '}
                 <span className={styles.liveScoreRankBadge}>{liveResult.rank}</span>
               </span>
             </div>
-          )}
+          ) : completedCriteriaCount > 0 ? (
+            <div className={styles.liveScorePreview}>
+              <span>
+                <strong>{completedCriteriaCount}/{isV3 ? 3 : 6} tiêu chí</strong>
+              </span>
+            </div>
+          ) : null}
 
           {isOwnerReview && onRequestChanges && (
             <button

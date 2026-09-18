@@ -8,14 +8,12 @@ import type {
 import { contractResearchApi } from '../../API/contractResearchApi';
 import {
   FileText,
-  FileUp,
   Calendar,
   Users,
   Plus,
   Trash2,
   Save,
   Loader2,
-  RefreshCw,
   Eye,
   CheckCircle2,
   AlertTriangle,
@@ -24,6 +22,7 @@ import {
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 import contractStyles from './ContractResearchWorkbench.module.css';
 import { ConfirmModal } from '../Shared/ConfirmModal';
+import { validateContractDates } from './contractValidation';
 
 interface Props {
   projectId: number;
@@ -44,9 +43,6 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
   onSaveSuccess,
   onCancel,
   onDirtyChange,
-  onViewPdf,
-  onReplaceFile,
-  isReplacingFile = false,
 }) => {
   // Top metadata
   const [title, setTitle] = useState(contract.title || '');
@@ -98,6 +94,20 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Field refs for date validation autofocus/scroll
+  const effectiveDateInputRef = useRef<HTMLInputElement>(null);
+  const expiryDateInputRef = useRef<HTMLInputElement>(null);
+
+  // Live date relationships validation
+  const dateErrors = useMemo(() => {
+    return validateContractDates({
+      signingDate,
+      effectiveDate,
+      expiryDate,
+    });
+  }, [signingDate, effectiveDate, expiryDate]);
+  const hasDateErrors = Boolean(dateErrors.effectiveDate || dateErrors.expiryDate);
 
   // Sync if contract changes
   useEffect(() => {
@@ -278,6 +288,20 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
       return;
     }
 
+    if (dateErrors.effectiveDate) {
+      setErrorMessage(dateErrors.effectiveDate);
+      effectiveDateInputRef.current?.focus();
+      effectiveDateInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (dateErrors.expiryDate) {
+      setErrorMessage(dateErrors.expiryDate);
+      expiryDateInputRef.current?.focus();
+      expiryDateInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const payload: SaveManualContractRequest = {
@@ -340,16 +364,15 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Top Banner with Manual Badge & Reference PDF */}
+      {/* Top Banner with Manual Badge */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           background: '#f8fafc',
           border: '1px solid #e2e8f0',
           borderRadius: 8,
-          padding: '12px 16px',
+          padding: '10px 14px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -372,79 +395,6 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
             Nhập thông tin và điều khoản hợp đồng thủ công
           </span>
         </div>
-
-        {contract.documentId ? (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {onViewPdf && (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => onViewPdf(contract.documentId)}
-                style={{ padding: '5px 12px', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <FileText size={14} />
-                {contract.documentName || 'View Reference PDF'}
-              </button>
-            )}
-            {onReplaceFile && (
-              <label
-                className={styles.secondaryButton}
-                style={{
-                  padding: '5px 12px',
-                  fontSize: 12.5,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  cursor: isReplacingFile ? 'not-allowed' : 'pointer',
-                }}
-                title="Thay đổi tài liệu PDF tham khảo"
-              >
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  style={{ display: 'none' }}
-                  disabled={isReplacingFile}
-                  onChange={async (e) => {
-                    if (e.target.files?.[0]) {
-                      await onReplaceFile(e.target.files[0]);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-                {isReplacingFile ? <Loader2 size={13} className={styles.spinIcon} /> : <RefreshCw size={13} />}
-                <span>{isReplacingFile ? 'Đang thay đổi...' : 'Thay đổi PDF'}</span>
-              </label>
-            )}
-          </div>
-        ) : onReplaceFile ? (
-          <label
-            className={styles.secondaryButton}
-            style={{
-              padding: '5px 12px',
-              fontSize: 12.5,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: isReplacingFile ? 'not-allowed' : 'pointer',
-            }}
-            title="Đính kèm tài liệu PDF tham khảo"
-          >
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              style={{ display: 'none' }}
-              disabled={isReplacingFile}
-              onChange={async (e) => {
-                if (e.target.files?.[0]) {
-                  await onReplaceFile(e.target.files[0]);
-                  e.target.value = '';
-                }
-              }}
-            />
-            {isReplacingFile ? <Loader2 size={13} className={styles.spinIcon} /> : <FileUp size={13} />}
-            <span>{isReplacingFile ? 'Đang tải lên...' : 'Đính kèm PDF tham khảo'}</span>
-          </label>
-        ) : null}
       </div>
 
       {errorMessage && (
@@ -615,18 +565,25 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
                 Ngày hiệu lực (Effective Date)
               </label>
               <input
+                ref={effectiveDateInputRef}
                 type="date"
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  border: '1px solid #cbd5e1',
+                  border: dateErrors.effectiveDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                   borderRadius: 6,
                   fontSize: 13,
                   boxSizing: 'border-box',
                 }}
               />
+              {dateErrors.effectiveDate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 12, color: '#dc2626' }}>
+                  <AlertTriangle size={13} color="#dc2626" />
+                  <span>{dateErrors.effectiveDate}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -634,18 +591,25 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
                 Ngày hết hạn (Expiry Date)
               </label>
               <input
+                ref={expiryDateInputRef}
                 type="date"
                 value={expiryDate}
                 onChange={(e) => setExpiryDate(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  border: '1px solid #cbd5e1',
+                  border: dateErrors.expiryDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                   borderRadius: 6,
                   fontSize: 13,
                   boxSizing: 'border-box',
                 }}
               />
+              {dateErrors.expiryDate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 12, color: '#dc2626' }}>
+                  <AlertTriangle size={13} color="#dc2626" />
+                  <span>{dateErrors.expiryDate}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -963,7 +927,25 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
           <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>
             Đã nhập: <strong>{enteredFieldsCount}</strong> trường
           </span>
-          {isDirty ? (
+          {hasDateErrors ? (
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                color: '#dc2626',
+                fontSize: 12.5,
+                fontWeight: 600,
+                background: '#fef2f2',
+                border: '1px solid #fecdd3',
+                padding: '3px 8px',
+                borderRadius: 6,
+              }}
+            >
+              <AlertTriangle size={13} color="#dc2626" />
+              Dữ liệu ngày không hợp lệ
+            </span>
+          ) : isDirty ? (
             <span
               style={{
                 display: 'flex',

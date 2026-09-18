@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Award, CheckCircle2, FileText, Info, ShieldCheck, User } from 'lucide-react';
 import type { RelationshipAssessmentResponse, CommercialEvidence } from '../../types/relationshipAssessment';
 import styles from './RelationshipCloseness.module.css';
@@ -122,17 +122,122 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
   const managerQual = assessment?.qualitativeScore ?? 0;
   const ownerQual = assessment?.ownerQualitativeScore ?? managerQual;
 
-  // Scores for V5 direct-manager assessment
-  const commScore = assessment?.commercialAwardedScore ?? assessment?.ownerCommercialScore ?? assessment?.commercialScore;
-  const coopScore = assessment?.cooperationScore ?? assessment?.ownerCooperationScore;
-  const stratScore = assessment?.strategicScore ?? assessment?.ownerStrategicScore;
-  const netScore = assessment?.relationshipNetworkScore ?? assessment?.ownerRelationshipNetworkScore;
-  const engScore = assessment?.engagementScore ?? assessment?.ownerEngagementScore;
-  const trustScore = assessment?.trustScore ?? assessment?.qualitativeScore ?? assessment?.ownerTrustScore ?? assessment?.ownerQualitativeScore;
+  const isOwnerAdjustment = Boolean(
+    assessment?.isOwnerAdjustment ||
+    assessment?.assessmentType === 'OWNER_ADJUSTMENT' ||
+    (assessment?.ownerFinalTotalScore !== null &&
+      assessment?.ownerFinalTotalScore !== undefined &&
+      assessment?.ownerAccountId)
+  );
 
-  const finalTotalScore = assessment?.managerTotalScore ?? assessment?.ownerFinalTotalScore;
-  const finalRank = assessment?.managerRank ?? assessment?.ownerFinalRank;
+  // Scores for V5 assessment (takes Owner scores if Owner Adjustment, otherwise Manager scores)
+  const commScore = isOwnerAdjustment
+    ? (assessment?.ownerCommercialScore ?? assessment?.commercialAwardedScore ?? assessment?.commercialScore)
+    : (assessment?.commercialAwardedScore ?? assessment?.commercialScore);
+  const coopScore = isOwnerAdjustment
+    ? (assessment?.ownerCooperationScore ?? assessment?.cooperationScore)
+    : assessment?.cooperationScore;
+  const stratScore = isOwnerAdjustment
+    ? (assessment?.ownerStrategicScore ?? assessment?.strategicScore)
+    : assessment?.strategicScore;
+  const netScore = isOwnerAdjustment
+    ? (assessment?.ownerRelationshipNetworkScore ?? assessment?.relationshipNetworkScore)
+    : assessment?.relationshipNetworkScore;
+  const engScore = isOwnerAdjustment
+    ? (assessment?.ownerEngagementScore ?? assessment?.engagementScore)
+    : assessment?.engagementScore;
+  const trustScore = isOwnerAdjustment
+    ? (assessment?.ownerTrustScore ?? assessment?.ownerQualitativeScore ?? assessment?.trustScore ?? assessment?.qualitativeScore)
+    : (assessment?.trustScore ?? assessment?.qualitativeScore);
+
+  const finalTotalScore = isOwnerAdjustment
+    ? (assessment?.ownerFinalTotalScore ?? assessment?.officialScore ?? assessment?.managerTotalScore)
+    : (assessment?.officialScore ?? assessment?.managerTotalScore ?? assessment?.ownerFinalTotalScore);
+  const finalRank = isOwnerAdjustment
+    ? (assessment?.ownerFinalRank ?? assessment?.officialRank ?? assessment?.managerRank)
+    : (assessment?.officialRank ?? assessment?.managerRank ?? assessment?.ownerFinalRank);
   const rankMeta = finalRank ? getRankMeta(finalRank) : null;
+
+  // Parse Owner criterion notes from ownerNote (JSON) and/or ownerAdjustmentReason
+  const ownerCriterionNotes = useMemo((): Record<string, string> => {
+    const map: Record<string, string> = {};
+    if (assessment?.ownerRelationshipNetworkNote) {
+      map.network = assessment.ownerRelationshipNetworkNote.trim();
+    }
+    if (assessment?.ownerNote) {
+      try {
+        const parsed = JSON.parse(assessment.ownerNote);
+        if (typeof parsed === 'object' && parsed !== null) {
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === 'string' && v.trim()) {
+              const lower = k.toLowerCase();
+              if (lower.includes('commercial')) map.commercial = v.trim();
+              else if (lower.includes('coop')) map.cooperation = v.trim();
+              else if (lower.includes('strat')) map.strategic = v.trim();
+              else if (lower.includes('net')) map.network = v.trim();
+              else if (lower.includes('eng')) map.engagement = v.trim();
+              else if (lower.includes('trust') || lower.includes('qual')) map.trust = v.trim();
+            }
+          }
+        }
+      } catch {
+        // Plain text owner note if not JSON
+      }
+    }
+    if (assessment?.ownerAdjustmentReason) {
+      const lines = assessment.ownerAdjustmentReason.split('\n');
+      for (const line of lines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          const cName = line.slice(0, colonIdx).trim().toLowerCase();
+          const content = line.slice(colonIdx + 1).trim();
+          if (content) {
+            if (cName.includes('commercial') && !map.commercial) map.commercial = content;
+            else if ((cName.includes('cooperation') || cName.includes('interaction')) && !map.cooperation) map.cooperation = content;
+            else if (cName.includes('strategic') && !map.strategic) map.strategic = content;
+            else if (cName.includes('network') && !map.network) map.network = content;
+            else if (cName.includes('engagement') && !map.engagement) map.engagement = content;
+            else if ((cName.includes('trust') || cName.includes('qualitative')) && !map.trust) map.trust = content;
+          }
+        }
+      }
+    }
+    return map;
+  }, [assessment?.ownerNote, assessment?.ownerRelationshipNetworkNote, assessment?.ownerAdjustmentReason]);
+
+  // Overall human plain-text owner note (suppress raw JSON)
+  const plainOwnerOverallNote = useMemo((): string | null => {
+    if (!assessment?.ownerNote) return null;
+    const trimmed = assessment.ownerNote.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return null;
+    }
+    return trimmed;
+  }, [assessment?.ownerNote]);
+
+  const commercialNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.commercial || null)
+    : (assessment?.commercialEvidenceNote || null);
+
+  const cooperationNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.cooperation || null)
+    : (assessment?.cooperationEvidenceNote || null);
+
+  const strategicNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.strategic || null)
+    : (assessment?.strategicEvidenceNote || null);
+
+  const networkNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.network || assessment?.ownerRelationshipNetworkNote || null)
+    : (assessment?.relationshipNetworkNote || null);
+
+  const engagementNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.engagement || null)
+    : (assessment?.engagementEvidenceNote || null);
+
+  const trustNote = isOwnerAdjustment
+    ? (ownerCriterionNotes.trust || null)
+    : (assessment?.trustEvidenceNote || assessment?.qualitativeEvidenceNote || null);
 
   const contractSegments: string[] = [];
   if (contractCount && contractCount > 0) {
@@ -199,9 +304,9 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {commScore !== null && commScore !== undefined ? `${commScore} / 5` : '—'}
                 </td>
                 <td>
-                  {assessment?.commercialEvidenceNote ? (
+                  {commercialNote ? (
                     <div style={{ fontSize: '0.82rem', color: '#334155' }}>
-                      {assessment.commercialEvidenceNote}
+                      {commercialNote}
                     </div>
                   ) : hasMeaningfulContractEvidence ? (
                     <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
@@ -230,8 +335,8 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {coopScore !== null && coopScore !== undefined ? `${coopScore} / 5` : '—'}
                 </td>
                 <td>
-                  <div style={{ fontSize: '0.82rem', color: assessment?.cooperationEvidenceNote ? '#334155' : '#94a3b8' }}>
-                    {assessment?.cooperationEvidenceNote || '—'}
+                  <div style={{ fontSize: '0.82rem', color: cooperationNote ? '#334155' : '#94a3b8' }}>
+                    {cooperationNote || '—'}
                   </div>
                 </td>
               </tr>
@@ -251,8 +356,8 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {stratScore !== null && stratScore !== undefined ? `${stratScore} / 5` : '—'}
                 </td>
                 <td>
-                  <div style={{ fontSize: '0.82rem', color: assessment?.strategicEvidenceNote ? '#334155' : '#94a3b8' }}>
-                    {assessment?.strategicEvidenceNote || '—'}
+                  <div style={{ fontSize: '0.82rem', color: strategicNote ? '#334155' : '#94a3b8' }}>
+                    {strategicNote || '—'}
                   </div>
                 </td>
               </tr>
@@ -272,8 +377,8 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {netScore !== null && netScore !== undefined ? `${netScore} / 5` : '—'}
                 </td>
                 <td>
-                  <div style={{ fontSize: '0.82rem', color: (assessment?.ownerRelationshipNetworkNote || assessment?.relationshipNetworkNote) ? '#334155' : '#94a3b8' }}>
-                    {assessment?.ownerRelationshipNetworkNote || assessment?.relationshipNetworkNote || '—'}
+                  <div style={{ fontSize: '0.82rem', color: networkNote ? '#334155' : '#94a3b8' }}>
+                    {networkNote || '—'}
                   </div>
                 </td>
               </tr>
@@ -293,8 +398,8 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {engScore !== null && engScore !== undefined ? `${engScore} / 5` : '—'}
                 </td>
                 <td>
-                  <div style={{ fontSize: '0.82rem', color: assessment?.engagementEvidenceNote ? '#334155' : '#94a3b8' }}>
-                    {assessment?.engagementEvidenceNote || '—'}
+                  <div style={{ fontSize: '0.82rem', color: engagementNote ? '#334155' : '#94a3b8' }}>
+                    {engagementNote || '—'}
                   </div>
                 </td>
               </tr>
@@ -314,8 +419,8 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                   {trustScore !== null && trustScore !== undefined ? `${trustScore} / 5` : '—'}
                 </td>
                 <td>
-                  <div style={{ fontSize: '0.82rem', color: (assessment?.trustEvidenceNote || assessment?.qualitativeEvidenceNote) ? '#334155' : '#94a3b8' }}>
-                    {assessment?.trustEvidenceNote || assessment?.qualitativeEvidenceNote || '—'}
+                  <div style={{ fontSize: '0.82rem', color: trustNote ? '#334155' : '#94a3b8' }}>
+                    {trustNote || '—'}
                   </div>
                 </td>
               </tr>
@@ -371,11 +476,11 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
                 <div style={{ color: '#475569' }}>{assessment.managerNote}</div>
               </div>
             )}
-            {assessment?.ownerNote && (
+            {plainOwnerOverallNote && (
               <div className={styles.alertBannerBlue} style={{ fontSize: '0.82rem' }}>
                 <Info size={16} style={{ flexShrink: 0 }} />
                 <div>
-                  <strong>Owner Final Note:</strong> {assessment.ownerNote}
+                  <strong>Owner Final Note:</strong> {plainOwnerOverallNote}
                 </div>
               </div>
             )}
@@ -636,11 +741,11 @@ export const RelationshipScoreBreakdown: React.FC<RelationshipScoreBreakdownProp
               </div>
             )}
 
-            {assessment?.ownerNote && (
+            {plainOwnerOverallNote && (
               <div className={styles.alertBannerBlue} style={{ fontSize: '0.82rem' }}>
                 <Info size={16} style={{ flexShrink: 0 }} />
                 <div>
-                  <strong>Owner Final Note:</strong> {assessment.ownerNote}
+                  <strong>Owner Final Note:</strong> {plainOwnerOverallNote}
                 </div>
               </div>
             )}

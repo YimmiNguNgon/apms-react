@@ -826,11 +826,21 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     setShowCreateModal(true);
   };
 
-  const openProfile = (profileId: string) => {
-    localStorage.setItem('apms-selected-company', profileId);
-    localStorage.setItem('apms-back-page', 'company-monitoring');
-    localStorage.removeItem('apms-context-project');
-    setActivePage?.(`company-detail?source=monitoring&companyId=${profileId}`);
+  const openProfile = (profileOrId: string | ProfileResponse) => {
+    let targetCompanyId = '';
+    if (typeof profileOrId === 'object' && profileOrId !== null) {
+      targetCompanyId = profileOrId.companyId || profileOrId.id;
+    } else {
+      const rawId = String(profileOrId);
+      const matched = managerProfiles.find(p => p.id === rawId || p.companyId === rawId);
+      targetCompanyId = matched?.companyId || matched?.id || rawId;
+    }
+    if (targetCompanyId) {
+      localStorage.setItem('apms-selected-company', targetCompanyId);
+      localStorage.setItem('apms-back-page', 'company-monitoring');
+      localStorage.removeItem('apms-context-project');
+      setActivePage?.(`company-detail?source=monitoring&companyId=${encodeURIComponent(targetCompanyId)}`);
+    }
   };
 
   const openManageModal = (assignment: CompanyMonitoringAssignmentResponse) => {
@@ -1168,7 +1178,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
       <td>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <button type="button" className="project-detail-btn" onClick={() => openProfile(profile.id)}>
+          <button type="button" className="project-detail-btn" onClick={() => openProfile(profile)}>
             View Profile
           </button>
           <button 

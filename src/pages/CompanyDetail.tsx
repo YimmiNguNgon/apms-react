@@ -1,10 +1,22 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
 import { companyProfileApi } from '../API/companyProfileApi';
 import { useUser, ROLES } from '../context/UserContext';
 import type { Role } from '../context/UserContext';
-import type { ProfileResponse, ProfileSourcesResponse, OwnerCompanyIntelligenceResponse, ProjectResponse, UpdateCompanyProfileRequest, CompanyProfileMember } from '../types/domain';
+import type {
+  ProfileResponse,
+  ProfileSourcesResponse,
+  OwnerCompanyIntelligenceResponse,
+  ProjectResponse,
+  UpdateCompanyProfileRequest,
+  CompanyProfileMember,
+  AdminUpdateEnterpriseBasicInfoRequest,
+  AdminUpdateEnterpriseBusinessFieldsRequest,
+  AdminEnterpriseProductRequest,
+  AdminUpdateEnterpriseLeadershipRequest,
+  AdminEnterpriseLeadershipMemberRequest,
+} from '../types/domain';
 import { RelationshipClosenessTab } from '../components/RelationshipCloseness/RelationshipClosenessTab';
 import {
   ListingTabBar,
@@ -24,6 +36,8 @@ interface CompanyDetailProps {
   setActivePage?: (page: string) => void;
   isOwnerProfile?: boolean;
   isDrawerMode?: boolean;
+  pageContext?: string;
+  initialProfile?: ProfileResponse;
 }
 
 const formatCompanyName = (name?: string | null): string => {
@@ -393,12 +407,13 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
   };
 };
 
-export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActivePage, isOwnerProfile, isDrawerMode }) => {
+export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActivePage, isOwnerProfile, isDrawerMode, pageContext, initialProfile }) => {
   const { t } = useTranslation('company-list');
   const { currentUser } = useUser();
-  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const isAdminMyEnterprise = currentUser?.role === ROLES.ADMIN && Boolean(isOwnerProfile) && pageContext === 'admin-my-enterprise';
+  const [profile, setProfile] = useState<ProfileResponse | null>(() => initialProfile ?? null);
   const [sources, setSources] = useState<ProfileSourcesResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialProfile);
   const [error, setError] = useState<string | null>(null);
   const [listingEditing, setListingEditing] = useState(false);
   const [tickerDraft, setTickerDraft] = useState('');
@@ -415,6 +430,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   // Inline editing states across Overview, Business Fields, and Leadership
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const isOverviewEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'overview');
+  const isBusinessFieldsEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'business-fields');
+  const isLeadershipEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'board');
+  const isExtendedEditing = isBusinessFieldsEditing;
   // Overview draft
   const [draftTradeName, setDraftTradeName] = useState('');
   const [draftLegalName, setDraftLegalName] = useState('');
@@ -503,6 +522,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [localStorageId, setLocalStorageId] = useState(() => localStorage.getItem('apms-selected-company') ?? '');
   const resolvedId = companyId ?? navContext.companyId ?? localStorageId;
 
+
+
   useEffect(() => {
     const handleCompanyChange = (event: Event) => {
       const customEvent = event as CustomEvent<{ companyProfileId: string }>;
@@ -538,6 +559,51 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [showAllProducts, setShowAllProducts] = useState(false);
 
   useEffect(() => {
+    if (isAdminMyEnterprise) {
+      if (initialProfile && reloadTrigger === 0) {
+        setProfile(initialProfile);
+        setSources(null);
+        setIntelligence(null);
+        setProjects([]);
+        setLoading(false);
+        return;
+      }
+
+      const controller = new AbortController();
+
+      void (async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+          const enterpriseProfile = await companyProfileApi.getAdminMyEnterprise();
+          if (controller.signal.aborted) return;
+          if (enterpriseProfile) {
+            setProfile(enterpriseProfile);
+            setSources(null);
+            setIntelligence(null);
+            setProjects([]);
+          } else {
+            setError('Không thể tải thông tin hồ sơ doanh nghiệp.');
+          }
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            setProfile(null);
+            setSources(null);
+            setIntelligence(null);
+            setProjects([]);
+            setError(err instanceof Error ? err.message : 'Không thể tải thông tin hồ sơ doanh nghiệp.');
+          }
+        } finally {
+          if (!controller.signal.aborted) setLoading(false);
+        }
+      })();
+
+      return () => {
+        controller.abort();
+      };
+    }
+
     if (!resolvedId) {
       setLoading(false);
       setError('Chưa chọn hồ sơ doanh nghiệp.');
@@ -611,7 +677,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return () => {
       controller.abort();
     };
-  }, [resolvedId, currentUser, reloadTrigger]);
+  }, [resolvedId, currentUser, reloadTrigger, isAdminMyEnterprise, initialProfile]);
 
   // Defensive Route / Tab Guard:
   // If company is not eligible for Relationship Closeness and current tab is relationship-closeness,
@@ -700,7 +766,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       currentUser.role === ROLES.ADMIN ||
       (currentUser.role === ROLES.MANAGER && profile?.responsibleManagerId != null && profile.responsibleManagerId === currentUser.id)
     ))
-  );
+  ) && !isOwnerProfile;
 
   const handleToggleVisibility = async () => {
     const targetId = profile?.companyId || profile?.id;
@@ -729,7 +795,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const handleStartEdit = () => {
     if (!profile) return;
-    // Stay on current tab if already on an editable tab, else default to overview
     if (activeTab !== 'overview' && activeTab !== 'business-fields' && activeTab !== 'board') {
       setActiveTab('overview');
     }
@@ -783,6 +848,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setDraftBusinessModel(initialBusinessModel);
 
     setDraftMembers(initialMembers);
+    if (activeTab === 'board' && initialMembers.length === 0) {
+      setDraftMembers([{ fullName: '', position: '', imageUrl: '', sourceUrl: '' }]);
+    }
 
     setEditBaseline({
       tradeName: initialTradeName,
@@ -808,6 +876,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setIsInlineEditing(true);
   };
 
+  const handleStartManageLeadership = () => {
+    if (!profile) return;
+    setActiveTab('board');
+    handleStartEdit();
+    if (!profile.companyMembers || profile.companyMembers.length === 0) {
+      setDraftMembers([{ fullName: '', position: '', imageUrl: '', sourceUrl: '' }]);
+    }
+  };
+
   const handleCancelEdit = () => {
     setIsInlineEditing(false);
     setEditBaseline(null);
@@ -816,7 +893,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const hasSemanticChanges = useMemo(() => {
     if (!isInlineEditing || !editBaseline) return false;
-    return (
+    const hasBasicChanges = (
       normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
       normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
       normalizeString(draftTaxCode) !== normalizeString(editBaseline.taxCode) ||
@@ -826,15 +903,32 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount) ||
       normalizeString(draftEmployeeTier) !== normalizeString(editBaseline.employeeTier) ||
       normalizeString(draftAddress) !== normalizeString(editBaseline.address) ||
-      normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel) ||
+      normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel)
+    );
+    const hasBusinessFieldsChanges = (
       !areStringListsEqual(draftIndustries, editBaseline.industries) ||
       !areStringListsEqual(draftMarkets, editBaseline.markets) ||
       !areStringListsEqual(draftTargetCustomers, editBaseline.targetCustomers) ||
-      !areProductsEqual(draftProducts, editBaseline.products) ||
-      !areMembersEqual(draftMembers, editBaseline.members)
+      !areProductsEqual(draftProducts, editBaseline.products)
+    );
+    const hasLeadershipChanges = !areMembersEqual(draftMembers, editBaseline.members);
+
+    if (isAdminMyEnterprise) {
+      if (activeTab === 'overview') return hasBasicChanges;
+      if (activeTab === 'business-fields') return hasBusinessFieldsChanges;
+      if (activeTab === 'board') return hasLeadershipChanges;
+      return false;
+    }
+
+    return (
+      hasBasicChanges ||
+      hasBusinessFieldsChanges ||
+      hasLeadershipChanges
     );
   }, [
     isInlineEditing,
+    isAdminMyEnterprise,
+    activeTab,
     editBaseline,
     draftTradeName,
     draftLegalName,
@@ -855,11 +949,89 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const handleSaveProfile = async () => {
     if (!profile || !editBaseline) return;
+    if (!hasSemanticChanges) return;
     setIsSavingProfile(true);
     setSaveProfileError(null);
 
-    const targetId = profile.companyId || profile.id;
     const parsedCount = normalizeNumber(draftEmployeeCount);
+
+    if (isAdminMyEnterprise) {
+      try {
+        let updated: ProfileResponse | null = null;
+
+        if (activeTab === 'overview') {
+          const basicPayload: AdminUpdateEnterpriseBasicInfoRequest = {
+            tradeName: normalizeString(draftTradeName) || undefined,
+            legalName: normalizeString(draftLegalName) || undefined,
+            taxCode: normalizeString(draftTaxCode) || undefined,
+            website: normalizeString(draftWebsite) || undefined,
+            email: normalizeString(draftEmail) || undefined,
+            phone: normalizeString(draftPhone) || undefined,
+            headOfficeAddress: normalizeString(draftAddress) || undefined,
+            employeeCount: parsedCount !== null ? parsedCount : undefined,
+            employeeTier: normalizeString(draftEmployeeTier) || undefined,
+            businessModel: normalizeString(draftBusinessModel) || undefined,
+            expectedMajorVersion: editBaseline.majorVersion,
+            expectedRevision: editBaseline.revision,
+          };
+          updated = await companyProfileApi.updateAdminEnterpriseBasicInfo(basicPayload);
+        } else if (activeTab === 'business-fields') {
+          const validProducts: AdminEnterpriseProductRequest[] = draftProducts
+            .map(p => ({
+              name: normalizeString(p.name),
+              category: normalizeString(p.category) || undefined,
+              description: normalizeString(p.description) || undefined,
+            }))
+            .filter(p => p.name);
+
+          const businessPayload: AdminUpdateEnterpriseBusinessFieldsRequest = {
+            industries: draftIndustries.map(s => s.trim()).filter(Boolean),
+            markets: draftMarkets.map(s => s.trim()).filter(Boolean),
+            targetCustomers: draftTargetCustomers.map(s => s.trim()).filter(Boolean),
+            products: validProducts,
+            expectedMajorVersion: editBaseline.majorVersion,
+            expectedRevision: editBaseline.revision,
+          };
+          updated = await companyProfileApi.updateAdminEnterpriseBusinessFields(businessPayload);
+        } else if (activeTab === 'board') {
+          const validMembers: AdminEnterpriseLeadershipMemberRequest[] = draftMembers
+            .map(m => ({
+              fullName: normalizeString(m.fullName),
+              position: normalizeString(m.position),
+              imageUrl: normalizeString(m.imageUrl) || null,
+              sourceUrl: normalizeString(m.sourceUrl) || null,
+              notes: normalizeString(m.notes) || null,
+            }))
+            .filter(m => m.fullName);
+
+          const leadershipPayload: AdminUpdateEnterpriseLeadershipRequest = {
+            members: validMembers,
+            expectedMajorVersion: editBaseline.majorVersion,
+            expectedRevision: editBaseline.revision,
+          };
+          updated = await companyProfileApi.updateAdminEnterpriseLeadership(leadershipPayload);
+        }
+
+        if (updated) {
+          setProfile(updated);
+        }
+        setReloadTrigger(prev => prev + 1);
+        setIsInlineEditing(false);
+        setEditBaseline(null);
+      } catch (err: any) {
+        console.error('Failed to update enterprise profile data:', err);
+        if (err.status === 409 || err.message?.includes('changed since you opened it')) {
+          setSaveProfileError('The enterprise profile has changed since you opened it. Please refresh before saving.');
+        } else {
+          setSaveProfileError(err.message || 'Failed to update enterprise profile. Please try again.');
+        }
+      } finally {
+        setIsSavingProfile(false);
+      }
+      return;
+    }
+
+    const targetId = profile.companyId || profile.id;
 
     const validProducts = draftProducts
       .map(p => ({
@@ -891,17 +1063,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
       headOfficeAddress: normalizeString(draftAddress),
       employeeCount: parsedCount !== null ? parsedCount : undefined,
-      employeeTier: normalizeString(draftEmployeeTier) || undefined,
-      industries: draftIndustries.map(s => s.trim()).filter(Boolean),
-      markets: draftMarkets.map(s => s.trim()).filter(Boolean),
-      targetCustomers: draftTargetCustomers.map(s => s.trim()).filter(Boolean),
-      productsServices: validProducts.map(p => p.name),
+      employeeTier: normalizeString(draftEmployeeTier),
+      businessModel: normalizeString(draftBusinessModel),
+      industries: draftIndustries,
+      markets: draftMarkets,
+      targetCustomers: draftTargetCustomers,
       products: validProducts,
-      businessModel: normalizeString(draftBusinessModel) || undefined,
       companyMembers: validMembers,
       expectedMajorVersion: editBaseline.majorVersion,
       expectedRevision: editBaseline.revision,
-      changeNote: 'Inline edit of company profile',
     };
 
     try {
@@ -925,6 +1095,39 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       setIsSavingProfile(false);
     }
   };
+
+  const handleTabChange = useCallback((newTab: ListingTabId) => {
+    if (isInlineEditing && hasSemanticChanges) {
+      const confirmDiscard = window.confirm('Bạn có thay đổi chưa lưu. Bạn có chắc muốn hủy các thay đổi và chuyển tab?');
+      if (!confirmDiscard) {
+        return;
+      }
+      handleCancelEdit();
+    } else if (isInlineEditing) {
+      handleCancelEdit();
+    }
+    setActiveTab(newTab);
+    if (typeof window !== 'undefined' && !isDrawerMode) {
+      try {
+        const hash = window.location.hash;
+        const qIndex = hash.indexOf('?');
+        const searchStr = qIndex !== -1 ? hash.slice(qIndex) : window.location.search;
+        const params = new URLSearchParams(searchStr || '');
+        params.set('tab', newTab);
+        const effectiveId = companyId || resolvedId;
+        if (effectiveId && !params.has('companyId')) {
+          params.set('companyId', effectiveId);
+        }
+        const base = hash.startsWith('#') ? (qIndex !== -1 ? hash.slice(0, qIndex) : hash) : '#company-detail';
+        const nextHash = `${base}?${params.toString()}`;
+        if (window.location.hash !== nextHash) {
+          window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [companyId, resolvedId, isDrawerMode, isInlineEditing, hasSemanticChanges]);
 
 
   const renderOverviewTab = () => {
@@ -975,7 +1178,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <div style={C.fieldGrid}>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Trade Name</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={inlineInputStyle}
@@ -990,7 +1193,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Legal Name</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={inlineInputStyle}
@@ -1005,7 +1208,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Tax Code</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={{ ...inlineInputStyle, fontFamily: 'monospace' }}
@@ -1163,7 +1366,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <div style={C.fieldGrid}>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Website</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={inlineInputStyle}
@@ -1184,7 +1387,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Contact Email</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="email"
                     style={inlineInputStyle}
@@ -1199,7 +1402,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Phone</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={inlineInputStyle}
@@ -1214,7 +1417,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Company Size</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     <input
                       type="number"
@@ -1240,7 +1443,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               </div>
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Head Office Address</span>
-                {isInlineEditing ? (
+                {isOverviewEditing ? (
                   <input
                     type="text"
                     style={inlineInputStyle}
@@ -1257,12 +1460,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           </section>
 
           {/* Panel 3: Description & Summary */}
-          {(isInlineEditing || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
+          {(isOverviewEditing || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
             <section style={C.card}>
               <div style={C.cardHeader}>
                 <h2 style={C.h2}>Introduction & Business Model</h2>
               </div>
-              {isInlineEditing ? (
+              {isOverviewEditing ? (
                 <textarea
                   style={{
                     width: '100%',
@@ -1389,7 +1592,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {!isInlineEditing && !hasData ? (
+        {!isExtendedEditing && !hasData ? (
           <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
             <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>No business field data available.</p>
           </div>
@@ -1400,7 +1603,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <section style={C.card}>
                 <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h2 style={C.h2}>Products & Services</h2>
-                  {isInlineEditing && (
+                  {isExtendedEditing && (
                     <button
                       type="button"
                       onClick={handleAddProduct}
@@ -1425,7 +1628,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   )}
                 </div>
 
-                {isInlineEditing ? (
+                {isExtendedEditing ? (
                   draftProducts.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {draftProducts.map((p, idx) => (
@@ -1570,7 +1773,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   <h2 style={C.h2}>Industry</h2>
                 </div>
                 <div>
-                  {isInlineEditing ? (
+                  {isExtendedEditing ? (
                     <CompactTagEditor
                       tags={draftIndustries}
                       onChange={setDraftIndustries}
@@ -1599,7 +1802,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {/* Markets */}
                   <div>
                     <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active market</span>
-                    {isInlineEditing ? (
+                    {isExtendedEditing ? (
                       <CompactTagEditor
                         tags={draftMarkets}
                         onChange={setDraftMarkets}
@@ -1622,7 +1825,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   {/* Customers */}
                   <div>
                     <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target customers</span>
-                    {isInlineEditing ? (
+                    {isExtendedEditing ? (
                       <CompactTagEditor
                         tags={draftTargetCustomers}
                         onChange={setDraftTargetCustomers}
@@ -1815,17 +2018,25 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           <div style={{ padding: '4px 0' }}>
             <BoardMembersTab
               companyId={resolvedId}
-              isInlineEditing={isInlineEditing}
-              members={isInlineEditing ? draftMembers : (profile?.companyMembers?.length ? profile.companyMembers : undefined)}
+              isInlineEditing={isLeadershipEditing}
+              members={isLeadershipEditing ? draftMembers : (isAdminMyEnterprise ? (profile?.companyMembers ?? []) : (profile?.companyMembers?.length ? profile.companyMembers : undefined))}
               onAddMember={handleAddMember}
               onUpdateMember={handleUpdateMember}
               onDeleteMember={handleDeleteMember}
               disabled={isSavingProfile}
+              canManage={isAdminMyEnterprise}
+              onStartManageLeadership={handleStartManageLeadership}
             />
           </div>
         );
-      case 'financials':
-        return <div style={{ padding: '4px 0' }}><FinancialsTab companyId={resolvedId} /></div>;
+      case 'financials': {
+        const canonicalFinancialCompanyId = profile?.companyId || profile?.id;
+        return (
+          <div style={{ padding: '4px 0' }}>
+            <FinancialsTab companyId={canonicalFinancialCompanyId || ''} />
+          </div>
+        );
+      }
       case 'news':
         return (
           <div style={{ padding: '4px 0' }}>
@@ -2120,7 +2331,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 
                 {/* Version History Button */}
-                {profile && (
+                {profile && (!isOwnerProfile || isAdminMyEnterprise) && (
                   <button
                     type="button"
                     onClick={() => setIsVersionHistoryModalOpen(true)}
@@ -2144,8 +2355,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   </button>
                 )}
 
-                {/* Direct Edit / Inline Edit Button for authorized Manager / Admin */}
-                {profile && Boolean(profile.canEditProfile) && (
+                {/* Direct Edit / Inline Edit Button for authorized Manager / Admin or Admin in My Enterprise */}
+                {profile && ((isAdminMyEnterprise ? ['overview', 'business-fields', 'board'].includes(activeTab) : (!isOwnerProfile && Boolean(profile.canEditProfile))) || isInlineEditing) && (
                   !isInlineEditing ? (
                     <button
                       type="button"
@@ -2164,10 +2375,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         gap: '4px',
                         boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
                       }}
-                      title="Directly Edit Official Company Profile"
+                      title={
+                        isAdminMyEnterprise
+                          ? (activeTab === 'business-fields' ? 'Edit Business Fields' : activeTab === 'board' ? 'Manage Leadership' : 'Edit Basic Information')
+                          : 'Directly Edit Official Company Profile'
+                      }
                     >
                       <Edit3 size={12} />
-                      Edit Profile
+                      {isAdminMyEnterprise
+                        ? (activeTab === 'business-fields' ? 'Edit Business Fields' : activeTab === 'board' ? 'Manage Leadership' : 'Edit Basic Information')
+                        : 'Edit Profile'}
                     </button>
                   ) : (
                     <>
@@ -2339,7 +2556,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       {/* Navigation Tabs */}
       <ListingTabBar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         companyId={resolvedId}
         userRole={currentUser?.role}
         isOwnerProfile={isOwnerProfile}

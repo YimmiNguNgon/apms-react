@@ -13,6 +13,8 @@ export interface BoardMembersTabProps {
   onUpdateMember?: (index: number, field: keyof CompanyProfileMember, value: string) => void;
   onDeleteMember?: (index: number) => void;
   disabled?: boolean;
+  canManage?: boolean;
+  onStartManageLeadership?: () => void;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -35,6 +37,8 @@ const BoardMembersTab: React.FC<BoardMembersTabProps> = ({
   onUpdateMember,
   onDeleteMember,
   disabled = false,
+  canManage = false,
+  onStartManageLeadership,
 }) => {
   // Only query listingDataApi if propMembers is not passed
   const { loading, error, data } = useListingTabData<CompanyBoardMember[]>(
@@ -101,7 +105,56 @@ const BoardMembersTab: React.FC<BoardMembersTabProps> = ({
       {/* Flat List of Members */}
       {effectiveMembers.length === 0 ? (
         <div style={{ background: '#FFFFFF', padding: '32px', textAlign: 'center', borderRadius: '10px', border: '1px solid #E2E8F0', color: '#64748B', fontSize: '0.75rem' }}>
-          No leadership members recorded.
+          <p style={{ margin: (canManage && onStartManageLeadership && !isInlineEditing) || (isInlineEditing && onAddMember) ? '0 0 12px' : 0, fontSize: '0.75rem', color: '#64748B' }}>
+            No leadership members recorded.
+          </p>
+          {canManage && onStartManageLeadership && !isInlineEditing && (
+            <button
+              type="button"
+              onClick={onStartManageLeadership}
+              style={{
+                background: '#2563EB',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
+              }}
+            >
+              <Plus size={13} />
+              + Add Leadership Member
+            </button>
+          )}
+          {isInlineEditing && onAddMember && (
+            <button
+              type="button"
+              onClick={onAddMember}
+              disabled={disabled}
+              style={{
+                background: '#2563EB',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
+              }}
+            >
+              <Plus size={13} />
+              + Add Member
+            </button>
+          )}
         </div>
       ) : isInlineEditing ? (
         /* Edit Mode: Compact editable card per member */

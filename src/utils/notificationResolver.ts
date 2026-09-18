@@ -27,7 +27,12 @@ export function resolveNotificationDestination(
     };
   }
 
-  if (actionType === 'RELATIONSHIP_ASSESSMENT_COMPLETED' && companyProfileId) {
+  if (
+    (actionType === 'RELATIONSHIP_ASSESSMENT_COMPLETED' ||
+      actionType === 'RELATIONSHIP_ASSESSMENT_INITIAL' ||
+      actionType === 'RELATIONSHIP_ASSESSMENT_UPDATED') &&
+    companyProfileId
+  ) {
     return {
       type: 'relationship-assessment',
       page: 'company-detail',

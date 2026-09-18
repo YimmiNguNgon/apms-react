@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Edit3, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
+import { isManualReport, resolveReportDocumentId } from './financialDocumentUtils';
 import styles from './FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -69,7 +70,8 @@ export default function FinancialReportCard({
   isManagerMode = false,
   hasTopReviewBanner = false,
 }: Props) {
-  const isManual = report.dataEntryMethod === 'MANUAL';
+  const isManual = isManualReport(report);
+  const documentId = resolveReportDocumentId(report);
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isExtracted = report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
   const isFailed = report.extractionStatus === 'FAILED';
@@ -201,18 +203,23 @@ export default function FinancialReportCard({
         </div>
       )}
 
-      {report.documentId ? (
+      {documentId ? (
         <button
           className={styles.cardPdfLink}
           type="button"
           disabled={isOpeningPdf}
           onClick={(event) => {
             stop(event);
-            onViewPdf(report.documentId!);
+            onViewPdf(documentId);
           }}
+          title={report.fileName || undefined}
         >
           {isOpeningPdf ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
-          {isOpeningPdf ? 'Opening PDF...' : (report.fileName || (isManual ? 'View Reference PDF' : 'View Source PDF'))}
+          {isOpeningPdf
+            ? 'Opening PDF...'
+            : isManual
+            ? 'View PDF tham khảo'
+            : 'View Source PDF'}
         </button>
       ) : isManual ? (
         <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px', padding: '3px 0' }}>

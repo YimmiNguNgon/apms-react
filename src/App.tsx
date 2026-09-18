@@ -37,6 +37,7 @@ const writeActivePageToLocation = (pageWithPossibleQuery: string) => {
   const nextHash = `#${pageWithPossibleQuery.replace(/^#\/?/, '')}`;
   if (window.location.hash !== nextHash) {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+    window.dispatchEvent(new Event('hashchange'));
   }
 };
 
@@ -59,8 +60,8 @@ import { CrawlerControl }  from './pages/CrawlerControl';
 // ── Admin pages ──
 import { UserManagement }    from './pages/UserManagement';
 import { ActivityAudit }     from './pages/ActivityAudit';
-import { SystemSettingsPage }from './pages/SystemSettings';
 import { OwnerCompanyProfilePage } from './pages/OwnerCompanyProfilePage';
+import { AdminMyEnterprisePage } from './pages/AdminMyEnterprisePage';
 
 // ── Owner pages ──
 import { EcosystemOverview } from './pages/EcosystemOverview';
@@ -315,6 +316,7 @@ const MainApp: React.FC = () => {
 
 
       case 'owner-company-profile': return <OwnerCompanyProfilePage />;
+      case 'admin-my-enterprise':   return <AdminMyEnterprisePage setActivePage={navigateToPage} />;
 
       // ── Director & Owner pages ──
       case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;

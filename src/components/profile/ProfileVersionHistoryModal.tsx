@@ -55,6 +55,8 @@ export const ProfileVersionHistoryModal: React.FC<ProfileVersionHistoryModalProp
         return { text: 'Project Profile Update', bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE' };
       case 'MANAGER_MANUAL_EDIT':
         return { text: 'Manager Manual Edit', bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' };
+      case 'ADMIN_MANUAL_EDIT':
+        return { text: 'Admin Manual Edit', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' };
       default:
         return { text: source || 'Profile Update', bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' };
     }

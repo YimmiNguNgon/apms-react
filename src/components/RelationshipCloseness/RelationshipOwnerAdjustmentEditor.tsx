@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
-  Clock,
   Loader2,
   Trash2,
   X,
@@ -52,44 +50,44 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
   isSubmitting = false,
   onFlushPendingSaveRef,
 }) => {
-  // Baseline Manager scores from source assessment or snapshot in draft
-  const mgrComm = assessment.commercialAwardedScore ?? sourceAssessment?.commercialAwardedScore ?? sourceAssessment?.commercialScore ?? 0;
-  const mgrCoop = assessment.cooperationScore ?? sourceAssessment?.cooperationScore ?? 0;
-  const mgrStrat = assessment.strategicScore ?? sourceAssessment?.strategicScore ?? 0;
-  const mgrNet = assessment.relationshipNetworkScore ?? sourceAssessment?.relationshipNetworkScore ?? 0;
-  const mgrEng = assessment.engagementScore ?? sourceAssessment?.engagementScore ?? 0;
-  const mgrQual = assessment.qualitativeScore ?? assessment.trustScore ?? sourceAssessment?.qualitativeScore ?? sourceAssessment?.trustScore ?? 0;
+  // Baseline current finalized scores from source assessment or snapshot in draft
+  const currentComm = assessment.commercialAwardedScore ?? sourceAssessment?.commercialAwardedScore ?? sourceAssessment?.commercialScore ?? 0;
+  const currentCoop = assessment.cooperationScore ?? sourceAssessment?.cooperationScore ?? 0;
+  const currentStrat = assessment.strategicScore ?? sourceAssessment?.strategicScore ?? 0;
+  const currentNet = assessment.relationshipNetworkScore ?? sourceAssessment?.relationshipNetworkScore ?? 0;
+  const currentEng = assessment.engagementScore ?? sourceAssessment?.engagementScore ?? 0;
+  const currentQual = assessment.qualitativeScore ?? assessment.trustScore ?? sourceAssessment?.qualitativeScore ?? sourceAssessment?.trustScore ?? 0;
 
   // Owner adjusted values state
   const [ownerComm, setOwnerComm] = useState<number>(
     assessment.ownerCommercialScore !== null && assessment.ownerCommercialScore !== undefined
       ? assessment.ownerCommercialScore
-      : mgrComm
+      : currentComm
   );
   const [ownerCoop, setOwnerCoop] = useState<number>(
     assessment.ownerCooperationScore !== null && assessment.ownerCooperationScore !== undefined
       ? assessment.ownerCooperationScore
-      : mgrCoop
+      : currentCoop
   );
   const [ownerStrat, setOwnerStrat] = useState<number>(
     assessment.ownerStrategicScore !== null && assessment.ownerStrategicScore !== undefined
       ? assessment.ownerStrategicScore
-      : mgrStrat
+      : currentStrat
   );
   const [ownerNet, setOwnerNet] = useState<number>(
     assessment.ownerRelationshipNetworkScore !== null && assessment.ownerRelationshipNetworkScore !== undefined
       ? assessment.ownerRelationshipNetworkScore
-      : mgrNet
+      : currentNet
   );
   const [ownerEng, setOwnerEng] = useState<number>(
     assessment.ownerEngagementScore !== null && assessment.ownerEngagementScore !== undefined
       ? assessment.ownerEngagementScore
-      : mgrEng
+      : currentEng
   );
   const [ownerQual, setOwnerQual] = useState<number>(
     assessment.ownerQualitativeScore !== null && assessment.ownerQualitativeScore !== undefined
       ? assessment.ownerQualitativeScore
-      : mgrQual
+      : currentQual
   );
 
   // Per-criterion notes (sole explanation mechanism)
@@ -129,8 +127,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
     }
     return initial;
   });
-
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   // Cancel confirmation modal
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -176,23 +172,21 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
     }
     const serializedNotes = Object.keys(otherNotes).length > 0 ? JSON.stringify(otherNotes) : undefined;
 
-    // Synthesize combined adjustment reason from changed criteria notes to fulfill backend requirement
-    const criteriaInfo: Array<{ key: string; name: string; isChanged: boolean }> = [
-      { key: 'commercial', name: 'Commercial Relationship', isChanged: v.ownerComm !== mgrComm },
-      { key: 'cooperation', name: 'Interaction & Cooperation', isChanged: v.ownerCoop !== mgrCoop },
-      { key: 'strategic', name: 'Strategic Importance', isChanged: v.ownerStrat !== mgrStrat },
-      { key: 'network', name: 'Relationship Network', isChanged: v.ownerNet !== mgrNet },
-      { key: 'engagement', name: 'Business Engagement', isChanged: v.ownerEng !== mgrEng },
-      { key: 'trust', name: 'Trust & Reliability', isChanged: v.ownerQual !== mgrQual },
+    // Synthesize combined adjustment reason from filled criteria notes
+    const criteriaInfo: Array<{ key: string; name: string }> = [
+      { key: 'commercial', name: 'Commercial Relationship' },
+      { key: 'cooperation', name: 'Interaction & Cooperation' },
+      { key: 'strategic', name: 'Strategic Importance' },
+      { key: 'network', name: 'Relationship Network' },
+      { key: 'engagement', name: 'Business Engagement' },
+      { key: 'trust', name: 'Trust & Reliability' },
     ];
 
-    const changedReasons: string[] = [];
+    const noteReasons: string[] = [];
     for (const c of criteriaInfo) {
-      if (c.isChanged) {
-        const noteText = (notes[c.key] ?? '').trim();
-        if (noteText) {
-          changedReasons.push(`${c.name}: ${noteText}`);
-        }
+      const noteText = (notes[c.key] ?? '').trim();
+      if (noteText) {
+        noteReasons.push(`${c.name}: ${noteText}`);
       }
     }
 
@@ -204,10 +198,10 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
       ownerRelationshipNetworkNote: (notes['network'] ?? '').trim() || undefined,
       ownerEngagementScore: v.ownerEng,
       ownerQualitativeScore: v.ownerQual,
-      ownerAdjustmentReason: changedReasons.length > 0 ? changedReasons.join('\n') : undefined,
+      ownerAdjustmentReason: noteReasons.length > 0 ? noteReasons.join('\n') : undefined,
       ownerNote: serializedNotes,
     };
-  }, [mgrComm, mgrCoop, mgrStrat, mgrNet, mgrEng, mgrQual]);
+  }, []);
 
   const triggerSave = useCallback(async () => {
     try {
@@ -264,7 +258,7 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
   const criteriaRows: Array<{
     key: V5CriterionKey;
     name: string;
-    mgrScore: number;
+    currentScore: number;
     ownerScore: number;
     isChanged: boolean;
     evidenceSummary?: React.ReactNode;
@@ -273,9 +267,9 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
       {
         key: 'commercial',
         name: 'Commercial Relationship',
-        mgrScore: mgrComm,
+        currentScore: currentComm,
         ownerScore: ownerComm,
-        isChanged: ownerComm !== mgrComm,
+        isChanged: ownerComm !== currentComm,
         evidenceSummary: commercialEvidence?.approvedContractCount ? (
           <span>
             <strong>Tham khảo:</strong> {commercialEvidence.approvedContractCount} hợp đồng đã duyệt
@@ -285,47 +279,47 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
       {
         key: 'cooperation',
         name: 'Interaction & Cooperation',
-        mgrScore: mgrCoop,
+        currentScore: currentCoop,
         ownerScore: ownerCoop,
-        isChanged: ownerCoop !== mgrCoop,
+        isChanged: ownerCoop !== currentCoop,
       },
       {
         key: 'strategic',
         name: 'Strategic Importance',
-        mgrScore: mgrStrat,
+        currentScore: currentStrat,
         ownerScore: ownerStrat,
-        isChanged: ownerStrat !== mgrStrat,
+        isChanged: ownerStrat !== currentStrat,
       },
       {
         key: 'network',
         name: 'Relationship Network',
-        mgrScore: mgrNet,
+        currentScore: currentNet,
         ownerScore: ownerNet,
-        isChanged: ownerNet !== mgrNet,
+        isChanged: ownerNet !== currentNet,
       },
       {
         key: 'engagement',
         name: 'Business Engagement',
-        mgrScore: mgrEng,
+        currentScore: currentEng,
         ownerScore: ownerEng,
-        isChanged: ownerEng !== mgrEng,
+        isChanged: ownerEng !== currentEng,
       },
       {
         key: 'trust',
         name: 'Trust & Reliability',
-        mgrScore: mgrQual,
+        currentScore: currentQual,
         ownerScore: ownerQual,
-        isChanged: ownerQual !== mgrQual,
+        isChanged: ownerQual !== currentQual,
       },
     ],
     [
       commercialEvidence?.approvedContractCount,
-      mgrComm,
-      mgrCoop,
-      mgrEng,
-      mgrNet,
-      mgrQual,
-      mgrStrat,
+      currentComm,
+      currentCoop,
+      currentEng,
+      currentNet,
+      currentQual,
+      currentStrat,
       ownerComm,
       ownerCoop,
       ownerEng,
@@ -335,16 +329,9 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
     ]
   );
 
-  // Check if at least one score differs from Manager baseline
+  // Check if at least one score differs from current baseline
   const isScoreChanged = criteriaRows.some((row) => row.isChanged);
-
-  // Check if every changed row has a non-empty note
-  const changedRowsWithoutNotes = criteriaRows.filter(
-    (row) => row.isChanged && !(criterionNotes[row.key] ?? '').trim()
-  );
-  const allChangedNotesFilled = isScoreChanged && changedRowsWithoutNotes.length === 0;
-
-  const canCompleteNow = isScoreChanged && allChangedNotesFilled;
+  const canCompleteNow = isScoreChanged;
 
   // Handle Score Change
   const handleScoreSelect = (criterion: string, score: number) => {
@@ -384,14 +371,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
   // Handle Complete
   const handleCompleteAdjustment = async () => {
     if (!isScoreChanged) return;
-
-    if (changedRowsWithoutNotes.length > 0) {
-      setAttemptedSubmit(true);
-      const firstMissing = changedRowsWithoutNotes[0];
-      const el = document.getElementById(`criterion-note-${firstMissing.key}`);
-      if (el) el.focus();
-      return;
-    }
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -447,7 +426,7 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
                     textTransform: 'uppercase',
                   }}
                 >
-                  Điểm Manager
+                  Điểm hiện tại
                 </th>
                 <th
                   style={{
@@ -481,8 +460,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
               {criteriaRows.map((row) => {
                 const isRowChanged = row.isChanged;
                 const rowNote = criterionNotes[row.key] ?? '';
-                const isNoteEmpty = !rowNote.trim();
-                const hasRowError = isRowChanged && isNoteEmpty && attemptedSubmit;
 
                 return (
                   <tr
@@ -504,7 +481,7 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
                       </div>
                     </td>
 
-                    {/* Column 2: Điểm Manager */}
+                    {/* Column 2: Điểm hiện tại */}
                     <td style={{ textAlign: 'center', padding: '12px 14px' }}>
                       <span
                         style={{
@@ -513,59 +490,40 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
                           color: '#475569',
                         }}
                       >
-                        {row.mgrScore} / 5
+                        {row.currentScore} / 5
                       </span>
                     </td>
 
-                    {/* Column 3: Điểm điều chỉnh (Dropdown with subtle amber highlight & "Đã thay đổi" badge) */}
+                    {/* Column 3: Điểm điều chỉnh (Dropdown with subtle amber highlight) */}
                     <td style={{ textAlign: 'center', padding: '10px 14px', verticalAlign: 'middle' }}>
-                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <select
-                          value={row.ownerScore}
-                          onChange={(e) => handleScoreSelect(row.key, Number(e.target.value))}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: 8,
-                            border: isRowChanged ? '1.5px solid #f59e0b' : '1px solid #cbd5e1',
-                            background: isRowChanged ? '#fffbeb' : '#ffffff',
-                            color: isRowChanged ? '#92400e' : '#0f172a',
-                            fontWeight: 700,
-                            fontSize: '0.9rem',
-                            cursor: 'pointer',
-                            outline: 'none',
-                            minWidth: 88,
-                            textAlign: 'center',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          {SCORE_OPTIONS.map((val) => (
-                            <option key={val} value={val}>
-                              {val} / 5
-                            </option>
-                          ))}
-                        </select>
-                        {isRowChanged && (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              fontSize: '0.68rem',
-                              fontWeight: 700,
-                              padding: '1px 6px',
-                              borderRadius: 999,
-                              background: '#fef3c7',
-                              color: '#b45309',
-                              border: '1px solid #fde68a',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Đã thay đổi
-                          </span>
-                        )}
-                      </div>
+                      <select
+                        value={row.ownerScore}
+                        onChange={(e) => handleScoreSelect(row.key, Number(e.target.value))}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          border: isRowChanged ? '1.5px solid #f59e0b' : '1px solid #cbd5e1',
+                          background: isRowChanged ? '#fffbeb' : '#ffffff',
+                          color: isRowChanged ? '#92400e' : '#0f172a',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                          cursor: 'pointer',
+                          outline: 'none',
+                          minWidth: 88,
+                          textAlign: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {SCORE_OPTIONS.map((val) => (
+                          <option key={val} value={val}>
+                            {val} / 5
+                          </option>
+                        ))}
+                      </select>
                     </td>
 
-                    {/* Column 4: Ghi chú theo tiêu chí (Bắt buộc khi đổi điểm) */}
-                    <td style={{ padding: '10px 18px', verticalAlign: 'top' }}>
+                    {/* Column 4: Ghi chú theo tiêu chí (Tùy chọn) */}
+                    <td style={{ padding: '10px 18px', verticalAlign: 'middle' }}>
                       <input
                         id={`criterion-note-${row.key}`}
                         type="text"
@@ -576,40 +534,15 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
                           width: '100%',
                           boxSizing: 'border-box',
                           borderRadius: 6,
-                          border: hasRowError
-                            ? '1.5px solid #ef4444'
-                            : isRowChanged && isNoteEmpty
-                            ? '1.5px solid #f59e0b'
-                            : '1px solid #cbd5e1',
-                          background: hasRowError
-                            ? '#fef2f2'
-                            : isRowChanged && isNoteEmpty
-                            ? '#fffdfa'
-                            : '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
                           outline: 'none',
                           transition: 'all 0.15s ease',
                         }}
-                        placeholder={
-                          isRowChanged
-                            ? 'Vui lòng ghi lý do điều chỉnh tiêu chí này...'
-                            : 'Ghi chú thêm nếu cần...'
-                        }
+                        placeholder="Ghi chú thêm nếu cần..."
                         value={rowNote}
                         onChange={(e) => handleCriterionNoteChange(row.key, e.target.value)}
                       />
-                      {/* Inline guidance / validation error */}
-                      {isRowChanged && isNoteEmpty && (
-                        <div
-                          style={{
-                            fontSize: '0.76rem',
-                            color: hasRowError ? '#ef4444' : '#b45309',
-                            marginTop: 4,
-                            fontWeight: 500,
-                          }}
-                        >
-                          Vui lòng ghi chú lý do điều chỉnh cho tiêu chí này.
-                        </div>
-                      )}
                     </td>
                   </tr>
                 );
@@ -634,31 +567,8 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
-        {/* Left: Auto-save status and Expected Score */}
+        {/* Left: Expected Score */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '0.84rem', color: '#64748b' }}>
-            {autoSaveStatus === 'SAVING' ? (
-              <span style={{ color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Loader2 size={14} className="spinIcon" /> Đang lưu tự động...
-              </span>
-            ) : autoSaveStatus === 'SAVED' ? (
-              <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <CheckCircle2 size={14} />
-                {lastSavedAt
-                  ? `Đã lưu tự động lúc ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-                  : 'Đã lưu tự động'}
-              </span>
-            ) : autoSaveStatus === 'DIRTY' ? (
-              <span style={{ color: '#ea580c', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Clock size={14} /> Có thay đổi chưa lưu
-              </span>
-            ) : (
-              <span style={{ color: '#dc2626', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <AlertCircle size={14} /> Lỗi lưu tự động
-              </span>
-            )}
-          </div>
-
           <div style={{ fontSize: '0.88rem', color: '#0f172a' }}>
             Điểm dự kiến: <strong>{totalAdjustedScore}/100</strong> · Rank{' '}
             <strong style={{ color: rankMeta.color }}>{adjustedRank}</strong>
@@ -666,7 +576,13 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
         </div>
 
         {/* Right: Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {!isScoreChanged && (
+            <span style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic' }}>
+              Chưa có thay đổi so với bản đánh giá hiện tại.
+            </span>
+          )}
+
           <button
             type="button"
             onClick={() => setIsCancelModalOpen(true)}

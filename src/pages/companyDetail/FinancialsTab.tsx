@@ -18,6 +18,11 @@ import type {
   FinancialReportEntry,
 } from '../../types/domain';
 import { formatFinancialUnit } from '../../components/FinancialResearch/canonicalFinancialTaxonomy';
+import {
+  isManualReport,
+  normalizeDocumentId,
+  resolveReportDocumentId,
+} from '../../components/FinancialResearch/financialDocumentUtils';
 import styles from './FinancialsTab.module.css';
 
 interface FinancialsTabProps {
@@ -31,6 +36,43 @@ interface ReportWithContext {
   projectId: number;
   taskId: number;
 }
+
+/**
+ * Resolves the official Manager approval date string and reviewer name for a published Financial report.
+ */
+const resolveReportApprovalInfo = (report: FinancialReportEntry): {
+  approvedDate: string | null;
+  reviewerName: string | null;
+} => {
+  if (report.reviewStatus === 'APPROVED' && report.reviewedAt) {
+    return {
+      approvedDate: report.reviewedAt,
+      reviewerName: report.reviewedByName || null,
+    };
+  }
+  return {
+    approvedDate: null,
+    reviewerName: null,
+  };
+};
+
+/**
+ * Formats a timestamp into DD/MM/YYYY.
+ * If empty or invalid, returns '—'.
+ */
+const formatApprovalDate = (dateStr?: string | null): string => {
+  if (!dateStr || !dateStr.trim()) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '—';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return '—';
+  }
+};
 
 const formatDate = (dateStr?: string | null) => {
   if (!dateStr) return 'N/A';
@@ -149,11 +191,13 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     data: researchList,
     isLoading,
     isError,
+    error,
     refetch,
     isFetching,
   } = useQuery({
     queryKey: ['company-profile-approved-financials', companyId],
     queryFn: () => financialResearchApi.getApprovedFinancials(companyId).then(res => res.data),
+    enabled: Boolean(companyId),
     staleTime: 30_000,
   });
 
@@ -311,12 +355,18 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     });
   };
 
-  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+  const [openingReportId, setOpeningReportId] = useState<string | null>(null);
 
-  const handleViewPdf = async (projectId: number, documentId: string) => {
+  const handleViewPdf = async (
+    projectId: number,
+    report: FinancialReportEntry,
+    explicitDocumentId?: string | null,
+  ) => {
+    const documentId = normalizeDocumentId(explicitDocumentId) || resolveReportDocumentId(report);
     if (!documentId) return;
+
     try {
-      setOpeningDocId(documentId);
+      setOpeningReportId(report.id);
       const token =
         localStorage.getItem('accessToken') ||
         localStorage.getItem('apms-token') ||
@@ -356,12 +406,12 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
         '_blank',
       );
     } finally {
-      setOpeningDocId(null);
+      setOpeningReportId(null);
     }
   };
 
-  // 1. Loading State
-  if (isLoading) {
+  // 1. Loading State (resolving companyId or query in progress)
+  if (!companyId || isLoading) {
     return (
       <div className={styles.container}>
         <div className={styles.headerSection}>
@@ -385,6 +435,9 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
 
   // 2. Error State
   if (isError) {
+    const errorMessage = error instanceof Error
+      ? error.message
+      : 'There was an error communicating with the server. Please try again.';
     return (
       <div className={styles.container}>
         <div className={styles.headerSection}>
@@ -401,7 +454,7 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
           </div>
           <h3 className={styles.stateTitle}>Unable to load financial reports</h3>
           <p className={styles.stateSubtitle}>
-            There was an error communicating with the server. Please try again.
+            {errorMessage}
           </p>
           <button className={styles.primaryButton} type="button" onClick={() => void refetch()}>
             <RefreshCw size={14} />
@@ -533,6 +586,18 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                   (report.publicationDate ? new Date(report.publicationDate).getFullYear() : '—');
                 const periodLabel = report.reportingPeriod?.period || '—';
                 const reportTypeFormatted = formatReportType(report.reportType);
+                const isManual = isManualReport(report);
+                const documentId = resolveReportDocumentId(report);
+                const hasDocument = Boolean(documentId);
+                const isOpening = openingReportId !== null && openingReportId === report.id;
+
+                const { approvedDate, reviewerName } = resolveReportApprovalInfo(report);
+                const formattedApprovalDate = formatApprovalDate(approvedDate);
+                const approvalTooltip = approvedDate
+                  ? reviewerName
+                    ? `Ngày duyệt: ${formattedApprovalDate} · ${reviewerName}`
+                    : `Ngày duyệt: ${formattedApprovalDate}`
+                  : 'Chưa có ngày duyệt';
 
                 return (
                   <div
@@ -562,40 +627,57 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                         </div>
 
                         <div className={styles.reportMetaGroup}>
-                          <span className={styles.metaDate}>
+                          <span
+                            className={styles.metaDate}
+                            title={approvalTooltip}
+                          >
                             <Calendar size={13} />
-                            {formatDate(report.publicationDate)}
+                            {formattedApprovalDate}
                           </span>
                           <span className={styles.metaYearBadge}>{yearLabel}</span>
                           <span className={styles.metaPeriodBadge}>{periodLabel}</span>
+                          {reportTypeFormatted && (
+                            <span className={styles.reportTypePill}>{reportTypeFormatted}</span>
+                          )}
                         </div>
 
                         <span className={styles.metaDot}>•</span>
 
                         <div className={styles.reportTitleGroup}>
                           <h5 className={styles.reportTitle}>{report.title}</h5>
+                          <span className={styles.metricsCountBadgeCompact}>
+                            {metrics.length} metric{metrics.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
                       </div>
 
-                      <div className={styles.reportRowRight}>
-                        <button
-                          type="button"
-                          className={styles.viewReportBtn}
-                          disabled={openingDocId === report.documentId}
-                          onClick={e => {
-                            e.stopPropagation();
-                            handleViewPdf(projectId, report.documentId);
-                          }}
-                        >
-                          {openingDocId === report.documentId ? (
-                            <Loader2 size={13} className={styles.spin} />
-                          ) : (
-                            <FileText size={13} />
-                          )}
-                          <span>{openingDocId === report.documentId ? 'Opening...' : 'View Report'}</span>
-                          <ExternalLink size={11} />
-                        </button>
-                      </div>
+                      {hasDocument && (
+                        <div className={styles.reportRowRight}>
+                          <button
+                            type="button"
+                            className={styles.viewReportBtn}
+                            disabled={isOpening}
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleViewPdf(projectId, report);
+                            }}
+                          >
+                            {isOpening ? (
+                              <Loader2 size={13} className={styles.spin} />
+                            ) : (
+                              <FileText size={13} />
+                            )}
+                            <span>
+                              {isOpening
+                                ? 'Opening...'
+                                : isManual
+                                ? 'View PDF tham khảo'
+                                : 'View Report'}
+                            </span>
+                            <ExternalLink size={11} />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Expanded Section with Metrics Table */}
@@ -656,7 +738,8 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                                               e.stopPropagation();
                                               handleViewPdf(
                                                 projectId,
-                                                metric.source?.documentId || report.documentId,
+                                                report,
+                                                metric.source?.documentId,
                                               );
                                             }}
                                             title="Open source document"

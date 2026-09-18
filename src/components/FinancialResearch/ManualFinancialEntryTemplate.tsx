@@ -6,6 +6,12 @@ import {
   type CanonicalMetricDefinition,
 } from './canonicalFinancialTaxonomy';
 import {
+  isFinancialValueEntered,
+  isValidFinancialValue,
+  parseFinancialValue,
+  FINANCIAL_NUMERIC_ERROR_MESSAGE,
+} from './financialValidation';
+import {
   AlertCircle,
   Building2,
   CheckCircle2,
@@ -184,10 +190,10 @@ export default function ManualFinancialEntryTemplate({
 
   // Section filled counters
   const totalBalanceSheet = CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BALANCE_SHEET');
-  const bsFilledCount = totalBalanceSheet.filter((m) => draftValues[m.code]?.value?.trim()).length;
-  const isFilledCount = incomeStatementMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
-  const bankFilledCount = bankingMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
-  const ratioFilledCount = ratioMetrics.filter((m) => draftValues[m.code]?.value?.trim()).length;
+  const bsFilledCount = totalBalanceSheet.filter((m) => isFinancialValueEntered(draftValues[m.code]?.value)).length;
+  const isFilledCount = incomeStatementMetrics.filter((m) => isFinancialValueEntered(draftValues[m.code]?.value)).length;
+  const bankFilledCount = bankingMetrics.filter((m) => isFinancialValueEntered(draftValues[m.code]?.value)).length;
+  const ratioFilledCount = ratioMetrics.filter((m) => isFinancialValueEntered(draftValues[m.code]?.value)).length;
 
   const totalFilledCanonical = bsFilledCount + isFilledCount + bankFilledCount + ratioFilledCount;
 
@@ -213,24 +219,25 @@ export default function ManualFinancialEntryTemplate({
   const handleSave = async () => {
     setValidationError(null);
 
-    // Filter meaningful rows only (Sparse persistence)
-    const enteredEntries = Object.entries(draftValues).filter(
-      ([_, item]) => item && item.value !== undefined && item.value.trim() !== ''
-    );
+    // Filter meaningful rows only (Sparse persistence: entered values)
+    const enteredEntries = Object.entries(draftValues)
+      .map(([code, item]) => ({ code, item, parsed: parseFinancialValue(item?.value) }))
+      .filter(({ parsed }) => parsed.entered);
 
     if (enteredEntries.length === 0 && customMetrics.length === 0) {
       setValidationError('Vui lòng nhập giá trị cho ít nhất một chỉ số để lưu.');
       return;
     }
 
-    // Client-side numeric validation
-    for (const [code, item] of enteredEntries) {
-      const def = CANONICAL_FINANCIAL_TAXONOMY.find((m) => m.code === code);
-      const cleanVal = item.value.replace(/,/g, '').trim();
-      if (Number.isNaN(Number(cleanVal))) {
-        setValidationError(`Giá trị không hợp lệ cho chỉ số "${def?.label || code}": "${item.value}".`);
-        return;
-      }
+    // Client-side strict numeric validation
+    const invalidEntries = enteredEntries.filter(({ parsed }) => !parsed.valid);
+    if (invalidEntries.length > 0) {
+      const firstInvalid = invalidEntries[0];
+      const inputEl = document.getElementById(`metric-input-${firstInvalid.code}`);
+      inputEl?.focus();
+      const rowEl = document.getElementById(`metric-row-${firstInvalid.code}`);
+      rowEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
     }
 
     const periodPayload = report.reportingPeriod ? {
@@ -240,10 +247,10 @@ export default function ManualFinancialEntryTemplate({
       asOfDate: report.reportingPeriod.asOfDate || null,
     } : null;
 
-    const payload: CreateFinancialMetricRequest[] = enteredEntries.map(([code, item]) => {
+    const payload: CreateFinancialMetricRequest[] = enteredEntries.map(({ code, item, parsed }) => {
       const def = CANONICAL_FINANCIAL_TAXONOMY.find((m) => m.code === code);
-      const cleanVal = item.value.replace(/,/g, '').trim();
-      const numVal = Number(cleanVal);
+      const normalizedStr = parsed.normalizedString ?? item.value.trim();
+      const numVal = Number(normalizedStr);
 
       return {
         reportId: report.id,
@@ -252,7 +259,7 @@ export default function ManualFinancialEntryTemplate({
         label: def?.label || code,
         originalLabel: def?.label || code,
         statementType: def?.statementType || 'BALANCE_SHEET',
-        rawValue: cleanVal,
+        rawValue: normalizedStr,
         rawUnit: item.unit,
         value: Number.isNaN(numVal) ? undefined : numVal,
         unit: item.unit,
@@ -270,7 +277,9 @@ export default function ManualFinancialEntryTemplate({
 
   const renderMetricRow = (metric: CanonicalMetricDefinition, idx: number, total: number) => {
     const current = draftValues[metric.code] || { value: '', unit: metric.defaultUnit };
-    const isFilled = Boolean(current.value?.trim());
+    const parsed = parseFinancialValue(current.value);
+    const isFilled = parsed.entered;
+    const hasError = parsed.entered && !parsed.valid;
     const persisted = existingMetrics.find((m) => m.metricCode === metric.code);
 
     return (
@@ -292,6 +301,7 @@ export default function ManualFinancialEntryTemplate({
         <td style={{ padding: '6px 12px', width: '220px' }}>
           <input
             type="text"
+            inputMode="decimal"
             id={`metric-input-${metric.code}`}
             disabled={!canEdit || isSaving}
             value={current.value}
@@ -300,16 +310,22 @@ export default function ManualFinancialEntryTemplate({
             style={{
               width: '100%',
               padding: '6px 10px',
-              border: isFilled ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+              border: hasError ? '1.5px solid #ef4444' : isFilled ? '1px solid #3b82f6' : '1px solid #cbd5e1',
               borderRadius: 6,
               fontSize: 13,
               outline: 'none',
               background: canEdit ? '#ffffff' : '#f1f5f9',
               boxSizing: 'border-box',
               fontWeight: isFilled ? 600 : 400,
-              color: isFilled ? '#0f172a' : '#475569',
+              color: hasError ? '#b91c1c' : isFilled ? '#0f172a' : '#475569',
             }}
           />
+          {hasError && (
+            <div style={{ color: '#ef4444', fontSize: 11, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertCircle size={12} style={{ flexShrink: 0 }} />
+              <span>{FINANCIAL_NUMERIC_ERROR_MESSAGE}</span>
+            </div>
+          )}
         </td>
         <td style={{ padding: '6px 12px', width: '130px' }}>
           <select
@@ -772,7 +788,7 @@ export default function ManualFinancialEntryTemplate({
               style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Plus size={15} />
-              <span>+ Thêm chỉ số khác</span>
+              <span>Thêm chỉ số khác</span>
             </button>
           )}
           {canEdit && (

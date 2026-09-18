@@ -13,7 +13,6 @@ import {
   History,
   Info,
   Loader2,
-  MessageSquare,
   PlusCircle,
   Sliders,
   TrendingDown,
@@ -606,7 +605,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
 
     // Case 3: Finalized assessment exists and no active draft
     if (latestFinalizedAssessment && !activeDraft) {
-      const canAdjust = latestFinalizedAssessment.canAdjust ?? (latestFinalizedAssessment.assessmentType !== 'OWNER_ADJUSTMENT');
+      const canAdjust = latestFinalizedAssessment.canAdjust ?? true;
       const canReassess = latestFinalizedAssessment.canCreateNewVersion === true;
 
       return (
@@ -789,7 +788,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
 
           <p className={styles.firstTimeEmptyDesc}>
             {isOwner
-              ? 'Doanh nghiệp này chưa có kết quả đánh giá mức độ thân thiết. Khi BD Manager thực hiện và hoàn tất đánh giá ban đầu, kết quả chính thức sẽ hiển thị tại đây để bạn thẩm định và điều chỉnh nếu cần.'
+              ? 'Đánh giá ban đầu sẽ được thực hiện bởi BD Manager. Sau khi hoàn tất, bạn có thể xem và điều chỉnh tại đây.'
               : 'Doanh nghiệp này chưa có đánh giá mức độ thân thiết. Thực hiện đánh giá để xác định mức độ quan hệ hiện tại và theo dõi sự thay đổi qua các lần đánh giá sau.'}
           </p>
 
@@ -918,34 +917,6 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
                       )}
                     </div>
                   </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Note Preview Card (Manager/Owner final notes) */}
-          {(displayAssessment.managerNote || displayAssessment.ownerNote) && (
-            <div className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div className={styles.titleGroup}>
-                  <MessageSquare size={18} style={{ color: '#2563eb' }} />
-                  <h3 className={styles.cardTitle}>Ghi chú đánh giá chính thức</h3>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.84rem' }}>
-                {displayAssessment.managerNote && (
-                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
-                    <strong style={{ color: '#334155' }}>Manager Note: </strong>
-                    <span style={{ color: '#475569' }}>{displayAssessment.managerNote}</span>
-                  </div>
-                )}
-
-                {displayAssessment.ownerNote && (
-                  <div style={{ background: '#f0fdf4', padding: '10px 12px', borderRadius: 8, border: '1px solid #dcfce7' }}>
-                    <strong style={{ color: '#166534' }}>Owner Note: </strong>
-                    <span style={{ color: '#15803d' }}>{displayAssessment.ownerNote}</span>
-                  </div>
                 )}
               </div>
             </div>

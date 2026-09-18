@@ -51,6 +51,8 @@ import {
   resolveFinancialMetricSection,
   FINANCIAL_STATEMENT_SECTIONS,
 } from './canonicalFinancialTaxonomy';
+import { parseFinancialValue } from './financialValidation';
+import { isManualReport, resolveReportDocumentId } from './financialDocumentUtils';
 import {
   FinancialMetricsTable,
   FinancialTableHeader,
@@ -270,15 +272,19 @@ function SelectedReportSummary({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {report.documentId && onViewPdf && (
+          {resolveReportDocumentId(report) && onViewPdf && (
             <button
               className={styles.secondaryButton}
               type="button"
-              disabled={openingPdfId === report.documentId}
-              onClick={() => onViewPdf(report.documentId)}
+              disabled={Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)}
+              onClick={() => onViewPdf(resolveReportDocumentId(report)!)}
             >
-              {openingPdfId === report.documentId ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
-              {openingPdfId === report.documentId ? 'Opening PDF...' : 'View Source PDF'}
+              {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report) ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
+              {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)
+                ? 'Opening PDF...'
+                : isManualReport(report)
+                ? 'View PDF tham khảo'
+                : 'View Source PDF'}
             </button>
           )}
           {isExtracting && canEdit && onCancel && (
@@ -843,19 +849,19 @@ function ExtractedMetricsPanel({
 
         <div className={styles.toolbarActions}>
           {/* View PDF / Attach PDF */}
-          {report.documentId ? (
+          {resolveReportDocumentId(report) ? (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <button
                 className={styles.secondaryButton}
                 type="button"
-                disabled={openingPdfId === report.documentId}
-                onClick={() => onViewPdf(report.documentId!)}
+                disabled={Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)}
+                onClick={() => onViewPdf(resolveReportDocumentId(report)!)}
               >
-                {openingPdfId === report.documentId ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
-                {openingPdfId === report.documentId
+                {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report) ? <Loader2 size={14} className={styles.spinIcon} /> : <FileText size={14} />}
+                {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)
                   ? 'Opening PDF...'
-                  : report.dataEntryMethod === 'MANUAL'
-                  ? 'View Reference PDF'
+                  : isManualReport(report)
+                  ? 'View PDF tham khảo'
                   : 'View Source PDF'}
               </button>
               {report.dataEntryMethod === 'MANUAL' && canEditThisReport && !isManagerMode && onReplaceFile && (
@@ -930,17 +936,6 @@ function ExtractedMetricsPanel({
                       <span>Xem bảng tổng hợp</span>
                     </button>
                   )}
-                  {canEditThisReport && !isManagerMode && (
-                    <button
-                      className={styles.secondaryButton}
-                      type="button"
-                      onClick={onAddManualMetric}
-                      style={{ fontSize: 12.5, height: 32, display: 'flex', alignItems: 'center', gap: 5 }}
-                    >
-                      <Plus size={14} />
-                      <span>+ Thêm chỉ số khác</span>
-                    </button>
-                  )}
                 </>
               ) : (
                 canEditThisReport && !isManagerMode && (
@@ -952,7 +947,7 @@ function ExtractedMetricsPanel({
                       style={{ fontSize: 12.5, height: 32, display: 'flex', alignItems: 'center', gap: 5 }}
                     >
                       <Plus size={14} />
-                      <span>+ Thêm chỉ số khác</span>
+                      <span>Thêm chỉ số khác</span>
                     </button>
                     <button
                       className={styles.primaryButton}
@@ -1452,7 +1447,7 @@ function FinancialReportsPanel({
                       onDelete={onDelete}
                       onEdit={onEdit}
                       onViewPdf={onViewPdf}
-                      isOpeningPdf={openingPdfId === report.documentId}
+                      isOpeningPdf={Boolean(openingPdfId) && Boolean(resolveReportDocumentId(report)) && openingPdfId === resolveReportDocumentId(report)}
                       isManagerMode={isManagerMode}
                       hasTopReviewBanner={hasTopReviewBanner}
                     />
@@ -2562,6 +2557,25 @@ export default function FinancialResearchWorkbench({
               });
               return;
             }
+
+            // Validate that all metrics in selected manual reports have valid numeric values
+            for (const report of selectedSubmissionReports) {
+              if (report.dataEntryMethod === 'MANUAL') {
+                const reportMetrics = selectedSubmissionMetrics.filter(m => metricBelongsToReport(m, report));
+                for (const m of reportMetrics) {
+                  const val = m.rawValue ?? m.normalizedValue;
+                  const parsed = parseFinancialValue(val);
+                  if (parsed.entered && !parsed.valid) {
+                    setToast({
+                      message: `Báo cáo "${report.title}" chứa chỉ số "${m.label}" có giá trị không hợp lệ. Giá trị phải là số.`,
+                      type: 'error',
+                    });
+                    return;
+                  }
+                }
+              }
+            }
+
             submitTaskMutation.mutate();
           }}
         />

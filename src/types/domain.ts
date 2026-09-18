@@ -169,7 +169,52 @@ export type CompanyProfileChangeSource =
   | 'INITIAL_PROFILE_CREATION'
   | 'MONITORING_PROPOSAL_APPROVED'
   | 'PROJECT_PROFILE_UPDATE'
-  | 'MANAGER_MANUAL_EDIT';
+  | 'MANAGER_MANUAL_EDIT'
+  | 'ADMIN_MANUAL_EDIT';
+
+export interface AdminUpdateEnterpriseBasicInfoRequest {
+  tradeName?: string;
+  legalName?: string;
+  taxCode?: string;
+  website?: string;
+  email?: string;
+  phone?: string;
+  employeeCount?: number;
+  employeeTier?: string;
+  headOfficeAddress?: string;
+  businessModel?: string;
+  expectedMajorVersion?: number;
+  expectedRevision?: number;
+}
+
+export interface AdminEnterpriseProductRequest {
+  name: string;
+  category?: string;
+  description?: string;
+}
+
+export interface AdminUpdateEnterpriseBusinessFieldsRequest {
+  industries?: string[];
+  markets?: string[];
+  targetCustomers?: string[];
+  products?: AdminEnterpriseProductRequest[];
+  expectedMajorVersion?: number;
+  expectedRevision?: number;
+}
+
+export interface AdminEnterpriseLeadershipMemberRequest {
+  fullName: string;
+  position: string;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
+}
+
+export interface AdminUpdateEnterpriseLeadershipRequest {
+  members?: AdminEnterpriseLeadershipMemberRequest[];
+  expectedMajorVersion?: number;
+  expectedRevision?: number;
+}
 
 export interface CompanyProfileVersionResponse {
   id: string;

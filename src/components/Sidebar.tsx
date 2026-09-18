@@ -72,6 +72,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'menu.system',
     items: [
       { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
+      { id: 'admin-my-enterprise',   label: 'menu.myEnterprise' },
     ],
   },
 ];
@@ -272,7 +273,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, col
       case 'audit-logs': return <FileText size={18} />;
       case 'system-settings': return <Settings size={18} />;
       case 'risk-monitoring': return <AlertTriangle size={18} />;
-      case 'owner-profile': return <Landmark size={18} />;
+      case 'owner-profile':
+      case 'admin-my-enterprise': return <Landmark size={18} />;
       case 'partner-ecosystem': return <Briefcase size={18} />;
       case 'competitor-intelligence': return <Target size={18} />;
       case 'strategic-reports': return <PieChart size={18} />;

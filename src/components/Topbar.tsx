@@ -70,6 +70,7 @@ const PAGE_LABEL_KEYS: Record<string, string> = {
   permissions: 'page.permissions',
   'audit-logs': 'page.auditLogs',
   'owner-company-profile': 'page.ownerCompanyProfile',
+  'admin-my-enterprise': 'page.myEnterprise',
   'partner-ecosystem': 'page.partnerEcosystem',
   'competitor-intelligence': 'page.competitorIntelligence',
   'relationship-map': 'page.relationshipMap',
@@ -174,11 +175,16 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     const handleFcmMessage = () => {
       void fetchNotifications();
     };
+    const handleNotificationsUpdated = () => {
+      void fetchNotifications();
+    };
     window.addEventListener('apms-fcm-message', handleFcmMessage);
+    window.addEventListener('apms-notifications-updated', handleNotificationsUpdated);
 
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('apms-fcm-message', handleFcmMessage);
+      window.removeEventListener('apms-notifications-updated', handleNotificationsUpdated);
     };
   }, [currentUser?.id]);
 
@@ -195,6 +201,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
     setUnreadCount(0);
     try {
       await api.patch('/notifications/read-all', {});
+      window.dispatchEvent(new CustomEvent('apms-notifications-updated'));
     } catch (error) {
       console.warn('Cannot mark all notifications as read:', error);
       void fetchNotifications();
@@ -211,6 +218,7 @@ export const Topbar: React.FC<TopbarProps> = ({ activePage, setActivePage }) => 
       setUnreadCount((prev) => Math.max(0, prev - 1));
       try {
         await api.patch(`/notifications/${item.id}/read`, {});
+        window.dispatchEvent(new CustomEvent('apms-notifications-updated'));
       } catch (error) {
         console.warn('Cannot mark notification as read:', error);
         void fetchNotifications();

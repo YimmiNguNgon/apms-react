@@ -1,5 +1,12 @@
 import { api, type PageResponse } from '../services/api';
-import type { ProfileResponse, UpdateCompanyProfileRequest, CompanyProfileVersionResponse } from '../types/domain';
+import type {
+  ProfileResponse,
+  UpdateCompanyProfileRequest,
+  CompanyProfileVersionResponse,
+  AdminUpdateEnterpriseBasicInfoRequest,
+  AdminUpdateEnterpriseBusinessFieldsRequest,
+  AdminUpdateEnterpriseLeadershipRequest,
+} from '../types/domain';
 
 export const companyProfileApi = {
   getCompanyProfile: async (companyIdOrProfileId: string) => {
@@ -30,4 +37,25 @@ export const companyProfileApi = {
     const res = await api.patch<ProfileResponse>(`/company-profiles/${companyIdOrProfileId}/visibility`, { visibility });
     return res.data;
   },
+
+  getAdminMyEnterprise: async () => {
+    const res = await api.get<ProfileResponse>('/admin/my-enterprise');
+    return res.data;
+  },
+
+  updateAdminEnterpriseBasicInfo: async (payload: AdminUpdateEnterpriseBasicInfoRequest) => {
+    const res = await api.patch<ProfileResponse>('/admin/my-enterprise/basic-info', payload);
+    return res.data;
+  },
+
+  updateAdminEnterpriseBusinessFields: async (payload: AdminUpdateEnterpriseBusinessFieldsRequest) => {
+    const res = await api.patch<ProfileResponse>('/admin/my-enterprise/business-fields', payload);
+    return res.data;
+  },
+
+  updateAdminEnterpriseLeadership: async (payload: AdminUpdateEnterpriseLeadershipRequest) => {
+    const res = await api.put<ProfileResponse>('/admin/my-enterprise/leadership', payload);
+    return res.data;
+  },
 };
+
