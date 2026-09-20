@@ -287,7 +287,7 @@ export const RelationshipScoreSummary: React.FC<RelationshipScoreSummaryProps> =
 
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>Assessment Version:</span>
-            <span className={styles.metaVersionVal}>V{assessment.versionNumber}</span>
+            <span className={styles.metaVersionVal}>{assessment.formattedVersion || `V${assessment.versionNumber}`}</span>
           </div>
 
           <div className={styles.metaRow}>

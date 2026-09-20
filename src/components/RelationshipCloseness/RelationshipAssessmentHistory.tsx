@@ -58,7 +58,7 @@ export const RelationshipAssessmentHistory: React.FC<RelationshipAssessmentHisto
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
-                    Version {item.versionNumber}
+                    {item.formattedVersion ? (item.formattedVersion.startsWith('V') ? item.formattedVersion : `Version ${item.formattedVersion}`) : `Version ${item.versionNumber}`}
                   </span>
                   <span style={{ fontWeight: 800, color: '#1e40af', fontSize: '0.95rem' }}>
                     {score !== null && score !== undefined ? `${score} / 100` : '— / 100'}
@@ -75,7 +75,7 @@ export const RelationshipAssessmentHistory: React.FC<RelationshipAssessmentHisto
                         fontWeight: 700,
                       }}
                     >
-                      Owner Adjustment {item.sourceVersionNumber ? `(từ V${item.sourceVersionNumber})` : ''}
+                      Owner Adjustment {item.sourceFormattedVersion || item.sourceVersionNumber ? `(từ ${item.sourceFormattedVersion || `V${item.sourceVersionNumber}`})` : ''}
                     </span>
                   ) : (
                     <span

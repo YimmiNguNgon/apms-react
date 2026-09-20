@@ -1,33 +1,44 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   Loader2,
+  Save,
   Trash2,
   X,
 } from 'lucide-react';
 import type {
   RelationshipAssessmentResponse,
   CommercialEvidence,
+  CompleteOwnerAdjustmentRequest,
   OwnerAdjustmentUpdateRequest,
 } from '../../types/relationshipAssessment';
 import { CriterionGuidancePopover } from './CriterionGuidancePopover';
-import { getRankMeta, type V5CriterionKey } from './scoringGuidanceConfig';
+import { RelationshipScoreSelect } from './RelationshipScoreSelect';
+import {
+  calculateRelationshipClosenessV5,
+  getOfficialScoresFromAssessment,
+  type V5CriterionKey,
+} from './scoringGuidanceConfig';
 import styles from './RelationshipCloseness.module.css';
 
 interface RelationshipOwnerAdjustmentEditorProps {
   assessment: RelationshipAssessmentResponse;
   sourceAssessment?: RelationshipAssessmentResponse | null;
   commercialEvidence?: CommercialEvidence | null;
-  onSave: (data: OwnerAdjustmentUpdateRequest) => Promise<void>;
-  onComplete: (data: OwnerAdjustmentUpdateRequest) => Promise<void>;
-  onCancelAdjustment: () => Promise<void>;
+  draft?: import('../../types/relationshipAssessment').RelationshipAssessmentDraftResponse | null;
+  onComplete: (data: CompleteOwnerAdjustmentRequest) => Promise<void>;
   onBack: () => void;
+  onSaveDraft?: (data: import('../../types/relationshipAssessment').SaveRelationshipAssessmentDraftRequest) => Promise<void>;
+  onRebaseDraft?: () => Promise<void>;
+  onDeleteDraft?: () => Promise<void>;
+  onSave?: (data: any) => Promise<void>;
+  onCancelAdjustment?: () => Promise<void>;
   isSaving?: boolean;
   isSubmitting?: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
   onFlushPendingSaveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
-
-const SCORE_OPTIONS = [5, 4, 3, 2, 1, 0];
 
 const CRITERIA_NAMES: Record<string, string> = {
   commercial: 'Commercial Relationship',
@@ -42,58 +53,68 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
   assessment,
   sourceAssessment,
   commercialEvidence,
-  onSave,
+  draft,
   onComplete,
-  onCancelAdjustment,
   onBack,
+  onSaveDraft,
+  onRebaseDraft,
+  onDeleteDraft,
   isSaving = false,
   isSubmitting = false,
-  onFlushPendingSaveRef,
+  onDirtyChange,
 }) => {
-  // Baseline current finalized scores from source assessment or snapshot in draft
-  const currentComm = assessment.commercialAwardedScore ?? sourceAssessment?.commercialAwardedScore ?? sourceAssessment?.commercialScore ?? 0;
-  const currentCoop = assessment.cooperationScore ?? sourceAssessment?.cooperationScore ?? 0;
-  const currentStrat = assessment.strategicScore ?? sourceAssessment?.strategicScore ?? 0;
-  const currentNet = assessment.relationshipNetworkScore ?? sourceAssessment?.relationshipNetworkScore ?? 0;
-  const currentEng = assessment.engagementScore ?? sourceAssessment?.engagementScore ?? 0;
-  const currentQual = assessment.qualitativeScore ?? assessment.trustScore ?? sourceAssessment?.qualitativeScore ?? sourceAssessment?.trustScore ?? 0;
+  // Baseline current finalized scores frozen to sourceAssessment (Correction 2)
+  const sourceOfficial = useMemo(
+    () => getOfficialScoresFromAssessment(sourceAssessment),
+    [sourceAssessment]
+  );
 
-  // Owner adjusted values state
-  const [ownerComm, setOwnerComm] = useState<number>(
-    assessment.ownerCommercialScore !== null && assessment.ownerCommercialScore !== undefined
-      ? assessment.ownerCommercialScore
-      : currentComm
+  const currentComm = sourceOfficial.commercial ?? assessment.commercialAwardedScore ?? assessment.commercialScore ?? 0;
+  const currentCoop = sourceOfficial.cooperation ?? assessment.cooperationScore ?? 0;
+  const currentStrat = sourceOfficial.strategic ?? assessment.strategicScore ?? 0;
+  const currentNet = sourceOfficial.network ?? assessment.relationshipNetworkScore ?? 0;
+  const currentEng = sourceOfficial.engagement ?? assessment.engagementScore ?? 0;
+  const currentQual = sourceOfficial.qualitative ?? assessment.qualitativeScore ?? assessment.trustScore ?? 0;
+
+  // Helper to initialize adjusted score: if null, undefined, or unchanged from baseline, start as null (renders 'Chọn điểm')
+  const initAdjustedScore = (savedScore: number | null | undefined, baseline: number): number | null => {
+    if (savedScore !== null && savedScore !== undefined && savedScore !== baseline) {
+      return savedScore;
+    }
+    return null;
+  };
+
+  // Owner adjusted values state (null indicates untouched criterion)
+  const [ownerComm, setOwnerComm] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerCommercialScore !== undefined ? draft.ownerCommercialScore : assessment.ownerCommercialScore, currentComm)
   );
-  const [ownerCoop, setOwnerCoop] = useState<number>(
-    assessment.ownerCooperationScore !== null && assessment.ownerCooperationScore !== undefined
-      ? assessment.ownerCooperationScore
-      : currentCoop
+  const [ownerCoop, setOwnerCoop] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerCooperationScore !== undefined ? draft.ownerCooperationScore : assessment.ownerCooperationScore, currentCoop)
   );
-  const [ownerStrat, setOwnerStrat] = useState<number>(
-    assessment.ownerStrategicScore !== null && assessment.ownerStrategicScore !== undefined
-      ? assessment.ownerStrategicScore
-      : currentStrat
+  const [ownerStrat, setOwnerStrat] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerStrategicScore !== undefined ? draft.ownerStrategicScore : assessment.ownerStrategicScore, currentStrat)
   );
-  const [ownerNet, setOwnerNet] = useState<number>(
-    assessment.ownerRelationshipNetworkScore !== null && assessment.ownerRelationshipNetworkScore !== undefined
-      ? assessment.ownerRelationshipNetworkScore
-      : currentNet
+  const [ownerNet, setOwnerNet] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerRelationshipNetworkScore !== undefined ? draft.ownerRelationshipNetworkScore : assessment.ownerRelationshipNetworkScore, currentNet)
   );
-  const [ownerEng, setOwnerEng] = useState<number>(
-    assessment.ownerEngagementScore !== null && assessment.ownerEngagementScore !== undefined
-      ? assessment.ownerEngagementScore
-      : currentEng
+  const [ownerEng, setOwnerEng] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerEngagementScore !== undefined ? draft.ownerEngagementScore : assessment.ownerEngagementScore, currentEng)
   );
-  const [ownerQual, setOwnerQual] = useState<number>(
-    assessment.ownerQualitativeScore !== null && assessment.ownerQualitativeScore !== undefined
-      ? assessment.ownerQualitativeScore
-      : currentQual
+  const [ownerQual, setOwnerQual] = useState<number | null>(() =>
+    initAdjustedScore(draft?.ownerQualitativeScore !== undefined ? draft.ownerQualitativeScore : assessment.ownerQualitativeScore, currentQual)
   );
 
   // Per-criterion notes (sole explanation mechanism)
   const [criterionNotes, setCriterionNotes] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    if (assessment.ownerRelationshipNetworkNote) {
+    if (draft?.ownerCommercialNote) initial['commercial'] = draft.ownerCommercialNote;
+    if (draft?.ownerCooperationNote) initial['cooperation'] = draft.ownerCooperationNote;
+    if (draft?.ownerStrategicNote) initial['strategic'] = draft.ownerStrategicNote;
+    if (draft?.ownerRelationshipNetworkNote) initial['network'] = draft.ownerRelationshipNetworkNote;
+    if (draft?.ownerEngagementNote) initial['engagement'] = draft.ownerEngagementNote;
+    if (draft?.ownerQualitativeNote) initial['trust'] = draft.ownerQualitativeNote;
+
+    if (!initial['network'] && assessment.ownerRelationshipNetworkNote) {
       initial['network'] = assessment.ownerRelationshipNetworkNote;
     }
     if (assessment.ownerNote) {
@@ -128,17 +149,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
     return initial;
   });
 
-  // Cancel confirmation modal
-  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-
-  // Auto-save state
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'SAVED' | 'SAVING' | 'DIRTY' | 'ERROR'>('SAVED');
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(() => {
-    return assessment.updatedAt ? new Date(assessment.updatedAt) : new Date();
-  });
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const latestValuesRef = useRef({
     ownerComm,
     ownerCoop,
@@ -159,107 +169,56 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
   const latestNotesRef = useRef(criterionNotes);
   latestNotesRef.current = criterionNotes;
 
-  const getPayload = useCallback((): OwnerAdjustmentUpdateRequest => {
+  const getPayload = useCallback((): CompleteOwnerAdjustmentRequest => {
     const v = latestValuesRef.current;
     const notes = latestNotesRef.current;
 
-    // Serialize non-network criterion notes into ownerNote JSON for persistence
-    const otherNotes: Record<string, string> = {};
-    for (const [k, text] of Object.entries(notes)) {
-      if (k !== 'network' && text && text.trim()) {
-        otherNotes[k] = text.trim();
-      }
-    }
-    const serializedNotes = Object.keys(otherNotes).length > 0 ? JSON.stringify(otherNotes) : undefined;
-
-    // Synthesize combined adjustment reason from filled criteria notes
-    const criteriaInfo: Array<{ key: string; name: string }> = [
-      { key: 'commercial', name: 'Commercial Relationship' },
-      { key: 'cooperation', name: 'Interaction & Cooperation' },
-      { key: 'strategic', name: 'Strategic Importance' },
-      { key: 'network', name: 'Relationship Network' },
-      { key: 'engagement', name: 'Business Engagement' },
-      { key: 'trust', name: 'Trust & Reliability' },
-    ];
-
-    const noteReasons: string[] = [];
-    for (const c of criteriaInfo) {
-      const noteText = (notes[c.key] ?? '').trim();
-      if (noteText) {
-        noteReasons.push(`${c.name}: ${noteText}`);
-      }
-    }
-
     return {
-      ownerCommercialScore: v.ownerComm,
-      ownerCooperationScore: v.ownerCoop,
-      ownerStrategicScore: v.ownerStrat,
-      ownerRelationshipNetworkScore: v.ownerNet,
-      ownerRelationshipNetworkNote: (notes['network'] ?? '').trim() || undefined,
-      ownerEngagementScore: v.ownerEng,
-      ownerQualitativeScore: v.ownerQual,
-      ownerAdjustmentReason: noteReasons.length > 0 ? noteReasons.join('\n') : undefined,
-      ownerNote: serializedNotes,
+      sourceAssessmentId: sourceAssessment?.id ?? assessment.sourceAssessmentId ?? assessment.id,
+      ownerCommercialScore: v.ownerComm ?? currentComm,
+      ownerCommercialNote: (notes['commercial'] ?? '').trim() || null,
+      ownerCooperationScore: v.ownerCoop ?? currentCoop,
+      ownerCooperationNote: (notes['cooperation'] ?? '').trim() || null,
+      ownerStrategicScore: v.ownerStrat ?? currentStrat,
+      ownerStrategicNote: (notes['strategic'] ?? '').trim() || null,
+      ownerRelationshipNetworkScore: v.ownerNet ?? currentNet,
+      ownerRelationshipNetworkNote: (notes['network'] ?? '').trim() || null,
+      ownerEngagementScore: v.ownerEng ?? currentEng,
+      ownerEngagementNote: (notes['engagement'] ?? '').trim() || null,
+      ownerQualitativeScore: v.ownerQual ?? currentQual,
+      ownerQualitativeNote: (notes['trust'] ?? '').trim() || null,
+      ownerAdjustmentReason: null,
+      ownerNote: null,
     };
-  }, []);
+  }, [sourceAssessment?.id, assessment.sourceAssessmentId, assessment.id, currentComm, currentCoop, currentStrat, currentNet, currentEng, currentQual]);
 
-  const triggerSave = useCallback(async () => {
-    try {
-      setAutoSaveStatus('SAVING');
-      await onSave(getPayload());
-      setAutoSaveStatus('SAVED');
-      setLastSavedAt(new Date());
-    } catch {
-      setAutoSaveStatus('ERROR');
-    }
-  }, [onSave, getPayload]);
+  // Effective scores: untouched criteria default to current baseline
+  const effectiveComm = ownerComm ?? currentComm;
+  const effectiveCoop = ownerCoop ?? currentCoop;
+  const effectiveStrat = ownerStrat ?? currentStrat;
+  const effectiveNet = ownerNet ?? currentNet;
+  const effectiveEng = ownerEng ?? currentEng;
+  const effectiveQual = ownerQual ?? currentQual;
 
-  const scheduleAutoSave = useCallback((delay = 600) => {
-    setAutoSaveStatus('DIRTY');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      triggerSave();
-    }, delay);
-  }, [triggerSave]);
-
-  // Expose flush pending save for safe navigation back
-  const flushPendingSave = useCallback(async (): Promise<boolean> => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    try {
-      await triggerSave();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [triggerSave]);
-
-  useEffect(() => {
-    if (onFlushPendingSaveRef) {
-      onFlushPendingSaveRef.current = flushPendingSave;
-    }
-    return () => {
-      if (onFlushPendingSaveRef) {
-        onFlushPendingSaveRef.current = null;
-      }
-    };
-  }, [flushPendingSave, onFlushPendingSaveRef]);
-
-  // Derived calculation
-  const totalAdjustedRaw = ownerComm + ownerCoop + ownerStrat + ownerNet + ownerEng + ownerQual;
-  const totalAdjustedScore = Math.min(100, Math.round((totalAdjustedRaw / 30.0) * 100));
-  const adjustedRank =
-    totalAdjustedScore >= 90 ? 'A' : totalAdjustedScore >= 60 ? 'B' : totalAdjustedScore >= 30 ? 'C' : 'D';
-  const rankMeta = getRankMeta(adjustedRank);
+  // Normalized score & rank calculation using existing V5 calculator (Correction 1)
+  const projected = useMemo(() => {
+    return calculateRelationshipClosenessV5({
+      commercial: effectiveComm,
+      cooperation: effectiveCoop,
+      strategic: effectiveStrat,
+      network: effectiveNet,
+      engagement: effectiveEng,
+      qualitative: effectiveQual,
+    });
+  }, [effectiveComm, effectiveCoop, effectiveStrat, effectiveNet, effectiveEng, effectiveQual]);
 
   // Criteria row configuration
   const criteriaRows: Array<{
     key: V5CriterionKey;
     name: string;
     currentScore: number;
-    ownerScore: number;
+    ownerScore: number | null;
+    effectiveScore: number;
     isChanged: boolean;
     evidenceSummary?: React.ReactNode;
   }> = useMemo(
@@ -269,7 +228,8 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
         name: 'Commercial Relationship',
         currentScore: currentComm,
         ownerScore: ownerComm,
-        isChanged: ownerComm !== currentComm,
+        effectiveScore: effectiveComm,
+        isChanged: ownerComm !== null && ownerComm !== currentComm,
         evidenceSummary: commercialEvidence?.approvedContractCount ? (
           <span>
             <strong>Tham khảo:</strong> {commercialEvidence.approvedContractCount} hợp đồng đã duyệt
@@ -281,35 +241,40 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
         name: 'Interaction & Cooperation',
         currentScore: currentCoop,
         ownerScore: ownerCoop,
-        isChanged: ownerCoop !== currentCoop,
+        effectiveScore: effectiveCoop,
+        isChanged: ownerCoop !== null && ownerCoop !== currentCoop,
       },
       {
         key: 'strategic',
         name: 'Strategic Importance',
         currentScore: currentStrat,
         ownerScore: ownerStrat,
-        isChanged: ownerStrat !== currentStrat,
+        effectiveScore: effectiveStrat,
+        isChanged: ownerStrat !== null && ownerStrat !== currentStrat,
       },
       {
         key: 'network',
         name: 'Relationship Network',
         currentScore: currentNet,
         ownerScore: ownerNet,
-        isChanged: ownerNet !== currentNet,
+        effectiveScore: effectiveNet,
+        isChanged: ownerNet !== null && ownerNet !== currentNet,
       },
       {
         key: 'engagement',
         name: 'Business Engagement',
         currentScore: currentEng,
         ownerScore: ownerEng,
-        isChanged: ownerEng !== currentEng,
+        effectiveScore: effectiveEng,
+        isChanged: ownerEng !== null && ownerEng !== currentEng,
       },
       {
         key: 'trust',
         name: 'Trust & Reliability',
         currentScore: currentQual,
         ownerScore: ownerQual,
-        isChanged: ownerQual !== currentQual,
+        effectiveScore: effectiveQual,
+        isChanged: ownerQual !== null && ownerQual !== currentQual,
       },
     ],
     [
@@ -320,6 +285,12 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
       currentNet,
       currentQual,
       currentStrat,
+      effectiveComm,
+      effectiveCoop,
+      effectiveEng,
+      effectiveNet,
+      effectiveQual,
+      effectiveStrat,
       ownerComm,
       ownerCoop,
       ownerEng,
@@ -331,10 +302,29 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
 
   // Check if at least one score differs from current baseline
   const isScoreChanged = criteriaRows.some((row) => row.isChanged);
-  const canCompleteNow = isScoreChanged;
+  const canCompleteNow = isScoreChanged && !draft?.isStale;
+
+  // Local dirty tracking: form has unsaved user changes if any score changed or note written
+  const isFormDirty = isScoreChanged || Object.values(criterionNotes).some((n) => Boolean(n && n.trim()));
+
+  useEffect(() => {
+    onDirtyChange?.(isFormDirty);
+  }, [isFormDirty, onDirtyChange]);
+
+  // Browser reload / tab close protection
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isFormDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isFormDirty]);
 
   // Handle Score Change
-  const handleScoreSelect = (criterion: string, score: number) => {
+  const handleScoreSelect = (criterion: string, score: number | null) => {
     switch (criterion) {
       case 'commercial':
         setOwnerComm(score);
@@ -356,7 +346,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
         setOwnerQual(score);
         break;
     }
-    scheduleAutoSave(400);
   };
 
   // Handle Criterion Note Change
@@ -365,37 +354,91 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
       ...prev,
       [criterionKey]: noteVal,
     }));
-    scheduleAutoSave(700);
   };
 
   // Handle Complete
   const handleCompleteAdjustment = async () => {
-    if (!isScoreChanged) return;
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-
+    if (!canCompleteNow) return;
     await onComplete(getPayload());
   };
 
-  // Handle Cancel Confirmation
-  const handleConfirmCancel = async () => {
-    try {
-      setIsCancelling(true);
-      await onCancelAdjustment();
-      setIsCancelModalOpen(false);
-      onBack();
-    } catch {
-      // Error handled by parent or notification
-    } finally {
-      setIsCancelling(false);
-    }
+  const hasAnyOwnerNote = Object.values(criterionNotes).some((n) => Boolean(n && n.trim() !== ''));
+  const canSaveOwnerDraft = isScoreChanged || hasAnyOwnerNote;
+
+  // Handle Save Draft
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft || !canSaveOwnerDraft) return;
+    const v = latestValuesRef.current;
+    const notes = latestNotesRef.current;
+    await onSaveDraft({
+      baseOfficialAssessmentId: sourceAssessment?.id ?? assessment.sourceAssessmentId ?? assessment.id,
+      baseMajorVersion: sourceAssessment?.majorVersion ?? sourceAssessment?.versionNumber ?? assessment.versionNumber,
+      baseMinorRevision: sourceAssessment?.minorRevision ?? 0,
+      ownerCommercialScore: v.ownerComm,
+      ownerCooperationScore: v.ownerCoop,
+      ownerStrategicScore: v.ownerStrat,
+      ownerRelationshipNetworkScore: v.ownerNet,
+      ownerEngagementScore: v.ownerEng,
+      ownerQualitativeScore: v.ownerQual,
+      ownerCommercialNote: (notes['commercial'] ?? '').trim() || null,
+      ownerCooperationNote: (notes['cooperation'] ?? '').trim() || null,
+      ownerStrategicNote: (notes['strategic'] ?? '').trim() || null,
+      ownerRelationshipNetworkNote: (notes['network'] ?? '').trim() || null,
+      ownerEngagementNote: (notes['engagement'] ?? '').trim() || null,
+      ownerQualitativeNote: (notes['trust'] ?? '').trim() || null,
+    });
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Stale Draft Conflict Banner */}
+      {draft?.isStale && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 14,
+            padding: '12px 18px',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.88rem', color: '#92400e' }}>
+              Bản đánh giá chính thức đã được cập nhật lên <strong>{draft.latestOfficialFormattedVersion || 'phiên bản mới'}</strong>. Bản nháp điều chỉnh này đã cũ.
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {onRebaseDraft && (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                style={{ padding: '6px 14px', fontSize: '0.82rem', background: '#d97706', borderColor: '#b45309' }}
+                onClick={onRebaseDraft}
+                disabled={isSaving || isSubmitting}
+              >
+                Cập nhật bản nháp theo {draft.latestOfficialFormattedVersion}
+              </button>
+            )}
+            {onDeleteDraft && (
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                style={{ padding: '6px 14px', fontSize: '0.82rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                onClick={onDeleteDraft}
+                disabled={isSaving || isSubmitting}
+              >
+                Hủy bản nháp
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 1. SCORING TABLE */}
       <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -458,7 +501,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
             </thead>
             <tbody>
               {criteriaRows.map((row) => {
-                const isRowChanged = row.isChanged;
                 const rowNote = criterionNotes[row.key] ?? '';
 
                 return (
@@ -494,32 +536,14 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
                       </span>
                     </td>
 
-                    {/* Column 3: Điểm điều chỉnh (Dropdown with subtle amber highlight) */}
+                    {/* Column 3: Điểm điều chỉnh */}
                     <td style={{ textAlign: 'center', padding: '10px 14px', verticalAlign: 'middle' }}>
-                      <select
+                      <RelationshipScoreSelect
+                        id={`owner-score-${row.key}`}
                         value={row.ownerScore}
-                        onChange={(e) => handleScoreSelect(row.key, Number(e.target.value))}
-                        style={{
-                          padding: '6px 12px',
-                          borderRadius: 8,
-                          border: isRowChanged ? '1.5px solid #f59e0b' : '1px solid #cbd5e1',
-                          background: isRowChanged ? '#fffbeb' : '#ffffff',
-                          color: isRowChanged ? '#92400e' : '#0f172a',
-                          fontWeight: 700,
-                          fontSize: '0.9rem',
-                          cursor: 'pointer',
-                          outline: 'none',
-                          minWidth: 88,
-                          textAlign: 'center',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {SCORE_OPTIONS.map((val) => (
-                          <option key={val} value={val}>
-                            {val} / 5
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => handleScoreSelect(row.key, val)}
+                        disabled={isSubmitting || isSaving}
+                      />
                     </td>
 
                     {/* Column 4: Ghi chú theo tiêu chí (Tùy chọn) */}
@@ -570,8 +594,8 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
         {/* Left: Expected Score */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: '0.88rem', color: '#0f172a' }}>
-            Điểm dự kiến: <strong>{totalAdjustedScore}/100</strong> · Rank{' '}
-            <strong style={{ color: rankMeta.color }}>{adjustedRank}</strong>
+            Điểm dự kiến: <strong>{projected.normalizedScore}/100</strong> · Rank{' '}
+            <strong style={{ color: projected.rankMeta.color }}>{projected.rank}</strong>
           </div>
         </div>
 
@@ -585,7 +609,7 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
 
           <button
             type="button"
-            onClick={() => setIsCancelModalOpen(true)}
+            onClick={onBack}
             disabled={isSubmitting || isSaving}
             style={{
               padding: '8px 16px',
@@ -611,6 +635,42 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
           >
             Hủy điều chỉnh
           </button>
+
+          {onSaveDraft && (
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={handleSaveDraft}
+              disabled={isSubmitting || isSaving || !canSaveOwnerDraft || Boolean(draft?.isStale)}
+              title={
+                !canSaveOwnerDraft
+                  ? 'Vui lòng điều chỉnh ít nhất 1 điểm tiêu chí hoặc nhập 1 ghi chú trước khi lưu nháp'
+                  : 'Lưu bản nháp riêng'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                opacity: !canSaveOwnerDraft ? 0.6 : 1,
+                cursor: !canSaveOwnerDraft ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 size={16} className="spinIcon" />
+                  <span>Đang lưu...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  <span>Lưu bản nháp</span>
+                </>
+              )}
+            </button>
+          )}
 
           <button
             type="button"
@@ -639,77 +699,6 @@ export const RelationshipOwnerAdjustmentEditor: React.FC<RelationshipOwnerAdjust
           </button>
         </div>
       </div>
-
-      {/* 3. CANCEL CONFIRMATION MODAL */}
-      {isCancelModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: 12,
-              width: '100%',
-              maxWidth: 460,
-              padding: 24,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-                Hủy bản điều chỉnh V{assessment.versionNumber}?
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsCancelModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.5 }}>
-              Các thay đổi chưa hoàn tất sẽ bị hủy. Bản đánh giá chính thức trước đó vẫn được giữ nguyên.
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                onClick={() => setIsCancelModalOpen(false)}
-                disabled={isCancelling}
-              >
-                Không, quay lại
-              </button>
-              <button
-                type="button"
-                className={styles.btnDanger}
-                onClick={handleConfirmCancel}
-                disabled={isCancelling}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                {isCancelling ? <Loader2 size={16} className="spinIcon" /> : <Trash2 size={16} />}
-                <span>Xác nhận hủy</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -17,6 +17,7 @@ import {
   Sliders,
   TrendingDown,
   TrendingUp,
+  Trash2,
   User,
   X,
 } from 'lucide-react';
@@ -59,6 +60,17 @@ const formatDateTime = (val?: string | null) => {
   });
 };
 
+const formatVersionString = (ver?: { formattedVersion?: string; versionNumber?: number; majorVersion?: number; minorRevision?: number } | null) => {
+  if (!ver) return '—';
+  if (ver.formattedVersion) return ver.formattedVersion;
+  if (ver.majorVersion != null) {
+    return ver.minorRevision && ver.minorRevision > 0
+      ? `V${ver.majorVersion}.${ver.minorRevision}`
+      : `V${ver.majorVersion}`;
+  }
+  return `V${ver.versionNumber}`;
+};
+
 export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashboardProps> = ({
   companyProfileId,
   companyName = '',
@@ -72,12 +84,24 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
   const [isCreatingNewVersion, setIsCreatingNewVersion] = useState(false);
   const [isCreatingOwnerAdjustment, setIsCreatingOwnerAdjustment] = useState(false);
   const [isAllHistoryModalOpen, setIsAllHistoryModalOpen] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
 
   const finalizedHistory = useMemo(() => {
     if (!history || history.length === 0) return [];
     return history
       .filter((item) => item.status === 'FINALIZED')
-      .sort((a, b) => b.versionNumber - a.versionNumber);
+      .sort((a, b) => {
+        const timeA = a.finalizedAt ? new Date(a.finalizedAt).getTime() : 0;
+        const timeB = b.finalizedAt ? new Date(b.finalizedAt).getTime() : 0;
+        if (timeB !== timeA) return timeB - timeA;
+        const majorA = a.majorVersion ?? 0;
+        const majorB = b.majorVersion ?? 0;
+        if (majorB !== majorA) return majorB - majorA;
+        const minorA = a.minorRevision ?? 0;
+        const minorB = b.minorRevision ?? 0;
+        return minorB - minorA;
+      });
   }, [history]);
 
   const visibleFinalizedHistory = useMemo(() => finalizedHistory.slice(0, 3), [finalizedHistory]);
@@ -257,6 +281,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
     mode?: 'review' | 'edit' | 'view';
     readOnly?: boolean;
     versionNumber?: number;
+    assessmentType?: 'MANAGER_ASSESSMENT' | 'OWNER_ADJUSTMENT';
   }) => {
     if (!setActivePage) return;
     const query = new URLSearchParams();
@@ -267,60 +292,26 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
     if (params?.mode) query.set('mode', params.mode);
     if (params?.readOnly) query.set('readOnly', 'true');
     if (params?.versionNumber) query.set('version', String(params.versionNumber));
+    if (params?.assessmentType) query.set('assessmentType', params.assessmentType);
 
     setActivePage(`relationship-assessment-detail?${query.toString()}`);
   };
 
-  // Handle creating new version from finalized state
-  // Correction 10: Defensive guard - if activeDraft already exists, navigate directly to it
-  const handleCreateNewVersion = async () => {
-    if (activeDraft) {
-      navigateToAssessmentDetail({
-        assessmentId: activeDraft.id,
-        mode: 'edit',
-      });
-      return;
-    }
-
-    try {
-      setIsCreatingNewVersion(true);
-      setErrorMsg(null);
-      const res = await companyRelationshipAssessmentApi.newVersion(companyProfileId);
-      const newDraftId = res.data?.id;
-      navigateToAssessmentDetail({
-        assessmentId: newDraftId,
-        mode: 'edit',
-      });
-    } catch (err: any) {
-      setErrorMsg(err?.response?.data?.message || 'Không thể khởi tạo phiên bản đánh giá mới.');
-      setIsCreatingNewVersion(false);
-    }
+  // Handle creating new version from finalized state (Pure client navigation, zero backend draft)
+  const handleCreateNewVersion = () => {
+    navigateToAssessmentDetail({
+      mode: 'edit',
+      assessmentType: 'MANAGER_ASSESSMENT',
+    });
   };
 
-  // Handle creating Owner Adjustment from latest finalized assessment
-  const handleCreateOwnerAdjustment = async () => {
+  // Handle creating Owner Adjustment from latest finalized assessment (Pure client navigation, zero backend draft)
+  const handleCreateOwnerAdjustment = () => {
     if (!latestFinalizedAssessment) return;
-    if (activeDraft) {
-      navigateToAssessmentDetail({
-        assessmentId: activeDraft.id,
-        mode: 'edit',
-      });
-      return;
-    }
-
-    try {
-      setIsCreatingOwnerAdjustment(true);
-      setErrorMsg(null);
-      const res = await companyRelationshipAssessmentApi.createOwnerAdjustment(latestFinalizedAssessment.id);
-      const newAdjId = res.data?.id;
-      navigateToAssessmentDetail({
-        assessmentId: newAdjId,
-        mode: 'edit',
-      });
-    } catch (err: any) {
-      setErrorMsg(err?.response?.data?.message || 'Không thể khởi tạo bản điều chỉnh đánh giá.');
-      setIsCreatingOwnerAdjustment(false);
-    }
+    navigateToAssessmentDetail({
+      mode: 'edit',
+      assessmentType: 'OWNER_ADJUSTMENT',
+    });
   };
 
   // Helper to extract score for the 6 criteria cards
@@ -367,38 +358,52 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
     return { score: isAssessed ? Number(val) : null, isAssessed };
   };
 
-  // Calculate Trend if previous version exists in history (Correction 8: finalized versions only)
+  // Calculate Trend if previous version exists in history (strictly immediate previous finalized version)
   const trendInfo = useMemo(() => {
+    if (overview?.trendInfo) {
+      return overview.trendInfo;
+    }
+
     if (!latestFinalizedAssessment || finalizedHistory.length < 2) return null;
     const currentScore =
+      latestFinalizedAssessment.officialScore ??
       latestFinalizedAssessment.ownerFinalTotalScore ??
       latestFinalizedAssessment.managerTotalScore ??
       null;
 
     if (currentScore === null) return null;
 
-    // Find previous finalized version with lower versionNumber
-    const prevItem = finalizedHistory.find(
-      (h) => h.versionNumber < latestFinalizedAssessment.versionNumber && (h.ownerFinalTotalScore != null || h.managerTotalScore != null)
-    );
+    // In chronologically sorted finalizedHistory (newest to oldest):
+    // Find the position of latestFinalizedAssessment, then immediately preceding is the next item in array
+    const latestIndex = finalizedHistory.findIndex((h) => h.id === latestFinalizedAssessment.id);
+    const prevItem = latestIndex >= 0 && latestIndex + 1 < finalizedHistory.length
+      ? finalizedHistory[latestIndex + 1]
+      : (latestIndex === -1 ? finalizedHistory[1] : null);
 
     if (!prevItem) return null;
-    const prevScore = prevItem.ownerFinalTotalScore ?? prevItem.managerTotalScore;
+    const prevScore =
+      prevItem.officialScore ??
+      prevItem.ownerFinalTotalScore ??
+      prevItem.managerTotalScore ??
+      null;
     if (prevScore === null || prevScore === undefined) return null;
-    const prevRank = prevItem.ownerFinalRank || prevItem.managerRank || 'D';
-    const currentRank = latestFinalizedAssessment.ownerFinalRank || latestFinalizedAssessment.managerRank || 'D';
+
+    const prevRank = prevItem.officialRank || prevItem.ownerFinalRank || prevItem.managerRank || 'D';
+    const currentRank = latestFinalizedAssessment.officialRank || latestFinalizedAssessment.ownerFinalRank || latestFinalizedAssessment.managerRank || 'D';
 
     const diff = currentScore - prevScore;
     return {
       prevVersion: prevItem.versionNumber,
+      prevFormattedVersion: formatVersionString(prevItem),
       prevScore,
       prevRank,
       currentVersion: latestFinalizedAssessment.versionNumber,
+      currentFormattedVersion: formatVersionString(latestFinalizedAssessment),
       currentScore,
       currentRank,
       diff,
     };
-  }, [latestFinalizedAssessment, finalizedHistory]);
+  }, [overview?.trendInfo, latestFinalizedAssessment, finalizedHistory]);
 
   // Business insights: deterministic strongest and lowest criteria (Correction 3 & 4)
   const businessInsights = useMemo(() => {
@@ -460,8 +465,28 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
 
   // Render header actions inside Summary Card
   const renderSummaryHeaderActions = () => {
+    const hasManagerDraft = Boolean(overview?.myDraft && overview.myDraft.draftType === 'MANAGER_ASSESSMENT');
+    const hasOwnerDraft = Boolean(overview?.myDraft && overview.myDraft.draftType === 'OWNER_ADJUSTMENT');
+
     if (isFirstTime) {
       if (!isManager) return null;
+      if (hasManagerDraft) {
+        return (
+          <button
+            type="button"
+            className={styles.btnPrimary}
+            onClick={() =>
+              navigateToAssessmentDetail({
+                mode: 'edit',
+                assessmentType: 'MANAGER_ASSESSMENT',
+              })
+            }
+          >
+            <Edit3 size={16} />
+            <span>Tiếp tục đánh giá</span>
+          </button>
+        );
+      }
       return (
         <button
           type="button"
@@ -474,139 +499,10 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
       );
     }
 
-    // Case 1: Both finalized assessment + active draft exist (Coexistence)
-    if (latestFinalizedAssessment && activeDraft) {
-      const isActiveOwnerAdjustment = Boolean(
-        activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT'
-      );
-
-      return (
-        <>
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={() =>
-              navigateToAssessmentDetail({
-                assessmentId: latestFinalizedAssessment.id,
-                historyId: latestFinalizedAssessment.id,
-                versionNumber: latestFinalizedAssessment.versionNumber,
-                readOnly: true,
-              })
-            }
-          >
-            <Eye size={16} />
-            <span>Xem bản chính thức</span>
-          </button>
-
-          {isOwner && (
-            isActiveOwnerAdjustment ? (
-              <button
-                type="button"
-                className={styles.btnPrimary}
-                style={{ background: '#7c3aed', borderColor: '#6d28d9' }}
-                onClick={() =>
-                  navigateToAssessmentDetail({
-                    assessmentId: activeDraft.id,
-                    mode: 'edit',
-                  })
-                }
-              >
-                <Edit3 size={16} />
-                <span>Tiếp tục điều chỉnh</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                onClick={() =>
-                  navigateToAssessmentDetail({
-                    assessmentId: activeDraft.id,
-                    readOnly: true,
-                  })
-                }
-              >
-                <Eye size={16} />
-                <span>Xem tiến độ</span>
-              </button>
-            )
-          )}
-
-          {isManager && (
-            isActiveOwnerAdjustment ? (
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                onClick={() =>
-                  navigateToAssessmentDetail({
-                    assessmentId: activeDraft.id,
-                    readOnly: true,
-                  })
-                }
-              >
-                <Eye size={16} />
-                <span>Xem tiến độ điều chỉnh</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={styles.btnPrimary}
-                onClick={() =>
-                  navigateToAssessmentDetail({
-                    assessmentId: activeDraft.id,
-                    mode: 'edit',
-                  })
-                }
-              >
-                <Edit3 size={16} />
-                <span>Tiếp tục đánh giá</span>
-              </button>
-            )
-          )}
-        </>
-      );
-    }
-
-    // Case 2: Only active draft exists (first-time assessment in progress)
-    if (!latestFinalizedAssessment && activeDraft) {
-      if (isOwner) {
-        return (
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={() =>
-              navigateToAssessmentDetail({
-                assessmentId: activeDraft.id,
-                readOnly: true,
-              })
-            }
-          >
-            <Eye size={16} />
-            <span>Xem tiến độ</span>
-          </button>
-        );
-      }
-
-      return (
-        <button
-          type="button"
-          className={styles.btnPrimary}
-          onClick={() =>
-            navigateToAssessmentDetail({
-              assessmentId: activeDraft.id,
-              mode: 'edit',
-            })
-          }
-        >
-          <Edit3 size={16} />
-          <span>Tiếp tục đánh giá</span>
-        </button>
-      );
-    }
-
-    // Case 3: Finalized assessment exists and no active draft
-    if (latestFinalizedAssessment && !activeDraft) {
+    // Finalized assessment exists
+    if (latestFinalizedAssessment) {
       const canAdjust = latestFinalizedAssessment.canAdjust ?? true;
-      const canReassess = latestFinalizedAssessment.canCreateNewVersion === true;
+      const canReassess = latestFinalizedAssessment.canCreateNewVersion ?? true;
 
       return (
         <>
@@ -631,32 +527,38 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
               type="button"
               className={styles.btnPrimary}
               onClick={handleCreateOwnerAdjustment}
-              disabled={isCreatingOwnerAdjustment}
               style={{ background: '#7c3aed', borderColor: '#6d28d9' }}
             >
-              {isCreatingOwnerAdjustment ? (
-                <Loader2 size={16} className="spinIcon" />
-              ) : (
-                <Edit3 size={16} />
-              )}
-              <span>Điều chỉnh đánh giá</span>
+              <Edit3 size={16} />
+              <span>{hasOwnerDraft ? 'Tiếp tục điều chỉnh' : 'Điều chỉnh đánh giá'}</span>
             </button>
           )}
 
           {isManager && canReassess && (
-            <button
-              type="button"
-              className={styles.btnPrimary}
-              onClick={handleCreateNewVersion}
-              disabled={isCreatingNewVersion}
-            >
-              {isCreatingNewVersion ? (
-                <Loader2 size={16} className="spinIcon" />
-              ) : (
+            hasManagerDraft ? (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={() =>
+                  navigateToAssessmentDetail({
+                    mode: 'edit',
+                    assessmentType: 'MANAGER_ASSESSMENT',
+                  })
+                }
+              >
+                <Edit3 size={16} />
+                <span>Tiếp tục đánh giá</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={handleCreateNewVersion}
+              >
                 <PlusCircle size={16} />
-              )}
-              <span>Tạo phiên bản đánh giá mới</span>
-            </button>
+                <span>Tạo phiên bản đánh giá mới</span>
+              </button>
+            )
           )}
         </>
       );
@@ -697,7 +599,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
           {/* Primary line: V8    90/100 · Rank A */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0f172a', minWidth: 28 }}>
-              V{ver.versionNumber}
+              {formatVersionString(ver)}
             </span>
             <span style={{ fontSize: '0.92rem', color: '#334155' }}>
               <strong style={{ color: '#0f172a' }}>{score !== null && score !== undefined ? `${score}/100` : '—/100'}</strong>
@@ -774,6 +676,10 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
       )}
 
       {/* ========================================================================= */}
+      {/* 0. PRIVATE WORKING DRAFT CARD (IF ACTOR HAS A SAVED DRAFT)                */}
+      {/* ========================================================================= */}
+
+      {/* ========================================================================= */}
       {/* 1. FIRST-TIME EMPTY STATE (IF NO ASSESSMENT YET)                          */}
       {/* ========================================================================= */}
       {isFirstTime ? (
@@ -796,10 +702,24 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
             <button
               type="button"
               className={styles.emptyCtaBtn}
-              onClick={() => navigateToAssessmentDetail({ mode: 'edit' })}
+              onClick={() =>
+                navigateToAssessmentDetail({
+                  mode: 'edit',
+                  assessmentType: overview?.myDraft?.draftType === 'MANAGER_ASSESSMENT' ? 'MANAGER_ASSESSMENT' : undefined,
+                })
+              }
             >
-              <PlusCircle size={17} />
-              <span>Bắt đầu đánh giá</span>
+              {overview?.myDraft && overview.myDraft.draftType === 'MANAGER_ASSESSMENT' ? (
+                <>
+                  <Edit3 size={17} />
+                  <span>Tiếp tục đánh giá</span>
+                </>
+              ) : (
+                <>
+                  <PlusCircle size={17} />
+                  <span>Bắt đầu đánh giá</span>
+                </>
+              )}
             </button>
           )}
         </div>
@@ -812,31 +732,6 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
             assessment={displayAssessment}
             headerActions={renderSummaryHeaderActions()}
           />
-
-          {/* ACTIVE DRAFT INFORMATIONAL BANNER (when official finalized assessment + active draft coexist) */}
-          {latestFinalizedAssessment && activeDraft && (
-            <div
-              className={styles.activeDraftNoticeBanner}
-              style={{
-                background: (activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT') ? '#faf5ff' : '#eff6ff',
-                borderColor: (activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT') ? '#e9d5ff' : '#bfdbfe',
-                color: (activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT') ? '#6b21a8' : '#1e40af',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Clock
-                  size={16}
-                  className={styles.activeDraftNoticeIcon}
-                  style={{ color: (activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT') ? '#7c3aed' : '#2563eb' }}
-                />
-                <span className={styles.activeDraftNoticeText}>
-                  {(activeDraft.isOwnerAdjustment || activeDraft.assessmentType === 'OWNER_ADJUSTMENT')
-                    ? `Phiên bản V${activeDraft.versionNumber} đang được Business Owner điều chỉnh (dựa trên V${activeDraft.sourceVersionNumber ?? latestFinalizedAssessment?.versionNumber ?? 1})`
-                    : `Phiên bản V${activeDraft.versionNumber} đang được BD Manager đánh giá · ${activeDraftAssessedCount}/${activeDraft.totalCriteriaCount ?? 6} tiêu chí hoàn thành`}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* ========================================================================= */}
           {/* 4. OPTIONAL INFORMATION & RELATIONSHIP TREND                              */}
@@ -870,7 +765,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
                   </div>
                   <div>
                     <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                      Thay đổi so với V{trendInfo.prevVersion}
+                      Thay đổi so với {trendInfo.prevFormattedVersion}
                     </div>
                     <div
                       style={{
@@ -890,12 +785,12 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.84rem' }}>
                   <div>
                     <span style={{ color: '#64748b' }}>Phiên bản trước:</span>{' '}
-                    <strong>V{trendInfo.prevVersion} — {trendInfo.prevScore}/100 — Rank {trendInfo.prevRank}</strong>
+                    <strong>{trendInfo.prevFormattedVersion} — {trendInfo.prevScore}/100 — Rank {trendInfo.prevRank}</strong>
                   </div>
                   <div>
                     <span style={{ color: '#64748b' }}>Phiên bản hiện tại:</span>{' '}
                     <strong style={{ color: '#1d4ed8' }}>
-                      V{displayAssessment.versionNumber} — {trendInfo.currentScore}/100 — Rank {trendInfo.currentRank}
+                      {trendInfo.currentFormattedVersion} — {trendInfo.currentScore}/100 — Rank {trendInfo.currentRank}
                     </strong>
                   </div>
                 </div>
@@ -1087,6 +982,90 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
                 onClick={() => setIsAllHistoryModalOpen(false)}
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Draft Confirmation Modal */}
+      {showDeleteModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 12,
+              width: '100%',
+              maxWidth: 480,
+              padding: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                Xác nhận xóa bản nháp
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeletingDraft}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '0.92rem', color: '#475569', lineHeight: 1.5 }}>
+              Bạn có chắc muốn xóa bản nháp đánh giá này?
+              <br />
+              Các điểm và ghi chú chưa hoàn tất sẽ bị mất.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeletingDraft}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={async () => {
+                  try {
+                    setIsDeletingDraft(true);
+                    await companyRelationshipAssessmentApi.deleteMyDraft(companyProfileId);
+                    setShowDeleteModal(false);
+                    await loadData();
+                  } catch (err: any) {
+                    alert(err?.response?.data?.message || 'Không thể xóa bản nháp.');
+                  } finally {
+                    setIsDeletingDraft(false);
+                  }
+                }}
+                disabled={isDeletingDraft}
+                style={{ background: '#dc2626', borderColor: '#b91c1c' }}
+              >
+                {isDeletingDraft ? 'Đang xóa...' : 'Xóa bản nháp'}
               </button>
             </div>
           </div>

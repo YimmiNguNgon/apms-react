@@ -2,15 +2,52 @@ import { api } from '../services/api';
 import type {
   RelationshipOverviewResponse,
   RelationshipAssessmentResponse,
+  RelationshipAssessmentDraftResponse,
+  SaveRelationshipAssessmentDraftRequest,
   CommercialEvidence,
   CreateRelationshipAssessmentRequest,
   UpdateRelationshipAssessmentRequest,
   FinalizeRelationshipAssessmentRequest,
   RequestChangesAssessmentRequest,
   OwnerAdjustmentUpdateRequest,
+  CompleteRelationshipAssessmentRequest,
+  CompleteOwnerAdjustmentRequest,
 } from '../types/relationshipAssessment';
 
 export const companyRelationshipAssessmentApi = {
+  getMyDraft: (companyProfileId: string) =>
+    api.get<RelationshipAssessmentDraftResponse | null>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/drafts/current`
+    ),
+
+  saveDraft: (companyProfileId: string, data: SaveRelationshipAssessmentDraftRequest) =>
+    api.post<RelationshipAssessmentDraftResponse>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/drafts`,
+      data
+    ),
+
+  deleteMyDraft: (companyProfileId: string) =>
+    api.delete<void>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/drafts/current`
+    ),
+
+  rebaseOwnerDraft: (companyProfileId: string) =>
+    api.post<RelationshipAssessmentDraftResponse>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/drafts/owner/rebase`,
+      {}
+    ),
+
+  completeDirectAssessment: (companyProfileId: string, data: CompleteRelationshipAssessmentRequest) =>
+    api.post<RelationshipAssessmentResponse>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/complete`,
+      data
+    ),
+
+  completeDirectOwnerAdjustment: (companyProfileId: string, data: CompleteOwnerAdjustmentRequest) =>
+    api.post<RelationshipAssessmentResponse>(
+      `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/owner-adjustment/complete`,
+      data
+    ),
   getOverview: (companyProfileId: string) =>
     api.get<RelationshipOverviewResponse>(
       `/company-profiles/${encodeURIComponent(companyProfileId)}/relationship-assessments/overview`

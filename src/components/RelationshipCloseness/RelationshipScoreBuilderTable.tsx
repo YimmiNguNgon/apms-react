@@ -17,21 +17,23 @@ import type {
   RelationshipAssessmentResponse,
   CommercialEvidence,
   UpdateRelationshipAssessmentRequest,
+  CompleteRelationshipAssessmentRequest,
 } from '../../types/relationshipAssessment';
 import styles from './RelationshipCloseness.module.css';
 import { CriterionGuidancePopover } from './CriterionGuidancePopover';
+import { RelationshipScoreSelect } from './RelationshipScoreSelect';
+import { calculateRelationshipClosenessV5 } from './scoringGuidanceConfig';
 
 const V5_SCORE_OPTIONS = [5, 4, 3, 2, 1, 0];
-
-export type AutoSaveStatus = 'SAVED' | 'DIRTY' | 'SAVING' | 'ERROR';
 
 interface RelationshipScoreBuilderTableProps {
   assessment: RelationshipAssessmentResponse;
   commercialEvidence?: CommercialEvidence | null;
+  draft?: import('../../types/relationshipAssessment').RelationshipAssessmentDraftResponse | null;
   isOwnerReview?: boolean;
-  onSaveDraft: (data: UpdateRelationshipAssessmentRequest) => Promise<void>;
-  onSubmit?: (data?: UpdateRelationshipAssessmentRequest) => Promise<void>;
-  onComplete?: (data?: UpdateRelationshipAssessmentRequest) => Promise<void>;
+  onSaveDraft?: (data: any) => Promise<void>;
+  onSubmit?: (data?: any) => Promise<void>;
+  onComplete?: (data: CompleteRelationshipAssessmentRequest) => Promise<void>;
   onFinalize?: (data: {
     ownerCommercialScore: number;
     ownerCooperationScore: number;
@@ -65,6 +67,7 @@ interface RelationshipScoreBuilderTableProps {
     ownerEng?: number | null | '';
     ownerQual?: number | null | '';
   }) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   onFlushPendingSaveRef?: React.MutableRefObject<(() => Promise<boolean>) | null>;
 }
 
@@ -120,6 +123,7 @@ const formatRecency = (recencyMonths?: number | null, latestDate?: string | null
 export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTableProps> = ({
   assessment,
   commercialEvidence,
+  draft,
   isOwnerReview = false,
   onSaveDraft,
   onSubmit,
@@ -134,6 +138,7 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
   isManager = false,
   isOwner = false,
   onScoresChange,
+  onDirtyChange,
   onFlushPendingSaveRef,
 }) => {
   const isV5 = assessment.scoringPolicyVersion === 'RELATIONSHIP_CLOSENESS_V5';
@@ -259,6 +264,26 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
   const [ownerNote, setOwnerNote] = useState<string>(assessment.ownerNote ?? '');
   const [ownerReason, setOwnerReason] = useState<string>(assessment.ownerAdjustmentReason ?? '');
 
+  // Synchronize values when resuming an existing draft
+  useEffect(() => {
+    if (draft && draft.draftType === 'MANAGER_ASSESSMENT') {
+      if (draft.commercialScore !== undefined && draft.commercialScore !== null) setCommAwarded(draft.commercialScore);
+      if (draft.cooperationScore !== undefined && draft.cooperationScore !== null) setCoop(draft.cooperationScore);
+      if (draft.strategicScore !== undefined && draft.strategicScore !== null) setStrat(draft.strategicScore);
+      if (draft.relationshipNetworkScore !== undefined && draft.relationshipNetworkScore !== null) setNet(draft.relationshipNetworkScore);
+      if (draft.engagementScore !== undefined && draft.engagementScore !== null) setEng(draft.engagementScore);
+      if (draft.qualitativeScore !== undefined && draft.qualitativeScore !== null) setQual(draft.qualitativeScore);
+
+      if (draft.commercialEvidenceNote !== undefined && draft.commercialEvidenceNote !== null) setCommEvidenceNote(draft.commercialEvidenceNote);
+      if (draft.cooperationEvidenceNote !== undefined && draft.cooperationEvidenceNote !== null) setCoopNote(draft.cooperationEvidenceNote);
+      if (draft.strategicEvidenceNote !== undefined && draft.strategicEvidenceNote !== null) setStratNote(draft.strategicEvidenceNote);
+      if (draft.relationshipNetworkNote !== undefined && draft.relationshipNetworkNote !== null) setNetNote(draft.relationshipNetworkNote);
+      if (draft.engagementEvidenceNote !== undefined && draft.engagementEvidenceNote !== null) setEngNote(draft.engagementEvidenceNote);
+      if (draft.qualitativeEvidenceNote !== undefined && draft.qualitativeEvidenceNote !== null) setQualNote(draft.qualitativeEvidenceNote);
+      if (draft.managerNote !== undefined && draft.managerNote !== null) setManagerNote(draft.managerNote);
+    }
+  }, [draft]);
+
   // Notify parent of live score changes
   useEffect(() => {
     if (onScoresChange) {
@@ -302,28 +327,36 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
   ) => {
     if (val.trim() === '') {
       setter(null);
-      scheduleSave(300);
       return;
     }
     const num = parseInt(val, 10);
     if (Number.isNaN(num)) return;
     setter(Math.max(0, Math.min(max, num)));
-    scheduleSave(300);
   };
 
-  // Auto-save state machine
-  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('SAVED');
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
+  // Local dirty tracking: form has unsaved user changes if any score selected or note written
+  const isFormDirty = Boolean(
+    commAwarded !== null ||
+    coop !== null ||
+    strat !== null ||
+    net !== null ||
+    eng !== null ||
+    qual !== null ||
+    (commEvidenceNote && commEvidenceNote.trim() !== '') ||
+    (commReason && commReason.trim() !== '') ||
+    (coopNote && coopNote.trim() !== '') ||
+    (stratNote && stratNote.trim() !== '') ||
+    (netNote && netNote.trim() !== '') ||
+    (engNote && engNote.trim() !== '') ||
+    (qualNote && qualNote.trim() !== '') ||
+    (managerNote && managerNote.trim() !== '')
+  );
 
-  const isSavingInProgressRef = useRef(false);
-  const pendingPayloadRef = useRef<UpdateRelationshipAssessmentRequest | null>(null);
-  const persistedPayloadRef = useRef<string>('');
-  const baselinePayloadRef = useRef<string>('');
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
+  useEffect(() => {
+    onDirtyChange?.(isFormDirty);
+  }, [isFormDirty, onDirtyChange]);
 
-  // Keep latest mutable values for fresh reads in async/debounced callbacks without closure stale reads
+  // Keep latest mutable values for fresh reads in complete payload
   const latestValuesRef = useRef({
     commAwarded,
     commEvidenceNote,
@@ -358,15 +391,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
     managerNote,
   };
 
-  const isDraft = assessment.status === 'DRAFT';
-  const canAutoSave = isDraft && !isOwnerReview && Boolean(canComplete || canSubmit || isManager);
-
-  // Build payload for Manager Save Draft / Submit / Complete
-  const getManagerPayload = useCallback((): UpdateRelationshipAssessmentRequest => {
+  // Build payload for Manager Atomic Complete
+  const getManagerPayload = useCallback((): CompleteRelationshipAssessmentRequest => {
     const v = latestValuesRef.current;
     return {
-      fullSnapshot: isV5 ? true : undefined,
-      isFullSnapshot: isV5 ? true : undefined,
+      sourceAssessmentId: assessment.sourceAssessmentId ?? null,
       commercialAwardedScore: v.commAwarded,
       commercialAdjustmentReason: (isV4 || isV5) ? null : (v.commReason.trim() || null),
       commercialEvidenceNote: (isV4 || isV5) ? (v.commEvidenceNote.trim() || null) : null,
@@ -384,116 +413,13 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
       trustEvidenceNote: isV5 ? (v.qualNote.trim() || null) : undefined,
       managerNote: isV5 ? undefined : (v.managerNote.trim() || null),
     };
-  }, [isV5, isV4, isV3]);
-
-  // Initial baseline hydration: runs once on mount
-  useEffect(() => {
-    isMountedRef.current = true;
-    const initialPayload = getManagerPayload();
-    const serialized = JSON.stringify(initialPayload);
-    baselinePayloadRef.current = serialized;
-    persistedPayloadRef.current = serialized;
-    setAutoSaveStatus('SAVED');
-    setIsDirty(false);
-
-    return () => {
-      isMountedRef.current = false;
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Single-flight + latest-payload queue save dispatcher
-  const triggerAutoSave = useCallback(async () => {
-    if (!canAutoSave) return;
-    const latestPayload = getManagerPayload();
-    const serialized = JSON.stringify(latestPayload);
-
-    // If latest payload equals persisted payload, nothing new to save
-    if (serialized === persistedPayloadRef.current) {
-      if (isMountedRef.current) {
-        setAutoSaveStatus('SAVED');
-        setIsDirty(false);
-      }
-      return;
-    }
-
-    pendingPayloadRef.current = latestPayload;
-
-    // If a save request is already in flight, the running loop will pick up pendingPayloadRef upon completion
-    if (isSavingInProgressRef.current) {
-      return;
-    }
-
-    isSavingInProgressRef.current = true;
-    if (isMountedRef.current) {
-      setAutoSaveStatus('SAVING');
-    }
-
-    while (pendingPayloadRef.current !== null) {
-      const payloadToSave = pendingPayloadRef.current;
-      const payloadString = JSON.stringify(payloadToSave);
-      pendingPayloadRef.current = null;
-
-      try {
-        await onSaveDraft(payloadToSave);
-        persistedPayloadRef.current = payloadString;
-        baselinePayloadRef.current = payloadString;
-        if (isMountedRef.current) {
-          setLastSavedAt(new Date());
-        }
-      } catch (err) {
-        isSavingInProgressRef.current = false;
-        if (isMountedRef.current) {
-          setAutoSaveStatus('ERROR');
-          setIsDirty(true);
-        }
-        return;
-      }
-    }
-
-    isSavingInProgressRef.current = false;
-    if (!isMountedRef.current) return;
-
-    // After loop finishes, verify if another edit occurred right before loop exit
-    const finalPayload = getManagerPayload();
-    if (JSON.stringify(finalPayload) === persistedPayloadRef.current) {
-      setAutoSaveStatus('SAVED');
-      setIsDirty(false);
-    } else {
-      pendingPayloadRef.current = finalPayload;
-      triggerAutoSave();
-    }
-  }, [canAutoSave, getManagerPayload, onSaveDraft]);
-
-  // Schedule auto-save with specific debounce
-  const scheduleSave = useCallback((delayMs: number) => {
-    if (!canAutoSave) return;
-    if (isMountedRef.current) {
-      setAutoSaveStatus('DIRTY');
-      setIsDirty(true);
-    }
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = setTimeout(() => {
-      triggerAutoSave();
-    }, delayMs);
-  }, [canAutoSave, triggerAutoSave]);
+  }, [assessment.sourceAssessmentId, isV5, isV4, isV3]);
 
   const handleScoreSelect = (
-    val: string,
+    val: number | null,
     setter: (v: number | null) => void
   ) => {
-    let nextVal: number | null = null;
-    if (val !== '') {
-      const parsed = parseInt(val, 10);
-      nextVal = Number.isNaN(parsed) ? null : parsed;
-    }
-    setter(nextVal);
-    scheduleSave(300);
+    setter(val);
   };
 
   const handleNoteChange = (
@@ -501,53 +427,19 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
     setter: (v: string) => void
   ) => {
     setter(val);
-    scheduleSave(700);
   };
-
-  // Controlled navigation flush
-  const flushPendingSave = useCallback(async (): Promise<boolean> => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    const currentPayload = getManagerPayload();
-    if (JSON.stringify(currentPayload) === persistedPayloadRef.current && !isSavingInProgressRef.current) {
-      return true;
-    }
-    try {
-      await triggerAutoSave();
-      return persistedPayloadRef.current === JSON.stringify(getManagerPayload());
-    } catch {
-      return false;
-    }
-  }, [getManagerPayload, triggerAutoSave]);
-
-  useEffect(() => {
-    if (onFlushPendingSaveRef) {
-      onFlushPendingSaveRef.current = flushPendingSave;
-    }
-    return () => {
-      if (onFlushPendingSaveRef) {
-        onFlushPendingSaveRef.current = null;
-      }
-    };
-  }, [flushPendingSave, onFlushPendingSaveRef]);
 
   // Browser reload / tab close protection
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty || autoSaveStatus === 'SAVING') {
+      if (isFormDirty) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty, autoSaveStatus]);
-
-  const handleRetry = () => {
-    triggerAutoSave();
-  };
+  }, [isFormDirty]);
 
   // Validation logic
   const isDiffFromSuggested = commAwarded !== null && commAwarded !== suggestedCommercial;
@@ -577,6 +469,20 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
     : [commAwarded, coop, strat, net, eng, qual].filter(isAssessed).length;
   const isComplete = completedCriteriaCount === (isV3 ? 3 : 6);
 
+  // Prevent empty drafts: require at least 1 score selected or at least 1 note entered
+  const hasAnyScore = completedCriteriaCount > 0;
+  const hasAnyNote = Boolean(
+    (commEvidenceNote && commEvidenceNote.trim() !== '') ||
+    (commReason && commReason.trim() !== '') ||
+    (coopNote && coopNote.trim() !== '') ||
+    (stratNote && stratNote.trim() !== '') ||
+    (netNote && netNote.trim() !== '') ||
+    (engNote && engNote.trim() !== '') ||
+    (qualNote && qualNote.trim() !== '') ||
+    (managerNote && managerNote.trim() !== '')
+  );
+  const canSaveDraft = hasAnyScore || hasAnyNote;
+
   // Live completion preview (only displayed when all 6 criteria are assessed in V5)
   const liveResult = useMemo(() => {
     if (!isV5) return null;
@@ -590,14 +496,17 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
     ) {
       return null;
     }
-    const raw = commAwarded + coop + strat + net + eng + qual;
-    const normalized = (raw / 30.0) * 100.0;
-    const displayScore = Math.min(100, Math.round(normalized));
-    const rank =
-      normalized >= 90.0 ? 'A' : normalized >= 60.0 ? 'B' : normalized >= 30.0 ? 'C' : 'D';
+    const res = calculateRelationshipClosenessV5({
+      commercial: commAwarded,
+      cooperation: coop,
+      strategic: strat,
+      network: net,
+      engagement: eng,
+      qualitative: qual,
+    });
     return {
-      displayScore,
-      rank,
+      displayScore: res.normalizedScore,
+      rank: res.rank,
     };
   }, [isV5, commAwarded, coop, strat, net, eng, qual]);
 
@@ -606,17 +515,18 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
     if (!isComplete) {
       return;
     }
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
     const payload = getManagerPayload();
     if (onComplete) {
       await onComplete(payload);
     } else if (onSubmit) {
-      await onSaveDraft(payload);
       await onSubmit(payload);
     }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft || !canSaveDraft) return;
+    const payload = getManagerPayload();
+    await onSaveDraft(payload);
   };
 
   const handleSubmit = async () => {
@@ -692,6 +602,52 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
           <span style={{ fontSize: '0.78rem', color: '#64748b' }}>tiêu chí đã nhập điểm</span>
         </div>
       </div>
+      {/* Header */}
+
+      {/* Draft Status Banners */}
+      {draft?.isBaseUpdated && !draft?.isStale && (
+        <div
+          style={{
+            margin: '0 20px 16px',
+            padding: '12px 16px',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: '0.88rem',
+            color: '#1e40af',
+          }}
+        >
+          <Info size={18} style={{ flexShrink: 0, color: '#2563eb' }} />
+          <span>
+            Bản đánh giá chính thức đã được cập nhật từ {draft.baseFormattedVersion || 'V1'} lên <strong>{draft.latestOfficialFormattedVersion}</strong> kể từ khi bản nháp được lưu. Bạn vẫn có thể tiếp tục để hoàn tất tạo phiên bản chính thức tiếp theo.
+          </span>
+        </div>
+      )}
+
+      {draft?.isStale && (
+        <div
+          style={{
+            margin: '0 20px 16px',
+            padding: '12px 16px',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: '0.88rem',
+            color: '#92400e',
+          }}
+        >
+          <AlertCircle size={18} style={{ flexShrink: 0, color: '#d97706' }} />
+          <span>
+            Đã có bản đánh giá lớn mới <strong>{draft.latestOfficialFormattedVersion}</strong> được hoàn tất. Bản nháp này đã cũ và không thể hoàn tất trực tiếp.
+          </span>
+        </div>
+      )}
 
       {/* Main Assessment Table */}
       <div className={styles.tableWrapper}>
@@ -1030,18 +986,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${commAwarded === null ? styles.scoreSelectUnset : ''}`}
-                      value={commAwarded !== null && commAwarded !== undefined ? String(commAwarded) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setCommAwarded)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={commAwarded}
+                      onChange={(val) => handleScoreSelect(val, setCommAwarded)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -1066,18 +1015,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${coop === null ? styles.scoreSelectUnset : ''}`}
-                      value={coop !== null && coop !== undefined ? String(coop) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setCoop)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={coop}
+                      onChange={(val) => handleScoreSelect(val, setCoop)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -1102,18 +1044,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${strat === null ? styles.scoreSelectUnset : ''}`}
-                      value={strat !== null && strat !== undefined ? String(strat) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setStrat)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={strat}
+                      onChange={(val) => handleScoreSelect(val, setStrat)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -1138,18 +1073,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${net === null ? styles.scoreSelectUnset : ''}`}
-                      value={net !== null && net !== undefined ? String(net) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setNet)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={net}
+                      onChange={(val) => handleScoreSelect(val, setNet)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -1174,18 +1102,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${eng === null ? styles.scoreSelectUnset : ''}`}
-                      value={eng !== null && eng !== undefined ? String(eng) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setEng)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={eng}
+                      onChange={(val) => handleScoreSelect(val, setEng)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -1210,18 +1131,11 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <select
-                      className={`${styles.scoreSelect} ${qual === null ? styles.scoreSelectUnset : ''}`}
-                      value={qual !== null && qual !== undefined ? String(qual) : ''}
-                      onChange={(e) => handleScoreSelect(e.target.value, setQual)}
-                    >
-                      <option value="">Chọn điểm</option>
-                      {V5_SCORE_OPTIONS.map((score) => (
-                        <option key={score} value={score}>
-                          {score}
-                        </option>
-                      ))}
-                    </select>
+                    <RelationshipScoreSelect
+                      value={qual}
+                      onChange={(val) => handleScoreSelect(val, setQual)}
+                      disabled={isSaving || isSubmitting}
+                    />
                   </td>
                   <td>
                     <textarea
@@ -2377,23 +2291,6 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
       {/* ========================================================================= */}
       <div className={styles.builderActions}>
         <div className={styles.builderActionsLeft}>
-          {/* Auto-save Error Notification (Silent on success/saving, error feedback on failure) */}
-          {isDraft && !isOwnerReview && autoSaveStatus === 'ERROR' && (
-            <div className={styles.autoSaveStatus}>
-              <span className={styles.autoSaveStatusError}>
-                <AlertCircle size={14} />
-                <span>Không thể lưu thay đổi. Vui lòng thử lại.</span>
-                <button
-                  type="button"
-                  className={styles.retrySaveBtn}
-                  onClick={handleRetry}
-                >
-                  Thử lại
-                </button>
-              </span>
-            </div>
-          )}
-
           {liveResult ? (
             <div className={styles.liveScorePreview}>
               <span>
@@ -2424,37 +2321,76 @@ export const RelationshipScoreBuilderTable: React.FC<RelationshipScoreBuilderTab
 
         <div className={styles.builderActionsRight}>
           {!isOwnerReview ? (
-            /* Complete Assessment: MANAGER ONLY */
+            /* Complete Assessment & Save Draft: MANAGER ONLY */
             isManager && (
-              <button
-                type="button"
-                className={styles.btnPrimary}
-                onClick={handleComplete}
-                disabled={
-                  !canComplete ||
-                  !isComplete ||
-                  isSubmitting
-                }
-                title={
-                  !canComplete
-                    ? 'Chỉ Business Development Manager mới có quyền hoàn tất đánh giá.'
-                    : !isComplete
-                    ? `Cần nhập đủ ${isV3 ? 3 : 6} tiêu chí trước khi hoàn tất (${completedCriteriaCount}/${isV3 ? 3 : 6}).`
-                    : 'Hoàn tất đánh giá mức độ thân thiết.'
-                }
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="spinIcon" />
-                    <span>Đang hoàn tất...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={16} />
-                    <span>Hoàn tất đánh giá</span>
-                  </>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {onSaveDraft && (
+                  <button
+                    type="button"
+                    className={styles.btnSecondary}
+                    onClick={handleSaveDraft}
+                    disabled={isSaving || isSubmitting || !canSaveDraft}
+                    title={
+                      !canSaveDraft
+                        ? 'Vui lòng chọn ít nhất 1 điểm tiêu chí hoặc nhập 1 ghi chú trước khi lưu nháp'
+                        : 'Lưu bản nháp riêng'
+                    }
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      opacity: !canSaveDraft ? 0.6 : 1,
+                      cursor: !canSaveDraft ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 size={16} className="spinIcon" />
+                        <span>Đang lưu nháp...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        <span>Lưu bản nháp</span>
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={handleComplete}
+                  disabled={
+                    !canComplete ||
+                    !isComplete ||
+                    isSubmitting ||
+                    isSaving ||
+                    Boolean(draft?.isStale)
+                  }
+                  title={
+                    draft?.isStale
+                      ? 'Bản nháp đã cũ vì có phiên bản chính thức mới. Vui lòng tải lại.'
+                      : !canComplete
+                      ? 'Chỉ Business Development Manager mới có quyền hoàn tất đánh giá.'
+                      : !isComplete
+                      ? `Cần nhập đủ ${isV3 ? 3 : 6} tiêu chí trước khi hoàn tất (${completedCriteriaCount}/${isV3 ? 3 : 6}).`
+                      : 'Hoàn tất đánh giá mức độ thân thiết.'
+                  }
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="spinIcon" />
+                      <span>Đang hoàn tất...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      <span>Hoàn tất đánh giá</span>
+                    </>
+                  )}
+                </button>
+              </div>
             )
           ) : (
             /* Owner Finalize Action */

@@ -47,6 +47,9 @@ export interface RelationshipAssessmentResponse {
   companyProfileId: string;
   ownerCompanyProfileId: string;
   versionNumber: number;
+  majorVersion?: number;
+  minorRevision?: number;
+  formattedVersion?: string;
   status: RelationshipAssessmentStatus;
   scoringPolicyVersion: string;
 
@@ -104,12 +107,17 @@ export interface RelationshipAssessmentResponse {
 
   // Owner Final Assessment & Overrides
   ownerCommercialScore?: number | null;
+  ownerCommercialNote?: string | null;
   ownerCooperationScore?: number | null;
+  ownerCooperationNote?: string | null;
   ownerStrategicScore?: number | null;
+  ownerStrategicNote?: string | null;
   ownerRelationshipNetworkScore?: number | null;
   ownerRelationshipNetworkNote?: string | null;
   ownerEngagementScore?: number | null;
+  ownerEngagementNote?: string | null;
   ownerQualitativeScore?: number | null;
+  ownerQualitativeNote?: string | null;
   ownerTrustScore?: number | null;
   ownerNote?: string | null;
   ownerAdjustmentReason?: string | null;
@@ -137,6 +145,7 @@ export interface RelationshipAssessmentResponse {
   assessmentType?: RelationshipAssessmentType | null;
   sourceAssessmentId?: number | null;
   sourceVersionNumber?: number | null;
+  sourceFormattedVersion?: string | null;
   isOwnerAdjustment?: boolean;
   createdByAccountId?: number | null;
 
@@ -167,12 +176,109 @@ export interface OwnerAdjustmentUpdateRequest {
   ownerNote?: string | null;
 }
 
+export interface RelationshipAssessmentDraftResponse {
+  draftId: number;
+  companyProfileId: string;
+  actorAccountId: number;
+  actorRole: string;
+  draftType: RelationshipAssessmentType;
+  baseOfficialAssessmentId?: number | null;
+  baseMajorVersion?: number | null;
+  baseMinorRevision?: number | null;
+  baseFormattedVersion?: string | null;
+  latestOfficialAssessmentId?: number | null;
+  latestOfficialMajorVersion?: number | null;
+  latestOfficialMinorRevision?: number | null;
+  latestOfficialFormattedVersion?: string | null;
+  isStale?: boolean;
+  isBaseUpdated?: boolean;
+  completedCriteriaCount?: number;
+  changedCriterionCount?: number;
+  commercialScore?: number | null;
+  cooperationScore?: number | null;
+  strategicScore?: number | null;
+  relationshipNetworkScore?: number | null;
+  engagementScore?: number | null;
+  qualitativeScore?: number | null;
+  ownerCommercialScore?: number | null;
+  ownerCooperationScore?: number | null;
+  ownerStrategicScore?: number | null;
+  ownerRelationshipNetworkScore?: number | null;
+  ownerEngagementScore?: number | null;
+  ownerQualitativeScore?: number | null;
+  commercialEvidenceNote?: string | null;
+  cooperationEvidenceNote?: string | null;
+  strategicEvidenceNote?: string | null;
+  relationshipNetworkNote?: string | null;
+  engagementEvidenceNote?: string | null;
+  qualitativeEvidenceNote?: string | null;
+  managerNote?: string | null;
+  ownerCommercialNote?: string | null;
+  ownerCooperationNote?: string | null;
+  ownerStrategicNote?: string | null;
+  ownerRelationshipNetworkNote?: string | null;
+  ownerEngagementNote?: string | null;
+  ownerQualitativeNote?: string | null;
+  ownerNote?: string | null;
+  ownerAdjustmentReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveRelationshipAssessmentDraftRequest {
+  baseOfficialAssessmentId?: number | null;
+  baseMajorVersion?: number | null;
+  baseMinorRevision?: number | null;
+  commercialScore?: number | null;
+  cooperationScore?: number | null;
+  strategicScore?: number | null;
+  relationshipNetworkScore?: number | null;
+  engagementScore?: number | null;
+  qualitativeScore?: number | null;
+  ownerCommercialScore?: number | null;
+  ownerCooperationScore?: number | null;
+  ownerStrategicScore?: number | null;
+  ownerRelationshipNetworkScore?: number | null;
+  ownerEngagementScore?: number | null;
+  ownerQualitativeScore?: number | null;
+  commercialEvidenceNote?: string | null;
+  cooperationEvidenceNote?: string | null;
+  strategicEvidenceNote?: string | null;
+  relationshipNetworkNote?: string | null;
+  engagementEvidenceNote?: string | null;
+  qualitativeEvidenceNote?: string | null;
+  managerNote?: string | null;
+  ownerCommercialNote?: string | null;
+  ownerCooperationNote?: string | null;
+  ownerStrategicNote?: string | null;
+  ownerRelationshipNetworkNote?: string | null;
+  ownerEngagementNote?: string | null;
+  ownerQualitativeNote?: string | null;
+  ownerNote?: string | null;
+  ownerAdjustmentReason?: string | null;
+}
+
+export interface RelationshipTrendInfo {
+  prevVersion: number | null;
+  prevFormattedVersion: string;
+  prevScore: number;
+  prevRank: string;
+  currentVersion: number | null;
+  currentFormattedVersion: string;
+  currentScore: number;
+  currentRank: string;
+  diff: number;
+}
+
 export interface RelationshipOverviewResponse {
   activeAssessment: RelationshipAssessmentResponse | null;
   officialFinalizedAssessment: RelationshipAssessmentResponse | null;
+  previousOfficialAssessment?: RelationshipAssessmentResponse | null;
+  trendInfo?: RelationshipTrendInfo | null;
   liveCommercialEvidence: CommercialEvidence | null;
   hasActiveAssessment: boolean;
   canCreateAssessment: boolean;
+  myDraft?: RelationshipAssessmentDraftResponse | null;
 }
 
 export interface CreateRelationshipAssessmentRequest {
@@ -230,4 +336,46 @@ export interface FinalizeRelationshipAssessmentRequest {
 
 export interface RequestChangesAssessmentRequest {
   reason: string;
+}
+
+export interface CompleteRelationshipAssessmentRequest {
+  sourceAssessmentId?: number | null;
+  baseMajorVersion?: number | null;
+  commercialAwardedScore?: number | null;
+  commercialAdjustmentReason?: string | null;
+  commercialEvidenceNote?: string | null;
+  cooperationScore?: number | null;
+  cooperationEvidenceNote?: string | null;
+  strategicScore?: number | null;
+  strategicEvidenceNote?: string | null;
+  relationshipNetworkScore?: number | null;
+  relationshipNetworkNote?: string | null;
+  engagementScore?: number | null;
+  engagementEvidenceNote?: string | null;
+  qualitativeScore?: number | null;
+  qualitativeEvidenceNote?: string | null;
+  trustScore?: number | null;
+  trustEvidenceNote?: string | null;
+  managerNote?: string | null;
+}
+
+export interface CompleteOwnerAdjustmentRequest {
+  sourceAssessmentId: number;
+  baseMajorVersion?: number | null;
+  baseMinorRevision?: number | null;
+  ownerCommercialScore?: number | null;
+  ownerCommercialNote?: string | null;
+  ownerCooperationScore?: number | null;
+  ownerCooperationNote?: string | null;
+  ownerStrategicScore?: number | null;
+  ownerStrategicNote?: string | null;
+  ownerRelationshipNetworkScore?: number | null;
+  ownerRelationshipNetworkNote?: string | null;
+  ownerEngagementScore?: number | null;
+  ownerEngagementNote?: string | null;
+  ownerQualitativeScore?: number | null;
+  ownerQualitativeNote?: string | null;
+  ownerTrustScore?: number | null;
+  ownerAdjustmentReason?: string | null;
+  ownerNote?: string | null;
 }

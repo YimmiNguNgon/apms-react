@@ -1,4 +1,4 @@
-import type { RelationshipAssessmentRank } from '../../types/relationshipAssessment';
+import type { RelationshipAssessmentRank, RelationshipAssessmentResponse } from '../../types/relationshipAssessment';
 
 export type V5CriterionKey =
   | 'commercial'
@@ -216,4 +216,101 @@ export const getRankFromNormalizedScore = (score: number): ReturnType<typeof get
   if (score >= 60.0) return getRankMeta('B');
   if (score >= 30.0) return getRankMeta('C');
   return getRankMeta('D');
+};
+
+export interface V5ScoreInput {
+  commercial?: number | null;
+  cooperation?: number | null;
+  strategic?: number | null;
+  network?: number | null;
+  engagement?: number | null;
+  qualitative?: number | null;
+}
+
+export interface V5CalculationResult {
+  rawScore: number;
+  normalizedScore: number;
+  exactNormalizedScore: number;
+  rank: RelationshipAssessmentRank;
+  rankMeta: ReturnType<typeof getRankMeta>;
+  isComplete: boolean;
+}
+
+export const calculateRelationshipClosenessV5 = (scores: V5ScoreInput): V5CalculationResult => {
+  const { commercial, cooperation, strategic, network, engagement, qualitative } = scores;
+  const isComplete =
+    commercial !== null && commercial !== undefined &&
+    cooperation !== null && cooperation !== undefined &&
+    strategic !== null && strategic !== undefined &&
+    network !== null && network !== undefined &&
+    engagement !== null && engagement !== undefined &&
+    qualitative !== null && qualitative !== undefined;
+
+  const c = commercial ?? 0;
+  const coop = cooperation ?? 0;
+  const s = strategic ?? 0;
+  const n = network ?? 0;
+  const e = engagement ?? 0;
+  const q = qualitative ?? 0;
+
+  const rawScore = Math.max(0, Math.min(30, c + coop + s + n + e + q));
+  const exactNormalizedScore = (rawScore * 100.0) / 30.0;
+  const normalizedScore = Math.max(0, Math.min(100, Math.round(exactNormalizedScore)));
+  const rank: RelationshipAssessmentRank =
+    exactNormalizedScore >= 90.0 ? 'A' : exactNormalizedScore >= 60.0 ? 'B' : exactNormalizedScore >= 30.0 ? 'C' : 'D';
+  const rankMeta = getRankMeta(rank);
+
+  return {
+    rawScore,
+    normalizedScore,
+    exactNormalizedScore,
+    rank,
+    rankMeta,
+    isComplete,
+  };
+};
+
+export const getOfficialScoresFromAssessment = (
+  assessment?: RelationshipAssessmentResponse | null
+): {
+  commercial: number | null;
+  cooperation: number | null;
+  strategic: number | null;
+  network: number | null;
+  engagement: number | null;
+  qualitative: number | null;
+} => {
+  if (!assessment) {
+    return {
+      commercial: null,
+      cooperation: null,
+      strategic: null,
+      network: null,
+      engagement: null,
+      qualitative: null,
+    };
+  }
+
+  const isOwnerAdj = assessment.isOwnerAdjustment || assessment.assessmentType === 'OWNER_ADJUSTMENT';
+  const hasOwnerFinal = assessment.ownerFinalTotalScore !== null && assessment.ownerFinalTotalScore !== undefined;
+
+  if (isOwnerAdj || hasOwnerFinal) {
+    return {
+      commercial: assessment.ownerCommercialScore ?? assessment.commercialAwardedScore ?? assessment.commercialScore ?? null,
+      cooperation: assessment.ownerCooperationScore ?? assessment.cooperationScore ?? null,
+      strategic: assessment.ownerStrategicScore ?? assessment.strategicScore ?? null,
+      network: assessment.ownerRelationshipNetworkScore ?? assessment.relationshipNetworkScore ?? null,
+      engagement: assessment.ownerEngagementScore ?? assessment.engagementScore ?? null,
+      qualitative: assessment.ownerQualitativeScore ?? assessment.ownerTrustScore ?? assessment.qualitativeScore ?? assessment.trustScore ?? null,
+    };
+  }
+
+  return {
+    commercial: assessment.commercialAwardedScore ?? assessment.commercialScore ?? null,
+    cooperation: assessment.cooperationScore ?? null,
+    strategic: assessment.strategicScore ?? null,
+    network: assessment.relationshipNetworkScore ?? null,
+    engagement: assessment.engagementScore ?? null,
+    qualitative: assessment.qualitativeScore ?? assessment.trustScore ?? null,
+  };
 };

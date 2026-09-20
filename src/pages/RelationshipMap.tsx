@@ -78,6 +78,9 @@ export type RelationshipTrendType = 'NEWLY_SCORED' | 'IMPROVING' | 'DECLINING' |
 export interface RecentAssessmentItemDto {
   id: number;
   versionNumber: number;
+  majorVersion?: number;
+  minorRevision?: number;
+  formattedVersion?: string;
   assessmentType?: string;
   score: number;
   rank: 'A' | 'B' | 'C' | 'D';
@@ -3195,8 +3198,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                 </div>
                                 {summary?.previousAssessment && summary?.latestAssessment && (
                                   <div style={{ color: '#cbd5e1', marginTop: '3px', fontSize: '9.5px' }}>
-                                    <div>V{summary.previousAssessment.versionNumber}: {summary.previousAssessment.score}/100 · Rank {summary.previousAssessment.rank}</div>
-                                    <div>V{summary.latestAssessment.versionNumber}: {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}</div>
+                                    <div>{summary.previousAssessment.formattedVersion || `V${summary.previousAssessment.versionNumber}`}: {summary.previousAssessment.score}/100 · Rank {summary.previousAssessment.rank}</div>
+                                    <div>{summary.latestAssessment.formattedVersion || `V${summary.latestAssessment.versionNumber}`}: {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}</div>
                                   </div>
                                 )}
                               </>
@@ -3545,7 +3548,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: '#64748b' }}>Đánh giá:</span>
                                   <strong style={{ color: '#0f172a' }}>
-                                    V{summary.latestAssessment.versionNumber} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
+                                    {summary.latestAssessment.formattedVersion || `V${summary.latestAssessment.versionNumber}`} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
                                   </strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -3566,14 +3569,14 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ color: '#64748b' }}>Hiện tại:</span>
                                   <strong style={{ color: '#0f172a' }}>
-                                    V{summary.latestAssessment.versionNumber} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
+                                    {summary.latestAssessment.formattedVersion || `V${summary.latestAssessment.versionNumber}`} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
                                   </strong>
                                 </div>
                                 {summary.previousAssessment && (
                                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span style={{ color: '#64748b' }}>Trước đó:</span>
                                     <span style={{ color: '#475569' }}>
-                                      V{summary.previousAssessment.versionNumber} · {summary.previousAssessment.score}/100 · Rank {summary.previousAssessment.rank}
+                                      {summary.previousAssessment.formattedVersion || `V${summary.previousAssessment.versionNumber}`} · {summary.previousAssessment.score}/100 · Rank {summary.previousAssessment.rank}
                                     </span>
                                   </div>
                                 )}

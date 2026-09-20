@@ -1,23 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
-  Award,
-  Calendar,
   CheckCircle2,
-  Clock,
-  Eye,
-  FileCheck,
-  FileText,
-  HelpCircle,
-  History,
   Info,
   Loader2,
-  Save,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
-  User,
   X,
 } from 'lucide-react';
 import { companyRelationshipAssessmentApi } from '../API/companyRelationshipAssessmentApi';
@@ -25,10 +12,11 @@ import { companyProfileApi } from '../API/companyProfileApi';
 import { ROLES, useUser, type Role } from '../context/UserContext';
 import type {
   RelationshipAssessmentResponse,
+  RelationshipAssessmentDraftResponse,
+  SaveRelationshipAssessmentDraftRequest,
   RelationshipOverviewResponse,
-  UpdateRelationshipAssessmentRequest,
-  FinalizeRelationshipAssessmentRequest,
-  OwnerAdjustmentUpdateRequest,
+  CompleteRelationshipAssessmentRequest,
+  CompleteOwnerAdjustmentRequest,
 } from '../types/relationshipAssessment';
 import { RelationshipScoreBuilderTable } from '../components/RelationshipCloseness/RelationshipScoreBuilderTable';
 import { RelationshipOwnerAdjustmentEditor } from '../components/RelationshipCloseness/RelationshipOwnerAdjustmentEditor';
@@ -48,6 +36,7 @@ interface ParsedNavContext {
   readOnly: boolean;
   companyName: string;
   version: number | null;
+  assessmentType: 'MANAGER_ASSESSMENT' | 'OWNER_ADJUSTMENT' | null;
 }
 
 const parseNavContext = (): ParsedNavContext => {
@@ -67,6 +56,7 @@ const parseNavContext = (): ParsedNavContext => {
     readOnly: params.get('readOnly') === 'true',
     companyName: params.get('companyName') || '',
     version: params.get('version') ? parseInt(params.get('version')!, 10) : null,
+    assessmentType: (params.get('assessmentType') as any) || null,
   };
 };
 
@@ -88,54 +78,43 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
 }) => {
   const { currentUser } = useUser();
   const navContext = useMemo(() => parseNavContext(), []);
-  const { companyProfileId, assessmentId, historyId, mode, readOnly, version } = navContext;
+  const { companyProfileId, assessmentId, historyId, readOnly } = navContext;
 
   const [companyName, setCompanyName] = useState<string>(navContext.companyName || '');
   const [loading, setLoading] = useState(true);
   const [assessment, setAssessment] = useState<RelationshipAssessmentResponse | null>(null);
   const [sourceAssessment, setSourceAssessment] = useState<RelationshipAssessmentResponse | null>(null);
   const [overview, setOverview] = useState<RelationshipOverviewResponse | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [myDraft, setMyDraft] = useState<RelationshipAssessmentDraftResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: 'ok' | 'error'; text: string; conflict?: boolean } | null>(null);
 
-  // Owner Request Changes modal state
-  const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
-  const [requestChangesReason, setRequestChangesReason] = useState('');
-
+  // Local unsaved changes state & confirmation modal
+  const [isDirty, setIsDirty] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   const currentUserRole = currentUser?.role;
   const isOwner = currentUserRole === ROLES.OWNER;
   const isManager = currentUserRole === ROLES.MANAGER;
 
-  const flushPendingSaveRef = useRef<(() => Promise<boolean>) | null>(null);
-
-  // Navigate back to company detail -> relationship closeness tab
-  const handleBackToDashboard = useCallback(async () => {
-    if (flushPendingSaveRef.current) {
-      try {
-        const ok = await flushPendingSaveRef.current();
-        if (!ok) {
-          setActionMessage({
-            type: 'error',
-            text: 'Không thể lưu tự động bản nháp trước khi thoát. Vui lòng thử lại.',
-          });
-          return;
-        }
-      } catch {
-        setActionMessage({
-          type: 'error',
-          text: 'Không thể lưu tự động bản nháp trước khi thoát. Vui lòng thử lại.',
-        });
-        return;
-      }
-    }
+  // Perform backward navigation
+  const performBackNavigation = useCallback(() => {
     if (!setActivePage) {
       window.history.back();
       return;
     }
     setActivePage(`company-detail?companyId=${encodeURIComponent(companyProfileId)}&tab=relationship-closeness`);
   }, [setActivePage, companyProfileId]);
+
+  // Navigate back with unsaved check
+  const handleBackToDashboard = useCallback(() => {
+    if (isDirty) {
+      setShowUnsavedModal(true);
+      return;
+    }
+    performBackNavigation();
+  }, [isDirty, performBackNavigation]);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -162,7 +141,6 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
       }
 
       if (fetchedProfile && !canUseRelationshipCloseness(fetchedProfile.relationshipType, false, false, fetchedProfile.canAccessRelationshipCloseness)) {
-        // Redirect back to Company Detail -> Overview for non-eligible companies
         if (setActivePage) {
           setActivePage(`company-detail?companyId=${encodeURIComponent(companyProfileId)}&tab=overview`);
         } else if (typeof window !== 'undefined') {
@@ -176,120 +154,152 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
       const ovRes = await companyRelationshipAssessmentApi.getOverview(companyProfileId);
       setOverview(ovRes.data);
 
-      const targetAssessmentId = historyId || assessmentId;
+      const latestOfficial = ovRes.data?.officialFinalizedAssessment || null;
+      const liveEvidence = ovRes.data?.liveCommercialEvidence;
+      const draft = ovRes.data?.myDraft || null;
+      setMyDraft(draft);
+      const targetAssessmentId = historyId || (readOnly ? assessmentId : null);
 
-      let resolvedAssessment: RelationshipAssessmentResponse | null = null;
       if (targetAssessmentId) {
-        // Direct assessment by id
+        // Viewing historical finalized assessment (Read-only)
         const assessRes = await companyRelationshipAssessmentApi.getById(targetAssessmentId);
-        resolvedAssessment = assessRes.data;
-      } else if (ovRes.data?.activeAssessment) {
-        resolvedAssessment = ovRes.data.activeAssessment;
-      } else if (ovRes.data?.officialFinalizedAssessment) {
-        resolvedAssessment = ovRes.data.officialFinalizedAssessment;
-      }
-
-      if (resolvedAssessment) {
-        setAssessment(resolvedAssessment);
-        if (resolvedAssessment.sourceAssessmentId) {
+        setAssessment(assessRes.data);
+        if (assessRes.data.sourceAssessmentId) {
           try {
-            const srcRes = await companyRelationshipAssessmentApi.getById(resolvedAssessment.sourceAssessmentId);
+            const srcRes = await companyRelationshipAssessmentApi.getById(assessRes.data.sourceAssessmentId);
             setSourceAssessment(srcRes.data);
           } catch {
-            if (ovRes.data?.officialFinalizedAssessment?.id === resolvedAssessment.sourceAssessmentId) {
-              setSourceAssessment(ovRes.data.officialFinalizedAssessment);
+            if (latestOfficial?.id === assessRes.data.sourceAssessmentId) {
+              setSourceAssessment(latestOfficial);
             }
           }
-        } else if (resolvedAssessment.isOwnerAdjustment && ovRes.data?.officialFinalizedAssessment) {
-          setSourceAssessment(ovRes.data.officialFinalizedAssessment);
         }
       } else {
-        // Virtual initial draft when no assessment exists yet
-        const liveEvidence = ovRes.data?.liveCommercialEvidence;
-        const virtualDraft: RelationshipAssessmentResponse = {
-          id: 0,
-          ownerCompanyProfileId: '',
-          companyProfileId,
-          versionNumber: 1,
-          status: 'DRAFT',
-          scoringPolicyVersion: 'RELATIONSHIP_CLOSENESS_V5',
-          commercialScore: null,
-          commercialSuggestedScore: null,
-          commercialAwardedScore: null,
-          commercialAdjustmentReason: null,
-          commercialEvidenceNote: null,
-          contractValueScore: null,
-          contractCountScore: 0,
-          relationshipDurationScore: 0,
-          contractRecencyScore: 0,
-          approvedContractCount: liveEvidence?.approvedContractCount ?? 0,
-          totalContractValueVnd: liveEvidence?.totalContractValueVnd ?? null,
-          contractCurrencies: liveEvidence?.contractCurrencies ?? null,
-          currencyBreakdown: null,
-          contractValueStatus: liveEvidence?.contractValueStatus ?? 'SCORABLE',
-          firstCooperationDate: liveEvidence?.firstCooperationDate ?? null,
-          latestContractDate: liveEvidence?.latestContractDate ?? null,
-          upcomingContractCount: liveEvidence?.upcomingContractCount ?? 0,
-          scorableBase: 30,
-          normalizationApplied: true,
-          cooperationScore: null,
-          cooperationEvidenceNote: null,
-          strategicScore: null,
-          strategicEvidenceNote: null,
-          relationshipNetworkScore: null,
-          relationshipNetworkNote: null,
-          engagementScore: null,
-          engagementEvidenceNote: null,
-          qualitativeScore: null,
-          qualitativeEvidenceNote: null,
-          trustScore: null,
-          trustEvidenceNote: null,
-          managerNote: null,
-          managerRawScorableScore: null,
-          managerTotalScore: null,
-          managerNormalizedScore: null,
-          managerRank: null,
-          managerRankDescription: null,
-          managerAccountId: null,
-          managerSubmittedAt: null,
-          changesRequestedReason: null,
-          changesRequestedByAccountId: null,
-          changesRequestedAt: null,
-          ownerCommercialScore: null,
-          ownerCooperationScore: null,
-          ownerStrategicScore: null,
-          ownerRelationshipNetworkScore: null,
-          ownerRelationshipNetworkNote: null,
-          ownerEngagementScore: null,
-          ownerQualitativeScore: null,
-          ownerTrustScore: null,
-          ownerNote: null,
-          ownerAdjustmentReason: null,
-          ownerRawScorableScore: null,
-          ownerFinalTotalScore: null,
-          ownerNormalizedScore: null,
-          ownerFinalRank: null,
-          ownerFinalRankDescription: null,
-          ownerAccountId: null,
-          finalizedAt: null,
-          completedCriteriaCount: 0,
-          totalCriteriaCount: 6,
-          draftSubtotalScore: null,
-          isComplete: false,
-          officialScore: null,
-          officialRank: null,
-          officialRankDescription: null,
-          isOfficialFinalized: false,
-          canEditDraft: true,
-          canSubmit: isManager,
-          canComplete: isManager,
-          canRequestChanges: false,
-          canFinalize: false,
-          canCreateNewVersion: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setAssessment(virtualDraft);
+        // Edit mode: Purely in-memory blank form (or initialized from private draft)
+        const isOwnerAdjustment = navContext.assessmentType === 'OWNER_ADJUSTMENT' || (isOwner && !isManager);
+
+        if (isOwnerAdjustment) {
+          if (!latestOfficial) {
+            setActionMessage({
+              type: 'error',
+              text: 'Không thể điều chỉnh khi chưa có bản đánh giá chính thức nào.',
+            });
+            setLoading(false);
+            return;
+          }
+          setSourceAssessment(latestOfficial);
+          const latestMajor = latestOfficial.majorVersion ?? latestOfficial.versionNumber ?? 1;
+          const nextMinor = (latestOfficial.minorRevision ?? 0) + 1;
+          const nextVersionNumber = latestMajor * 100 + nextMinor;
+          const formattedVersion = `V${latestMajor}.${nextMinor}`;
+
+          const virtualAdjustment: RelationshipAssessmentResponse = {
+            id: 0,
+            companyProfileId,
+            ownerCompanyProfileId: latestOfficial.ownerCompanyProfileId,
+            versionNumber: nextVersionNumber,
+            majorVersion: latestMajor,
+            minorRevision: nextMinor,
+            formattedVersion,
+            status: 'DRAFT',
+            assessmentType: 'OWNER_ADJUSTMENT',
+            isOwnerAdjustment: true,
+            sourceAssessmentId: latestOfficial.id,
+            sourceVersionNumber: latestOfficial.versionNumber,
+            scoringPolicyVersion: 'RELATIONSHIP_CLOSENESS_V5',
+            approvedContractCount: liveEvidence?.approvedContractCount ?? latestOfficial.approvedContractCount ?? 0,
+            totalContractValueVnd: liveEvidence?.totalContractValueVnd ?? latestOfficial.totalContractValueVnd ?? null,
+            contractCurrencies: liveEvidence?.contractCurrencies ?? latestOfficial.contractCurrencies ?? null,
+            contractValueStatus: liveEvidence?.contractValueStatus ?? latestOfficial.contractValueStatus ?? 'SCORABLE',
+            firstCooperationDate: liveEvidence?.firstCooperationDate ?? latestOfficial.firstCooperationDate ?? null,
+            latestContractDate: liveEvidence?.latestContractDate ?? latestOfficial.latestContractDate ?? null,
+            upcomingContractCount: liveEvidence?.upcomingContractCount ?? latestOfficial.upcomingContractCount ?? 0,
+            scorableBase: 30,
+            normalizationApplied: true,
+            ownerCommercialScore: draft?.ownerCommercialScore ?? null,
+            ownerCooperationScore: draft?.ownerCooperationScore ?? null,
+            ownerStrategicScore: draft?.ownerStrategicScore ?? null,
+            ownerRelationshipNetworkScore: draft?.ownerRelationshipNetworkScore ?? null,
+            ownerEngagementScore: draft?.ownerEngagementScore ?? null,
+            ownerQualitativeScore: draft?.ownerQualitativeScore ?? null,
+            ownerCommercialNote: draft?.ownerCommercialNote ?? null,
+            ownerCooperationNote: draft?.ownerCooperationNote ?? null,
+            ownerStrategicNote: draft?.ownerStrategicNote ?? null,
+            ownerRelationshipNetworkNote: draft?.ownerRelationshipNetworkNote ?? null,
+            ownerEngagementNote: draft?.ownerEngagementNote ?? null,
+            ownerQualitativeNote: draft?.ownerQualitativeNote ?? null,
+            ownerNote: draft?.ownerNote ?? null,
+            ownerAdjustmentReason: draft?.ownerAdjustmentReason ?? null,
+            isOfficialFinalized: false,
+            canEditDraft: true,
+            canSubmit: false,
+            canComplete: isOwner,
+            canRequestChanges: false,
+            canFinalize: false,
+            canCreateNewVersion: false,
+            createdAt: draft?.createdAt ?? new Date().toISOString(),
+            updatedAt: draft?.updatedAt ?? new Date().toISOString(),
+          };
+          setAssessment(virtualAdjustment);
+        } else {
+          // Manager Assessment: blank form or initialized from private draft
+          setSourceAssessment(latestOfficial);
+          const nextMajor = (latestOfficial?.majorVersion ?? latestOfficial?.versionNumber ?? 0) + 1;
+          const formattedVersion = `V${nextMajor}`;
+
+          const virtualAssessment: RelationshipAssessmentResponse = {
+            id: 0,
+            companyProfileId,
+            ownerCompanyProfileId: '',
+            versionNumber: nextMajor,
+            majorVersion: nextMajor,
+            minorRevision: 0,
+            formattedVersion,
+            status: 'DRAFT',
+            assessmentType: 'MANAGER_ASSESSMENT',
+            isOwnerAdjustment: false,
+            sourceAssessmentId: latestOfficial?.id ?? null,
+            sourceVersionNumber: latestOfficial?.versionNumber ?? null,
+            scoringPolicyVersion: 'RELATIONSHIP_CLOSENESS_V5',
+            commercialAwardedScore: draft?.commercialScore ?? null,
+            cooperationScore: draft?.cooperationScore ?? null,
+            strategicScore: draft?.strategicScore ?? null,
+            relationshipNetworkScore: draft?.relationshipNetworkScore ?? null,
+            engagementScore: draft?.engagementScore ?? null,
+            qualitativeScore: draft?.qualitativeScore ?? null,
+            trustScore: draft?.qualitativeScore ?? null,
+            commercialEvidenceNote: draft?.commercialEvidenceNote ?? null,
+            cooperationEvidenceNote: draft?.cooperationEvidenceNote ?? null,
+            strategicEvidenceNote: draft?.strategicEvidenceNote ?? null,
+            relationshipNetworkNote: draft?.relationshipNetworkNote ?? null,
+            engagementEvidenceNote: draft?.engagementEvidenceNote ?? null,
+            qualitativeEvidenceNote: draft?.qualitativeEvidenceNote ?? null,
+            trustEvidenceNote: draft?.qualitativeEvidenceNote ?? null,
+            managerNote: draft?.managerNote ?? null,
+            approvedContractCount: liveEvidence?.approvedContractCount ?? 0,
+            totalContractValueVnd: liveEvidence?.totalContractValueVnd ?? null,
+            contractCurrencies: liveEvidence?.contractCurrencies ?? null,
+            contractValueStatus: liveEvidence?.contractValueStatus ?? 'SCORABLE',
+            firstCooperationDate: liveEvidence?.firstCooperationDate ?? null,
+            latestContractDate: liveEvidence?.latestContractDate ?? null,
+            upcomingContractCount: liveEvidence?.upcomingContractCount ?? 0,
+            scorableBase: 30,
+            normalizationApplied: true,
+            completedCriteriaCount: draft?.completedCriteriaCount ?? 0,
+            totalCriteriaCount: 6,
+            isComplete: false,
+            isOfficialFinalized: false,
+            canEditDraft: true,
+            canSubmit: isManager,
+            canComplete: isManager,
+            canRequestChanges: false,
+            canFinalize: false,
+            canCreateNewVersion: false,
+            createdAt: draft?.createdAt ?? new Date().toISOString(),
+            updatedAt: draft?.updatedAt ?? new Date().toISOString(),
+          };
+          setAssessment(virtualAssessment);
+        }
       }
     } catch (err: any) {
       setActionMessage({
@@ -299,7 +309,7 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
     } finally {
       setLoading(false);
     }
-  }, [companyProfileId, assessmentId, historyId, companyName, isManager]);
+  }, [companyProfileId, assessmentId, historyId, companyName, isManager, isOwner, navContext.assessmentType, readOnly, setActivePage]);
 
   useEffect(() => {
     loadData();
@@ -309,160 +319,152 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
   const isOwnerAdjustment = Boolean(
     assessment?.isOwnerAdjustment || assessment?.assessmentType === 'OWNER_ADJUSTMENT'
   );
-  const isHistorical = Boolean(historyId);
-  const isFinalized = assessment?.status === 'FINALIZED';
-  const isCancelled = assessment?.status === 'CANCELLED';
-  const isOwnerReview = false; // Owner review UI hidden in active V5 flow
-  const isSubmittedNonOwner = Boolean(assessment && assessment.status === 'SUBMITTED' && !isOwner);
+  const isHistorical = Boolean(historyId || readOnly);
+  const isFinalized = assessment?.status === 'FINALIZED' && assessment.id !== 0;
 
-  const canOwnerEditAdjustment = isOwnerAdjustment && assessment?.status === 'DRAFT' && isOwner && !readOnly;
-  const canManagerEditDraft = !isOwnerAdjustment && assessment?.status === 'DRAFT' && isManager && !readOnly;
+  const canOwnerEditAdjustment = isOwnerAdjustment && isOwner && !isHistorical;
+  const canManagerEditDraft = !isOwnerAdjustment && isManager && !isHistorical;
 
-  const isStrictReadOnly =
-    readOnly ||
-    isHistorical ||
-    isFinalized ||
-    isCancelled ||
-    isSubmittedNonOwner ||
-    (isOwnerAdjustment && !canOwnerEditAdjustment) ||
-    (!isOwnerAdjustment && !canManagerEditDraft);
-
-  const assessmentRef = useRef(assessment);
-  assessmentRef.current = assessment;
-
-  // Handle Save Draft (stays on detail page, quiet auto-save without disruptive banners)
-  const handleSaveDraft = async (data: UpdateRelationshipAssessmentRequest) => {
-    const currentAssessment = assessmentRef.current;
-    if (!currentAssessment) return;
+  // Atomic Manager Completion
+  const handleComplete = async (data: CompleteRelationshipAssessmentRequest) => {
     try {
-      setIsSaving(true);
-      let updated: RelationshipAssessmentResponse;
-
-      if (!currentAssessment.id || currentAssessment.id === 0) {
-        // First-time assessment lazy creation
-        const res = await companyRelationshipAssessmentApi.createDraft(companyProfileId, data);
-        updated = res.data;
-        assessmentRef.current = updated;
-        setAssessment(updated);
+      setIsSubmitting(true);
+      setActionMessage(null);
+      const payload: CompleteRelationshipAssessmentRequest = {
+        ...data,
+        sourceAssessmentId: sourceAssessment?.id ?? null,
+        baseMajorVersion: myDraft?.baseMajorVersion ?? sourceAssessment?.majorVersion ?? sourceAssessment?.versionNumber ?? 0,
+      };
+      await companyRelationshipAssessmentApi.completeDirectAssessment(companyProfileId, payload);
+      setIsDirty(false);
+      performBackNavigation();
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setActionMessage({
+          type: 'error',
+          text: err.response.data?.message || 'Bản đánh giá chính thức đã được cập nhật trong khi bạn đang thực hiện đánh giá. Vui lòng tải lại dữ liệu trước khi tiếp tục.',
+          conflict: true,
+        });
       } else {
-        const res = await companyRelationshipAssessmentApi.updateDraft(currentAssessment.id, data);
-        updated = res.data;
-        assessmentRef.current = updated;
-        setAssessment(updated);
+        setActionMessage({
+          type: 'error',
+          text: err?.response?.data?.message || 'Không thể hoàn tất đánh giá.',
+        });
       }
-    } catch (err: any) {
-      throw err;
     } finally {
-      setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Handle Complete (Manager direct completion -> atomic API call & navigates back to Dashboard)
-  const handleComplete = async (data?: UpdateRelationshipAssessmentRequest) => {
-    if (!assessment) return;
+  // Atomic Owner Adjustment Completion
+  const handleCompleteOwnerAdjustment = async (data: CompleteOwnerAdjustmentRequest) => {
     try {
       setIsSubmitting(true);
       setActionMessage(null);
-      let targetId = assessment.id;
-
-      if (!targetId || targetId === 0) {
-        const createRes = await companyRelationshipAssessmentApi.createDraft(companyProfileId, data);
-        targetId = createRes.data.id;
+      const payload: CompleteOwnerAdjustmentRequest = {
+        ...data,
+        baseMajorVersion: sourceAssessment?.majorVersion ?? sourceAssessment?.versionNumber ?? 1,
+        baseMinorRevision: sourceAssessment?.minorRevision ?? 0,
+      };
+      await companyRelationshipAssessmentApi.completeDirectOwnerAdjustment(companyProfileId, payload);
+      setIsDirty(false);
+      performBackNavigation();
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setActionMessage({
+          type: 'error',
+          text: err.response.data?.message || 'Bản đánh giá chính thức đã được cập nhật trong khi bạn đang thực hiện đánh giá. Vui lòng tải lại dữ liệu trước khi tiếp tục.',
+          conflict: true,
+        });
+      } else {
+        setActionMessage({
+          type: 'error',
+          text: err?.response?.data?.message || 'Không thể hoàn tất điều chỉnh đánh giá.',
+        });
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-      if (targetId) {
-        await companyRelationshipAssessmentApi.complete(targetId, data);
+  // Save Private Draft
+  const handleSaveDraft = async (data: any) => {
+    try {
+      setIsSavingDraft(true);
+      setActionMessage(null);
+      let draftPayload: SaveRelationshipAssessmentDraftRequest;
+      if (isOwnerAdjustment) {
+        draftPayload = data;
+      } else {
+        draftPayload = {
+          baseOfficialAssessmentId: sourceAssessment?.id ?? null,
+          baseMajorVersion: sourceAssessment?.majorVersion ?? sourceAssessment?.versionNumber ?? 0,
+          commercialScore: data.commercialAwardedScore,
+          cooperationScore: data.cooperationScore,
+          strategicScore: data.strategicScore,
+          relationshipNetworkScore: data.relationshipNetworkScore,
+          engagementScore: data.engagementScore,
+          qualitativeScore: data.qualitativeScore ?? data.trustScore,
+          commercialEvidenceNote: data.commercialEvidenceNote,
+          cooperationEvidenceNote: data.cooperationEvidenceNote,
+          strategicEvidenceNote: data.strategicEvidenceNote,
+          relationshipNetworkNote: data.relationshipNetworkNote,
+          engagementEvidenceNote: data.engagementEvidenceNote,
+          qualitativeEvidenceNote: data.qualitativeEvidenceNote ?? data.trustEvidenceNote,
+          managerNote: data.managerNote,
+        };
       }
-
-      // Navigate back to Relationship Closeness Dashboard
-      handleBackToDashboard();
+      const res = await companyRelationshipAssessmentApi.saveDraft(companyProfileId, draftPayload);
+      setMyDraft(res.data);
+      setIsDirty(false);
+      performBackNavigation();
     } catch (err: any) {
       setActionMessage({
         type: 'error',
-        text: err?.response?.data?.message || 'Không thể hoàn tất đánh giá.',
+        text: err?.response?.data?.message || 'Không thể lưu bản nháp.',
       });
     } finally {
-      setIsSubmitting(false);
+      setIsSavingDraft(false);
     }
   };
 
-  // Handle Owner Adjustment Save Draft
-  const handleSaveOwnerAdjustment = async (data: OwnerAdjustmentUpdateRequest) => {
-    const currentAssessment = assessmentRef.current;
-    if (!currentAssessment) return;
+  // Rebase Owner Draft to new baseline
+  const handleRebaseOwnerDraft = async () => {
     try {
-      setIsSaving(true);
-      const res = await companyRelationshipAssessmentApi.updateOwnerAdjustment(currentAssessment.id, data);
-      setAssessment(res.data);
-      assessmentRef.current = res.data;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Handle Complete Owner Adjustment
-  const handleCompleteOwnerAdjustment = async (data: OwnerAdjustmentUpdateRequest) => {
-    if (!assessment) return;
-    try {
-      setIsSubmitting(true);
+      setIsSavingDraft(true);
       setActionMessage(null);
-      await companyRelationshipAssessmentApi.completeOwnerAdjustment(assessment.id, data);
-      handleBackToDashboard();
+      const res = await companyRelationshipAssessmentApi.rebaseOwnerDraft(companyProfileId);
+      setMyDraft(res.data);
+      setIsDirty(false);
+      setActionMessage({ type: 'ok', text: 'Đã cập nhật bản nháp theo phiên bản chính thức mới nhất.' });
+      await loadData();
     } catch (err: any) {
       setActionMessage({
         type: 'error',
-        text: err?.response?.data?.message || 'Không thể hoàn tất điều chỉnh đánh giá.',
+        text: err?.response?.data?.message || 'Không thể cập nhật bản nháp.',
       });
     } finally {
-      setIsSubmitting(false);
+      setIsSavingDraft(false);
     }
   };
 
-  // Handle Cancel Owner Adjustment
-  const handleCancelOwnerAdjustment = async () => {
-    if (!assessment) return;
-    await companyRelationshipAssessmentApi.cancelOwnerAdjustment(assessment.id);
-  };
-
-  // Handle Owner Request Changes -> navigates back to Dashboard (preserved)
-  const handleRequestChanges = async () => {
-    if (!assessment || !requestChangesReason.trim()) return;
+  // Delete Private Draft
+  const handleDeleteDraft = async () => {
     try {
-      setIsSubmitting(true);
+      setIsSavingDraft(true);
       setActionMessage(null);
-      await companyRelationshipAssessmentApi.requestChanges(assessment.id, {
-        reason: requestChangesReason.trim(),
-      });
-      setIsRequestChangesOpen(false);
-      setRequestChangesReason('');
-      // Navigate back to Dashboard
-      handleBackToDashboard();
+      await companyRelationshipAssessmentApi.deleteMyDraft(companyProfileId);
+      setMyDraft(null);
+      setIsDirty(false);
+      setActionMessage({ type: 'ok', text: 'Đã xóa bản nháp.' });
+      performBackNavigation();
     } catch (err: any) {
       setActionMessage({
         type: 'error',
-        text: err?.response?.data?.message || 'Không thể gửi yêu cầu sửa đổi.',
+        text: err?.response?.data?.message || 'Không thể xóa bản nháp.',
       });
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handle Owner Finalize -> navigates back to Dashboard (preserved)
-  const handleFinalize = async (data: FinalizeRelationshipAssessmentRequest) => {
-    if (!assessment) return;
-    try {
-      setIsSubmitting(true);
-      setActionMessage(null);
-      await companyRelationshipAssessmentApi.finalize(assessment.id, data);
-      // Navigate back to Dashboard
-      handleBackToDashboard();
-    } catch (err: any) {
-      setActionMessage({
-        type: 'error',
-        text: err?.response?.data?.message || 'Không thể phê duyệt đánh giá chính thức.',
-      });
-    } finally {
-      setIsSubmitting(false);
+      setIsSavingDraft(false);
     }
   };
 
@@ -504,15 +506,33 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
   }
 
   const liveEvidence = overview?.liveCommercialEvidence;
-  const status = isHistorical ? 'FINALIZED' : assessment.status;
 
   return (
     <div className={styles.container} style={{ maxWidth: 1560, margin: '0 auto', padding: '16px 20px 48px' }}>
       {/* Action Notification Banner */}
       {actionMessage && (
-        <div className={actionMessage.type === 'ok' ? styles.alertBannerBlue : styles.alertBannerOrange}>
-          {actionMessage.type === 'ok' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-          <span>{actionMessage.text}</span>
+        <div
+          className={actionMessage.type === 'ok' ? styles.alertBannerBlue : styles.alertBannerOrange}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {actionMessage.type === 'ok' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span>{actionMessage.text}</span>
+          </div>
+          {actionMessage.conflict && (
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              style={{ padding: '4px 10px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+              onClick={() => {
+                setActionMessage(null);
+                setIsDirty(false);
+                loadData();
+              }}
+            >
+              Tải lại đánh giá
+            </button>
+          )}
         </div>
       )}
 
@@ -556,21 +576,6 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
               Chế độ xem lịch sử (Read-Only)
             </span>
           )}
-
-          {isOwnerReview && (
-            <span
-              style={{
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                color: '#15803d',
-                background: '#dcfce7',
-                padding: '4px 12px',
-                borderRadius: 999,
-              }}
-            >
-              Chế độ Business Owner thẩm định & phê duyệt
-            </span>
-          )}
         </div>
 
         {isOwnerAdjustment ? (
@@ -583,26 +588,17 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
                 <strong style={{ color: '#0f172a' }}>{companyName || 'Doanh nghiệp'}</strong>
                 <span>·</span>
                 <span>
-                  Phiên bản <strong>V{assessment.versionNumber}</strong>
+                  Phiên bản <strong>{assessment.formattedVersion || `V${assessment.versionNumber}`}</strong>
                 </span>
                 <span>·</span>
                 <span>
-                  Điều chỉnh từ <strong>V{assessment.sourceVersionNumber ?? sourceAssessment?.versionNumber ?? (assessment.versionNumber - 1)}</strong>
+                  Điều chỉnh từ <strong>{sourceAssessment?.formattedVersion || (assessment.sourceVersionNumber ? `V${assessment.sourceVersionNumber}` : `V${assessment.versionNumber - 1}`)}</strong>
                 </span>
-                <span
-                  className={`${styles.statusBadge} ${
-                    status === 'FINALIZED'
-                      ? styles.statusFinalized
-                      : status === 'SUBMITTED'
-                      ? styles.statusSubmitted
-                      : status === 'CHANGES_REQUESTED'
-                      ? styles.statusChangesRequested
-                      : styles.statusDraft
-                  }`}
-                  style={{ marginLeft: 4 }}
-                >
-                  {status}
-                </span>
+                {isFinalized && (
+                  <span className={`${styles.statusBadge} ${styles.statusFinalized}`} style={{ marginLeft: 4 }}>
+                    FINALIZED
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -618,7 +614,7 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
                 </div>
                 <span>•</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Phiên bản: <strong style={{ color: '#0f172a' }}>V{assessment.versionNumber}</strong>
+                  Phiên bản: <strong style={{ color: '#0f172a' }}>{assessment.formattedVersion || `V${assessment.versionNumber}`}</strong>
                   <span
                     style={{
                       background: '#eff6ff',
@@ -633,23 +629,17 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
                     Manager Assessment
                   </span>
                 </div>
-                <span>•</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  Trạng thái:
-                  <span
-                    className={`${styles.statusBadge} ${
-                      status === 'FINALIZED'
-                        ? styles.statusFinalized
-                        : status === 'SUBMITTED'
-                        ? styles.statusSubmitted
-                        : status === 'CHANGES_REQUESTED'
-                        ? styles.statusChangesRequested
-                        : styles.statusDraft
-                    }`}
-                  >
-                    {status}
-                  </span>
-                </div>
+                {isFinalized && (
+                  <>
+                    <span>•</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      Trạng thái:
+                      <span className={`${styles.statusBadge} ${styles.statusFinalized}`}>
+                        FINALIZED
+                      </span>
+                    </div>
+                  </>
+                )}
                 <span>•</span>
                 <div>
                   Vai trò của bạn: <strong style={{ color: '#2563eb' }}>{getRoleDisplayName(currentUserRole)}</strong>
@@ -657,70 +647,54 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
               </div>
             </div>
 
-            <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#64748b' }}>
-              <div>
-                Cập nhật lần cuối: <strong>{formatDate(assessment.updatedAt || assessment.createdAt)}</strong>
-              </div>
-              {assessment.finalizedAt && (
-                <div style={{ marginTop: 2 }}>
-                  Hoàn tất: <strong>{formatDate(assessment.finalizedAt)}</strong>
+            {assessment.updatedAt && (
+              <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#64748b' }}>
+                <div>
+                  Cập nhật: <strong>{formatDate(assessment.updatedAt || assessment.createdAt)}</strong>
                 </div>
-              )}
-            </div>
+                {assessment.finalizedAt && (
+                  <div style={{ marginTop: 2 }}>
+                    Hoàn tất: <strong>{formatDate(assessment.finalizedAt)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. PROMINENT OWNER FEEDBACK BANNER (FOR CHANGES_REQUESTED)                */}
-      {/* ========================================================================= */}
-      {assessment.status === 'CHANGES_REQUESTED' && assessment.changesRequestedReason && (
-        <div
-          className={styles.alertBannerOrange}
-          style={{ padding: '16px 20px', borderRadius: 10, fontSize: '0.92rem' }}
-        >
-          <ShieldAlert size={22} style={{ flexShrink: 0 }} />
-          <div>
-            <strong style={{ display: 'block', marginBottom: 2 }}>
-              Ý kiến phản hồi từ Business Owner:
-            </strong>
-            <span>"{assessment.changesRequestedReason}"</span>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. MAIN ASSESSMENT CONTENT: EDIT FORM OR READ-ONLY BREAKDOWN               */}
+      {/* 2. MAIN ASSESSMENT CONTENT: EDIT FORM OR READ-ONLY BREAKDOWN               */}
       {/* ========================================================================= */}
       {canOwnerEditAdjustment ? (
         <RelationshipOwnerAdjustmentEditor
           assessment={assessment}
           sourceAssessment={sourceAssessment}
           commercialEvidence={liveEvidence}
-          onSave={handleSaveOwnerAdjustment}
+          draft={myDraft}
           onComplete={handleCompleteOwnerAdjustment}
-          onCancelAdjustment={handleCancelOwnerAdjustment}
           onBack={handleBackToDashboard}
-          isSaving={isSaving}
+          onSaveDraft={handleSaveDraft}
+          onRebaseDraft={handleRebaseOwnerDraft}
+          onDeleteDraft={handleDeleteDraft}
+          onDirtyChange={setIsDirty}
+          isSaving={isSavingDraft}
           isSubmitting={isSubmitting}
-          onFlushPendingSaveRef={flushPendingSaveRef}
         />
       ) : canManagerEditDraft ? (
         <div>
           <RelationshipScoreBuilderTable
             assessment={assessment}
             commercialEvidence={liveEvidence}
+            draft={myDraft}
             isOwnerReview={false}
-            onSaveDraft={handleSaveDraft}
-            onFlushPendingSaveRef={flushPendingSaveRef}
             onComplete={handleComplete}
-            onFinalize={handleFinalize}
-            onRequestChanges={() => setIsRequestChangesOpen(true)}
+            onSaveDraft={handleSaveDraft}
             onCancel={handleBackToDashboard}
-            isSaving={isSaving}
+            onDirtyChange={setIsDirty}
+            isSaving={isSavingDraft}
             isSubmitting={isSubmitting}
-            canSubmit={Boolean(assessment.canSubmit || isManager)}
-            canComplete={Boolean(assessment.canComplete ?? (assessment.status === 'DRAFT' && isManager))}
+            canComplete={isManager}
             isManager={isManager}
             isOwner={isOwner}
           />
@@ -728,25 +702,6 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
       ) : (
         /* Read-Only Mode */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Read-Only Notice for In-Progress evaluations */}
-          {isOwner && !isOwnerAdjustment && assessment.status === 'DRAFT' && (
-            <div className={styles.alertBannerBlue} style={{ padding: '12px 18px', borderRadius: 10, fontSize: '0.88rem' }}>
-              <Info size={18} style={{ flexShrink: 0 }} />
-              <span>
-                Phiên bản <strong>V{assessment.versionNumber}</strong> đang được BD Manager đánh giá. Bạn đang xem ở chế độ chỉ đọc để theo dõi tiến độ.
-              </span>
-            </div>
-          )}
-
-          {isManager && isOwnerAdjustment && assessment.status === 'DRAFT' && (
-            <div className={styles.alertBannerBlue} style={{ padding: '12px 18px', borderRadius: 10, fontSize: '0.88rem' }}>
-              <Info size={18} style={{ flexShrink: 0 }} />
-              <span>
-                Phiên bản <strong>V{assessment.versionNumber}</strong> đang được Business Owner điều chỉnh (dựa trên V{assessment.sourceVersionNumber ?? sourceAssessment?.versionNumber ?? (assessment.versionNumber - 1)}). Bạn đang xem ở chế độ chỉ đọc để theo dõi tiến độ.
-              </span>
-            </div>
-          )}
-
           {isOwnerAdjustment && assessment.status === 'FINALIZED' && assessment.ownerAdjustmentReason && (
             <div
               style={{
@@ -765,7 +720,7 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
               <Info size={18} style={{ flexShrink: 0, marginTop: 2, color: '#7c3aed' }} />
               <div>
                 <strong style={{ display: 'block', marginBottom: 2, color: '#581c87' }}>
-                  Lý do điều chỉnh của Business Owner (V{assessment.versionNumber} từ V{assessment.sourceVersionNumber ?? sourceAssessment?.versionNumber ?? (assessment.versionNumber - 1)}):
+                  Lý do điều chỉnh của Business Owner ({assessment.formattedVersion || `V${assessment.versionNumber}`} từ {assessment.sourceFormattedVersion || sourceAssessment?.formattedVersion || (assessment.sourceVersionNumber ? `V${assessment.sourceVersionNumber}` : `V${assessment.versionNumber - 1}`)}):
                 </strong>
                 <span>"{assessment.ownerAdjustmentReason}"</span>
               </div>
@@ -776,9 +731,9 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
             <div className={styles.cardHeader}>
               <div className={styles.titleGroup}>
                 <h3 className={styles.cardTitle}>
-                  Chi tiết đánh giá {isHistorical ? `Version ${assessment.versionNumber}` : 'chính thức'}
+                  Chi tiết đánh giá {isHistorical ? (assessment.formattedVersion ? `(${assessment.formattedVersion})` : `Version ${assessment.versionNumber}`) : 'chính thức'}
                 </h3>
-                <span className={styles.versionBadge}>Version {assessment.versionNumber}</span>
+                <span className={styles.versionBadge}>{assessment.formattedVersion || `Version ${assessment.versionNumber}`}</span>
                 {isOwnerAdjustment && (
                   <span
                     style={{
@@ -794,12 +749,8 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
                     Owner Adjustment
                   </span>
                 )}
-                <span
-                  className={`${styles.statusBadge} ${
-                    status === 'FINALIZED' ? styles.statusFinalized : styles.statusSubmitted
-                  }`}
-                >
-                  {status}
+                <span className={`${styles.statusBadge} ${styles.statusFinalized}`}>
+                  FINALIZED
                 </span>
               </div>
             </div>
@@ -814,9 +765,9 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
       )}
 
       {/* ========================================================================= */}
-      {/* 5. OWNER REQUEST CHANGES MODAL                                            */}
+      {/* 3. UNSAVED CHANGES CONFIRMATION MODAL                                     */}
       {/* ========================================================================= */}
-      {isRequestChangesOpen && (
+      {showUnsavedModal && (
         <div
           style={{
             position: 'fixed',
@@ -837,7 +788,7 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
               background: '#ffffff',
               borderRadius: 12,
               width: '100%',
-              maxWidth: 520,
+              maxWidth: 480,
               padding: 24,
               display: 'flex',
               flexDirection: 'column',
@@ -846,46 +797,40 @@ export const RelationshipAssessmentDetailPage: React.FC<RelationshipAssessmentDe
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#9a3412' }}>
-                Yêu cầu chỉnh sửa đánh giá (Request Changes)
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                Rời khỏi màn hình đánh giá?
               </h3>
               <button
                 type="button"
-                onClick={() => setIsRequestChangesOpen(false)}
+                onClick={() => setShowUnsavedModal(false)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <p style={{ margin: 0, fontSize: '0.86rem', color: '#475569', lineHeight: 1.45 }}>
-              Vui lòng nhập lý do và yêu cầu cụ thể để Business Development Manager cập nhật lại đánh giá.
+            <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.5 }}>
+              Bạn có thay đổi chưa hoàn tất. Bạn có chắc muốn rời đi? Dữ liệu chưa hoàn tất sẽ không được lưu.
             </p>
 
-            <textarea
-              className={styles.textarea}
-              placeholder="Nhập chi tiết yêu cầu chỉnh sửa cho Manager..."
-              value={requestChangesReason}
-              onChange={(e) => setRequestChangesReason(e.target.value)}
-              rows={4}
-            />
-
-            <div className={styles.actionsRow}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
               <button
                 type="button"
                 className={styles.btnSecondary}
-                onClick={() => setIsRequestChangesOpen(false)}
-                disabled={isSubmitting}
+                onClick={() => setShowUnsavedModal(false)}
               >
-                Hủy
+                Ở lại
               </button>
               <button
                 type="button"
                 className={styles.btnDanger}
-                onClick={handleRequestChanges}
-                disabled={isSubmitting || !requestChangesReason.trim()}
+                onClick={() => {
+                  setShowUnsavedModal(false);
+                  setIsDirty(false);
+                  performBackNavigation();
+                }}
               >
-                {isSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu sửa đổi'}
+                Rời đi không lưu
               </button>
             </div>
           </div>
