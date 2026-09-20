@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Calendar,
@@ -8,71 +8,38 @@ import {
   FileSearch,
   FileText,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
+  Trash2,
+  CheckCircle2,
 } from 'lucide-react';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { API_BASE_URL } from '../../services/api';
-import type {
-  FinancialMetricResponse,
-  FinancialReportEntry,
-} from '../../types/domain';
-import { formatFinancialUnit } from '../../components/FinancialResearch/canonicalFinancialTaxonomy';
-import {
-  isManualReport,
-  normalizeDocumentId,
-  resolveReportDocumentId,
-} from '../../components/FinancialResearch/financialDocumentUtils';
+import type { CompanyProfileFinancialRow } from '../../types/domain';
+import { formatFinancialUnit, CANONICAL_FINANCIAL_UNITS } from '../../components/FinancialResearch/canonicalFinancialTaxonomy';
 import styles from './FinancialsTab.module.css';
+
+export interface FinancialsTabHandle {
+  isDirty: () => boolean;
+  save: () => Promise<void>;
+  cancel: () => void;
+}
 
 interface FinancialsTabProps {
   companyId: string;
   editable?: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
-interface ReportWithContext {
-  report: FinancialReportEntry;
-  metrics: FinancialMetricResponse[];
-  projectId: number;
-  taskId: number;
+interface ReportGroup {
+  reportId: string;
+  reportTitle: string;
+  documentId?: string | null;
+  publicationDate?: string | null;
+  isManual: boolean;
+  rows: CompanyProfileFinancialRow[];
 }
-
-/**
- * Resolves the official Manager approval date string and reviewer name for a published Financial report.
- */
-const resolveReportApprovalInfo = (report: FinancialReportEntry): {
-  approvedDate: string | null;
-  reviewerName: string | null;
-} => {
-  if (report.reviewStatus === 'APPROVED' && report.reviewedAt) {
-    return {
-      approvedDate: report.reviewedAt,
-      reviewerName: report.reviewedByName || null,
-    };
-  }
-  return {
-    approvedDate: null,
-    reviewerName: null,
-  };
-};
-
-/**
- * Formats a timestamp into DD/MM/YYYY.
- * If empty or invalid, returns '—'.
- */
-const formatApprovalDate = (dateStr?: string | null): string => {
-  if (!dateStr || !dateStr.trim()) return '—';
-  try {
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return '—';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  } catch {
-    return '—';
-  }
-};
 
 const formatDate = (dateStr?: string | null) => {
   if (!dateStr) return 'N/A';
@@ -89,24 +56,6 @@ const formatDate = (dateStr?: string | null) => {
   }
 };
 
-const formatPeriod = (report: FinancialReportEntry): string => {
-  const p = report.reportingPeriod;
-  if (!p) return report.reportingYear ? String(report.reportingYear) : 'N/A';
-  if (p.periodType === 'QUARTER') return `${p.period || ''} ${p.year || ''}`.trim();
-  if (p.periodType === 'HALF_YEAR') return `${p.period || ''} ${p.year || ''}`.trim();
-  if (p.periodType === 'FULL_YEAR') return `FY ${p.year || ''}`.trim();
-  return `${p.period || ''} ${p.year || ''}`.trim() || 'N/A';
-};
-
-const formatGroupPeriod = (report: FinancialReportEntry): string => {
-  const p = report.reportingPeriod;
-  if (!p) return report.reportingYear ? String(report.reportingYear) : 'Other Period';
-  if (p.periodType === 'QUARTER') return `${p.period || 'Q'} ${p.year || ''}`.trim();
-  if (p.periodType === 'HALF_YEAR') return `${p.period || 'H'} ${p.year || ''}`.trim();
-  if (p.periodType === 'FULL_YEAR') return `FY ${p.year || ''}`.trim();
-  return `${p.period || ''} ${p.year || ''}`.trim() || 'Other Period';
-};
-
 const getPeriodRank = (periodLabel: string): number => {
   const upper = periodLabel.toUpperCase();
   if (upper.startsWith('FY') || upper.startsWith('FULL')) return 7;
@@ -119,55 +68,16 @@ const getPeriodRank = (periodLabel: string): number => {
   return 0;
 };
 
-const formatReportType = (value?: string | null) => {
-  if (!value) return null;
-  return value
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, char => char.toUpperCase());
-};
-
 const formatMetricNumber = (value?: number | string | null) => {
   if (value === undefined || value === null || value === '') return '—';
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+    if (numeric < 0) {
+      return `(${new Intl.NumberFormat('vi-VN').format(Math.abs(numeric))})`;
+    }
     return new Intl.NumberFormat('vi-VN').format(numeric);
   }
   return String(value);
-};
-
-const metricValueParts = (metric: FinancialMetricResponse) => {
-  const value = metric.normalizedValue ?? metric.rawValue ?? metric.value;
-  const rawUnit = metric.rawUnit ?? metric.normalizedUnit ?? metric.unit ?? metric.currency;
-  return {
-    value: formatMetricNumber(value),
-    unit: rawUnit ? formatFinancialUnit(rawUnit) : '',
-  };
-};
-
-const formatMetricPeriod = (metric: FinancialMetricResponse, report?: FinancialReportEntry) => {
-  const metricPeriod = metric.period;
-  const reportPeriod = report?.reportingPeriod;
-
-  if (metricPeriod?.period && metricPeriod?.year) {
-    return `${metricPeriod.period} ${metricPeriod.year}`;
-  }
-  if (reportPeriod?.period && reportPeriod?.year) {
-    return `${reportPeriod.period} ${reportPeriod.year}`;
-  }
-  if (metricPeriod?.asOfDate) {
-    return `As of ${formatDate(metricPeriod.asOfDate)}`;
-  }
-  if (reportPeriod?.asOfDate) {
-    return `As of ${formatDate(reportPeriod.asOfDate)}`;
-  }
-  if (metricPeriod?.year) {
-    return String(metricPeriod.year);
-  }
-  if (reportPeriod?.year) {
-    return String(reportPeriod.year);
-  }
-  return '—';
 };
 
 const isImportantMetric = (label: string) => {
@@ -182,166 +92,346 @@ const isImportantMetric = (label: string) => {
   );
 };
 
-const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
+const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
+  companyId,
+  editable = false,
+  onDirtyChange,
+}, ref) => {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedQuarter, setSelectedQuarter] = useState<string>('ALL');
   const [expandedReportIds, setExpandedReportIds] = useState<Set<string>>(new Set());
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
 
+  // Local draft state for Edit mode
+  const [draftRows, setDraftRows] = useState<CompanyProfileFinancialRow[]>([]);
+  const [deletedRowIds, setDeletedRowIds] = useState<string[]>([]);
+  const [hasAttemptedBackfill, setHasAttemptedBackfill] = useState(false);
+
+  // Read-only query for canonical company profile financials
   const {
-    data: researchList,
+    data: canonicalRows,
     isLoading,
     isError,
-    error,
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ['company-profile-approved-financials', companyId],
-    queryFn: () => financialResearchApi.getApprovedFinancials(companyId).then(res => res.data),
-    enabled: Boolean(companyId),
+    queryKey: ['company-profile-canonical-financials', companyId],
+    queryFn: () => financialResearchApi.getCanonicalFinancials(companyId).then(res => res.data || []),
     staleTime: 30_000,
   });
 
-  // Extract only approved reports & their metrics from approved research
-  const allApprovedReportsWithContext = useMemo<ReportWithContext[]>(() => {
-    if (!researchList) return [];
-    const items: ReportWithContext[] = [];
+  // Explicit backfill for legacy approved research if canonical rows are empty
+  useEffect(() => {
+    if (!isLoading && !isError && canonicalRows && canonicalRows.length === 0 && !hasAttemptedBackfill) {
+      setHasAttemptedBackfill(true);
+      financialResearchApi.backfillCanonicalFinancials(companyId)
+        .then(res => {
+          if (res.data && res.data > 0) {
+            refetch();
+          }
+        })
+        .catch(err => {
+          console.warn('Backfill legacy approved research skipped or errored:', err);
+        });
+    }
+  }, [isLoading, isError, canonicalRows, hasAttemptedBackfill, companyId, refetch]);
 
-    researchList.forEach(research => {
-      if (research.status !== 'APPROVED') return;
+  const prevEditableRef = React.useRef(editable);
 
-      const reports = research.reports || [];
-      const metrics = research.metrics || [];
+  // Sync draftRows when entering or exiting edit mode
+  useEffect(() => {
+    if (!prevEditableRef.current && editable) {
+      // Just entered edit mode: clone canonical rows into draft rows
+      setDraftRows(canonicalRows || []);
+      setDeletedRowIds([]);
+    } else if (prevEditableRef.current && !editable) {
+      // Just exited edit mode: reset draft rows
+      setDraftRows(canonicalRows || []);
+      setDeletedRowIds([]);
+    }
+    prevEditableRef.current = editable;
+  }, [editable, canonicalRows]);
 
-      reports.forEach(report => {
-        if (report.reviewStatus === 'APPROVED') {
-          const reportMetrics = metrics.filter(
-            m =>
-              m.source?.reportEntryId === report.id ||
-              (!m.source?.reportEntryId && m.source?.documentId === report.documentId),
-          );
+  // Initial load when canonicalRows first arrive
+  useEffect(() => {
+    if (canonicalRows && canonicalRows.length > 0 && draftRows.length === 0) {
+      setDraftRows(canonicalRows);
+    }
+  }, [canonicalRows, draftRows.length]);
 
-          items.push({
-            report,
-            metrics: reportMetrics,
-            projectId: research.projectId,
-            taskId: research.taskId,
-          });
+  // Determine active rows based on mode
+  const activeRows = useMemo(() => {
+    return editable ? draftRows : (canonicalRows || []);
+  }, [editable, draftRows, canonicalRows]);
+
+  // Helper for numeric conversion
+  const parseNumeric = (val: any): number => {
+    if (typeof val === 'number') return Number.isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const str = String(val).trim();
+    let negative = false;
+    if ((str.startsWith('(') && str.endsWith(')')) || str.startsWith('-')) {
+      negative = true;
+    }
+    const clean = str.replace(/[^0-9.]/g, '');
+    const num = Number(clean) || 0;
+    return negative ? -num : num;
+  };
+
+  // Semantic Dirty Comparison
+  const isDirty = useMemo(() => {
+    if (!editable) return false;
+    if (deletedRowIds.length > 0) return true;
+
+    const baselineMap = new Map((canonicalRows || []).map(r => [r.id, r]));
+
+    for (const draft of draftRows) {
+      if (draft.id.startsWith('temp-')) {
+        if (draft.metricName.trim() !== '' || parseNumeric(draft.value) !== 0 || draft.sourcePage != null) return true;
+        continue;
+      }
+
+      const base = baselineMap.get(draft.id);
+      if (!base) return true;
+
+      if (draft.metricName.trim() !== (base.metricName || '').trim()) return true;
+      if (parseNumeric(draft.value) !== parseNumeric(base.value)) return true;
+      if (formatFinancialUnit(draft.unit) !== formatFinancialUnit(base.unit)) return true;
+      if (Number(draft.year) !== Number(base.year)) return true;
+      if ((draft.quarter || '').trim().toUpperCase() !== (base.quarter || '').trim().toUpperCase()) return true;
+      if (draft.sourcePage !== base.sourcePage) return true;
+    }
+
+    return false;
+  }, [editable, deletedRowIds, draftRows, canonicalRows]);
+
+  // Propagate dirty changes to parent
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Imperative handle for parent (CompanyDetail)
+  useImperativeHandle(ref, () => ({
+    isDirty: () => isDirty,
+    save: async () => {
+      if (!isDirty) return;
+
+      // Validation: newly added metrics must specify a valid evidence page >= 1
+      for (const r of draftRows) {
+        if (r.metricName.trim() === '') continue;
+        if (r.id.startsWith('temp-')) {
+          const page = r.sourcePage != null ? Number(r.sourcePage) : NaN;
+          if (Number.isNaN(page) || page < 1 || !Number.isInteger(page)) {
+            throw new Error(`Please specify a valid evidence page (>= 1) for newly added metric "${r.metricName}".`);
+          }
         }
+      }
+
+      const rowsToSave = draftRows
+        .filter(r => r.metricName.trim() !== '')
+        .map(r => {
+          const numVal = parseNumeric(r.value);
+          const pageVal = r.sourcePage != null ? Number(r.sourcePage) : null;
+          if (r.id.startsWith('temp-')) {
+            return {
+              ...r,
+              id: '', // Blank ID signals backend to create a new manual row
+              value: numVal,
+              metricName: r.metricName.trim(),
+              unit: r.unit.trim(),
+              quarter: r.quarter.trim().toUpperCase(),
+              sourcePage: pageVal,
+            };
+          }
+          return {
+            ...r,
+            value: numVal,
+            metricName: r.metricName.trim(),
+            unit: r.unit.trim(),
+            quarter: r.quarter.trim().toUpperCase(),
+            sourcePage: pageVal,
+          };
+        });
+
+      await financialResearchApi.updateCanonicalFinancials(companyId, {
+        rows: rowsToSave,
+        deletedIds: deletedRowIds,
       });
+
+      const updated = await refetch();
+      setDraftRows(updated.data || []);
+      setDeletedRowIds([]);
+    },
+    cancel: () => {
+      setDraftRows(canonicalRows || []);
+      setDeletedRowIds([]);
+      onDirtyChange?.(false);
+    },
+  }), [isDirty, draftRows, deletedRowIds, companyId, canonicalRows, refetch, onDirtyChange]);
+
+  // Combine rows to derive years so availableYears NEVER drops during mode transitions
+  const allAvailableRows = useMemo(() => {
+    const list = [...(canonicalRows || [])];
+    draftRows.forEach(r => {
+      if (!list.some(existing => existing.id === r.id)) {
+        list.push(r);
+      }
     });
+    return list;
+  }, [canonicalRows, draftRows]);
 
-    return items;
-  }, [researchList]);
-
-  // Derive all unique years
+  // Derive unique years
   const availableYears = useMemo<number[]>(() => {
     const years = new Set<number>();
-    allApprovedReportsWithContext.forEach(({ report }) => {
-      const yr =
-        report.reportingPeriod?.year ||
-        report.reportingYear ||
-        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
-      if (yr && !Number.isNaN(yr)) years.add(yr);
+    allAvailableRows.forEach(r => {
+      if (r.year && !Number.isNaN(r.year)) {
+        years.add(r.year);
+      }
     });
     return Array.from(years).sort((a, b) => b - a);
-  }, [allApprovedReportsWithContext]);
+  }, [allAvailableRows]);
 
-  // Sync selectedYear with latest available year
+  // Sync selectedYear without wiping it to null if availableYears is temporarily recomputing
   useEffect(() => {
     if (availableYears.length > 0) {
       if (selectedYear === null || !availableYears.includes(selectedYear)) {
         setSelectedYear(availableYears[0]);
       }
-    } else {
-      setSelectedYear(null);
     }
   }, [availableYears, selectedYear]);
 
-  // Available quarter tabs for currently selected year
+  // Available quarter tabs
   const availableQuarters = useMemo<string[]>(() => {
     const base = ['ALL', 'Q1', 'Q2', 'Q3', 'Q4'];
     if (!selectedYear) return base;
 
-    const reportsInYear = allApprovedReportsWithContext.filter(({ report }) => {
-      const yr =
-        report.reportingPeriod?.year ||
-        report.reportingYear ||
-        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
-      return yr === selectedYear;
-    });
-
-    const hasH1 = reportsInYear.some(
-      ({ report }) =>
-        report.reportingPeriod?.period === 'H1' || report.reportingPeriod?.periodType === 'HALF_YEAR',
-    );
-    const hasH2 = reportsInYear.some(
-      ({ report }) => report.reportingPeriod?.period === 'H2',
-    );
+    const rowsInYear = allAvailableRows.filter(r => r.year === selectedYear);
+    const hasH1 = rowsInYear.some(r => r.quarter === 'H1');
+    const hasH2 = rowsInYear.some(r => r.quarter === 'H2');
+    const hasFY = rowsInYear.some(r => r.quarter === 'FY');
 
     const tabs = ['ALL', 'Q1', 'Q2'];
     if (hasH1) tabs.push('H1');
     tabs.push('Q3', 'Q4');
     if (hasH2) tabs.push('H2');
+    if (hasFY) tabs.push('FY');
     return tabs;
-  }, [allApprovedReportsWithContext, selectedYear]);
+  }, [allAvailableRows, selectedYear]);
 
-  // Filter reports by Year and Quarter
-  const filteredReports = useMemo<ReportWithContext[]>(() => {
+  // Filter active rows by Year & Quarter
+  const filteredRows = useMemo(() => {
     if (!selectedYear) return [];
 
-    return allApprovedReportsWithContext.filter(({ report }) => {
-      const yr =
-        report.reportingPeriod?.year ||
-        report.reportingYear ||
-        (report.publicationDate ? new Date(report.publicationDate).getFullYear() : null);
-      if (yr !== selectedYear) return false;
-
+    return activeRows.filter(r => {
+      if (r.year !== selectedYear) return false;
       if (selectedQuarter === 'ALL') return true;
-
-      const p = report.reportingPeriod?.period;
-      const pType = report.reportingPeriod?.periodType;
-
-      if (selectedQuarter === 'FY') {
-        return pType === 'FULL_YEAR' || p === 'FY' || p === 'YEAR' || p === 'Full Year';
-      }
-      if (selectedQuarter === 'Q1') return p === 'Q1';
-      if (selectedQuarter === 'Q2') return p === 'Q2';
-      if (selectedQuarter === 'Q3') return p === 'Q3';
-      if (selectedQuarter === 'Q4') return p === 'Q4';
-      if (selectedQuarter === 'H1') return p === 'H1' || pType === 'HALF_YEAR';
-      if (selectedQuarter === 'H2') return p === 'H2';
-
-      return true;
+      return (r.quarter || '').toUpperCase() === selectedQuarter.toUpperCase();
     });
-  }, [allApprovedReportsWithContext, selectedYear, selectedQuarter]);
+  }, [activeRows, selectedYear, selectedQuarter]);
 
-  // Group filtered reports by period label
+  // Period Groups for View Mode
   const periodGroups = useMemo(() => {
-    const map = new Map<string, ReportWithContext[]>();
+    // Map of periodLabel -> array of ReportGroup
+    const periodMap = new Map<string, Map<string, ReportGroup>>();
 
-    filteredReports.forEach(item => {
-      const label = formatGroupPeriod(item.report);
-      const list = map.get(label) || [];
-      list.push(item);
-      map.set(label, list);
+    filteredRows.forEach(row => {
+      const periodLabel = `${row.quarter || 'FY'} ${row.year || ''}`.trim();
+      if (!periodMap.has(periodLabel)) {
+        periodMap.set(periodLabel, new Map());
+      }
+      const reportsInPeriod = periodMap.get(periodLabel)!;
+
+      const reportKey = row.sourceReportId || (row.sourceReportTitle ? `${row.sourceReportTitle}_${row.year}_${row.quarter}` : undefined);
+      const hasReport = Boolean(reportKey);
+      const groupKey = hasReport ? reportKey! : '__DEFAULT_REPORT__';
+
+      if (!reportsInPeriod.has(groupKey)) {
+        reportsInPeriod.set(groupKey, {
+          reportId: groupKey,
+          reportTitle: row.sourceReportTitle || 'Financial Report',
+          documentId: row.sourceDocumentId,
+          publicationDate: row.publicationDate,
+          isManual: false,
+          rows: [],
+        });
+      }
+
+      reportsInPeriod.get(groupKey)!.rows.push(row);
     });
 
-    // Sort groups descending by chronological period rank
-    const sortedEntries = Array.from(map.entries()).sort(([labelA], [labelB]) => {
+    // Sort periods descending
+    const sortedPeriods = Array.from(periodMap.entries()).sort(([labelA], [labelB]) => {
       return getPeriodRank(labelB) - getPeriodRank(labelA);
     });
 
-    // Inside each group, sort reports by publicationDate DESC
-    sortedEntries.forEach(([, list]) => {
-      list.sort((a, b) => {
-        const dateA = a.report.publicationDate ? new Date(a.report.publicationDate).getTime() : 0;
-        const dateB = b.report.publicationDate ? new Date(b.report.publicationDate).getTime() : 0;
+    return sortedPeriods.map(([periodLabel, reportMap]) => {
+      const reportList = Array.from(reportMap.values());
+      // Sort reports by publication date descending
+      reportList.sort((a, b) => {
+        if (a.isManual) return 1;
+        if (b.isManual) return -1;
+        const dateA = a.publicationDate ? new Date(a.publicationDate).getTime() : 0;
+        const dateB = b.publicationDate ? new Date(b.publicationDate).getTime() : 0;
         return dateB - dateA;
       });
+      // Preserve exact metric order (displayOrder)
+      reportList.forEach(report => {
+        report.rows.sort((a, b) => {
+          const ordA = a.displayOrder ?? Number.MAX_SAFE_INTEGER;
+          const ordB = b.displayOrder ?? Number.MAX_SAFE_INTEGER;
+          return ordA - ordB;
+        });
+      });
+      return {
+        periodLabel,
+        reports: reportList,
+      };
     });
+  }, [filteredRows]);
 
-    return sortedEntries;
-  }, [filteredReports]);
+  // Synchronize expansion state when filter changes or reports load
+  const lastFilterKeyRef = React.useRef<string>('');
+
+  useEffect(() => {
+    if (periodGroups.length === 0) return;
+
+    const filterKey = `${companyId}_${selectedYear}_${selectedQuarter}`;
+    const validReportIds = new Set<string>();
+    periodGroups.forEach(pg => pg.reports.forEach(r => validReportIds.add(r.reportId)));
+
+    if (lastFilterKeyRef.current !== filterKey) {
+      lastFilterKeyRef.current = filterKey;
+      setExpandedReportIds(prev => {
+        const remaining = new Set<string>();
+        prev.forEach(id => {
+          if (validReportIds.has(id)) remaining.add(id);
+        });
+        // If none of the previously expanded reports are in this period, expand the first report by default
+        if (remaining.size === 0) {
+          const firstReport = periodGroups[0]?.reports[0];
+          if (firstReport) {
+            remaining.add(firstReport.reportId);
+          }
+        }
+        return remaining;
+      });
+    } else {
+      // Filter key hasn't changed, but reports may have changed (e.g. deleted reports)
+      // Prune any IDs that are no longer valid, without auto-expanding if user collapsed them
+      setExpandedReportIds(prev => {
+        let hasInvalid = false;
+        prev.forEach(id => {
+          if (!validReportIds.has(id)) hasInvalid = true;
+        });
+        if (!hasInvalid) return prev;
+        const next = new Set<string>();
+        prev.forEach(id => {
+          if (validReportIds.has(id)) next.add(id);
+        });
+        return next;
+      });
+    }
+  }, [companyId, selectedYear, selectedQuarter, periodGroups]);
 
   const toggleExpand = (reportId: string) => {
     setExpandedReportIds(prev => {
@@ -355,18 +445,10 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     });
   };
 
-  const [openingReportId, setOpeningReportId] = useState<string | null>(null);
-
-  const handleViewPdf = async (
-    projectId: number,
-    report: FinancialReportEntry,
-    explicitDocumentId?: string | null,
-  ) => {
-    const documentId = normalizeDocumentId(explicitDocumentId) || resolveReportDocumentId(report);
+  const handleViewPdf = async (documentId?: string | null) => {
     if (!documentId) return;
-
     try {
-      setOpeningReportId(report.id);
+      setOpeningDocId(documentId);
       const token =
         localStorage.getItem('accessToken') ||
         localStorage.getItem('apms-token') ||
@@ -378,13 +460,13 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
       }
 
       const res = await fetch(
-        `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+        `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download?download=false`,
         { headers },
       );
 
       if (!res.ok) {
         const fallbackRes = await fetch(
-          `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+          `${API_BASE_URL}/company-profiles/${companyId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
           { headers },
         );
         if (!fallbackRes.ok) {
@@ -402,16 +484,66 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     } catch (err) {
       console.error('Error opening document:', err);
       window.open(
-        `${API_BASE_URL}/projects/${projectId}/documents/${encodeURIComponent(documentId)}/download?download=false`,
+        `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/download?download=false`,
         '_blank',
       );
     } finally {
-      setOpeningReportId(null);
+      setOpeningDocId(null);
     }
   };
 
-  // 1. Loading State (resolving companyId or query in progress)
-  if (!companyId || isLoading) {
+  // Row update handlers for Edit mode
+  const handleUpdateRowField = (id: string, field: keyof CompanyProfileFinancialRow, value: any) => {
+    setDraftRows(prev => prev.map(r => {
+      if (r.id === id) {
+        return { ...r, [field]: value };
+      }
+      return r;
+    }));
+  };
+
+  const handleDeleteRow = (id: string) => {
+    if (id.startsWith('temp-')) {
+      setDraftRows(prev => prev.filter(r => r.id !== id));
+    } else {
+      setDeletedRowIds(prev => [...prev, id]);
+      setDraftRows(prev => prev.filter(r => r.id !== id));
+    }
+  };
+
+  const handleAddRow = (targetReport: ReportGroup) => {
+    // Inherit year and quarter directly from the targetReport rows (or selectedYear)
+    const reportYear = targetReport.rows[0]?.year || selectedYear || (availableYears.length > 0 ? availableYears[0] : new Date().getFullYear());
+    const reportQuarter = targetReport.rows[0]?.quarter || (selectedQuarter !== 'ALL' ? selectedQuarter : 'Q1');
+
+    // Append deterministically: max displayOrder + 1 (Part F)
+    const maxOrder = draftRows.reduce((max, r) => Math.max(max, r.displayOrder ?? 0), -1);
+
+    const newRow: CompanyProfileFinancialRow = {
+      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      companyProfileId: companyId,
+      metricName: '',
+      value: '' as any,
+      unit: targetReport.rows[0]?.unit ? formatFinancialUnit(targetReport.rows[0].unit) : 'Triệu VNĐ',
+      year: reportYear,
+      quarter: reportQuarter,
+      displayOrder: maxOrder + 1,
+      sourceType: 'MANUAL',
+      sourceResearchId: targetReport.rows[0]?.sourceResearchId || null,
+      sourceReportId: targetReport.reportId,
+      sourceReportTitle: targetReport.reportTitle,
+      sourceDocumentId: targetReport.documentId || null,
+      sourcePage: null,
+      sourceMetricId: null,
+      publicationDate: targetReport.publicationDate || null,
+    };
+
+    setDraftRows(prev => [...prev, newRow]);
+    setExpandedReportIds(prev => new Set(prev).add(targetReport.reportId));
+  };
+
+  // Loading State
+  if (isLoading) {
     return (
       <div className={styles.container}>
         <div className={styles.headerSection}>
@@ -419,7 +551,7 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
             <h2 className={styles.title}>Financial Reports</h2>
           </div>
           <p className={styles.subtitle}>
-            Approved financial reports and extracted financial information for this company.
+            Canonical financial data and approved reports for this company profile.
           </p>
         </div>
         <div className={styles.stateContainer}>
@@ -427,17 +559,14 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
             <Loader2 size={26} className={styles.spin} />
           </div>
           <h3 className={styles.stateTitle}>Loading financial reports...</h3>
-          <p className={styles.stateSubtitle}>Retrieving official approved data for this company.</p>
+          <p className={styles.stateSubtitle}>Retrieving official canonical financial data.</p>
         </div>
       </div>
     );
   }
 
-  // 2. Error State
+  // Error State
   if (isError) {
-    const errorMessage = error instanceof Error
-      ? error.message
-      : 'There was an error communicating with the server. Please try again.';
     return (
       <div className={styles.container}>
         <div className={styles.headerSection}>
@@ -445,16 +574,16 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
             <h2 className={styles.title}>Financial Reports</h2>
           </div>
           <p className={styles.subtitle}>
-            Approved financial reports and extracted financial information for this company.
+            Canonical financial data and approved reports for this company profile.
           </p>
         </div>
         <div className={styles.stateContainer}>
           <div className={styles.stateIcon}>
             <FileText size={26} />
           </div>
-          <h3 className={styles.stateTitle}>Unable to load financial reports</h3>
+          <h3 className={styles.stateTitle}>Unable to load financial data</h3>
           <p className={styles.stateSubtitle}>
-            {errorMessage}
+            There was an error communicating with the server. Please try again.
           </p>
           <button className={styles.primaryButton} type="button" onClick={() => void refetch()}>
             <RefreshCw size={14} />
@@ -465,8 +594,8 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
     );
   }
 
-  // 3. Global Empty State (No approved research yet)
-  if (allApprovedReportsWithContext.length === 0) {
+  // Global Empty State
+  if (activeRows.length === 0 && !editable) {
     return (
       <div className={styles.container}>
         <div className={styles.headerSection}>
@@ -474,7 +603,7 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
             <h2 className={styles.title}>Financial Reports</h2>
           </div>
           <p className={styles.subtitle}>
-            Approved financial reports and extracted financial information for this company.
+            Canonical financial data and approved reports for this company profile.
           </p>
         </div>
         <div className={styles.stateContainer}>
@@ -483,7 +612,7 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
           </div>
           <h3 className={styles.stateTitle}>No Financial Data</h3>
           <p className={styles.stateSubtitle}>
-            No approved financial research has been published for this company yet.
+            No official canonical financial rows exist for this company profile yet.
           </p>
         </div>
       </div>
@@ -493,12 +622,35 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
   return (
     <div className={styles.container}>
       {/* Header */}
-      <div className={styles.headerSection}>
-        <h2 className={styles.title}>Financial Reports</h2>
-        <p className={styles.subtitle}>
-          Approved financial reports and extracted financial information for this company.
-        </p>
-      </div>
+      {/*<div className={styles.headerSection}>*/}
+      {/*  <div className={styles.titleRow}>*/}
+      {/*    <h2 className={styles.title}>*/}
+      {/*      {editable ? 'Company Profile Financials' : 'Financial Reports'}*/}
+      {/*    </h2>*/}
+      {/*    {editable && (*/}
+      {/*      <span className={styles.countBadge}>*/}
+      {/*        Edit Mode Active*/}
+      {/*      </span>*/}
+      {/*    )}*/}
+      {/*  </div>*/}
+      {/*  <p className={styles.subtitle}>*/}
+      {/*    {editable*/}
+      {/*      ? 'Add, edit, or delete canonical financial metrics. Changes are saved when clicking Save Changes.'*/}
+      {/*      : 'Approved financial reports and canonical financial information for this company.'}*/}
+      {/*  </p>*/}
+      {/*</div>*/}
+
+      {/*/!* Edit Mode Banner *!/*/}
+      {/*{editable && (*/}
+      {/*  <div className={styles.editModeBanner}>*/}
+      {/*    <div className={styles.editModeBannerLeft}>*/}
+      {/*      <CheckCircle2 size={16} />*/}
+      {/*      <span>*/}
+      {/*        You are editing company financial information. Changes will be saved when you click Save Changes.*/}
+      {/*      </span>*/}
+      {/*    </div>*/}
+      {/*  </div>*/}
+      {/*)}*/}
 
       {/* Filters Bar: Year & Quarter */}
       <div className={styles.filtersBar}>
@@ -545,18 +697,18 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
         )}
       </div>
 
-      {/* Filter Empty State (Data exists in other periods, but not selected) */}
-      {filteredReports.length === 0 ? (
+      {/* Filter Empty State */}
+      {filteredRows.length === 0 ? (
         <div className={styles.stateContainer}>
           <div className={styles.stateIcon}>
             <Search size={26} />
           </div>
           <h3 className={styles.stateTitle}>
-            No reports found for {selectedQuarter !== 'ALL' ? `${selectedQuarter} ` : ''}
+            No financial metrics found for {selectedQuarter !== 'ALL' ? `${selectedQuarter} ` : ''}
             {selectedYear}
           </h3>
           <p className={styles.stateSubtitle}>
-            There are no approved financial reports matching the selected filter.
+            There are no canonical financial rows matching the selected filter.
           </p>
           {selectedQuarter !== 'ALL' && (
             <button
@@ -569,115 +721,91 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
           )}
         </div>
       ) : (
-        /* Period Grouped Report List */
+        /* REPORT LIST: UNIFIED STRUCTURE FOR BOTH VIEW AND EDIT MODES (PART G & PART H) */
         <div className={styles.reportList}>
-          {periodGroups.map(([groupLabel, groupItems]) => (
-            <div key={groupLabel} className={styles.periodGroup}>
+          {periodGroups.map(({ periodLabel, reports }) => (
+            <div key={periodLabel} className={styles.periodGroup}>
               <div className={styles.periodHeader}>
-                <span className={styles.periodBadge}>{groupLabel}</span>
+                <span className={styles.periodBadge}>{periodLabel}</span>
                 <div className={styles.periodLine} />
               </div>
 
-              {groupItems.map(({ report, metrics, projectId }) => {
-                const isExpanded = expandedReportIds.has(report.id);
-                const yearLabel =
-                  report.reportingPeriod?.year ||
-                  report.reportingYear ||
-                  (report.publicationDate ? new Date(report.publicationDate).getFullYear() : '—');
-                const periodLabel = report.reportingPeriod?.period || '—';
-                const reportTypeFormatted = formatReportType(report.reportType);
-                const isManual = isManualReport(report);
-                const documentId = resolveReportDocumentId(report);
-                const hasDocument = Boolean(documentId);
-                const isOpening = openingReportId !== null && openingReportId === report.id;
-
-                const { approvedDate, reviewerName } = resolveReportApprovalInfo(report);
-                const formattedApprovalDate = formatApprovalDate(approvedDate);
-                const approvalTooltip = approvedDate
-                  ? reviewerName
-                    ? `Ngày duyệt: ${formattedApprovalDate} · ${reviewerName}`
-                    : `Ngày duyệt: ${formattedApprovalDate}`
-                  : 'Chưa có ngày duyệt';
+              {reports.map((reportGroup) => {
+                const isExpanded = expandedReportIds.has(reportGroup.reportId);
+                const hasDoc = Boolean(reportGroup.documentId);
 
                 return (
                   <div
-                    key={report.id}
+                    key={reportGroup.reportId}
                     className={`${styles.reportCard} ${isExpanded ? styles.reportCardExpanded : ''}`}
                   >
                     {/* Collapsed / Main Header Row */}
                     <div
                       className={styles.reportRow}
-                      onClick={() => toggleExpand(report.id)}
+                      onClick={() => toggleExpand(reportGroup.reportId)}
                       role="button"
                       tabIndex={0}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
                           e.preventDefault();
-                          toggleExpand(report.id);
+                          toggleExpand(reportGroup.reportId);
                         }
                       }}
                     >
                       <div className={styles.reportRowLeft}>
-                        <div className={styles.expandButton} aria-label={isExpanded ? 'Collapse' : 'Expand'}>
+                        <button
+                          type="button"
+                          className={styles.expandButton}
+                          aria-label={isExpanded ? 'Collapse report' : 'Expand report'}
+                          onClick={e => {
+                            e.stopPropagation();
+                            toggleExpand(reportGroup.reportId);
+                          }}
+                        >
                           {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </div>
+                        </button>
 
                         <div className={styles.reportIcon}>
                           <FileText size={18} />
                         </div>
 
                         <div className={styles.reportMetaGroup}>
-                          <span
-                            className={styles.metaDate}
-                            title={approvalTooltip}
-                          >
+                          <span className={styles.metaDate}>
                             <Calendar size={13} />
-                            {formattedApprovalDate}
+                            {formatDate(reportGroup.publicationDate)}
                           </span>
-                          <span className={styles.metaYearBadge}>{yearLabel}</span>
-                          <span className={styles.metaPeriodBadge}>{periodLabel}</span>
-                          {reportTypeFormatted && (
-                            <span className={styles.reportTypePill}>{reportTypeFormatted}</span>
-                          )}
+                          <span className={styles.metaYearBadge}>{selectedYear}</span>
+                          <span className={styles.metaPeriodBadge}>{reportGroup.rows[0]?.quarter || '—'}</span>
                         </div>
 
                         <span className={styles.metaDot}>•</span>
 
                         <div className={styles.reportTitleGroup}>
-                          <h5 className={styles.reportTitle}>{report.title}</h5>
-                          <span className={styles.metricsCountBadgeCompact}>
-                            {metrics.length} metric{metrics.length !== 1 ? 's' : ''}
-                          </span>
+                          <h5 className={styles.reportTitle}>{reportGroup.reportTitle}</h5>
                         </div>
                       </div>
 
-                      {hasDocument && (
-                        <div className={styles.reportRowRight}>
+                      <div className={styles.reportRowRight}>
+                        {hasDoc && (
                           <button
                             type="button"
                             className={styles.viewReportBtn}
-                            disabled={isOpening}
+                            disabled={openingDocId === reportGroup.documentId}
                             onClick={e => {
                               e.stopPropagation();
-                              handleViewPdf(projectId, report);
+                              handleViewPdf(reportGroup.documentId);
                             }}
                           >
-                            {isOpening ? (
+                            {openingDocId === reportGroup.documentId ? (
                               <Loader2 size={13} className={styles.spin} />
                             ) : (
                               <FileText size={13} />
                             )}
-                            <span>
-                              {isOpening
-                                ? 'Opening...'
-                                : isManual
-                                ? 'View PDF tham khảo'
-                                : 'View Report'}
-                            </span>
+                            <span>{openingDocId === reportGroup.documentId ? 'Opening...' : 'View Report'}</span>
                             <ExternalLink size={11} />
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {/* Expanded Section with Metrics Table */}
@@ -685,48 +813,152 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                       <div className={styles.expandedSection}>
                         <div className={styles.expandedHead}>
                           <div className={styles.expandedHeadLeft}>
-                            <h6 className={styles.expandedTitle}>Extracted Financial Information</h6>
+                            <h6 className={styles.expandedTitle}>
+                              {reportGroup.isManual ? 'Manual Financial Entries' : 'Extracted Financial Information'}
+                            </h6>
                             <span className={styles.metricsCountBadge}>
-                              {metrics.length} metric{metrics.length !== 1 ? 's' : ''}
+                              {reportGroup.rows.length} metric{reportGroup.rows.length !== 1 ? 's' : ''}
                             </span>
                           </div>
                         </div>
 
-                        {metrics.length === 0 ? (
+                        {reportGroup.rows.length === 0 ? (
                           <div className={styles.noMetricsText}>
-                            No financial metrics extracted for this report.
+                            No financial metrics recorded for this report.
                           </div>
                         ) : (
                           <div className={styles.tableWrapper}>
                             <table className={styles.metricsTable}>
                               <thead>
                                 <tr>
-                                  <th style={{ width: '42%' }}>Metric</th>
-                                  <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
-                                  <th style={{ width: '18%' }}>Period</th>
-                                  <th style={{ width: '12%' }}>Source</th>
+                                  {editable ? (
+                                    <>
+                                      <th style={{ width: '34%' }}>Metric Name</th>
+                                      <th style={{ width: '22%', textAlign: 'right' }}>Value</th>
+                                      <th style={{ width: '12%' }}>Unit</th>
+                                      <th style={{ width: '12%' }}>Period</th>
+                                      <th style={{ width: '14%' }}>Source</th>
+                                      <th style={{ width: '6%', textAlign: 'center' }}>Action</th>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <th style={{ width: '42%' }}>Metric</th>
+                                      <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
+                                      <th style={{ width: '18%' }}>Period</th>
+                                      <th style={{ width: '12%' }}>Source</th>
+                                    </>
+                                  )}
                                 </tr>
                               </thead>
                               <tbody>
-                                {metrics.map((metric, idx) => {
-                                  const parts = metricValueParts(metric);
-                                  const hasPage = Boolean(metric.source?.page);
-                                  const isImportant = isImportantMetric(metric.label);
+                                {reportGroup.rows.map((row) => {
+                                  const isImportant = isImportantMetric(row.metricName);
+                                  const hasPage = Boolean(row.sourcePage);
+
+                                  if (editable) {
+                                    return (
+                                      <tr key={row.id}>
+                                        <td>
+                                          <input
+                                            type="text"
+                                            className={styles.editInput}
+                                            value={row.metricName || ''}
+                                            placeholder="e.g. Doanh thu thuần"
+                                            onChange={e => handleUpdateRowField(row.id, 'metricName', e.target.value)}
+                                          />
+                                        </td>
+                                        <td style={{ textAlign: 'right' }}>
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            className={`${styles.editInput} ${styles.editInputNumber}`}
+                                            value={row.value !== undefined && row.value !== null ? row.value : ''}
+                                            placeholder="0"
+                                            onChange={e => handleUpdateRowField(row.id, 'value', e.target.value === '' ? '' : Number(e.target.value))}
+                                          />
+                                        </td>
+                                        <td>
+                                          <select
+                                            className={styles.editSelect}
+                                            value={formatFinancialUnit(row.unit) || 'Triệu VNĐ'}
+                                            onChange={e => handleUpdateRowField(row.id, 'unit', e.target.value)}
+                                          >
+                                            {CANONICAL_FINANCIAL_UNITS.map(u => (
+                                              <option key={u} value={u}>
+                                                {u}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                        <td className={styles.periodCell}>
+                                          <span className={styles.periodPill}>
+                                            {row.quarter} {row.year}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          {row.id.startsWith('temp-') ? (
+                                            <div className={styles.pageInputWrapper} title="Enter evidence page number (>= 1)">
+                                              <span className={styles.pageInputPrefix}>Page</span>
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                step={1}
+                                                className={styles.pageInput}
+                                                placeholder="12"
+                                                value={row.sourcePage !== undefined && row.sourcePage !== null ? row.sourcePage : ''}
+                                                onChange={e => {
+                                                  const val = e.target.value;
+                                                  handleUpdateRowField(row.id, 'sourcePage', val === '' ? null : Math.max(1, parseInt(val, 10) || 1));
+                                                }}
+                                              />
+                                            </div>
+                                          ) : hasPage ? (
+                                            <button
+                                              type="button"
+                                              className={styles.sourceLink}
+                                              onClick={e => {
+                                                e.stopPropagation();
+                                                handleViewPdf(row.sourceDocumentId);
+                                              }}
+                                              title="Open source document"
+                                            >
+                                              <FileText size={11} />
+                                              <span>Page {row.sourcePage}</span>
+                                            </button>
+                                          ) : (
+                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                              —
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                          <button
+                                            type="button"
+                                            className={styles.deleteRowBtn}
+                                            title="Delete financial row"
+                                            onClick={() => handleDeleteRow(row.id)}
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
 
                                   return (
-                                    <tr key={metric.id || idx}>
+                                    <tr key={row.id}>
                                       <td className={`${styles.metricName} ${isImportant ? styles.metricNameImportant : ''}`}>
-                                        {metric.label}
+                                        {row.metricName}
                                       </td>
                                       <td className={styles.metricValueCell}>
-                                        <span>{parts.value}</span>
-                                        {parts.unit && (
-                                          <span className={styles.metricUnit}>{parts.unit}</span>
+                                        <span>{formatMetricNumber(row.value)}</span>
+                                        {row.unit && (
+                                          <span className={styles.metricUnit}>{formatFinancialUnit(row.unit)}</span>
                                         )}
                                       </td>
                                       <td className={styles.periodCell}>
                                         <span className={styles.periodPill}>
-                                          {formatMetricPeriod(metric, report)}
+                                          {row.quarter} {row.year}
                                         </span>
                                       </td>
                                       <td>
@@ -736,20 +968,16 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                                             className={styles.sourceLink}
                                             onClick={e => {
                                               e.stopPropagation();
-                                              handleViewPdf(
-                                                projectId,
-                                                report,
-                                                metric.source?.documentId,
-                                              );
+                                              handleViewPdf(row.sourceDocumentId);
                                             }}
                                             title="Open source document"
                                           >
                                             <FileText size={11} />
-                                            <span>Page {metric.source?.page}</span>
+                                            <span>Page {row.sourcePage}</span>
                                           </button>
                                         ) : (
                                           <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                            {metric.source?.documentName || 'Doc'}
+                                            —
                                           </span>
                                         )}
                                       </td>
@@ -758,6 +986,18 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
                                 })}
                               </tbody>
                             </table>
+                            {editable && (
+                              <div className={styles.reportTableFooter}>
+                                <button
+                                  type="button"
+                                  className={styles.addMetricBtn}
+                                  onClick={() => handleAddRow(reportGroup)}
+                                >
+                                  <Plus size={13} />
+                                  Add Metric to {reportGroup.reportTitle}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -771,6 +1011,8 @@ const FinancialsTab: React.FC<FinancialsTabProps> = ({ companyId }) => {
       )}
     </div>
   );
-};
+});
+
+FinancialsTab.displayName = 'FinancialsTab';
 
 export default FinancialsTab;

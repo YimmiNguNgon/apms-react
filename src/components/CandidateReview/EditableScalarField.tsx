@@ -12,6 +12,7 @@ interface EditableScalarFieldProps {
   onChange: (key: string, value: any, status?: string) => void;
   disabled?: boolean;
   isManual?: boolean;
+  revisionMode?: boolean;
 }
 
 export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
@@ -21,7 +22,8 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   type = 'string',
   onChange,
   disabled,
-  isManual = false
+  isManual = false,
+  revisionMode,
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const currentValue = hasStaffReviewedValue
@@ -35,7 +37,11 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   }, [currentValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setDraftValue(type === 'number' ? Number(e.target.value) : e.target.value);
+    const val = type === 'number' ? Number(e.target.value) : e.target.value;
+    setDraftValue(val);
+    if (revisionMode) {
+      onChange(fieldKey, val, 'EDITED');
+    }
   };
 
   const handleSave = () => {
@@ -81,6 +87,7 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
       }
       disabled={disabled}
       isManual={isManual}
+      revisionMode={revisionMode}
     >
       {type === 'textarea' ? (
         <textarea 

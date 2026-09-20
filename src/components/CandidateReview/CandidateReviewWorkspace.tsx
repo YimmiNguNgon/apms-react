@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { AlertCircle, Building2, CheckCheck, CheckCircle2, Edit2, Loader2 } from 'lucide-react';
+import { AlertCircle, Building2, CheckCheck, CheckCircle2, ChevronDown, ChevronUp, Edit2, Loader2 } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
@@ -69,6 +69,7 @@ type TabType = CandidateCategoryTab;
 type ReviewFilter = 'ALL' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE' | 'FILLED' | 'EMPTY';
 
 const TAB_FIELD_GROUPS = CANDIDATE_FIELD_GROUPS;
+const TABS: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
 
 const fieldValueToText = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -105,6 +106,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   projectId,
   candidateId,
   taskId,
+  role = 'STAFF',
   targetCompanyName,
   onReviewed,
   onCancel,
@@ -124,6 +126,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const [draftNameInput, setDraftNameInput] = useState('');
   const [isRenamingDraft, setIsRenamingDraft] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [showApproved, setShowApproved] = useState(false);
   const queryClient = useQueryClient();
 
   const handleSaveDraftName = async () => {
@@ -193,6 +196,21 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     fetchData();
   }, [candidateId]);
 
+  useEffect(() => {
+    if (!serverCandidate) return;
+    const normResults = normalizeFieldResults(serverCandidate.fieldResults);
+    const hasChg = allCandidateFields.some((f) => isReturnedByManager(normResults[f.key]));
+    const isStaffRev = (role === 'STAFF' || !role) && (serverCandidate.status === 'REVISION_REQUIRED' || hasChg);
+    if (isStaffRev) {
+      const firstTabWithRev = TABS.find((tab) =>
+        TAB_FIELD_GROUPS[tab].some((f) => !isManagerAccepted(normResults[f.key]))
+      );
+      if (firstTabWithRev) {
+        setActiveTab(firstTabWithRev);
+      }
+    }
+  }, [serverCandidate?.id, serverCandidate?.status, role]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -220,7 +238,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     for (const { key } of activeTabFields) {
       const field = fieldResults[key];
       const isConfirmed = field?.staffReviewStatus === 'CONFIRMED';
-      
+
       if (!isConfirmed && !isManagerAccepted(field)) {
         newPendingUpdates[key] = {
           ...newPendingUpdates[key],
@@ -283,7 +301,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const fieldResults = { ...originalFieldResults };
   Object.keys(pendingUpdates).forEach(key => {
     if (!fieldResults[key]) fieldResults[key] = { value: null };
-    
+
     let staffStatus = pendingUpdates[key].reviewStatus;
     if (isManual) {
       const isValEmpty = normalizeCandidateFieldValue(pendingUpdates[key].reviewedValue) === null;
@@ -322,7 +340,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     const staffStatus = field?.staffReviewStatus;
     const validationStatus = field?.validationStatus;
     const confidence = field?.confidence;
-    
+
     const fieldOriginal = field?.value;
     const fieldCurrent = field?.reviewedValue !== undefined ? field.reviewedValue : field?.staffReviewedValue;
     const fieldChanged = isCandidateFieldEdited(fieldOriginal, fieldCurrent);
@@ -330,7 +348,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     if (staffStatus === 'CONFIRMED') tabConfirmedFields++;
     if (fieldChanged) tabEditedFields++;
     if (!fieldChanged && staffStatus !== 'CONFIRMED') tabPendingFields++;
-    
+
     if (validationStatus === 'FAIL') tabIssueFields++;
     if (typeof confidence === 'number' && confidence > 0 && confidence < 0.6) tabLowConfidenceFields++;
     if (isReturnedByManager(field)) tabReturnedFields++;
@@ -348,6 +366,17 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     .map((key) => ({ key, label: labelForField(key), field: fieldResults[key] }))
     .filter(({ field }) => isReturnedByManager(field));
   const hasChangesRequested = returnedFields.length > 0;
+  const isStaffRevision = (role === 'STAFF' || !role) && (isRevision || hasChangesRequested);
+  const allApprovedFields = allCandidateFields.filter((f) => isManagerAccepted(fieldResults[f.key]));
+  const activeTabRevisionFields = activeTabFields.filter((f) => !isManagerAccepted(fieldResults[f.key]));
+
+  const tabs = TABS;
+
+  const tabRevisionCounts = tabs.reduce<Record<TabType, number>>((acc, tab) => {
+    acc[tab] = TAB_FIELD_GROUPS[tab].filter((f) => !isManagerAccepted(fieldResults[f.key])).length;
+    return acc;
+  }, {} as Record<TabType, number>);
+
   const requiresCompanyConfirmation = Boolean(
     serverCandidate &&
     !isManual &&
@@ -370,8 +399,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const emptyCount = totalFieldsGlobal - filledCount;
   const filledPercent = totalFieldsGlobal > 0 ? Math.round((filledCount / totalFieldsGlobal) * 100) : 0;
 
-  const tabs: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
-
   const tabFilledStats = tabs.reduce<Record<TabType, { filled: number; total: number }>>((map, tab) => {
     const fields = TAB_FIELD_GROUPS[tab];
     map[tab] = {
@@ -384,6 +411,15 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const areAllFieldsConfirmed = allFieldKeys.every((key) => {
     const field = fieldResults[key];
     if (isManagerAccepted(field)) return true;
+    if (isStaffRevision) {
+      return (
+        field?.staffReviewStatus === 'CONFIRMED' ||
+        field?.staffReviewStatus === 'EDITED' ||
+        field?.staffReviewStatus === 'ADDED' ||
+        field?.staffReviewStatus === 'REMOVED' ||
+        isCandidateFieldEdited(field?.value, field?.reviewedValue)
+      );
+    }
     return field?.staffReviewStatus === 'CONFIRMED';
   });
 
@@ -423,18 +459,18 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
   const reviewFilters: Array<{ id: ReviewFilter; label: string; count: number }> = isManual
     ? [
-        { id: 'ALL', label: 'All', count: tabTotalFields },
-        { id: 'FILLED', label: 'Filled', count: tabFilledCount },
-        { id: 'EMPTY', label: 'Empty', count: tabEmptyCount },
-        ...(tabIssueFields > 0 ? [{ id: 'ISSUES' as ReviewFilter, label: 'Issues', count: tabIssueFields }] : []),
-      ]
+      { id: 'ALL', label: 'All', count: tabTotalFields },
+      { id: 'FILLED', label: 'Filled', count: tabFilledCount },
+      { id: 'EMPTY', label: 'Empty', count: tabEmptyCount },
+      ...(tabIssueFields > 0 ? [{ id: 'ISSUES' as ReviewFilter, label: 'Issues', count: tabIssueFields }] : []),
+    ]
     : [
-        { id: 'ALL', label: 'All', count: tabTotalFields },
-        { id: 'PENDING', label: 'Pending', count: tabPendingFields },
-        { id: 'EDITED', label: 'Edited', count: tabEditedFields },
-        { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
-        { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: tabLowConfidenceFields },
-      ];
+      { id: 'ALL', label: 'All', count: tabTotalFields },
+      { id: 'PENDING', label: 'Pending', count: tabPendingFields },
+      { id: 'EDITED', label: 'Edited', count: tabEditedFields },
+      { id: 'ISSUES', label: 'Issues', count: tabIssueFields },
+      { id: 'LOW_CONFIDENCE', label: 'Low Confidence', count: tabLowConfidenceFields },
+    ];
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
 
@@ -471,8 +507,15 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     if (!normalizedSearch) return true;
     return `${label} ${fieldValueToText(getFieldValue(key))}`.toLowerCase().includes(normalizedSearch);
   };
-  const shouldShowField = (key: string, label: string) => matchesReviewFilter(key) && matchesFieldSearch(key, label);
-  const visibleFieldCount = activeTabFields.filter((field) => shouldShowField(field.key, field.label)).length;
+  const shouldShowField = (key: string, label: string) => {
+    if (isStaffRevision) {
+      return !isManagerAccepted(fieldResults[key]);
+    }
+    return matchesReviewFilter(key) && matchesFieldSearch(key, label);
+  };
+  const visibleFieldCount = isStaffRevision
+    ? activeTabRevisionFields.length
+    : activeTabFields.filter((field) => shouldShowField(field.key, field.label)).length;
   const tabStats = tabs.reduce<Record<TabType, { total: number; issues: number }>>((map, tab) => {
     const fields = TAB_FIELD_GROUPS[tab];
     map[tab] = {
@@ -492,89 +535,111 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
   return (
     <div className={styles.workspace}>
-      <div className={styles.candidateHeader}>
-        <div className={styles.candidateHeaderLeft}>
-          <span className={styles.candidateEyebrow}>{isRevision ? 'CANDIDATE REVISION' : (isManual ? 'MANUAL CANDIDATE DRAFT' : 'CANDIDATE DRAFT')}</span>
-          {isEditingDraftName ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
-              <input 
-                autoFocus
-                style={{ fontSize: '1.25rem', fontWeight: 600, padding: '4px 8px', border: '1px solid #3b82f6', borderRadius: '4px', width: '280px' }}
-                value={draftNameInput}
-                onChange={(e) => setDraftNameInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSaveDraftName();
-                  else if (e.key === 'Escape') {
+      {isStaffRevision ? (
+        <div className={styles.revisionSummaryCard}>
+          <div className={styles.revisionSummaryTop}>
+            <div>
+              <h3 className={styles.revisionSummaryTitle}>Revision requested</h3>
+              <p className={styles.revisionSummarySubtitle}>
+                Manager requested changes to {returnedFields.length} field{returnedFields.length !== 1 ? 's' : ''}{serverCandidate.revisionNumber ? ` · Round ${serverCandidate.revisionNumber}` : ''}
+              </p>
+            </div>
+            <span className={styles.revisionSummaryMeta}>
+              {serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft')} &middot; Round {serverCandidate.revisionNumber || 1}
+            </span>
+          </div>
+
+          {returnedFields.length > 0 && (
+            <div className={styles.revisionFeedbackList}>
+              {returnedFields.map(({ key, label, field }) => (
+                <div key={key} className={styles.revisionFeedbackItem}>
+                  <strong>{label}</strong>
+                  <span>"{field?.previousManagerReviewComment || field?.managerReviewComment || 'Manager requested a change.'}"</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : !readOnly ? (
+        <div className={styles.candidateHeader}>
+          <div className={styles.candidateHeaderLeft}>
+            <span className={styles.candidateEyebrow}>{isManual ? 'MANUAL ENTRY' : 'AI EXTRACTED'}</span>
+            {isEditingDraftName ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0' }}>
+                <input
+                  autoFocus
+                  style={{ fontSize: '1.25rem', fontWeight: 600, padding: '4px 8px', border: '1px solid #3b82f6', borderRadius: '4px', width: '280px' }}
+                  value={draftNameInput}
+                  onChange={(e) => setDraftNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSaveDraftName();
+                    else if (e.key === 'Escape') {
+                      setIsEditingDraftName(false);
+                      setRenameError(null);
+                    }
+                  }}
+                  disabled={isRenamingDraft}
+                />
+                <button
+                  className={styles.primaryButton}
+                  type="button"
+                  onClick={() => void handleSaveDraftName()}
+                  disabled={isRenamingDraft || !draftNameInput.trim()}
+                  style={{ padding: '4px 10px', fontSize: '13px' }}
+                >
+                  {isRenamingDraft ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  className={styles.secondaryButton}
+                  type="button"
+                  onClick={() => {
                     setIsEditingDraftName(false);
                     setRenameError(null);
-                  }
-                }}
-                disabled={isRenamingDraft}
-              />
-              <button
-                className={styles.primaryButton}
-                type="button"
-                onClick={() => void handleSaveDraftName()}
-                disabled={isRenamingDraft || !draftNameInput.trim()}
-                style={{ padding: '4px 10px', fontSize: '13px' }}
-              >
-                {isRenamingDraft ? 'Saving...' : 'Save'}
-              </button>
-              <button
-                className={styles.secondaryButton}
-                type="button"
-                onClick={() => {
-                  setIsEditingDraftName(false);
-                  setRenameError(null);
-                }}
-                disabled={isRenamingDraft}
-                style={{ padding: '4px 10px', fontSize: '13px' }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2>{serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft')}</h2>
-              {!readOnly && (serverCandidate.status === 'DRAFT' || serverCandidate.status === 'REVISION_REQUIRED') && (
-                <button 
-                  type="button"
-                  title="Rename Draft"
-                  onClick={() => {
-                    setDraftNameInput(serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft'));
-                    setRenameError(null);
-                    setIsEditingDraftName(true);
                   }}
-                  style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  disabled={isRenamingDraft}
+                  style={{ padding: '4px 10px', fontSize: '13px' }}
                 >
-                  <Edit2 size={13} />
-                  <span>Rename</span>
+                  Cancel
                 </button>
-              )}
-            </div>
-          )}
-          {renameError && (
-            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
-              {renameError}
-            </div>
-          )}
-          <div className={styles.candidateSubline}>
-            ID: {serverCandidate.id.slice(-8)} &middot; Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''}{!isManual && ` \u00B7 ${totalFieldsGlobal} fields extracted`}
-            {serverCandidate.identity?.tradeName && (
-              <span style={{ marginLeft: '8px', color: '#475569' }}>
-                &middot; Trade Name: <strong style={{ color: '#1e293b' }}>{serverCandidate.identity.tradeName}</strong>
-              </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2>{serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft')}</h2>
+                {!readOnly && (serverCandidate.status === 'DRAFT' || serverCandidate.status === 'REVISION_REQUIRED') && (
+                  <button
+                    type="button"
+                    title="Rename Draft"
+                    onClick={() => {
+                      setDraftNameInput(serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft'));
+                      setRenameError(null);
+                      setIsEditingDraftName(true);
+                    }}
+                    style={{ background: 'transparent', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Edit2 size={13} />
+                    <span>Rename</span>
+                  </button>
+                )}
+              </div>
             )}
+            {renameError && (
+              <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
+                {renameError}
+              </div>
+            )}
+            <div className={styles.candidateSubline} title={`Candidate ID: ${serverCandidate.id}`}>
+              Round {serverCandidate.revisionNumber || 1}{isRevision ? ' preparation' : ''}{!isManual && ` \u00B7 ${totalFieldsGlobal} fields extracted`}
+            </div>
+          </div>
+          <div className={styles.candidateHeaderRight}>
+            <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
+              {serverCandidate.status}
+            </span>
           </div>
         </div>
-        <div className={styles.candidateHeaderRight}>
-          <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
-            {serverCandidate.status}
-          </span>
-        </div>
-      </div>
+      ) : null}
 
-      {(isRejected || hasChangesRequested) && (
+      {!isStaffRevision && (isRejected || hasChangesRequested) && (
         <div className={styles.feedbackBanner}>
           <AlertCircle size={20} />
           <div className={styles.feedbackBody}>
@@ -644,11 +709,11 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
         </div>
       )}
 
-      {!isManual && (
+      {!isManual && !isStaffRevision && (
         <div className={styles.qualityBar}>
-          <CandidateQualitySummary 
-            metrics={serverCandidate.qualityMetrics || {}} 
-            status={serverCandidate.qualityStatus || 'UNKNOWN'} 
+          <CandidateQualitySummary
+            metrics={serverCandidate.qualityMetrics || {}}
+            status={serverCandidate.qualityStatus || 'UNKNOWN'}
           />
         </div>
       )}
@@ -663,214 +728,250 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
                 onClick={() => setActiveTab(tab)}
               >
                 {tab}
-                <span className={styles.tabCount}>{tabStats[tab].total}</span>
-                {tabStats[tab].issues > 0 && <span className={styles.tabIssueDot}>{tabStats[tab].issues} issue</span>}
+                {isStaffRevision ? (
+                  tabRevisionCounts[tab] > 0 && <span className={styles.tabCount}>{tabRevisionCounts[tab]}</span>
+                ) : (
+                  <>
+                    <span className={styles.tabCount}>{tabStats[tab].total}</span>
+                    {tabStats[tab].issues > 0 && <span className={styles.tabIssueDot}>{tabStats[tab].issues} issue</span>}
+                  </>
+                )}
               </button>
             ))}
           </div>
 
-          <div className={styles.quickFilterBar} aria-label="Review field filters">
-            <div>
-              <span>Review fields</span>
-              <small>{visibleFieldCount} visible in {activeTab}</small>
-            </div>
-            {/* <label className={styles.fieldSearch}>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search fields..."
-              />
-            </label> */}
-            <div className={styles.quickFilterActions}>
-              {reviewFilters.map(filter => (
-                <button
-                  type="button"
-                  key={filter.id}
-                  className={`${styles.quickFilterButton} ${activeFilter === filter.id ? styles.quickFilterButtonActive : ''}`}
-                  onClick={() => handleFilterClick(filter.id)}
-                >
-                  {filter.label} <strong>{filter.count}</strong>
-                </button>
-              ))}
+          {!isStaffRevision && (
+            <div className={styles.quickFilterBar} aria-label="Review field filters">
+              <div>
+                <span>Review fields</span>
+                <small>{visibleFieldCount} visible in {activeTab}</small>
+              </div>
+              <div className={styles.quickFilterActions}>
+                {reviewFilters.map(filter => (
+                  <button
+                    type="button"
+                    key={filter.id}
+                    className={`${styles.quickFilterButton} ${activeFilter === filter.id ? styles.quickFilterButtonActive : ''}`}
+                    onClick={() => handleFilterClick(filter.id)}
+                  >
+                    {filter.label} <strong>{filter.count}</strong>
+                  </button>
+                ))}
 
-              {!readOnly && !isManual && (
-                <button
-                  type="button"
-                  className={styles.approveAllBtn}
-                  onClick={handleApproveAllInTab}
-                  title={`Approve all unconfirmed fields in ${activeTab}`}
-                >
-                  <CheckCheck size={16} /> Approve All
-                </button>
-              )}
+                {!readOnly && !isManual && (
+                  <button
+                    type="button"
+                    className={styles.approveAllBtn}
+                    onClick={handleApproveAllInTab}
+                    title={`Approve all unconfirmed fields in ${activeTab}`}
+                  >
+                    <CheckCheck size={16} /> Approve All
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {isStaffRevision && (
+            <div className={styles.revisionSectionHeading}>
+              Fields requiring revision ({activeTabRevisionFields.length})
+            </div>
+          )}
 
           <div className={styles.tabContent}>
             {activeTab === 'Identity' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} isManual={isManual} />)}
-                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} isManual={isManual} />)}
-                {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} isManual={isManual} />, true)}
-                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} isManual={isManual} />)}
-                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} revisionMode={isStaffRevision} isManual={isManual} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} revisionMode={isStaffRevision} isManual={isManual} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} revisionMode={isStaffRevision} isManual={isManual} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} revisionMode={isStaffRevision} isManual={isManual} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} revisionMode={isStaffRevision} isManual={isManual} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} />)}
               </div>
             )}
 
             {activeTab === 'Business' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} isManual={isManual} />, true)}
-                {renderReviewField('business.industries', 'Industries', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} isManual={isManual} />, true)}
-                {renderReviewField('companySize.employeeTier', 'Employee Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeTier'])} label="Employee Tier" fieldKey="companySize.employeeTier" fieldResult={fieldResults['companySize.employeeTier']} onChange={handleFieldChange} isManual={isManual} />)}
-                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} isManual={isManual} />)}
-                {renderReviewField('companySize.revenueTier', 'Revenue Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.revenueTier'])} label="Revenue Tier" fieldKey="companySize.revenueTier" fieldResult={fieldResults["companySize.revenueTier"]} onChange={handleFieldChange} isManual={isManual} />)}
+                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} revisionMode={isStaffRevision} isManual={isManual} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.industries', 'Industries', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} revisionMode={isStaffRevision} isManual={isManual} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('companySize.employeeTier', 'Employee Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeTier'])} revisionMode={isStaffRevision} isManual={isManual} label="Employee Tier" fieldKey="companySize.employeeTier" fieldResult={fieldResults['companySize.employeeTier']} onChange={handleFieldChange} />)}
+                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} revisionMode={isStaffRevision} isManual={isManual} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} />)}
+                {renderReviewField('companySize.revenueTier', 'Revenue Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.revenueTier'])} revisionMode={isStaffRevision} isManual={isManual} label="Revenue Tier" fieldKey="companySize.revenueTier" fieldResult={fieldResults["companySize.revenueTier"]} onChange={handleFieldChange} />)}
               </div>
             )}
 
             {activeTab === 'Markets' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} isManual={isManual} />, true)}
-                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} revisionMode={isStaffRevision} isManual={isManual} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} revisionMode={isStaffRevision} isManual={isManual} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} />, true)}
               </div>
             )}
 
             {activeTab === 'Products' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} isManual={isManual} />, true)}
+                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} revisionMode={isStaffRevision} isManual={isManual} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
               </div>
             )}
 
             {visibleFieldCount === 0 && (
               <div className={styles.emptyFilteredState}>
-                No fields match the current search or filter.
+                {isStaffRevision ? `All fields in ${activeTab} were approved by Manager.` : 'No fields match the current search or filter.'}
+              </div>
+            )}
+
+            {isStaffRevision && allApprovedFields.length > 0 && (
+              <div className={styles.approvedSection}>
+                <button
+                  type="button"
+                  className={styles.approvedSectionToggle}
+                  onClick={() => setShowApproved(!showApproved)}
+                >
+                  <span className={styles.approvedCheckIcon}>✓</span>
+                  <span><strong>{allApprovedFields.length}</strong> previously approved field{allApprovedFields.length !== 1 ? 's' : ''}</span>
+                  <span className={styles.approvedActionText}>
+                    {showApproved ? 'Hide approved fields' : 'View approved fields'}
+                  </span>
+                  {showApproved ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {showApproved && (
+                  <div className={styles.compactApprovedList}>
+                    {allApprovedFields.map(f => (
+                      <div key={f.key} className={styles.compactApprovedRow}>
+                        <span className={styles.compactApprovedLabel}>{f.label}</span>
+                        <span className={styles.compactApprovedValue}>{fieldValueToText(getFieldValue(f.key)) || '—'}</span>
+                        <span className={styles.compactApprovedBadge}>Approved</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        <div className={styles.sidebar}>
-          {isManual ? (
-            <div className={styles.staffReviewPanel}>
-              <h3>Manual Entry</h3>
-              
-              <div className={styles.staffProgressBlock}>
-                <div className={styles.staffProgressTopline}>
-                  <span>{filledCount} / {totalFieldsGlobal} fields filled</span>
-                  <strong>{filledPercent}%</strong>
-                </div>
-                <div className={styles.progressBarTrack}>
-                  <div 
-                    className={styles.progressBarFill} 
-                    style={{ width: `${filledPercent}%`, backgroundColor: '#2563eb' }}
-                  />
-                  <span className={styles.progressBarLabel}>{filledPercent}%</span>
-                </div>
-              </div>
+        {!isStaffRevision && (
+          <div className={styles.sidebar}>
+            {isManual ? (
+              <div className={styles.staffReviewPanel}>
+                <h3>Manual Entry</h3>
 
-              <div className={styles.staffReviewStats}>
-                <div className={styles.staffReviewStat}>
-                  <span>
-                    <i className={styles.dotConfirmed}></i>
-                    Filled Fields
-                  </span>
-                  <strong>{filledCount}</strong>
-                </div>
-                
-                <div className={styles.staffReviewStat}>
-                  <span>
-                    <i className={styles.dotPending}></i>
-                    Empty (Optional)
-                  </span>
-                  <strong>{emptyCount}</strong>
-                </div>
-
-                {tabIssueFields > 0 && (
-                  <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
-                    <span>
-                      <AlertCircle size={14} />
-                      Format Issues
-                    </span>
-                    <strong>{tabIssueFields}</strong>
+                <div className={styles.staffProgressBlock}>
+                  <div className={styles.staffProgressTopline}>
+                    <span>{filledCount} / {totalFieldsGlobal} fields filled</span>
+                    <strong>{filledPercent}%</strong>
                   </div>
-                )}
-              </div>
+                  <div className={styles.progressBarTrack}>
+                    <div
+                      className={styles.progressBarFill}
+                      style={{ width: `${filledPercent}%`, backgroundColor: '#2563eb' }}
+                    />
+                    <span className={styles.progressBarLabel}>{filledPercent}%</span>
+                  </div>
+                </div>
 
-              <div className={styles.sidebarSection}>
-                <h3>Sections</h3>
                 <div className={styles.staffReviewStats}>
-                  {tabs.map((tab) => (
-                    <div key={tab} className={styles.staffReviewStat}>
-                      <span>{tab}</span>
-                      <strong>{tabFilledStats[tab]?.filled ?? 0} / {tabFilledStats[tab]?.total ?? 0}</strong>
+                  <div className={styles.staffReviewStat}>
+                    <span>
+                      <i className={styles.dotConfirmed}></i>
+                      Filled Fields
+                    </span>
+                    <strong>{filledCount}</strong>
+                  </div>
+
+                  <div className={styles.staffReviewStat}>
+                    <span>
+                      <i className={styles.dotPending}></i>
+                      Empty (Optional)
+                    </span>
+                    <strong>{emptyCount}</strong>
+                  </div>
+
+                  {tabIssueFields > 0 && (
+                    <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
+                      <span>
+                        <AlertCircle size={14} />
+                        Format Issues
+                      </span>
+                      <strong>{tabIssueFields}</strong>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className={styles.staffReviewPanel}>
-              <h3>Review</h3>
-              
-              <div className={styles.staffProgressBlock}>
-                <div className={styles.staffProgressTopline}>
-                  <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
-                </div>
-                <div className={styles.progressBarTrack}>
-                  <div 
-                    className={styles.progressBarFill} 
-                    style={{ width: `${progressPercent}%`, backgroundColor: progressPercent === 100 ? '#16a34a' : '#2563eb' }}
-                  />
-                  <span className={styles.progressBarLabel}>{progressPercent}%</span>
-                </div>
-              </div>
-
-              <div className={styles.staffReviewStats}>
-                <div className={styles.staffReviewStat}>
-                  <span>
-                    <i className={styles.dotConfirmed}></i>
-                    Confirmed
-                  </span>
-                  <strong>{resolvedFields}</strong>
-                </div>
-                
-                <div className={styles.staffReviewStat}>
-                  <span>
-                    <i className={styles.dotPending}></i>
-                    Pending
-                  </span>
-                  <strong>{totalFieldsGlobal - resolvedFields}</strong>
+                  )}
                 </div>
 
-                {tabIssueFields > 0 && (
-                  <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
-                    <span>
-                      <AlertCircle size={14} />
-                      Validation Issues
-                    </span>
-                    <strong>{tabIssueFields}</strong>
+                <div className={styles.sidebarSection}>
+                  <h3>Sections</h3>
+                  <div className={styles.staffReviewStats}>
+                    {tabs.map((tab) => (
+                      <div key={tab} className={styles.staffReviewStat}>
+                        <span>{tab}</span>
+                        <strong>{tabFilledStats[tab]?.filled ?? 0} / {tabFilledStats[tab]?.total ?? 0}</strong>
+                      </div>
+                    ))}
                   </div>
-                )}
-
-                {tabLowConfidenceFields > 0 && (
-                  <div className={`${styles.staffReviewStat} ${styles.staffReviewCaution}`}>
-                    <span>
-                      <AlertCircle size={14} />
-                      Low Confidence
-                    </span>
-                    <strong>{tabLowConfidenceFields}</strong>
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className={styles.staffReviewPanel}>
+                <h3>Review</h3>
+
+                <div className={styles.staffProgressBlock}>
+                  <div className={styles.staffProgressTopline}>
+                    <span>{resolvedFields} / {totalFieldsGlobal} confirmed</span>
+                  </div>
+                  <div className={styles.progressBarTrack}>
+                    <div
+                      className={styles.progressBarFill}
+                      style={{ width: `${progressPercent}%`, backgroundColor: progressPercent === 100 ? '#16a34a' : '#2563eb' }}
+                    />
+                    <span className={styles.progressBarLabel}>{progressPercent}%</span>
+                  </div>
+                </div>
+
+                <div className={styles.staffReviewStats}>
+                  <div className={styles.staffReviewStat}>
+                    <span>
+                      <i className={styles.dotConfirmed}></i>
+                      Confirmed
+                    </span>
+                    <strong>{resolvedFields}</strong>
+                  </div>
+
+                  <div className={styles.staffReviewStat}>
+                    <span>
+                      <i className={styles.dotPending}></i>
+                      Pending
+                    </span>
+                    <strong>{totalFieldsGlobal - resolvedFields}</strong>
+                  </div>
+
+                  {tabIssueFields > 0 && (
+                    <div className={`${styles.staffReviewStat} ${styles.staffReviewWarning}`}>
+                      <span>
+                        <AlertCircle size={14} />
+                        Validation Issues
+                      </span>
+                      <strong>{tabIssueFields}</strong>
+                    </div>
+                  )}
+
+                  {tabLowConfidenceFields > 0 && (
+                    <div className={`${styles.staffReviewStat} ${styles.staffReviewCaution}`}>
+                      <span>
+                        <AlertCircle size={14} />
+                        Low Confidence
+                      </span>
+                      <strong>{tabLowConfidenceFields}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {!readOnly && (
         <div className={styles.actionBar}>
           <div className={styles.actionBarLeft}>
-            {isSubmitEnabled ? (
+            {isSubmitEnabled && unsavedCount === 0 ? (
               <span className={styles.progressTitle} style={{ fontWeight: '600', color: '#16a34a' }}>
                 ✓ Ready to submit
               </span>
@@ -885,33 +986,51 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               </span>
             ) : null}
           </div>
-          
-          <div className={styles.actionBarRight}>
-            {unsavedCount > 0 && (
-              <>
-                <button className={styles.btnSecondary} onClick={handleDiscard} disabled={isSaving || submitLoading}>Discard</button>
-                <button className={styles.btnPrimary} onClick={handleSave} disabled={isSaving || submitLoading}>
-                  {isSaving ? 'Saving...' : 'Save Draft'}
-                </button>
-              </>
-            )}
 
-            {unsavedCount === 0 && onSubmit && (
-              <button 
-                className={styles.btnSubmit} 
-                onClick={onSubmit} 
-                disabled={!isSubmitEnabled || submitLoading}
+          <div className={styles.actionBarRight}>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => {
+                if (unsavedCount > 0) {
+                  handleDiscard();
+                } else if (onCancel) {
+                  onCancel();
+                }
+              }}
+              disabled={isSaving || submitLoading}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              onClick={handleSave}
+              disabled={unsavedCount === 0 || isSaving || submitLoading}
+            >
+              {isSaving ? 'Saving...' : 'Save Draft'}
+            </button>
+
+            {onSubmit && (
+              <button
+                type="button"
+                className={styles.btnSubmit}
+                onClick={onSubmit}
+                disabled={unsavedCount > 0 || !isSubmitEnabled || submitLoading}
                 title={
                   requiresCompanyConfirmation
                     ? "Target company confirmation required before submission"
-                    : !isManualDataValid
-                    ? "Please provide valid format for filled fields (website, email, phone)"
-                    : isSubmitEnabled
-                    ? (isManual ? "Submit manual candidate to Manager" : "Submit to Manager")
-                    : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`
+                    : unsavedCount > 0
+                      ? "Please save draft before submitting"
+                      : !isManualDataValid
+                        ? "Please provide valid format for filled fields (website, email, phone)"
+                        : isSubmitEnabled
+                          ? (isManual ? "Submit manual candidate to Manager" : "Submit to Manager")
+                          : `${tabPendingFields} field${tabPendingFields !== 1 ? 's' : ''} still require confirmation`
                 }
               >
-                {submitLoading ? 'Submitting...' : (serverCandidate.status === 'REVISION_REQUIRED' ? 'Resubmit for Review' : 'Submit for Review')}
+                {submitLoading ? 'Submitting...' : 'Submit for Review'}
               </button>
             )}
           </div>

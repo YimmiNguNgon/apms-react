@@ -3,89 +3,84 @@
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 14px;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
   transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   align-self: start;
   height: auto;
   min-width: 0;
 }
 .cardCompact:hover {
   border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 .cardAccepted {
   border-left: 3px solid #10b981;
-  background: #f8fdfb;
+  background: #fafdfc;
 }
 .cardRejected {
   border-left: 3px solid #ef4444;
-  background: #fffbfb;
+  background: #fdfafb;
 }
 .cardNeedsReview {
   border-left: 3px solid #f59e0b;
-  background: #fffdf7;
+  background: #fdfbfa;
 }
 .cardLowConfidence {
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.18);
 }
 .cardHighlighted {
   border-color: #60a5fa;
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.24), 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+.cardNotProvided {
+  background: #fcfcfd;
+  border-color: #e2e8f0;
+  opacity: 0.95;
 }
 
 /* ── Header ── */
 .compactHeader {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-.compactTitleRow {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1;
+  gap: 10px;
   min-width: 0;
 }
 .fieldLabelText {
-  font-size: 13px;
-  font-weight: 800;
-  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   min-width: 0;
 }
 
-/* ── Confidence Badge ── */
-.confidenceBadge {
+.headerRightBadge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
   flex-shrink: 0;
 }
-.confHigh   { background: #f0fdf4; color: #166534; }
-.confMedium { background: #fefce8; color: #854d0e; }
-.confLow    { background: #fef2f2; color: #991b1b; }
+
+.confidencePart {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
 
 /* ── Card Body / Value ── */
 .cardBody {
-  /* no extra margin needed; gap handles it */
   min-width: 0;
 }
 .valueBlock {
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
   color: #0f172a;
-  line-height: 1.45;
+  line-height: 1.4;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -94,6 +89,104 @@
 .emptyValue {
   color: #94a3b8;
   font-style: italic;
+}
+.notProvidedBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+.notProvidedValue {
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 2px 0;
+}
+.notProvidedPlaceholder {
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+  display: inline-block;
+}
+
+/* ── Secondary Meta & Evidence Row ── */
+.secondaryMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.secondaryMetaLeft {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.secondaryMetaRight {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.secondaryAiMatch {
+  color: #475569;
+  font-weight: 500;
+}
+
+.secondaryStaffEdited {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.secondaryLowConf {
+  color: #c2410c;
+  font-weight: 500;
+}
+
+.metaDot {
+  color: #cbd5e1;
+}
+
+.evidenceInlineBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.evidenceInlineBtn:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.noEvidenceText {
+  color: #94a3b8;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.mutedReviewedTimestamp {
+  color: #94a3b8;
+  font-size: 11px;
 }
 
 /* ── Diff Container ── */
@@ -172,9 +265,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 4px;
 }
 .managerPending     { background: #f1f5f9; color: #64748b; }
@@ -514,9 +607,12 @@
   background: #fef2f2;
 }
 .btnUndo {
-  background: #f8fafc;
+  background: #ffffff;
   color: #475569;
   border-color: #cbd5e1;
+  font-size: 12px;
+  height: 28px;
+  padding: 0 10px;
 }
 .btnUndo:not(:disabled):hover {
   background: #f1f5f9;

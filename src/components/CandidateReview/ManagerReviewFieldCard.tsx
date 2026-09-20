@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { Check, X, MessageSquareWarning, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, FileText, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
 import type { CandidateFieldEvidence } from '../../types/domain';
 import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
-import { ConfirmModal } from '../Shared/ConfirmModal';
 import styles from './ManagerReviewFieldCard.module.css';
 
 interface ManagerReviewFieldCardProps {
@@ -301,13 +300,12 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   disabled,
   highlighted,
   evidenceItems = [],
-  isManual = false
+  isManual = false,
 }) => {
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<'REJECTED' | 'CHANGES_REQUESTED' | null>(null);
   const [comment, setComment] = useState('');
   const [evidenceExpanded, setEvidenceExpanded] = useState(false);
-  const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
   const [mutatingAction, setMutatingAction] = useState<'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'PENDING' | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -356,27 +354,25 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
     }
   }, [onDecision, mutatingAction, disabled]);
 
+  const handleUndo = useCallback(async () => {
+    if (mutatingAction || disabled) return;
+    setMutatingAction('PENDING');
+    setMutationError(null);
+    try {
+      await onDecision('PENDING');
+    } catch (err: any) {
+      setMutationError(err?.message || 'Unable to undo decision. Please try again.');
+    } finally {
+      setMutatingAction(null);
+    }
+  }, [onDecision, mutatingAction, disabled]);
+
   const openRejectModal = useCallback(() => {
     setPendingDecision('REJECTED');
     setComment(managerComment || '');
     setMutationError(null);
     setIsCommentModalOpen(true);
   }, [managerComment]);
-
-  const handleConfirmUndo = useCallback(async () => {
-    if (mutatingAction || disabled) return;
-    setMutatingAction('PENDING');
-    setMutationError(null);
-    try {
-      await onDecision('PENDING');
-      setIsUndoModalOpen(false);
-    } catch (err: any) {
-      setMutationError(err?.message || 'Unable to undo decision for this field.');
-      setIsUndoModalOpen(false);
-    } finally {
-      setMutatingAction(null);
-    }
-  }, [onDecision, mutatingAction, disabled]);
 
 
 
@@ -408,18 +404,18 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
 
   if (isManual && !isProvided) {
     return (
-      <div className={`${styles.cardCompact} ${highlighted ? styles.cardHighlighted : ''}`} style={{ opacity: 0.85, background: '#fafafa' }}>
+      <div className={`${styles.cardCompact} ${styles.cardNotProvided} ${highlighted ? styles.cardHighlighted : ''}`}>
         <div className={styles.compactHeader}>
-          <div className={styles.compactTitleRow}>
-            <span className={styles.fieldLabelText}>{label}</span>
-            <span className={styles.managerStatusBadge} style={{ background: '#f1f5f9', color: '#64748b' }}>
+          <span className={styles.fieldLabelText}>{label}</span>
+          <div className={styles.headerRightBadge}>
+            <span className={styles.notProvidedBadge}>
               Not provided
             </span>
           </div>
         </div>
         <div className={styles.cardBody}>
-          <div className={`${styles.valueBlock} ${styles.emptyValue}`}>
-            Not provided
+          <div className={styles.notProvidedValue}>
+            <span className={styles.notProvidedPlaceholder}>No value provided</span>
           </div>
         </div>
       </div>
@@ -443,8 +439,8 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
     <div className={cardClass}>
       {/* Header Row */}
       <div className={styles.compactHeader}>
-        <div className={styles.compactTitleRow}>
-          <span className={styles.fieldLabelText}>{label}</span>
+        <span className={styles.fieldLabelText}>{label}</span>
+        <div className={styles.headerRightBadge}>
           <span className={`${styles.managerStatusBadge} ${managerInfo.className}`}>
             {managerInfo.icon} {managerInfo.text}
           </span>
@@ -477,46 +473,56 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
         )}
       </div>
 
-      {/* Status Row */}
-      <div className={styles.statusRow}>
-        {isManual ? (
-          <span className={styles.staffStatusBadge}>
-            <Check size={12} /> Entered manually by Staff
-          </span>
-        ) : (
-          <>
-            <span className={styles.staffStatusBadge}>
-              {staffInfo.icon} {staffInfo.text}
+      {/* Secondary metadata & evidence row */}
+      <div className={styles.secondaryMetaRow}>
+        <div className={styles.secondaryMetaLeft}>
+          {isManual ? (
+            <span className={styles.secondaryStaffEdited}>
+              <Check size={12} /> Entered manually by Staff
             </span>
-            {isChanged && <span className={styles.staffEditedHint}>Staff edited</span>}
-            {isLowConfidence && <span className={styles.lowConfidenceHint}>Low confidence</span>}
-          </>
-        )}
-      </div>
-
-      {/* Evidence summary */}
-      {(!isManual || evidenceCount > 0) && (
-        <div className={styles.evidenceSummary}>
-          {evidenceCount > 0 ? (
-            <button
-              type="button"
-              className={styles.evidenceButton}
-              onClick={() => setEvidenceExpanded(current => !current)}
-              aria-expanded={evidenceExpanded}
-              aria-label={`View evidence for ${label}`}
-            >
-              <FileText size={14} />
-              Evidence{evidenceCount > 1 ? ` (${evidenceCount})` : ''}
-              {evidenceExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
+          ) : isChanged ? (
+            <span className={styles.secondaryStaffEdited}>Staff edited</span>
           ) : (
-            <span className={`${styles.evidenceUnavailable} ${isPending ? styles.evidenceUnavailablePending : ''}`}>
-              <AlertTriangle size={13} />
-              No supporting evidence
+            <span className={styles.secondaryAiMatch}>AI match</span>
+          )}
+          {!isManual && isLowConfidence && (
+            <>
+              <span className={styles.metaDot}>&middot;</span>
+              <span className={styles.secondaryLowConf}>Low confidence</span>
+            </>
+          )}
+          {evidenceCount > 0 ? (
+            <>
+              <span className={styles.metaDot}>&middot;</span>
+              <button
+                type="button"
+                className={styles.evidenceInlineBtn}
+                onClick={() => setEvidenceExpanded(current => !current)}
+                aria-expanded={evidenceExpanded}
+                aria-label={`View evidence for ${label}`}
+              >
+                <FileText size={12} />
+                Evidence{evidenceCount > 1 ? ` (${evidenceCount})` : ''}
+                {evidenceExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+            </>
+          ) : !isManual ? (
+            <>
+              <span className={styles.metaDot}>&middot;</span>
+              <span className={styles.noEvidenceText}>No supporting evidence</span>
+            </>
+          ) : null}
+        </div>
+        <div className={styles.secondaryMetaRight}>
+          {(managerReviewedAt || (isAccepted && !managerComment)) && (
+            <span className={styles.mutedReviewedTimestamp}>
+              {managerReviewedAt
+                ? `Reviewed ${formatTimestamp(managerReviewedAt)}`
+                : 'Reviewed just now'}
             </span>
           )}
         </div>
-      )}
+      </div>
 
       {evidenceExpanded && evidenceCount > 0 && (
         <div className={styles.inlineEvidencePanel}>
@@ -601,7 +607,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           {isPending && deepEqual(previousSubmittedValue, staffValue) && (
             <div style={{ marginTop: 6, fontSize: 12, color: '#b45309', display: 'flex', alignItems: 'center', gap: 4 }}>
               <AlertTriangle size={12} />
-              <span>Giá trị gửi lại chưa thay đổi so với vòng trước.</span>
+              <span>Resubmitted value unchanged from previous round.</span>
             </div>
           )}
         </div>
@@ -646,31 +652,19 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           <button
             type="button"
             className={`${styles.btnAction} ${styles.btnUndo}`}
-            onClick={() => setIsUndoModalOpen(true)}
+            onClick={handleUndo}
             disabled={disabled || isFieldMutating}
+            title="Reset field decision to pending"
           >
             {mutatingAction === 'PENDING' ? (
-              <><Loader2 size={14} className={styles.spin} /> Resetting&hellip;</>
+              <><Loader2 size={13} className={styles.spin} /> Undoing&hellip;</>
             ) : (
-              <><RotateCcw size={14} /> Undo {isAccepted ? 'Approval' : isRejected ? 'Rejection' : 'Decision'}</>
+              <><RotateCcw size={13} /> Undo decision</>
             )}
           </button>
         </div>
       )}
 
-      {/* Undo Confirmation Modal */}
-      <ConfirmModal
-        isOpen={isUndoModalOpen}
-        title={`Undo ${isAccepted ? 'Approval' : isRejected ? 'Rejection' : 'Decision'}`}
-        message={`Reset decision for "${label}" back to Pending Review? This field will require a new decision before finalizing candidate review.`}
-        confirmText="Undo Decision"
-        cancelText="Cancel"
-        confirmDisabled={isFieldMutating}
-        onConfirm={handleConfirmUndo}
-        onCancel={() => {
-          if (!isFieldMutating) setIsUndoModalOpen(false);
-        }}
-      />
 
       {/* Comment Modal (Portal to body) */}
       {isCommentModalOpen && ReactDOM.createPortal(

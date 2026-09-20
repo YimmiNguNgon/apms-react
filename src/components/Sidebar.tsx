@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
-import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity, ChevronLeft, ChevronRight, LogOut, Sparkles, Eye } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -72,6 +72,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'menu.system',
     items: [
       { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
+      { id: 'ai-assistant',          label: 'AI Assistant' },
       { id: 'admin-my-enterprise',   label: 'menu.myEnterprise' },
     ],
   },
@@ -106,6 +107,7 @@ const DIRECTOR_MENU: MenuSection[] = [
     items: [
       { id: 'companies',    label: 'menu.companies' },
       { id: 'news',         label: 'menu.newsIntelligence' },
+      { id: 'ai-assistant', label: 'AI Assistant' },
     ],
   },
 ];
@@ -122,7 +124,7 @@ const MANAGER_MENU: MenuSection[] = [
       { id: "project-management", label: "Project" },
       { id: "company-monitoring", label: "Monitoring Management" },
       { id: "system-chat", label: "Chat" },
-
+      { id: "ai-assistant", label: "AI Assistant" },
     ],
   },
 
@@ -130,6 +132,7 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'menu.data',
     items: [
       { id: 'companies', label: 'menu.companyProfiles' },
+      { id: 'profile-visibility', label: 'Profile Visibility' },
       { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'news',      label: 'News' },
     ],
@@ -150,6 +153,7 @@ const STAFF_MENU: MenuSection[] = [
       { id: "project-management", label: "Project" },
       { id: "staff-monitoring", label: "Monitoring" },
       { id: "system-chat", label: "Chat" },
+      { id: "ai-assistant", label: "AI Assistant" },
       { id: 'owner-profile', label: 'My Enterprise' },
     ],
   },
@@ -166,6 +170,7 @@ const OWNER_MENU: MenuSection[] = [
     items: [
       { id: 'news',                    label: 'menu.newsIntelligence' },
       { id: 'owner-internal-news',     label: 'Internal News' },
+      { id: 'ai-assistant',            label: 'AI Assistant' },
     ],
   },
   {
@@ -203,6 +208,8 @@ const isItemActive = (itemId: string, activePage: string): boolean => {
     effectiveActive = 'project-management';
   } else if (activePage === 'company-profiles') {
     effectiveActive = 'companies';
+  } else if (activePage === 'ai-agent' || activePage === 'personal-ai-agent') {
+    effectiveActive = 'ai-assistant';
   } else if (activePage === 'company-detail') {
     const source = getSourceFromLocation();
     if (source === 'project') {
@@ -213,6 +220,8 @@ const isItemActive = (itemId: string, activePage: string): boolean => {
       effectiveActive = 'staff-monitoring';
     } else if (source === 'my-companies') {
       effectiveActive = 'my-companies';
+    } else if (source === 'profile-visibility') {
+      effectiveActive = 'profile-visibility';
     } else {
       // Default / source === 'company-profiles' / source === 'companies'
       effectiveActive = 'companies';
@@ -282,11 +291,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, col
       case 'my-companies':
       case 'company-profiles':
         return <Database size={18} />;
+      case 'profile-visibility':
+        return <Eye size={18} />;
       case 'company-monitoring':
       case 'staff-monitoring': return <Activity size={18} />;
       case 'news': return <Newspaper size={18} />;
       case 'project-management': return <FolderKanban size={18} />;
       case 'system-chat': return <MessageSquare size={18} />;
+      case 'ai-assistant':
+      case 'ai-agent':
+      case 'personal-ai-agent':
+        return <Sparkles size={18} />;
       default: return <FileText size={18} />;
     }
   };

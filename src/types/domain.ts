@@ -162,8 +162,17 @@ export interface ProfileResponse {
   canEditProfile?: boolean;
   canManageVisibility?: boolean;
   canPublish?: boolean;
+  publishBlockReason?: string | null;
   canAccessRelationshipCloseness?: boolean;
 }
+
+export interface ProfileVisibilitySummaryDto {
+  totalProfiles: number;
+  published: number;
+  hidden: number;
+  blockedFromPublishing: number;
+}
+
 
 export type CompanyProfileChangeSource =
   | 'INITIAL_PROFILE_CREATION'
@@ -356,6 +365,8 @@ export interface ProjectResponse {
   targetCompanyName: string;
   targetCompanyTaxCode?: string | null;
   targetRelationshipType?: RelationshipType | null;
+  currentRelationshipType?: RelationshipType | null;
+  originalRelationshipType?: RelationshipType | null;
   description: string | null;
   status: ProjectStatus;
   createdBy: number | null;
@@ -411,6 +422,14 @@ export interface DuplicateCompanyCheckResponse {
   matchingProjects: MatchingProject[];
 }
 
+export interface OpenProjectCheckResponse {
+  hasOpenProject: boolean;
+  projectId?: number;
+  projectName?: string;
+  status?: string;
+  companyName?: string;
+}
+
 export interface DuplicateTaxCodeCheckResponse {
   exists: boolean;
   matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | null;
@@ -418,6 +437,10 @@ export interface DuplicateTaxCodeCheckResponse {
   projectId?: number;
   companyName?: string;
   taxCode?: string;
+  hasOpenProject?: boolean;
+  openProjectId?: number;
+  openProjectName?: string;
+  openProjectStatus?: string;
 }
 
 export interface MatchingProject {
@@ -1668,6 +1691,33 @@ export interface CreateFinancialReportRequest { title: string; documentId?: stri
 export interface UpdateFinancialReportRequest { title?: string; publicationDate?: string | null; reportingPeriod?: ReportingPeriod | null; reportType?: string; statementScope?: string; }
 export interface CreateFinancialMetricRequest { reportId?: string | null; reportEntryId?: string | null; sourceDocumentId?: string | null; sourcePage?: number | null; label: string; originalLabel?: string | null; metricCode?: string | null; statementType?: string | null; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
 export interface UpdateFinancialMetricRequest { label?: string; rawValue?: number | string | null; rawUnit?: string | null; value?: number; currency?: string; unit?: string; period?: ReportingPeriod | null; evidence?: string | null; }
+
+export interface CompanyProfileFinancialRow {
+  id: string;
+  companyProfileId: string;
+  metricName: string;
+  normalizedKey?: string | null;
+  value: number;
+  unit: string;
+  year: number;
+  quarter: string;
+  displayOrder?: number | null;
+  sourceType: 'PROMOTED' | 'MANUAL';
+  sourceResearchId?: string | null;
+  sourceReportId?: string | null;
+  sourceReportTitle?: string | null;
+  sourceDocumentId?: string | null;
+  sourcePage?: number | null;
+  sourceMetricId?: string | null;
+  publicationDate?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface BatchUpdateCompanyFinancialsRequest {
+  rows: CompanyProfileFinancialRow[];
+  deletedIds: string[];
+}
 
 export * from './contractResearch';
 

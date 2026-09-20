@@ -12,16 +12,16 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
 
   const averageConfidence = isAvailable ? (metrics.averageConfidence ?? 0) : null;
   const confidenceScore = averageConfidence !== null ? (averageConfidence * 100).toFixed(1) : 'N/A';
-  
+
   const totalFields = isAvailable ? (metrics.totalFields ?? 0) : null;
   const fieldsWithValue = isAvailable ? (metrics.fieldsWithValue ?? 0) : null;
-  
+
   const passedFields = isAvailable ? (metrics.passedFields ?? 0) : null;
   const failedFields = isAvailable ? (metrics.failedFields ?? 0) : null;
-  
+
   const completenessRate = isAvailable ? (metrics.completenessRate ?? 0) : null;
   const completenessScore = completenessRate !== null ? (completenessRate * 100).toFixed(1) : 'N/A';
-  
+
   const evidenceCoverageRate = isAvailable ? (metrics.evidenceCoverageRate ?? 0) : null;
   const evidenceScore = evidenceCoverageRate !== null ? (evidenceCoverageRate * 100).toFixed(0) : 'N/A';
 
@@ -35,17 +35,17 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
         </span>
         {averageConfidence !== null && (
           <div className={styles.metricProgress}>
-            <div 
-              className={styles.metricFill} 
-              style={{ 
+            <div
+              className={styles.metricFill}
+              style={{
                 width: `${confidenceScore}%`,
                 backgroundColor: averageConfidence < 0.6 ? '#ef4444' : averageConfidence < 0.85 ? '#eab308' : '#22c55e'
-              }} 
+              }}
             />
           </div>
         )}
       </div>
-      
+
       <div className={styles.metricTile}>
         <span className={styles.metricLabel}>Extracted</span>
         <span className={styles.metricValue}>{fieldsWithValue !== null ? `${fieldsWithValue}/${totalFields}` : 'N/A'}</span>
@@ -54,9 +54,9 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
         </span>
         {totalFields !== null && totalFields > 0 && (
           <div className={styles.metricProgress}>
-            <div 
-              className={styles.metricFill} 
-              style={{ width: `${(fieldsWithValue! / totalFields) * 100}%`, backgroundColor: '#3b82f6' }} 
+            <div
+              className={styles.metricFill}
+              style={{ width: `${(fieldsWithValue! / totalFields) * 100}%`, backgroundColor: '#3b82f6' }}
             />
           </div>
         )}
@@ -70,9 +70,9 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
         </span>
         {evidenceCoverageRate !== null && (
           <div className={styles.metricProgress}>
-            <div 
-              className={styles.metricFill} 
-              style={{ width: `${evidenceScore}%`, backgroundColor: '#8b5cf6' }} 
+            <div
+              className={styles.metricFill}
+              style={{ width: `${evidenceScore}%`, backgroundColor: '#8b5cf6' }}
             />
           </div>
         )}
@@ -90,7 +90,7 @@ export const CandidateQualitySummary: React.FC<CandidateQualitySummaryProps> = (
       </div>
 
       <div className={styles.metricTile}>
-        
+
       </div>
     </div>
   );

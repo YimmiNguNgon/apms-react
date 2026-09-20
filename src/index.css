@@ -5179,6 +5179,7 @@ body {
 
 .project-page .workspace-focus-card,
 .monitoring-page .workspace-focus-card,
+.profile-visibility-page .workspace-focus-card,
 .manager-dashboard-page .workspace-focus-card,
 .staff-dashboard-page .workspace-focus-card {
   grid-template-columns: 1fr;
@@ -5193,6 +5194,7 @@ body {
 
 .project-page .workspace-focus-metrics,
 .monitoring-page .workspace-focus-metrics,
+.profile-visibility-page .workspace-focus-metrics,
 .manager-dashboard-page .workspace-focus-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
@@ -5210,6 +5212,7 @@ body {
 
 .project-page .workspace-focus-metrics article,
 .monitoring-page .workspace-focus-metrics article,
+.profile-visibility-page .workspace-focus-metrics article,
 .company-profiles-page .workspace-focus-metrics article,
 .manager-dashboard-page .workspace-focus-metrics article,
 .staff-dashboard-page .workspace-focus-metrics article {
@@ -5226,6 +5229,7 @@ body {
 
 .project-page .workspace-focus-metrics strong,
 .monitoring-page .workspace-focus-metrics strong,
+.profile-visibility-page .workspace-focus-metrics strong,
 .company-profiles-page .workspace-focus-metrics strong,
 .manager-dashboard-page .workspace-focus-metrics strong,
 .staff-dashboard-page .workspace-focus-metrics strong {
@@ -5237,6 +5241,7 @@ body {
 
 .project-page .workspace-focus-metrics span,
 .monitoring-page .workspace-focus-metrics span,
+.profile-visibility-page .workspace-focus-metrics span,
 .company-profiles-page .workspace-focus-metrics span,
 .manager-dashboard-page .workspace-focus-metrics span,
 .staff-dashboard-page .workspace-focus-metrics span {
@@ -8067,6 +8072,8 @@ body {
   }
 
   .project-page .workspace-focus-metrics,
+  .monitoring-page .workspace-focus-metrics,
+  .profile-visibility-page .workspace-focus-metrics,
   .manager-dashboard-page .workspace-focus-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -8096,6 +8103,7 @@ body {
 
   .project-page .workspace-focus-card,
   .monitoring-page .workspace-focus-card,
+  .profile-visibility-page .workspace-focus-card,
   .manager-dashboard-page .workspace-focus-card,
   .staff-dashboard-page .workspace-focus-card {
     padding: 0;
@@ -8106,6 +8114,7 @@ body {
 
   .project-page .workspace-focus-metrics,
   .monitoring-page .workspace-focus-metrics,
+  .profile-visibility-page .workspace-focus-metrics,
   .manager-dashboard-page .workspace-focus-metrics,
   .staff-dashboard-page .workspace-focus-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));

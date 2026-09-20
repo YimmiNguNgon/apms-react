@@ -17,6 +17,7 @@ interface EditableListFieldProps {
   onChange: (key: string, value: string[], status?: string) => void;
   disabled?: boolean;
   isManual?: boolean;
+  revisionMode?: boolean;
 }
 
 export const EditableListField: React.FC<EditableListFieldProps> = ({
@@ -26,6 +27,7 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
   onChange,
   disabled,
   isManual = false,
+  revisionMode,
 }) => {
   const hasStaffReviewedValue = fieldResult?.reviewedValue !== undefined || fieldResult?.staffReviewedValue !== undefined;
   const rawCurrentValue = hasStaffReviewedValue
@@ -164,8 +166,6 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
   const handleRestore = () => {
     onChange(fieldKey, aiOriginal, 'RESTORED');
     setItems(aiOriginal);
-    setDraft('');
-    setValidationError(null);
   };
 
   const displayList = (
@@ -194,6 +194,7 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
       isList
       disabled={disabled}
       isManual={isManual}
+      revisionMode={revisionMode}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div className={styles.tagList} style={{ alignItems: 'center' }}>

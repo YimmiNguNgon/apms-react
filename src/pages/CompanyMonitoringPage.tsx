@@ -826,21 +826,11 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     setShowCreateModal(true);
   };
 
-  const openProfile = (profileOrId: string | ProfileResponse) => {
-    let targetCompanyId = '';
-    if (typeof profileOrId === 'object' && profileOrId !== null) {
-      targetCompanyId = profileOrId.companyId || profileOrId.id;
-    } else {
-      const rawId = String(profileOrId);
-      const matched = managerProfiles.find(p => p.id === rawId || p.companyId === rawId);
-      targetCompanyId = matched?.companyId || matched?.id || rawId;
-    }
-    if (targetCompanyId) {
-      localStorage.setItem('apms-selected-company', targetCompanyId);
-      localStorage.setItem('apms-back-page', 'company-monitoring');
-      localStorage.removeItem('apms-context-project');
-      setActivePage?.(`company-detail?source=monitoring&companyId=${encodeURIComponent(targetCompanyId)}`);
-    }
+  const openProfile = (profileId: string) => {
+    localStorage.setItem('apms-selected-company', profileId);
+    localStorage.setItem('apms-back-page', 'company-monitoring');
+    localStorage.removeItem('apms-context-project');
+    setActivePage?.(`company-detail?source=monitoring&companyId=${profileId}`);
   };
 
   const openManageModal = (assignment: CompanyMonitoringAssignmentResponse) => {
@@ -1163,35 +1153,38 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     return <span className={`project-status-badge ${proposalTone(status)}`}>{status}</span>;
   };
 
-  const renderUnassignedRow = (profile: ProfileResponse, index: number) => (
-    <tr key={profile.id}>
-      <td className="col-mono">{index + 1}</td>
-      <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        <strong className="project-name-primary" title={profileName(profile)}>{profileName(profile)}</strong>
-      </td>
-      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-      <td>
-        <span className="project-status-badge danger">Not Assigned</span>
-      </td>
-      <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-      <td>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <button type="button" className="project-detail-btn" onClick={() => openProfile(profile)}>
-            View Profile
-          </button>
-          <button 
-            type="button" 
-            className="project-detail-btn primary" 
-            onClick={() => openCreateModal(profile)}
-          >
-            Assign Monitor
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
+  const renderUnassignedRow = (profile: ProfileResponse, index: number) => {
+    const profileKey = profile.id || profile.companyId;
+    return (
+      <tr key={profileKey}>
+        <td className="col-mono">{index + 1}</td>
+        <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <strong className="project-name-primary" title={profileName(profile)}>{profileName(profile)}</strong>
+        </td>
+        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+        <td>
+          <span className="project-status-badge danger">Not Assigned</span>
+        </td>
+        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
+        <td>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <button type="button" className="project-detail-btn" onClick={() => openProfile(profileKey)}>
+              View Profile
+            </button>
+            <button
+              type="button"
+              className="project-detail-btn primary"
+              onClick={() => openCreateModal(profile)}
+            >
+              Assign Monitor
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   const renderAssignmentRow = (assignment: CompanyMonitoringAssignmentResponse, index: number) => (
     <tr key={assignment.id}>

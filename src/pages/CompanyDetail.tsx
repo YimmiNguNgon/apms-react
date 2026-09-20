@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, type PageResponse } from '../services/api';
 import { companyProfileApi } from '../API/companyProfileApi';
@@ -24,7 +24,7 @@ import {
 } from './companyDetail/ListingTabs';
 import { canUseRelationshipCloseness } from './companyDetail/utils';
 import BoardMembersTab from './companyDetail/BoardMembersTab';
-import FinancialsTab from './companyDetail/FinancialsTab';
+import FinancialsTab, { type FinancialsTabHandle } from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab from './companyDetail/DocumentsTab';
 import ConfidentialNewsTab from './companyDetail/ConfidentialNewsTab';
@@ -350,7 +350,8 @@ export type CompanyDetailSource =
   | 'company-profiles'
   | 'monitoring'
   | 'my-companies'
-  | 'staff-monitoring';
+  | 'staff-monitoring'
+  | 'profile-visibility';
 
 interface NavContext {
   source: CompanyDetailSource;
@@ -393,6 +394,8 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
     source = 'staff-monitoring';
   } else if (sourceParam === 'my-companies') {
     source = 'my-companies';
+  } else if (sourceParam === 'profile-visibility') {
+    source = 'profile-visibility';
   } else {
     source = 'company-profiles';
   }
@@ -428,8 +431,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false);
 
-  // Inline editing states across Overview, Business Fields, and Leadership
+  // Inline editing states across Overview, Business Fields, Leadership, and Financials
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const financialsTabRef = useRef<FinancialsTabHandle>(null);
+  const [isFinancialsDirty, setIsFinancialsDirty] = useState(false);
   const isOverviewEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'overview');
   const isBusinessFieldsEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'business-fields');
   const isLeadershipEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'board');
@@ -514,6 +519,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   }, [companyId]);
 
   const contextProjectId = navContext.source === 'project' ? navContext.projectId : null;
+  const contextProject = contextProjectId ? projects.find((p) => p.id === contextProjectId) ?? null : null;
 
   const canEditListing =
     !!currentUser &&
@@ -782,8 +788,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         : (data?.visibility ? data.visibility === 'HIDDEN' : (newVisibility === 'HIDDEN'));
       setProfile(current => current ? { 
         ...current, 
+        ...data,
         isHidden: updatedIsHidden,
-        visibility: updatedIsHidden ? 'HIDDEN' : 'PUBLISHED' 
+        visibility: updatedIsHidden ? 'HIDDEN' : 'PUBLISHED',
+        canPublish: data?.canPublish !== undefined ? data.canPublish : current.canPublish,
+        publishBlockReason: data?.publishBlockReason !== undefined ? data.publishBlockReason : current.publishBlockReason,
       } : current);
     } catch (err) {
       console.error('Failed to toggle visibility', err);
@@ -795,9 +804,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const handleStartEdit = () => {
     if (!profile) return;
-    if (activeTab !== 'overview' && activeTab !== 'business-fields' && activeTab !== 'board') {
-      setActiveTab('overview');
-    }
 
     const major = profile.majorVersion ?? (profile.version ? parseInt(profile.version.split('.')[0].replace(/\D/g, ''), 10) || 1 : 1);
     const rev = profile.revision ?? (profile.version && profile.version.includes('.') ? parseInt(profile.version.split('.')[1], 10) || 0 : 0);
@@ -886,13 +892,17 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   };
 
   const handleCancelEdit = () => {
+    financialsTabRef.current?.cancel();
+    setIsFinancialsDirty(false);
     setIsInlineEditing(false);
     setEditBaseline(null);
     setSaveProfileError(null);
   };
 
   const hasSemanticChanges = useMemo(() => {
-    if (!isInlineEditing || !editBaseline) return false;
+    if (!isInlineEditing) return false;
+    const hasFinancialChanges = isFinancialsDirty;
+    if (!editBaseline) return hasFinancialChanges;
     const hasBasicChanges = (
       normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
       normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
@@ -923,10 +933,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return (
       hasBasicChanges ||
       hasBusinessFieldsChanges ||
-      hasLeadershipChanges
+      hasLeadershipChanges ||
+      hasFinancialChanges
     );
   }, [
     isInlineEditing,
+    isFinancialsDirty,
     isAdminMyEnterprise,
     activeTab,
     editBaseline,
@@ -948,14 +960,39 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   ]);
 
   const handleSaveProfile = async () => {
-    if (!profile || !editBaseline) return;
+    if (!profile) return;
     if (!hasSemanticChanges) return;
     setIsSavingProfile(true);
     setSaveProfileError(null);
 
     const parsedCount = normalizeNumber(draftEmployeeCount);
 
-    if (isAdminMyEnterprise) {
+    const hasProfileChanges = editBaseline ? (
+      normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
+      normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
+      normalizeString(draftTaxCode) !== normalizeString(editBaseline.taxCode) ||
+      normalizeString(draftWebsite) !== normalizeString(editBaseline.website) ||
+      normalizeString(draftEmail) !== normalizeString(editBaseline.email) ||
+      normalizeString(draftPhone) !== normalizeString(editBaseline.phone) ||
+      normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount) ||
+      normalizeString(draftEmployeeTier) !== normalizeString(editBaseline.employeeTier) ||
+      normalizeString(draftAddress) !== normalizeString(editBaseline.address) ||
+      normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel) ||
+      !areStringListsEqual(draftIndustries, editBaseline.industries) ||
+      !areStringListsEqual(draftMarkets, editBaseline.markets) ||
+      !areStringListsEqual(draftTargetCustomers, editBaseline.targetCustomers) ||
+      !areProductsEqual(draftProducts, editBaseline.products) ||
+      !areMembersEqual(draftMembers, editBaseline.members)
+    ) : false;
+
+    const hasFinancialChanges = financialsTabRef.current?.isDirty() ?? isFinancialsDirty;
+
+    let profileSavedSuccessfully = !hasProfileChanges;
+    let financialSavedSuccessfully = !hasFinancialChanges;
+
+    // 1. Save Profile section if dirty
+    if (hasProfileChanges && editBaseline) {
+      if (isAdminMyEnterprise) {
       try {
         let updated: ProfileResponse | null = null;
 
@@ -1041,59 +1078,81 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       }))
       .filter(p => p.name);
 
-    const validMembers: CompanyProfileMember[] = draftMembers
-      .map(m => ({
-        fullName: normalizeString(m.fullName),
-        position: normalizeString(m.position) || undefined,
-        imageUrl: normalizeString(m.imageUrl) || undefined,
-        sourceUrl: normalizeString(m.sourceUrl) || undefined,
-      }))
-      .filter(m => m.fullName);
+      const validMembers: CompanyProfileMember[] = draftMembers
+        .map(m => ({
+          fullName: normalizeString(m.fullName),
+          position: normalizeString(m.position) || undefined,
+          imageUrl: normalizeString(m.imageUrl) || undefined,
+          sourceUrl: normalizeString(m.sourceUrl) || undefined,
+        }))
+        .filter(m => m.fullName);
 
-    const payload: UpdateCompanyProfileRequest = {
-      tradeName: normalizeString(draftTradeName),
-      legalName: normalizeString(draftLegalName),
-      taxCode: normalizeString(draftTaxCode),
-      website: normalizeString(draftWebsite),
-      emails: normalizeString(draftEmail)
-        ? [normalizeString(draftEmail), ...(profile.contact?.emails?.slice(1) || [])]
-        : ((profile.contact?.emails?.length ?? 0) > 1 ? profile.contact!.emails!.slice(1) : []),
-      phones: normalizeString(draftPhone)
-        ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
-        : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
-      headOfficeAddress: normalizeString(draftAddress),
-      employeeCount: parsedCount !== null ? parsedCount : undefined,
-      employeeTier: normalizeString(draftEmployeeTier),
+      const payload: UpdateCompanyProfileRequest = {
+        tradeName: normalizeString(draftTradeName),
+        legalName: normalizeString(draftLegalName),
+        taxCode: normalizeString(draftTaxCode),
+        website: normalizeString(draftWebsite),
+        emails: normalizeString(draftEmail)
+          ? [normalizeString(draftEmail), ...(profile.contact?.emails?.slice(1) || [])]
+          : ((profile.contact?.emails?.length ?? 0) > 1 ? profile.contact!.emails!.slice(1) : []),
+        phones: normalizeString(draftPhone)
+          ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
+          : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
+        headOfficeAddress: normalizeString(draftAddress),
+        employeeCount: parsedCount !== null ? parsedCount : undefined,
+        employeeTier: normalizeString(draftEmployeeTier) ,
       businessModel: normalizeString(draftBusinessModel),
-      industries: draftIndustries,
-      markets: draftMarkets,
-      targetCustomers: draftTargetCustomers,
-      products: validProducts,
-      companyMembers: validMembers,
-      expectedMajorVersion: editBaseline.majorVersion,
-      expectedRevision: editBaseline.revision,
-    };
+        industries: draftIndustries,
+        markets: draftMarkets,
+        targetCustomers: draftTargetCustomers,
+        products: validProducts,
 
-    try {
-      const updated = await companyProfileApi.updateCompanyProfile(targetId, payload);
-      if (updated) {
-        setProfile(updated);
+        companyMembers: validMembers,
+        expectedMajorVersion: editBaseline.majorVersion,
+        expectedRevision: editBaseline.revision,
+
+      };
+
+      try {
+        const updated = await companyProfileApi.updateCompanyProfile(targetId, payload);
+        if (updated) {
+          setProfile(updated);
+        }
+        profileSavedSuccessfully = true;
+      } catch (err: any) {
+        console.error('Failed to update company profile inline:', err);
+        if (err.status === 409 || err.message?.includes('changed since you opened it')) {
+          setSaveProfileError('The company profile has changed since you opened it. Please refresh before saving.');
+        } else if (err.status === 403 || err.message?.includes('responsible') || err.message?.includes('permission')) {
+          setSaveProfileError(err.message || 'You are not responsible for this company profile.');
+        } else {
+          setSaveProfileError(err.message || 'Failed to update company profile. Please try again.');
+        }
+        profileSavedSuccessfully = false;
       }
+    }
+
+    // 2. Save Financial section if dirty and profile save did not fail
+    if (hasFinancialChanges && profileSavedSuccessfully) {
+      try {
+        await financialsTabRef.current?.save();
+        financialSavedSuccessfully = true;
+        setIsFinancialsDirty(false);
+      } catch (err: any) {
+        console.error('Failed to update canonical financials:', err);
+        setSaveProfileError(err.message || 'Profile saved, but failed to save financial changes. Please review and try again.');
+        financialSavedSuccessfully = false;
+      }
+    }
+
+    // 3. Only exit edit mode if both sections succeeded
+    if (profileSavedSuccessfully && financialSavedSuccessfully) {
       setReloadTrigger(prev => prev + 1);
       setIsInlineEditing(false);
       setEditBaseline(null);
-    } catch (err: any) {
-      console.error('Failed to update company profile inline:', err);
-      if (err.status === 409 || err.message?.includes('changed since you opened it')) {
-        setSaveProfileError('The company profile has changed since you opened it. Please refresh before saving.');
-      } else if (err.status === 403 || err.message?.includes('responsible') || err.message?.includes('permission')) {
-        setSaveProfileError(err.message || 'You are not responsible for this company profile.');
-      } else {
-        setSaveProfileError(err.message || 'Failed to update company profile. Please try again.');
-      }
-    } finally {
-      setIsSavingProfile(false);
     }
+
+    setIsSavingProfile(false);
   };
 
   const handleTabChange = useCallback((newTab: ListingTabId) => {
@@ -2029,14 +2088,17 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             />
           </div>
         );
-      case 'financials': {
-        const canonicalFinancialCompanyId = profile?.companyId || profile?.id;
+      case 'financials':
         return (
           <div style={{ padding: '4px 0' }}>
-            <FinancialsTab companyId={canonicalFinancialCompanyId || ''} />
+            <FinancialsTab
+              ref={financialsTabRef}
+              companyId={resolvedId}
+              editable={isInlineEditing}
+              onDirtyChange={setIsFinancialsDirty}
+            />
           </div>
         );
-      }
       case 'news':
         return (
           <div style={{ padding: '4px 0' }}>
@@ -2084,11 +2146,33 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     );
   }
 
+  const handleBackToSource = () => {
+    if (!setActivePage) {
+      history.back();
+      return;
+    }
+    if (navContext.source === 'project') {
+      setActivePage('project-detail');
+    } else if (navContext.source === 'monitoring') {
+      setActivePage('company-monitoring');
+    } else if (navContext.source === 'staff-monitoring') {
+      setActivePage('staff-monitoring');
+    } else if (navContext.source === 'my-companies') {
+      setActivePage('my-companies');
+    } else if (navContext.source === 'profile-visibility') {
+      setActivePage('profile-visibility');
+    } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
+      setActivePage('staff-dashboard');
+    } else {
+      setActivePage('companies');
+    }
+  };
+
   if (error || !profile) {
     return (
       <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
         <button
-          onClick={() => (setActivePage ? setActivePage('companies') : history.back())}
+          onClick={handleBackToSource}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -2104,7 +2188,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             marginBottom: '16px',
           }}
         >
-          &larr; Quay lại danh sách doanh nghiệp
+          &larr; {navContext.source === 'profile-visibility'
+            ? 'Quay lại Quản lý hiển thị'
+            : navContext.source === 'project'
+              ? 'Quay lại Dự án'
+              : navContext.source === 'monitoring'
+                ? 'Quay lại Giám sát'
+                : navContext.source === 'my-companies'
+                  ? 'Quay lại Doanh nghiệp phụ trách'
+                  : 'Quay lại danh sách doanh nghiệp'}
         </button>
 
         <div
@@ -2150,25 +2242,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             {!isOwnerProfile && (
               <>
                 <button
-                  onClick={() => {
-                    if (!setActivePage) {
-                      history.back();
-                      return;
-                    }
-                    if (navContext.source === 'project') {
-                      setActivePage('project-detail');
-                    } else if (navContext.source === 'monitoring') {
-                      setActivePage('company-monitoring');
-                    } else if (navContext.source === 'staff-monitoring') {
-                      setActivePage('staff-monitoring');
-                    } else if (navContext.source === 'my-companies') {
-                      setActivePage('my-companies');
-                    } else if (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') {
-                      setActivePage('staff-dashboard');
-                    } else {
-                      setActivePage('companies');
-                    }
-                  }}
+                  onClick={handleBackToSource}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -2194,9 +2268,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         ? 'Back to Staff Monitoring'
                         : navContext.source === 'my-companies'
                           ? 'Back to My Companies'
-                          : (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring') 
-                            ? 'Back to Dashboard' 
-                            : 'Back to Company Profiles'}
+                          : navContext.source === 'profile-visibility'
+                            ? 'Back to Profile Visibility'
+                            : (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring')
+                              ? 'Back to Dashboard'
+                              : 'Back to Company Profiles'}
                 </button>
                 <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>|</span>
               </>
@@ -2215,7 +2291,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   <span>
                     {navContext.source === 'project' 
                       ? 'Project' 
-                      : 'Company Detail'}
+                      : navContext.source === 'profile-visibility'
+                        ? 'Profile Visibility'
+                        : 'Company Detail'}
                   </span>
                   <span>/</span>
                   <strong style={{ color: '#1E293B', fontWeight: 600 }}>{displayName}</strong>
@@ -2265,34 +2343,42 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <h1 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px' }}>
                 {displayName}
               </h1>
-              {!isOwnerProfile && (
-                <span
-                  style={{
-                    background: '#EFF6FF',
-                    border: '1px solid #BFDBFE',
-                    color: '#1D4ED8',
-                    fontSize: '0.62rem',
-                    fontWeight: 700,
-                    padding: '1px 7px',
-                    borderRadius: '999px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
-                  }}
-                >
-                  {(() => {
-                    const type = profile.relationshipType;
-                    if (!type) return 'ENTERPRISE';
-                    switch (type.toUpperCase()) {
-                      case 'PARTNER_WITH': return 'Partner';
-                      case 'COMPETITOR_OF': return 'Competitor';
-                      case 'SUPPLIER_OF': return 'Supplier';
-                      case 'CUSTOMER_OF': return 'Customer';
-                      case 'POTENTIAL_PARTNER_OF': return 'Potential Partner';
-                      default: return type.replace(/_/g, ' ');
-                    }
-                  })()}
-                </span>
-              )}
+              {(() => {
+                const relationshipType = navContext.source === 'project'
+                  ? (contextProject?.targetRelationshipType ?? profile.relationshipType)
+                  : profile.relationshipType;
+
+                if (isOwnerProfile || !relationshipType) return null;
+
+                const formatRelationship = (type: string) => {
+                  switch (type.toUpperCase()) {
+                    case 'PARTNER_WITH': return 'Partner';
+                    case 'COMPETITOR_OF': return 'Competitor';
+                    case 'SUPPLIER_OF': return 'Supplier';
+                    case 'CUSTOMER_OF': return 'Customer';
+                    case 'POTENTIAL_PARTNER_OF': return 'Potential Partner';
+                    default: return type.replace(/_/g, ' ');
+                  }
+                };
+
+                return (
+                  <span
+                    style={{
+                      background: '#EFF6FF',
+                      border: '1px solid #BFDBFE',
+                      color: '#1D4ED8',
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      padding: '1px 7px',
+                      borderRadius: '999px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                    }}
+                  >
+                    {formatRelationship(relationshipType)}
+                  </span>
+                );
+              })()}
               {navContext.source === 'project' && profile.reviewStatus && (
                 <span
                   style={{
@@ -2325,7 +2411,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   }}
                   title="Official Company Profile Version"
                 >
-                  {profile.versionLabel || (profile.majorVersion ? `v${profile.majorVersion}.${String(profile.revision ?? 0).padStart(2, '0')}` : (profile.version ? `v${profile.version}` : 'v1.00'))}
+                  {profile.versionLabel || (profile.majorVersion != null ? `v${profile.majorVersion}.${String(profile.revision ?? 0).padStart(2, '0')}` : (profile.version ? (profile.version.startsWith('v') ? profile.version : `v${profile.version}`) : 'v1.00'))}
                 </span>
               )}
               <span style={{ fontSize: '0.65rem', color: '#64748B', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2443,7 +2529,17 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         : (profile.isHidden === null 
                             ? false 
                             : (profile.visibility === 'HIDDEN')));
-                  const canPublish = profile.canPublish ?? false;
+                  const hasLegalName = Boolean(profile.identity?.legalName && profile.identity.legalName.trim().length > 0);
+                  const hasTaxCode = Boolean(profile.identity?.taxCode && profile.identity.taxCode.trim().length > 0);
+
+                  let publishBlockReason: string | null = null;
+                  if (!hasLegalName || !hasTaxCode) {
+                    publishBlockReason = 'Profile requires Legal Name and Tax Code before it can be published.';
+                  } else if (profile.canPublish === false) {
+                    publishBlockReason = profile.publishBlockReason || 'Profile is currently not eligible for publishing.';
+                  }
+
+                  const canPublish = !publishBlockReason;
                   const isPublishInteractive = canManageVisibility && canPublish && !togglingVisibility;
                   const isHideInteractive = canManageVisibility && !togglingVisibility;
 
@@ -2485,13 +2581,13 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                               gap: '4px',
                               boxShadow: isPublishInteractive ? '0 1px 2px rgba(22, 163, 74, 0.2)' : 'none',
                             }}
-                            title={!canPublish ? 'Profile requires Legal Name and Tax Code before it can be published.' : 'Publish Profile'}
+                            title={publishBlockReason || 'Publish Profile'}
                           >
                             Publish Profile
                           </button>
-                          {!canPublish && (
+                          {publishBlockReason && (
                             <span style={{ fontSize: '0.65rem', color: '#64748B', fontStyle: 'italic' }}>
-                              (Profile requires Legal Name and Tax Code before it can be published.)
+                              ({publishBlockReason})
                             </span>
                           )}
                         </div>
