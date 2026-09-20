@@ -145,18 +145,19 @@ const DOT_TO_FLAT: Record<string, string> = {
   'identity.tradeName': 'tradeName',
   'identity.legalName': 'legalName',
   'identity.taxCode': 'taxCode',
-  'contact.address': 'address',
+  'contact.addresses': 'addresses',
+  'contact.address': 'addresses',
   'contact.website': 'website',
   'contact.emails': 'emails',
   'contact.phones': 'phones',
   'business.businessModel': 'businessModel',
   'business.industries': 'industries',
+  'business.foundedYear': 'foundedYear',
+  'business.companyDescription': 'companyDescription',
   'business.markets': 'markets',
   'business.targetCustomers': 'targetCustomers',
   'business.products': 'products',
-  'companySize.employeeTier': 'employeeTier',
   'companySize.employeeCount': 'employeeCount',
-  'companySize.revenueTier': 'revenueTier',
 };
 
 const fieldApprovalForKey = (candidate: CandidateResponse | null | undefined, key: string): FieldApprovalRecord | undefined => {
@@ -205,19 +206,28 @@ const getCandidateDomainValue = (candidate: CandidateResponse | null | undefined
     case 'identity.tradeName': return c.identity?.tradeName ?? c.tradeName;
     case 'identity.taxCode': return c.identity?.taxCode ?? c.identity?.taxId ?? c.taxCode;
     case 'contact.website': return c.contact?.website ?? c.website;
+    case 'contact.addresses':
     case 'contact.address': {
       const addrs = c.contact?.addresses ?? c.addresses;
       if (Array.isArray(addrs) && addrs.length > 0) {
-        const first = addrs[0];
-        if (typeof first === 'string') return first;
-        if (first && typeof first === 'object') return first.fullAddress || first.address;
+        return addrs.map((item: any) => {
+          if (typeof item === 'string') return item.trim();
+          if (item && typeof item === 'object') return (item.fullAddress || item.address || '').trim();
+          return String(item).trim();
+        }).filter(Boolean);
       }
-      return c.contact?.address ?? c.address;
+      const single = c.contact?.address ?? c.address;
+      if (typeof single === 'string' && single.trim()) {
+        return [single.trim()];
+      }
+      return [];
     }
     case 'contact.emails': return c.contact?.emails ?? c.emails ?? c.email;
     case 'contact.phones': return c.contact?.phones ?? c.phones ?? c.phone;
     case 'business.businessModel': return c.business?.businessModel ?? c.businessModel;
     case 'business.industries': return c.business?.industries ?? c.industries;
+    case 'business.foundedYear': return c.business?.foundedYear ?? c.foundedYear;
+    case 'business.companyDescription': return c.business?.companyDescription ?? c.companyDescription;
     case 'business.products': return c.business?.products ?? c.products;
     case 'business.markets': return c.business?.markets ?? c.markets;
     case 'business.targetCustomers': return c.business?.targetCustomers ?? c.targetCustomers;

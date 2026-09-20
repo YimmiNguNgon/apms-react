@@ -5132,6 +5132,64 @@
   opacity: 0.65;
 }
 
+.draftActionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+  padding: 8px 10px;
+  white-space: nowrap;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.draftActionButton:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1e40af;
+  transform: translateY(-1px);
+}
+
+.draftActionButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.draftRevisionActionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  cursor: pointer;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+  padding: 8px 10px;
+  white-space: nowrap;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.draftRevisionActionButton:hover:not(:disabled) {
+  border-color: #fdba74;
+  background: #ffedd5;
+  color: #9a3412;
+  transform: translateY(-1px);
+}
+
+.draftRevisionActionButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .draftItem strong {
   color: #0f172a;
   font-size: var(--text-body);

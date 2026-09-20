@@ -259,6 +259,8 @@ export interface UpdateCompanyProfileRequest {
   emails?: string[];
   phones?: string[];
   headOfficeAddress?: string;
+  addresses?: string[];
+  address?: string;
   employeeTier?: string;
   employeeCount?: number;
   revenueTier?: string;
@@ -269,6 +271,8 @@ export interface UpdateCompanyProfileRequest {
   products?: Array<{ name?: string; category?: string; description?: string }>;
   description?: string;
   businessModel?: string;
+  foundedYear?: number | null;
+  companyDescription?: string | null;
   companyMembers?: CompanyProfileMember[];
   tags?: string[];
   expectedMajorVersion?: number;
@@ -300,6 +304,8 @@ export interface CompanyProfileIdentity {
 export interface CompanyProfileBusiness {
   industries?: string[];
   businessModel?: string;
+  foundedYear?: number | null;
+  companyDescription?: string | null;
   products?: Array<{ name?: string; category?: string; description?: string }>;
   markets?: string[];
   targetCustomers?: string[];
@@ -539,6 +545,7 @@ export interface CandidateResponse {
   currentReviewRound?: number;
   draftName?: string | null;
   draftSequence?: number | null;
+  draftNumber?: number | null;
   documentVersion?: number;
   status: CandidateStatus;
   extractionSource?: { extractionMethod?: string; providerName?: string; originFileName?: string };
@@ -558,7 +565,7 @@ export interface CandidateResponse {
   qualityMetrics?: Record<string, unknown>;
   identity?: { legalName?: string; [key: string]: any };
   contact?: { website?: string; address?: string; addresses?: string[]; emails?: string[]; phones?: string[]; [key: string]: any };
-  business?: { businessModel?: string; industries?: string[]; products?: any[]; markets?: string[]; targetCustomers?: string[]; [key: string]: any };
+  business?: { businessModel?: string; industries?: string[]; foundedYear?: number | null; companyDescription?: string | null; products?: any[]; markets?: string[]; targetCustomers?: string[]; [key: string]: any };
   companySize?: { employeeTier?: string; employeeCount?: number; revenueTier?: string; [key: string]: any };
   financial?: FinancialInfo;
   market?: MarketInfo;
@@ -688,6 +695,7 @@ export interface CandidateDraftSummary {
   candidateName?: string | null;
   draftName?: string | null;
   draftSequence?: number | null;
+  draftNumber?: number | null;
   candidateIndustry?: string | null;
   status: CandidateStatus;
   taskId?: number | null;
@@ -1733,6 +1741,11 @@ export interface CompanyProfileFinancialRow {
 export interface BatchUpdateCompanyFinancialsRequest {
   rows: CompanyProfileFinancialRow[];
   deletedIds: string[];
+}
+
+export interface IndustryCatalogResponse {
+  id: string;
+  name: string;
 }
 
 export * from './contractResearch';

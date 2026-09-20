@@ -394,9 +394,7 @@ const getCandidateEmptyStateMessage = (
 };
 const isStaffEditableCandidateStatus = (status?: CandidateStatus | null) => status === 'DRAFT' || status === 'REVISION_REQUIRED';
 const selectPreferredStaffCandidateDraft = (drafts: CandidateDraftSummary[] = []) => (
-  drafts.find((draft) => draft.status === 'REVISION_REQUIRED')
-  ?? drafts.find((draft) => draft.status === 'DRAFT')
-  ?? drafts[0]
+  drafts.find((draft) => draft.status === 'DRAFT')
 );
 
 type CandidateReviewTab = 'profile' | 'swot' | 'evidence';
@@ -1439,6 +1437,8 @@ const CandidateAdvancedPreview: React.FC<{ candidate: CandidateResponse }> = ({ 
     products?: unknown;
     markets?: unknown;
     targetCustomers?: unknown;
+    foundedYear?: unknown;
+    companyDescription?: unknown;
   } | undefined;
   const identity = candidate.identity as { legalName?: unknown; taxCode?: unknown; taxId?: unknown } | undefined;
   const companySize = candidate.companySize as { employeeTier?: unknown; employeeCount?: unknown; revenueTier?: unknown } | undefined;
@@ -1450,15 +1450,17 @@ const CandidateAdvancedPreview: React.FC<{ candidate: CandidateResponse }> = ({ 
     <div className={styles.candidateInsightGrid}>
       <CandidateInfoPanel title="Identity" data={{ legalName: identity?.legalName, taxCode: identity?.taxCode ?? identity?.taxId }} />
       <CandidateInfoPanel title="Business scope" data={{ industries: business?.industries, markets: business?.markets, targetCustomers: business?.targetCustomers }} />
+      <LongTextInsightCard title="Company description" value={formatPanelValue(business?.companyDescription)} />
       <LongTextInsightCard title="Business model" value={formatPanelValue(business?.businessModel)} />
       <CandidateProductPanel title="Products" data={business?.products} />
       <CandidateInfoPanel title="Company facts" data={{
-        employeeTier: companySize?.employeeTier,
+        foundedYear: business?.foundedYear,
+        employeeCount: companySize?.employeeCount,
         companySize: formatCompanySizeValue(companySize),
         website: contact?.website,
         email: contact?.emails,
         phone: contact?.phones,
-        address: formatAddressValue(contact?.addresses),
+        address: formatAddressValue(contact?.addresses ?? (contact as any)?.address),
       }} />
       <CandidatePeoplePanel data={candidateExtra.keyPeople} />
       <CandidateInsightField title="Strengths" data={insights?.strengths} />
@@ -1884,6 +1886,8 @@ interface StaffCandidateEditForm {
   products: string;
   markets: string;
   targetCustomers: string;
+  foundedYear: string;
+  companyDescription: string;
   employeeTier: string;
   companySize: string;
   keyPeople: string;
@@ -1981,10 +1985,11 @@ const staffReviewFields: Array<{ key: StaffCandidateEditKey; label: string; mult
   { key: 'taxId', label: 'Tax code' },
   { key: 'industry', label: 'Industries' },
   { key: 'businessModel', label: 'Business model' },
+  { key: 'foundedYear', label: 'Founded year' },
+  { key: 'companyDescription', label: 'Company description', multiline: true },
   { key: 'products', label: 'Products / services', multiline: true, placeholder: 'One item per line: Name | Category | Description' },
   { key: 'markets', label: 'Markets' },
   { key: 'targetCustomers', label: 'Target customers' },
-  { key: 'employeeTier', label: 'Employee tier' },
   { key: 'website', label: 'Website' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Hotline' },
@@ -2029,7 +2034,7 @@ const staffExtractionGroups: StaffExtractionGroup[] = [
     description: 'What the company does, sells, and who it serves.',
     icon: Target,
     tone: 'blue',
-    fields: ['industry', 'businessModel', 'products', 'markets', 'targetCustomers', 'employeeTier', 'companySize'],
+    fields: ['industry', 'businessModel', 'foundedYear', 'companyDescription', 'products', 'markets', 'targetCustomers', 'companySize'],
   },
   {
     id: 'financial',
@@ -2111,6 +2116,8 @@ const extractionEvidenceAliases: Record<StaffCandidateEditKey, string[]> = {
   products: ['products', 'productsServices', 'services', 'business.products', 'business.services'],
   markets: ['markets', 'targetMarkets', 'business.markets'],
   targetCustomers: ['targetCustomers', 'business.targetCustomers'],
+  foundedYear: ['foundedYear', 'business.foundedYear'],
+  companyDescription: ['companyDescription', 'business.companyDescription', 'companyOverview', 'companyProfileDescription'],
   employeeTier: ['employeeTier', 'companySize.employeeTier'],
   companySize: ['companySize', 'companySize.employeeTier'],
   keyPeople: ['keyPeople'],
@@ -2139,6 +2146,8 @@ const emptyStaffCandidateEdit: StaffCandidateEditForm = {
   products: '',
   markets: '',
   targetCustomers: '',
+  foundedYear: '',
+  companyDescription: '',
   employeeTier: '',
   companySize: '',
   keyPeople: '',
@@ -2764,7 +2773,7 @@ const insightList = (source: Record<string, any> | undefined | null, key: keyof 
 const candidateToEditForm = (candidate: CandidateResponse | null): StaffCandidateEditForm => {
   if (!candidate) return emptyStaffCandidateEdit;
   const identity = candidate.identity as { legalName?: string; tradeName?: string; taxCode?: string; taxId?: string } | undefined;
-  const business = candidate.business as { industries?: string[]; businessModel?: string; products?: unknown; markets?: string[]; targetCustomers?: string[] } | undefined;
+  const business = candidate.business as { industries?: string[]; businessModel?: string; products?: unknown; markets?: string[]; targetCustomers?: string[]; foundedYear?: number | null; companyDescription?: string | null } | undefined;
   const companySize = candidate.companySize as { employeeTier?: string; employeeCount?: number; revenueTier?: string } | undefined;
   const contact = candidate.contact as { website?: string; emails?: string[]; phones?: string[]; addresses?: unknown } | undefined;
   const insights = candidate.insights as Record<string, any> | undefined;
@@ -2777,12 +2786,14 @@ const candidateToEditForm = (candidate: CandidateResponse | null): StaffCandidat
     website: listJoinValue(normalizeUrlItems(contact?.website)),
     email: listJoinValue(normalizeExtractedListValue(contact?.emails, true)),
     phone: listJoinValue(normalizePhoneItems(contact?.phones)),
-    address: formatAddressValue(contact?.addresses),
+    address: formatAddressValue(contact?.addresses ?? (contact as any)?.address),
     industry: listJoinValue(normalizeExtractedListValue(business?.industries, true)),
     businessModel: business?.businessModel || '',
     products: productsToText(business?.products),
     markets: listJoinValue(normalizeExtractedListValue(business?.markets, true)),
     targetCustomers: listJoinValue(normalizeExtractedListValue(business?.targetCustomers, true)),
+    foundedYear: business?.foundedYear != null ? String(business.foundedYear) : '',
+    companyDescription: business?.companyDescription || '',
     employeeTier: companySize?.employeeTier || '',
     companySize: formatCompanySizeValue(companySize),
     keyPeople: Array.isArray(candidateExtra.keyPeople) ? candidateExtra.keyPeople.join('\n') : candidateExtra.keyPeople || '',
@@ -2810,12 +2821,14 @@ const extractionToEditForm = (extraction: Record<string, any>): StaffCandidateEd
     website: listJoinValue(normalizeUrlItems(data?.website)),
     email: listJoinValue(normalizeExtractedListValue(data?.email, true)),
     phone: listJoinValue(normalizePhoneItems(data?.phone)),
-    address: data?.address || formatAddressValue(data?.addresses),
+    address: (data?.addresses?.length ? formatAddressValue(data.addresses) : (data?.address || '')),
     industry: listJoinValue(normalizeExtractedListValue(data?.industries, true)),
     businessModel: data?.businessModel || '',
     products: productsToText(products),
     markets: listJoinValue(normalizeExtractedListValue(markets, true)),
     targetCustomers: listJoinValue(normalizeExtractedListValue(data?.targetCustomers, true)),
+    foundedYear: data?.foundedYear != null ? String(data.foundedYear) : '',
+    companyDescription: data?.companyDescription || '',
     employeeTier: data?.employeeTier || '',
     companySize: data?.companySize || data?.employeeTier || '',
     keyPeople: Array.isArray(data?.keyPeople) ? data.keyPeople.join('\n') : data?.keyPeople || '',
@@ -2994,7 +3007,7 @@ const mergeReviewFieldValue = (key: StaffCandidateEditKey, values: string[]) => 
   if (['financial', 'market', 'innovation', 'risk', 'compliance', 'validation'].includes(key)) {
     return mergeStructuredLines(availableValues);
   }
-  if (key === 'businessModel') {
+  if (key === 'businessModel' || key === 'companyDescription') {
     return uniqueTextItems(availableValues.flatMap(splitLines)).join('\n');
   }
 
@@ -3271,6 +3284,8 @@ const buildExtractedCompanyDataPayload = (form: StaffCandidateEditForm) => ({
   products: parseProductsText(form.products),
   markets: normalizeExtractedListValue(form.markets, true),
   targetCustomers: normalizeExtractedListValue(form.targetCustomers, true),
+  foundedYear: form.foundedYear ? parseInt(form.foundedYear, 10) : null,
+  companyDescription: form.companyDescription.trim() || null,
   employeeTier: form.employeeTier.trim() || null,
   website: normalizeUrlItems(form.website).join(', ') || null,
   email: normalizeExtractedListValue(form.email, true),
@@ -3299,12 +3314,20 @@ const buildCandidateUpdatePayload = (form: StaffCandidateEditForm): UpdateCandid
     products: parseProductsText(form.products),
     markets: normalizeExtractedListValue(form.markets, true),
     targetCustomers: normalizeExtractedListValue(form.targetCustomers, true),
+    foundedYear: form.foundedYear ? parseInt(form.foundedYear, 10) : null,
+    companyDescription: form.companyDescription.trim() || null,
   },
   contact: {
     website: normalizeUrlItems(form.website).join(', ') || null,
     emails: normalizeExtractedListValue(form.email, true),
     phones: normalizePhoneItems(form.phone),
-    addresses: form.address.trim() ? [{ fullAddress: form.address.trim() }] : [],
+    addresses: form.address.trim()
+      ? form.address
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((fullAddress) => ({ fullAddress }))
+      : [],
   },
   companySize: {
     employeeTier: form.employeeTier.trim() || form.companySize.trim() || null,
@@ -6733,12 +6756,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please extract at least one document before creating a candidate.');
       return;
     }
-    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
-    if (returnedCandidate) {
-      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
-      await handleOpenStaffCandidate(returnedCandidate.candidateId);
-      return;
-    }
 
     setStaffCandidateLoading(true);
     setWorkbenchError(null);
@@ -6819,10 +6836,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return;
     }
 
-    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
-    if (returnedCandidate) {
-      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
-      await handleOpenStaffCandidate(returnedCandidate.candidateId);
+    const activeDraft = workbench?.candidateDrafts?.find((draft) => draft.status === 'DRAFT');
+    if (activeDraft) {
+      await handleOpenStaffCandidate(activeDraft.candidateId);
       return;
     }
 
@@ -6831,8 +6847,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     try {
       const payload = await candidateApi.createManualCandidate(currentProjectId!, selectedStaffTask.id);
       setStaffCandidate(payload.data);
+      setStaffCandidateEdit(candidateToEditForm(payload.data));
       setWorkbenchMessage('Draft manual candidate created. Enter fields and submit.');
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      await loadTaskWorkbench(selectedStaffTask);
     } catch (error: any) {
       setWorkbenchError('Failed to create manual candidate: ' + (error.response?.data?.message || error.message));
     } finally {
@@ -6844,12 +6862,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before creating a candidate draft.');
-      return;
-    }
-    const returnedCandidate = workbench?.candidateDrafts?.find((draft) => draft.status === 'REVISION_REQUIRED');
-    if (returnedCandidate) {
-      setWorkbenchError('This task already has a Candidate requiring revision. Continue editing the returned Candidate before creating another draft.');
-      await handleOpenStaffCandidate(returnedCandidate.candidateId);
       return;
     }
     setStaffCandidateLoading(true);
@@ -10030,7 +10042,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               }
 
                               return sortedDrafts.map((draft) => {
-                                const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+                                const draftSeq = draft.draftNumber ?? draft.draftSequence;
+                                const draftLabel = draft.draftName || draft.candidateName || (draftSeq ? `Draft ${draftSeq}` : `Draft`);
                                 const isDeleting = deletingCandidateDraftId === draft.candidateId;
 
                                 return (
@@ -10055,17 +10068,28 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                         )}
                                       </div>
                                     </button>
-                                    <button
-                                      className={styles.draftDeleteButton}
-                                      type="button"
-                                      onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
-                                      disabled={!canUseStaffWorkbench || isDeleting}
-                                      aria-label={`Delete ${draftLabel}`}
-                                      title="Delete draft"
-                                    >
-                                      <Trash2 size={15} />
-                                      {isDeleting ? 'Deleting...' : 'Delete'}
-                                    </button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <button
+                                        className={styles.draftActionButton}
+                                        type="button"
+                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                        disabled={!canUseStaffWorkbench || isDeleting}
+                                        title="Continue editing draft"
+                                      >
+                                        Continue
+                                      </button>
+                                      <button
+                                        className={styles.draftDeleteButton}
+                                        type="button"
+                                        onClick={() => handleDeleteStaffCandidateDraft(draft.candidateId, draftLabel, draft.status)}
+                                        disabled={!canUseStaffWorkbench || isDeleting}
+                                        aria-label={`Delete ${draftLabel}`}
+                                        title="Delete draft"
+                                      >
+                                        <Trash2 size={15} />
+                                        {isDeleting ? 'Deleting...' : 'Delete'}
+                                      </button>
+                                    </div>
                                   </article>
                                 );
                               });
@@ -10082,11 +10106,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               <h3>Changes requested</h3>
                               <div className={styles.draftList}>
                                 {returnedDrafts.map((draft) => {
-                                  const draftLabel = draft.draftName || draft.candidateName || (draft.draftSequence ? `Draft ${draft.draftSequence}` : `Draft`);
+                                  const draftSeq = draft.draftNumber ?? draft.draftSequence;
+                                  const draftLabel = draft.draftName || draft.candidateName || (draftSeq ? `Draft ${draftSeq}` : `Draft`);
 
                                   return (
                                     <article
-                                      className={styles.draftItem}
+                                      className={`${styles.draftItem} ${styles.draftItemWithActions}`}
                                       key={draft.candidateId}
                                     >
                                       <button
@@ -10105,6 +10130,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                             </>
                                           )}
                                         </div>
+                                      </button>
+                                      <button
+                                        className={styles.draftRevisionActionButton}
+                                        type="button"
+                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                        disabled={!canUseStaffWorkbench}
+                                        title="Continue revising candidate"
+                                      >
+                                        Continue Revision
                                       </button>
                                     </article>
                                   );
@@ -10952,7 +10986,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       <AnimatePresence>
         {selectedCandidate && (() => {
           const identity = selectedCandidate.identity as { legalName?: string; tradeName?: string; taxCode?: string; taxId?: string; country?: string; registrationNumber?: string } | undefined;
-          const business = selectedCandidate.business as { industries?: string[]; businessModel?: string; products?: unknown; services?: unknown; markets?: unknown; targetCustomers?: unknown } | undefined;
+          const business = selectedCandidate.business as { industries?: string[]; businessModel?: string; products?: unknown; services?: unknown; markets?: unknown; targetCustomers?: unknown; foundedYear?: number | null; companyDescription?: string | null } | undefined;
           const companySize = selectedCandidate.companySize as { employeeTier?: unknown; employeeCount?: unknown; revenueTier?: unknown } | undefined;
           const contactRaw = selectedCandidate.contact as { website?: unknown; emails?: unknown; phones?: unknown; addresses?: unknown } | undefined;
           const insights = selectedCandidate.insights as Record<string, unknown> | undefined;
@@ -11130,9 +11164,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       {([
                         ['Legal name', identity?.legalName],
                         ['Tax ID', identity?.taxCode || identity?.taxId],
-                        ['Address', formatAddressValue(contactRaw?.addresses)],
+                        ['Addresses', formatAddressValue(contactRaw?.addresses ?? (contactRaw as any)?.address)],
                         ['Industry', candidateIndustry(selectedCandidate)],
-                        ['Employee tier', companySize?.employeeTier],
+                        ['Founded year', business?.foundedYear],
                         ['Company size', formatCompanySizeValue(companySize)],
                       ] as Array<[string, unknown]>).map(([label, value]) => (
                         <div className={styles.readOnlyField} key={label}>

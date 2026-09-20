@@ -235,6 +235,8 @@ const fieldLabel = (path: string) => {
     stockTicker: 'Stock ticker',
     stockExchange: 'Stock exchange',
     foundedDate: 'Founded date',
+    foundedYear: 'Founded year',
+    companyDescription: 'Company description',
     website: 'Website',
     emails: 'Email addresses',
     phones: 'Phone numbers',

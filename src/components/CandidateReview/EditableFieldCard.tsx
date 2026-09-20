@@ -19,6 +19,7 @@ interface EditableFieldCardProps {
   disabled?: boolean;
   isManual?: boolean;
   revisionMode?: boolean;
+  onEdit?: () => void;
 }
 
 export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({ 
@@ -27,7 +28,8 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
   currentValueDisplay, children,
   disabled,
   isManual = false,
-  revisionMode
+  revisionMode,
+  onEdit,
 }) => {
   const [expandedEvidence, setExpandedEvidence] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -73,7 +75,10 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
   const managerFeedback = fieldResult?.previousManagerReviewComment || fieldResult?.managerReviewComment;
   const previousSubmittedValue = fieldResult?.previousSubmittedValue;
 
-  const handleEditClick = () => setIsEditing(true);
+  const handleEditClick = () => {
+    setIsEditing(true);
+    onEdit?.();
+  };
   const handleCancelClick = () => { setIsEditing(false); onCancel(); };
   const handleSaveClick = () => {
     const saveResult = onSave();

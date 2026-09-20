@@ -1,4 +1,4 @@
-export type CandidateCategoryTab = 'Identity' | 'Business' | 'Markets' | 'Products';
+export type CandidateCategoryTab = 'Identity' | 'Business' | 'Market & Product';
 
 export interface CandidateFieldDefinition {
   key: string;
@@ -14,33 +14,30 @@ export const CANONICAL_FIELD_DEFINITIONS: CandidateFieldDefinition[] = [
   { key: 'identity.tradeName', label: 'Trade Name', section: 'Identity', staffEditable: true, managerReviewable: true },
   { key: 'identity.taxCode', label: 'Tax Code', section: 'Identity', staffEditable: false, managerReviewable: false },
   { key: 'contact.website', label: 'Website', section: 'Identity', staffEditable: true, managerReviewable: true },
-  { key: 'contact.address', label: 'Address', section: 'Identity', staffEditable: true, managerReviewable: true },
+  { key: 'contact.addresses', label: 'Addresses', section: 'Identity', staffEditable: true, managerReviewable: true },
   { key: 'contact.emails', label: 'Emails', section: 'Identity', staffEditable: true, managerReviewable: true },
   { key: 'contact.phones', label: 'Phones', section: 'Identity', staffEditable: true, managerReviewable: true },
 
-  // Business
+  // Business (5 reviewable fields)
   { key: 'business.businessModel', label: 'Business Model', section: 'Business', staffEditable: true, managerReviewable: true },
   { key: 'business.industries', label: 'Industries', section: 'Business', staffEditable: true, managerReviewable: true },
-  { key: 'companySize.employeeTier', label: 'Employee Tier', section: 'Business', staffEditable: true, managerReviewable: true },
+  { key: 'business.foundedYear', label: 'Founded Year', section: 'Business', staffEditable: true, managerReviewable: true },
   { key: 'companySize.employeeCount', label: 'Employee Count', section: 'Business', staffEditable: true, managerReviewable: true },
-  { key: 'companySize.revenueTier', label: 'Revenue Tier', section: 'Business', staffEditable: true, managerReviewable: true },
+  { key: 'business.companyDescription', label: 'Company Description', section: 'Business', staffEditable: true, managerReviewable: true },
 
-  // Markets
-  { key: 'business.markets', label: 'Markets (Regions)', section: 'Markets', staffEditable: true, managerReviewable: true },
-  { key: 'business.targetCustomers', label: 'Target Customers', section: 'Markets', staffEditable: true, managerReviewable: true },
-
-  // Products
-  { key: 'business.products', label: 'Products & Services', section: 'Products', staffEditable: true, managerReviewable: true },
+  // Market & Product (3 reviewable fields)
+  { key: 'business.markets', label: 'Markets (Regions)', section: 'Market & Product', staffEditable: true, managerReviewable: true },
+  { key: 'business.targetCustomers', label: 'Target Customers', section: 'Market & Product', staffEditable: true, managerReviewable: true },
+  { key: 'business.products', label: 'Products & Services', section: 'Market & Product', staffEditable: true, managerReviewable: true },
 ];
 
 export const CANDIDATE_FIELD_GROUPS: Record<CandidateCategoryTab, CandidateFieldDefinition[]> = {
   Identity: CANONICAL_FIELD_DEFINITIONS.filter(f => f.section === 'Identity' && (f.staffEditable || f.managerReviewable)),
   Business: CANONICAL_FIELD_DEFINITIONS.filter(f => f.section === 'Business' && (f.staffEditable || f.managerReviewable)),
-  Markets: CANONICAL_FIELD_DEFINITIONS.filter(f => f.section === 'Markets' && (f.staffEditable || f.managerReviewable)),
-  Products: CANONICAL_FIELD_DEFINITIONS.filter(f => f.section === 'Products' && (f.staffEditable || f.managerReviewable)),
+  'Market & Product': CANONICAL_FIELD_DEFINITIONS.filter(f => f.section === 'Market & Product' && (f.staffEditable || f.managerReviewable)),
 };
 
-export const CANDIDATE_TABS: CandidateCategoryTab[] = ['Identity', 'Business', 'Markets', 'Products'];
+export const CANDIDATE_TABS: CandidateCategoryTab[] = ['Identity', 'Business', 'Market & Product'];
 
 /**
  * Normalizes a candidate field value for semantic comparison.
@@ -184,4 +181,20 @@ export function isValidCandidatePhone(phone: string): boolean {
   if (!phone || !phone.trim()) return true;
   return CANONICAL_PHONE_REGEX.test(phone.trim());
 }
+
+export function isValidCandidateFoundedYear(year: unknown): boolean {
+  if (year === null || year === undefined || year === '') return true;
+  const num = typeof year === 'number' ? year : Number(year);
+  if (isNaN(num) || !Number.isInteger(num)) return false;
+  const currentYear = new Date().getFullYear();
+  return num >= 1800 && num <= currentYear;
+}
+
+export function isValidCandidateAddress(address: string): boolean {
+  if (!address || !address.trim()) return true;
+  return address.trim().length <= 500;
+}
+
+
+
 

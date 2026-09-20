@@ -59,6 +59,8 @@ const fieldLabels: Record<string, string> = {
   address: 'Address',
   employeeTier: 'Employee Tier',
   employeeCount: 'Employee Count',
+  foundedYear: 'Founded Year',
+  companyDescription: 'Company Description',
   businessModel: 'Business Model',
   industries: 'Industries',
   products: 'Products',
@@ -107,6 +109,8 @@ const comparableFields = (profile: ProfileResponse): Record<string, { value: unk
   address: { value: primaryAddress(profile), section: 'contact', path: 'contact.addresses' },
   employeeTier: { value: profile.companySize?.employeeTier ?? '', section: 'companySize', path: 'companySize.employeeTier' },
   employeeCount: { value: profile.companySize?.employeeCount ?? '', section: 'companySize', path: 'companySize.employeeCount' },
+  foundedYear: { value: profile.business?.foundedYear ?? '', section: 'business', path: 'business.foundedYear' },
+  companyDescription: { value: profile.business?.companyDescription ?? '', section: 'business', path: 'business.companyDescription' },
   businessModel: { value: profile.business?.businessModel ?? '', section: 'business', path: 'business.businessModel' },
   industries: { value: profile.business?.industries ?? [], section: 'business', path: 'business.industries' },
   products: { value: profile.business?.products ?? [], section: 'business', path: 'business.products' },
@@ -254,7 +258,7 @@ export const StaffMonitoringReviewPage: React.FC<{
     np.identity = { ...np.identity, legalName: payload.legalName, tradeName: payload.tradeName, taxCode: payload.taxCode, registrationNumber: payload.registrationNumber, stockTicker: payload.stockTicker, stockExchange: payload.stockExchange };
     np.contact = { ...np.contact, website: payload.website, emails: [payload.email], phones: [payload.phone], addresses: [{ fullAddress: payload.address, type: '', city: '', country: '' }] };
     np.companySize = { ...np.companySize, employeeTier: payload.employeeTier, employeeCount: payload.employeeCount };
-    np.business = { ...np.business, businessModel: payload.businessModel, industries: payload.industries };
+    np.business = { ...np.business, businessModel: payload.businessModel, industries: payload.industries, foundedYear: payload.foundedYear, companyDescription: payload.companyDescription };
     setLocalProfile(np);
   };
 

@@ -14,9 +14,12 @@ export interface OverviewPayload {
   website: string;
   email: string;
   phone: string;
-  employeeTier: string;
+  employeeTier?: string;
   employeeCount?: number;
-  address: string;
+  foundedYear?: number | null;
+  companyDescription?: string;
+  address?: string;
+  addresses?: string[];
   businessModel: string;
   industries: string[];
 }
@@ -76,8 +79,10 @@ interface OverviewDraft {
   website: string;
   email: string;
   phone: string;
-  employeeTier: string;
+  employeeTier?: string;
   employeeCount: string;
+  foundedYear: string;
+  companyDescription: string;
   address: string;
   businessModel: string;
   industries: string;
@@ -337,9 +342,14 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
         phone: profile.contact?.phones?.[0] ?? '',
         employeeTier: profile.companySize?.employeeTier ?? '',
         employeeCount: profile.companySize?.employeeCount != null ? String(profile.companySize.employeeCount) : '',
-        address: profile.contact?.addresses?.find((a) => a.type === 'HEADQUARTERS')?.fullAddress
-          ?? profile.contact?.addresses?.[0]?.fullAddress
-          ?? '',
+        foundedYear: profile.business?.foundedYear != null ? String(profile.business.foundedYear) : '',
+        companyDescription: profile.business?.companyDescription ?? '',
+        address: (() => {
+          const addrs = (profile.contact?.addresses && profile.contact.addresses.length > 0)
+            ? profile.contact.addresses.map((a) => a.fullAddress || '').filter(Boolean)
+            : ((profile.contact as any)?.address ? [(profile.contact as any).address] : []);
+          return addrs.join('\n');
+        })(),
         businessModel: profile.business?.businessModel ?? '',
         industries: joinCsv(profile.business?.industries),
       });
@@ -406,9 +416,14 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
         website: overviewDraft.website.trim(),
         email: overviewDraft.email.trim(),
         phone: overviewDraft.phone.trim(),
-        employeeTier: overviewDraft.employeeTier.trim(),
+        employeeTier: overviewDraft.employeeTier?.trim() || undefined,
         employeeCount: overviewDraft.employeeCount.trim() ? Number(overviewDraft.employeeCount.trim()) : undefined,
+        foundedYear: overviewDraft.foundedYear.trim() ? Number(overviewDraft.foundedYear.trim()) : null,
+        companyDescription: overviewDraft.companyDescription.trim(),
         address: overviewDraft.address.trim(),
+        addresses: overviewDraft.address.trim()
+          ? overviewDraft.address.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+          : [],
         businessModel: overviewDraft.businessModel.trim(),
         industries: splitCsv(overviewDraft.industries),
       }),
@@ -480,7 +495,10 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     const website = profile.contact?.website || intelligence?.company?.website || 'Not updated';
     const email = profile.contact?.emails?.[0] || 'Not updated';
     const phone = profile.contact?.phones?.[0] || 'Not updated';
-    const address = profile.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Not updated';
+    const effectiveAddresses = (profile.contact?.addresses && profile.contact.addresses.length > 0)
+      ? profile.contact.addresses.map((a) => a.fullAddress || '').filter(Boolean)
+      : ((profile.contact as any)?.address ? [(profile.contact as any).address] : []);
+    const address = effectiveAddresses[0] || intelligence?.company?.headquarters || 'Not updated';
 
     const setField = (key: keyof OverviewDraft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
@@ -561,24 +579,20 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
               {renderEditableField('phone', 'Phone', phone, phone !== 'Not updated', () => (
                 <input value={overviewDraft!.phone} onChange={setField('phone')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('employeeCount', 'Company Size', sizeStr, sizeStr !== 'Not updated', () => (
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={{ ...INPUT_STYLE, flex: 1 }} placeholder="Count (e.g. 150)" />
-                  <select value={overviewDraft!.employeeTier} onChange={setField('employeeTier')} style={{ ...INPUT_STYLE, flex: 1 }}>
-                    <option value="">-- Tier --</option>
-                    <option value="1-10 employees">1-10 employees</option>
-                    <option value="11-50 employees">11-50 employees</option>
-                    <option value="51-200 employees">51-200 employees</option>
-                    <option value="201-500 employees">201-500 employees</option>
-                    <option value="501-1,000 employees">501-1,000 employees</option>
-                    <option value="1,001-5,000 employees">1,001-5,000 employees</option>
-                    <option value="5,001-10,000 employees">5,001-10,000 employees</option>
-                    <option value="10,000+ employees">10,000+ employees</option>
-                  </select>
-                </div>
+              {renderEditableField('employeeCount', 'Employee Count', empCount ? `${empCount} employees` : 'Not updated', !!empCount, () => (
+                <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} placeholder="Count (e.g. 150)" />
               ))}
-              {renderEditableField('address', 'Head Office Address', address, address !== 'Not updated', () => (
-                <input value={overviewDraft!.address} onChange={setField('address')} style={INPUT_STYLE} />
+              {renderEditableField('foundedYear', 'Founded Year', profile.business?.foundedYear ? String(profile.business.foundedYear) : 'Not updated', !!profile.business?.foundedYear, () => (
+                <input type="number" min={1800} max={new Date().getFullYear()} value={overviewDraft!.foundedYear} onChange={setField('foundedYear')} style={INPUT_STYLE} placeholder="e.g. 1995" />
+              ))}
+              {renderEditableField('address', effectiveAddresses.length > 1 ? 'Addresses' : 'Address', effectiveAddresses.length > 1 ? (
+                <ul style={{ margin: 0, paddingLeft: '18px', color: '#0f172a' }}>
+                  {effectiveAddresses.map((addr, idx) => (
+                    <li key={idx} style={{ marginBottom: '2px' }}>{addr}</li>
+                  ))}
+                </ul>
+              ) : address, address !== 'Not updated', () => (
+                <textarea rows={Math.min(4, Math.max(2, overviewDraft!.address.split('\n').length))} value={overviewDraft!.address} onChange={setField('address')} style={{ ...INPUT_STYLE, resize: 'vertical' }} placeholder="One address per line..." />
               ), true)}
             </div>
           </section>
@@ -586,8 +600,11 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           <section style={C.card}>
             <div style={C.cardHeader}><h2 style={C.h2}>Introduction & Business Model</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('businessModel', 'Introduction / Business Model', profile.business?.businessModel || 'Not updated', !!profile.business?.businessModel, () => (
-                <textarea rows={4} value={overviewDraft!.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} />
+              {renderEditableField('companyDescription', 'Company Description', profile.business?.companyDescription || 'Not updated', !!profile.business?.companyDescription, () => (
+                <textarea rows={4} value={overviewDraft!.companyDescription} onChange={setField('companyDescription')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} placeholder="Company description..." />
+              ), true)}
+              {renderEditableField('businessModel', 'Business Model', profile.business?.businessModel || 'Not updated', !!profile.business?.businessModel, () => (
+                <textarea rows={4} value={overviewDraft!.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} placeholder="Business model..." />
               ), true)}
             </div>
           </section>

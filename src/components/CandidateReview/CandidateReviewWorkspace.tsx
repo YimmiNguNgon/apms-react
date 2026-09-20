@@ -6,23 +6,27 @@ import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
 import { EditableScalarField } from './EditableScalarField';
 import { EditableListField } from './EditableListField';
+import { EditableIndustryField } from './EditableIndustryField';
 import { EditableProductList } from './EditableProductList';
 import styles from './CandidateReview.module.css';
 
 const FLAT_TO_DOT: Record<string, string> = {
   tradeName: 'identity.tradeName',
-  address: 'contact.address',
+  addresses: 'contact.addresses',
+  address: 'contact.addresses',
   website: 'contact.website',
+  emails: 'contact.emails',
   email: 'contact.emails',
+  phones: 'contact.phones',
   phone: 'contact.phones',
   businessModel: 'business.businessModel',
   industries: 'business.industries',
+  foundedYear: 'business.foundedYear',
+  companyDescription: 'business.companyDescription',
   markets: 'business.markets',
   targetCustomers: 'business.targetCustomers',
   products: 'business.products',
-  employeeTier: 'companySize.employeeTier',
   employeeCount: 'companySize.employeeCount',
-  companySize: 'companySize.revenueTier',
 };
 
 function normalizeFieldResults(raw: Record<string, any> | undefined): Record<string, any> {
@@ -34,6 +38,9 @@ function normalizeFieldResults(raw: Record<string, any> | undefined): Record<str
       ...value,
       reviewedValue: value.staffReviewedValue !== undefined ? value.staffReviewedValue : value.reviewedValue
     };
+  }
+  if (normalized['contact.address'] && !normalized['contact.addresses']) {
+    normalized['contact.addresses'] = normalized['contact.address'];
   }
   return normalized;
 }
@@ -63,13 +70,15 @@ import {
   isValidCandidateEmail,
   isValidCandidateUrl,
   isValidCandidatePhone,
+  isValidCandidateFoundedYear,
+  isValidCandidateAddress,
 } from './candidateFieldDefinitions';
 
 type TabType = CandidateCategoryTab;
 type ReviewFilter = 'ALL' | 'PENDING' | 'EDITED' | 'ISSUES' | 'LOW_CONFIDENCE' | 'FILLED' | 'EMPTY';
 
 const TAB_FIELD_GROUPS = CANDIDATE_FIELD_GROUPS;
-const TABS: TabType[] = ['Identity', 'Business', 'Markets', 'Products'];
+const TABS: TabType[] = ['Identity', 'Business', 'Market & Product'];
 
 const fieldValueToText = (value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -441,6 +450,18 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
         if (typeof phone === 'string' && phone.trim() && !isValidCandidatePhone(phone)) return false;
       }
     }
+    const addresses = getFieldValue('contact.addresses') ?? getFieldValue('contact.address');
+    if (Array.isArray(addresses)) {
+      for (const address of addresses) {
+        if (typeof address === 'string' && address.trim() && !isValidCandidateAddress(address)) return false;
+      }
+    } else if (typeof addresses === 'string' && addresses.trim() && !isValidCandidateAddress(addresses)) {
+      return false;
+    }
+    const foundedYear = getFieldValue('business.foundedYear');
+    if (!isValidCandidateFoundedYear(foundedYear)) {
+      return false;
+    }
     return true;
   })();
 
@@ -783,7 +804,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               <div className={styles.fieldGrid}>
                 {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} revisionMode={isStaffRevision} isManual={isManual} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} revisionMode={isStaffRevision} isManual={isManual} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.address', 'Address', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.address'])} revisionMode={isStaffRevision} isManual={isManual} label="Address" fieldKey="contact.address" type="textarea" fieldResult={fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('contact.addresses', 'Addresses', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.addresses'] || fieldResults['contact.address'])} revisionMode={isStaffRevision} isManual={isManual} label="Addresses" fieldKey="contact.addresses" fieldResult={fieldResults['contact.addresses'] || fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
                 {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} revisionMode={isStaffRevision} isManual={isManual} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
                 {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} revisionMode={isStaffRevision} isManual={isManual} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} />)}
               </div>
@@ -792,22 +813,17 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
             {activeTab === 'Business' && (
               <div className={styles.fieldGrid}>
                 {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} revisionMode={isStaffRevision} isManual={isManual} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.industries', 'Industries', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} revisionMode={isStaffRevision} isManual={isManual} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('companySize.employeeTier', 'Employee Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeTier'])} revisionMode={isStaffRevision} isManual={isManual} label="Employee Tier" fieldKey="companySize.employeeTier" fieldResult={fieldResults['companySize.employeeTier']} onChange={handleFieldChange} />)}
+                {renderReviewField('business.industries', 'Industries', <EditableIndustryField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} revisionMode={isStaffRevision} isManual={isManual} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.foundedYear', 'Founded Year', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.foundedYear'])} revisionMode={isStaffRevision} isManual={isManual} label="Founded Year" type="number" fieldKey="business.foundedYear" fieldResult={fieldResults['business.foundedYear']} onChange={handleFieldChange} />)}
                 {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} revisionMode={isStaffRevision} isManual={isManual} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} />)}
-                {renderReviewField('companySize.revenueTier', 'Revenue Tier', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.revenueTier'])} revisionMode={isStaffRevision} isManual={isManual} label="Revenue Tier" fieldKey="companySize.revenueTier" fieldResult={fieldResults["companySize.revenueTier"]} onChange={handleFieldChange} />)}
+                {renderReviewField('business.companyDescription', 'Company Description', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.companyDescription'])} revisionMode={isStaffRevision} isManual={isManual} label="Company Description" fieldKey="business.companyDescription" type="textarea" fieldResult={fieldResults['business.companyDescription']} onChange={handleFieldChange} />, true)}
               </div>
             )}
 
-            {activeTab === 'Markets' && (
+            {activeTab === 'Market & Product' && (
               <div className={styles.fieldGrid}>
                 {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} revisionMode={isStaffRevision} isManual={isManual} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} />, true)}
                 {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} revisionMode={isStaffRevision} isManual={isManual} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} />, true)}
-              </div>
-            )}
-
-            {activeTab === 'Products' && (
-              <div className={styles.fieldGrid}>
                 {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} revisionMode={isStaffRevision} isManual={isManual} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
               </div>
             )}

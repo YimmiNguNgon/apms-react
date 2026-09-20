@@ -6,6 +6,7 @@ import {
   normalizeCandidateFieldValue,
   isValidCandidateEmail,
   isValidCandidatePhone,
+  isValidCandidateAddress,
 } from './candidateFieldDefinitions';
 import { EditableFieldCard } from './EditableFieldCard';
 import styles from './CandidateReview.module.css';
@@ -63,6 +64,10 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
 
     if (fieldKey === 'contact.phones' && !isValidCandidatePhone(trimmed)) {
       return `"${trimmed}" is not a valid phone number (7-15 digits)`;
+    }
+
+    if ((fieldKey === 'contact.addresses' || fieldKey === 'contact.address') && !isValidCandidateAddress(trimmed)) {
+      return 'Address cannot exceed 500 characters';
     }
 
     return null;
@@ -225,13 +230,21 @@ export const EditableListField: React.FC<EditableListFieldProps> = ({
               onKeyDown={handleKeyDown}
               className={styles.input}
               style={{
-                width: '150px',
+                width: (fieldKey === 'contact.addresses' || fieldKey === 'contact.address') ? '260px' : '150px',
                 padding: '4px 8px',
                 fontSize: '13px',
                 height: '28px',
                 borderColor: validationError ? '#dc2626' : undefined,
               }}
-              placeholder="Add item..."
+              placeholder={
+                (fieldKey === 'contact.addresses' || fieldKey === 'contact.address')
+                  ? 'Add address...'
+                  : fieldKey === 'contact.emails'
+                    ? 'Add email...'
+                    : fieldKey === 'contact.phones'
+                      ? 'Add phone...'
+                      : 'Add item...'
+              }
             />
             <button
               type="button"

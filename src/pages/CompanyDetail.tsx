@@ -221,6 +221,8 @@ interface FullProfileBaseline {
   phone: string;
   employeeCount: number | null;
   employeeTier: string;
+  foundedYear: number | null;
+  companyDescription: string;
   address: string;
   // Business
   industries: string[];
@@ -448,6 +450,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [draftPhone, setDraftPhone] = useState('');
   const [draftEmployeeCount, setDraftEmployeeCount] = useState('');
   const [draftEmployeeTier, setDraftEmployeeTier] = useState('');
+  const [draftFoundedYear, setDraftFoundedYear] = useState('');
+  const [draftCompanyDescription, setDraftCompanyDescription] = useState('');
   const [draftAddress, setDraftAddress] = useState('');
   // Business Fields draft
   const [draftIndustries, setDraftIndustries] = useState<string[]>([]);
@@ -816,7 +820,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const initialPhone = profile.contact?.phones?.[0] || '';
     const initialEmpCount = profile.companySize?.employeeCount != null ? profile.companySize.employeeCount : null;
     const initialEmpTier = profile.companySize?.employeeTier || '';
-    const initialAddress = profile.contact?.addresses?.[0]?.fullAddress || '';
+    const initialAddresses = (profile.contact?.addresses && profile.contact.addresses.length > 0)
+      ? (profile.contact.addresses.map(a => a.fullAddress || '').filter(Boolean))
+      : ((profile.contact as any)?.address ? [(profile.contact as any).address] : []);
+    const initialAddress = initialAddresses.join('\n');
 
     const initialIndustries = [...(profile.business?.industries || intelligence?.company?.industries || [])];
     const initialMarkets = [...(profile.business?.markets || intelligence?.company?.markets || [])];
@@ -829,6 +836,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       description: typeof p === 'object' && p.description ? p.description : '',
     }));
     const initialBusinessModel = profile.business?.businessModel || intelligence?.company?.businessModel || '';
+    const initialFoundedYear = profile.business?.foundedYear != null ? profile.business.foundedYear : null;
+    const initialCompanyDescription = profile.business?.companyDescription || '';
 
     const initialMembers: CompanyProfileMember[] = (profile.companyMembers || []).map(m => ({
       fullName: m.fullName || m.name || '',
@@ -845,6 +854,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setDraftPhone(initialPhone);
     setDraftEmployeeCount(initialEmpCount != null ? String(initialEmpCount) : '');
     setDraftEmployeeTier(initialEmpTier);
+    setDraftFoundedYear(initialFoundedYear != null ? String(initialFoundedYear) : '');
+    setDraftCompanyDescription(initialCompanyDescription);
     setDraftAddress(initialAddress);
 
     setDraftIndustries(initialIndustries);
@@ -867,6 +878,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       phone: initialPhone,
       employeeCount: initialEmpCount,
       employeeTier: initialEmpTier,
+      foundedYear: initialFoundedYear,
+      companyDescription: initialCompanyDescription,
       address: initialAddress,
       industries: initialIndustries,
       markets: initialMarkets,
@@ -912,6 +925,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       normalizeString(draftPhone) !== normalizeString(editBaseline.phone) ||
       normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount) ||
       normalizeString(draftEmployeeTier) !== normalizeString(editBaseline.employeeTier) ||
+      normalizeNumber(draftFoundedYear) !== normalizeNumber(editBaseline.foundedYear) ||
+      normalizeString(draftCompanyDescription) !== normalizeString(editBaseline.companyDescription) ||
       normalizeString(draftAddress) !== normalizeString(editBaseline.address) ||
       normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel)
     );
@@ -950,6 +965,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     draftPhone,
     draftEmployeeCount,
     draftEmployeeTier,
+    draftFoundedYear,
+    draftCompanyDescription,
     draftAddress,
     draftBusinessModel,
     draftIndustries,
@@ -976,6 +993,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       normalizeString(draftPhone) !== normalizeString(editBaseline.phone) ||
       normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount) ||
       normalizeString(draftEmployeeTier) !== normalizeString(editBaseline.employeeTier) ||
+      normalizeNumber(draftFoundedYear) !== normalizeNumber(editBaseline.foundedYear) ||
+      normalizeString(draftCompanyDescription) !== normalizeString(editBaseline.companyDescription) ||
       normalizeString(draftAddress) !== normalizeString(editBaseline.address) ||
       normalizeString(draftBusinessModel) !== normalizeString(editBaseline.businessModel) ||
       !areStringListsEqual(draftIndustries, editBaseline.industries) ||
@@ -1098,10 +1117,15 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         phones: normalizeString(draftPhone)
           ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
           : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
+        addresses: normalizeString(draftAddress)
+          ? draftAddress.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+          : [],
         headOfficeAddress: normalizeString(draftAddress),
         employeeCount: parsedCount !== null ? parsedCount : undefined,
-        employeeTier: normalizeString(draftEmployeeTier) ,
-      businessModel: normalizeString(draftBusinessModel),
+        employeeTier: normalizeString(draftEmployeeTier),
+        foundedYear: normalizeNumber(draftFoundedYear),
+        companyDescription: normalizeString(draftCompanyDescription) || undefined,
+        businessModel: normalizeString(draftBusinessModel),
         industries: draftIndustries,
         markets: draftMarkets,
         targetCustomers: draftTargetCustomers,
@@ -1198,7 +1222,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const website = profile?.contact?.website || intelligence?.company?.website || 'Not updated';
     const email = profile?.contact?.emails?.[0] || 'Not updated';
     const phone = profile?.contact?.phones?.[0] || 'Not updated';
-    const address = profile?.contact?.addresses?.[0]?.fullAddress || intelligence?.company?.headquarters || 'Not updated';
+    const contactAddresses = profile?.contact?.addresses;
+    const effectiveAddresses = (contactAddresses && contactAddresses.length > 0)
+      ? contactAddresses.map(a => a.fullAddress || '').filter(Boolean)
+      : ((profile?.contact as any)?.address ? [(profile?.contact as any).address] : []);
+    const address = effectiveAddresses[0] || intelligence?.company?.headquarters || 'Not updated';
 
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', alignItems: 'start' }} id="company-detail-2col-grid">
@@ -1475,42 +1503,55 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 )}
               </div>
               <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Company Size</span>
+                <span style={C.fieldLabel}>Employee Count</span>
                 {isOverviewEditing ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                    <input
-                      type="number"
-                      style={inlineInputStyle}
-                      value={draftEmployeeCount}
-                      onChange={(e) => setDraftEmployeeCount(e.target.value)}
-                      placeholder="Count (e.g. 150)"
-                      disabled={isSavingProfile}
-                      min={0}
-                    />
-                    <input
-                      type="text"
-                      style={inlineInputStyle}
-                      value={draftEmployeeTier}
-                      onChange={(e) => setDraftEmployeeTier(e.target.value)}
-                      placeholder="Tier (e.g. 100-500)"
-                      disabled={isSavingProfile}
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    style={inlineInputStyle}
+                    value={draftEmployeeCount}
+                    onChange={(e) => setDraftEmployeeCount(e.target.value)}
+                    placeholder="Count (e.g. 150)"
+                    disabled={isSavingProfile}
+                    min={0}
+                  />
                 ) : (
-                  <strong style={sizeStr !== 'Not updated' ? C.value : C.muted}>{sizeStr}</strong>
+                  <strong style={empCount ? C.value : C.muted}>{empCount ? `${empCount} employees` : 'Not updated'}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
-                <span style={C.fieldLabel}>Head Office Address</span>
+                <span style={C.fieldLabel}>Founded Year</span>
                 {isOverviewEditing ? (
                   <input
-                    type="text"
+                    type="number"
                     style={inlineInputStyle}
+                    value={draftFoundedYear}
+                    onChange={(e) => setDraftFoundedYear(e.target.value)}
+                    placeholder="Founded Year (e.g. 1995)"
+                    disabled={isSavingProfile}
+                    min={1800}
+                    max={new Date().getFullYear()}
+                  />
+                ) : (
+                  <strong style={profile?.business?.foundedYear ? C.value : C.muted}>{profile?.business?.foundedYear || 'Not updated'}</strong>
+                )}
+              </div>
+              <div style={C.fieldCell}>
+                <span style={C.fieldLabel}>Addresses</span>
+                {isOverviewEditing ? (
+                  <textarea
+                    rows={Math.min(4, Math.max(2, draftAddress.split('\n').length))}
+                    style={{ ...inlineInputStyle, resize: 'vertical', minHeight: '60px' }}
                     value={draftAddress}
                     onChange={(e) => setDraftAddress(e.target.value)}
-                    placeholder="Head Office Address"
+                    placeholder="One address per line..."
                     disabled={isSavingProfile}
                   />
+                ) : effectiveAddresses.length > 1 ? (
+                  <ul style={{ margin: 0, paddingLeft: '18px', color: '#0f172a' }}>
+                    {effectiveAddresses.map((addr, idx) => (
+                      <li key={idx} style={{ marginBottom: '2px' }}>{addr}</li>
+                    ))}
+                  </ul>
                 ) : (
                   <strong style={address !== 'Not updated' ? C.value : C.muted}>{address}</strong>
                 )}
@@ -1519,36 +1560,79 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           </section>
 
           {/* Panel 3: Description & Summary */}
-          {(isOverviewEditing || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
+          {(isOverviewEditing || profile?.business?.companyDescription || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
             <section style={C.card}>
               <div style={C.cardHeader}>
-                <h2 style={C.h2}>Introduction & Business Model</h2>
+                <h2 style={C.h2}>Company Description & Business Model</h2>
               </div>
               {isOverviewEditing ? (
-                <textarea
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '6px 8px',
-                    fontSize: '0.74rem',
-                    color: '#334155',
-                    lineHeight: '1.5',
-                    border: '1px solid #CBD5E1',
-                    borderRadius: '4px',
-                    fontFamily: 'inherit',
-                    outline: 'none',
-                    resize: 'vertical',
-                    boxSizing: 'border-box',
-                  }}
-                  value={draftBusinessModel}
-                  onChange={(e) => setDraftBusinessModel(e.target.value)}
-                  placeholder="Enter business introduction and model..."
-                  disabled={isSavingProfile}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div>
+                    <span style={C.fieldLabel}>Company Description</span>
+                    <textarea
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '6px 8px',
+                        fontSize: '0.74rem',
+                        color: '#334155',
+                        lineHeight: '1.5',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '4px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                      value={draftCompanyDescription}
+                      onChange={(e) => setDraftCompanyDescription(e.target.value)}
+                      placeholder="Enter company description..."
+                      disabled={isSavingProfile}
+                    />
+                  </div>
+                  <div>
+                    <span style={C.fieldLabel}>Business Model</span>
+                    <textarea
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '6px 8px',
+                        fontSize: '0.74rem',
+                        color: '#334155',
+                        lineHeight: '1.5',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '4px',
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                      value={draftBusinessModel}
+                      onChange={(e) => setDraftBusinessModel(e.target.value)}
+                      placeholder="Enter business model..."
+                      disabled={isSavingProfile}
+                    />
+                  </div>
+                </div>
               ) : (
-                <p style={{ margin: 0, fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
-                  {profile?.business?.businessModel || intelligence?.company?.businessModel}
-                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {profile?.business?.companyDescription && (
+                    <div>
+                      <strong style={C.fieldLabel}>Company Description</strong>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
+                        {profile.business.companyDescription}
+                      </p>
+                    </div>
+                  )}
+                  {(profile?.business?.businessModel || intelligence?.company?.businessModel) && (
+                    <div>
+                      <strong style={C.fieldLabel}>Business Model</strong>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
+                        {profile?.business?.businessModel || intelligence?.company?.businessModel}
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </section>
           )}

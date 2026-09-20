@@ -37,24 +37,27 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
   }, [currentValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const val = type === 'number' ? Number(e.target.value) : e.target.value;
+    const rawVal = e.target.value;
+    const val = type === 'number' ? (rawVal === '' ? '' : Number(rawVal)) : rawVal;
     setDraftValue(val);
     if (revisionMode) {
-      onChange(fieldKey, val, 'EDITED');
+      const finalVal = val === '' ? null : val;
+      onChange(fieldKey, finalVal, 'EDITED');
     }
   };
 
   const handleSave = () => {
-    const isEdited = isCandidateFieldEdited(fieldResult?.value, draftValue);
+    const finalVal = draftValue === '' ? null : draftValue;
+    const isEdited = isCandidateFieldEdited(fieldResult?.value, finalVal);
     if (!isEdited) {
-      onChange(fieldKey, draftValue, isManual ? (normalizeCandidateFieldValue(draftValue) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
+      onChange(fieldKey, finalVal, isManual ? (normalizeCandidateFieldValue(finalVal) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
       return;
     }
 
     const isAiValEmpty = normalizeCandidateFieldValue(fieldResult?.value) === null;
-    const isDraftEmpty = normalizeCandidateFieldValue(draftValue) === null;
+    const isDraftEmpty = normalizeCandidateFieldValue(finalVal) === null;
     const status = isAiValEmpty ? 'ADDED' : isDraftEmpty ? 'REMOVED' : 'EDITED';
-    onChange(fieldKey, draftValue, status);
+    onChange(fieldKey, finalVal, status);
   };
 
   const handleCancel = () => {

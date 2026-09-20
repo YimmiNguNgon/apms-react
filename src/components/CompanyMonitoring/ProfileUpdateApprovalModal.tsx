@@ -224,12 +224,14 @@ export const ProfileUpdateApprovalModal: React.FC<ProfileUpdateApprovalModalProp
             renderDiffField('Website', 'contact.website', currentProfile?.contact?.website, proposal.proposedContact?.website),
             renderDiffField('Contact Email', 'contact.emails', currentProfile?.contact?.emails, proposal.proposedContact?.emails),
             renderDiffField('Phone Number', 'contact.phones', currentProfile?.contact?.phones, proposal.proposedContact?.phones),
-            renderDiffField('Company Size (Tier)', 'companySize.employeeTier', currentProfile?.companySize?.employeeTier, proposal.proposedCompanySize?.employeeTier),
+            renderDiffField('Employee Count', 'companySize.employeeCount', currentProfile?.companySize?.employeeCount, proposal.proposedCompanySize?.employeeCount),
             renderDiffField('Head Office', 'contact.addresses', currentProfile?.contact?.addresses, proposal.proposedContact?.addresses, true),
           ])}
 
           {renderDiffSection('Business & Strategy', [
             renderDiffField('Industries', 'business.industries', currentProfile?.business?.industries, proposal.proposedBusiness?.industries),
+            renderDiffField('Founded Year', 'business.foundedYear', currentProfile?.business?.foundedYear, proposal.proposedBusiness?.foundedYear),
+            renderDiffField('Company Description', 'business.companyDescription', currentProfile?.business?.companyDescription, proposal.proposedBusiness?.companyDescription),
             renderDiffField('Markets', 'business.markets', currentProfile?.business?.markets, proposal.proposedBusiness?.markets),
             renderDiffField('Target Customers', 'business.targetCustomers', currentProfile?.business?.targetCustomers, proposal.proposedBusiness?.targetCustomers),
             renderDiffField('Business Model', 'business.businessModel', currentProfile?.business?.businessModel, proposal.proposedBusiness?.businessModel),

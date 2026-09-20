@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Check, X, MessageSquareWarning, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, FileText, ChevronDown, ChevronUp, ExternalLink, RotateCcw } from 'lucide-react';
 import type { CandidateFieldEvidence } from '../../types/domain';
 import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
+import { useIndustryCatalog } from '../../API/industryApi';
 import styles from './ManagerReviewFieldCard.module.css';
 
 interface ManagerReviewFieldCardProps {
@@ -160,12 +161,29 @@ const SwotRenderer: React.FC<{ items: any[] }> = ({ items }) => {
   );
 };
 
-const renderValue = (fieldKey: string, val: any, isManual?: boolean): React.ReactNode => {
+const renderValue = (
+  fieldKey: string,
+  val: any,
+  isManual?: boolean,
+  isCatalogIndustry?: (name: string) => boolean
+): React.ReactNode => {
   if (isEmpty(val)) return <span className={styles.emptyValue}>{isManual ? 'Not provided' : 'N/A'}</span>;
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
   
   if (fieldKey === 'financial' || fieldKey === 'innovation' || fieldKey === 'market' || fieldKey === 'risk' || fieldKey === 'compliance') {
     return <StructuredRenderer data={val} type={fieldKey} />;
+  }
+
+  if (fieldKey === 'contact.addresses' || fieldKey === 'contact.address') {
+    const arr = Array.isArray(val) ? val : [val];
+    return (
+      <ul className={styles.bulletList} style={{ margin: 0, paddingLeft: '18px' }}>
+        {arr.map((item, i) => {
+          const str = typeof item === 'object' ? (item.fullAddress || item.address || JSON.stringify(item)) : String(item);
+          return <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }}>{str}</li>;
+        })}
+      </ul>
+    );
   }
 
   if (Array.isArray(val)) {
@@ -174,9 +192,37 @@ const renderValue = (fieldKey: string, val: any, isManual?: boolean): React.Reac
     }
     return (
       <div className={styles.chipList}>
-        {val.map((item, i) => (
-          <span key={i} className={styles.chip}>{typeof item === 'object' ? (item.name || item.text || JSON.stringify(item)) : String(item)}</span>
-        ))}
+        {val.map((item, i) => {
+          const str = typeof item === 'object' ? (item.name || item.text || JSON.stringify(item)) : String(item);
+          const isCatalog = fieldKey === 'business.industries' && isCatalogIndustry ? isCatalogIndustry(str) : true;
+          return (
+            <span
+              key={i}
+              className={styles.chip}
+              style={!isCatalog ? { backgroundColor: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' } : undefined}
+            >
+              <span>{str}</span>
+              {!isCatalog && (
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    backgroundColor: '#fef3c7',
+                    color: '#b45309',
+                    border: '1px solid #fde68a',
+                    borderRadius: '4px',
+                    padding: '1px 4px',
+                    marginLeft: '4px',
+                    letterSpacing: '0.5px',
+                  }}
+                  title="Proposed industry (not in global catalog yet)"
+                >
+                  NEW
+                </span>
+              )}
+            </span>
+          );
+        })}
       </div>
     );
   }
@@ -309,6 +355,8 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   const [evidenceExpanded, setEvidenceExpanded] = useState(false);
   const [mutatingAction, setMutatingAction] = useState<'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'PENDING' | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+
+  const { isCatalogIndustry } = useIndustryCatalog();
 
   const currentRound = currentRevisionNumber ?? 1;
   const currentDecision = fieldResult?.currentDecision;
@@ -477,16 +525,16 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           <div className={styles.diffContainer}>
             <div className={styles.diffBlock}>
               <span className={styles.diffLabel}>AI Original</span>
-              <div className={styles.diffOriginalValue}>{renderValue(fieldKey, originalValue, isManual)}</div>
+              <div className={styles.diffOriginalValue}>{renderValue(fieldKey, originalValue, isManual, isCatalogIndustry)}</div>
             </div>
             <div className={styles.diffBlock}>
               <span className={styles.diffLabelNew}>Staff Submitted</span>
-              <div className={styles.diffNewValue}>{renderValue(fieldKey, staffValue, isManual)}</div>
+              <div className={styles.diffNewValue}>{renderValue(fieldKey, staffValue, isManual, isCatalogIndustry)}</div>
             </div>
           </div>
         ) : (
           <div className={styles.valueBlock}>
-            {renderValue(fieldKey, staffValue ?? originalValue, isManual)}
+            {renderValue(fieldKey, staffValue ?? originalValue, isManual, isCatalogIndustry)}
           </div>
         )}
       </div>
@@ -620,7 +668,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           {previousDecision.comment && <div className={styles.historyComment}>&ldquo;{previousDecision.comment}&rdquo;</div>}
           {previousDecision.submittedValue !== undefined && (
             <div className={styles.historyComment}>
-              <strong>Previous submitted value:</strong> {renderValue(fieldKey, previousDecision.submittedValue, isManual)}
+              <strong>Previous submitted value:</strong> {renderValue(fieldKey, previousDecision.submittedValue, isManual, isCatalogIndustry)}
             </div>
           )}
           {previousDecision.reviewedAt && (
@@ -630,7 +678,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           )}
           {hasResubmittedInCurrentRound && (
             <div className={styles.historyComment}>
-              <strong>Current Staff revision:</strong> {renderValue(fieldKey, staffValue, isManual)}
+              <strong>Current Staff revision:</strong> {renderValue(fieldKey, staffValue, isManual, isCatalogIndustry)}
             </div>
           )}
           {isPending && (deepEqual(previousDecision.submittedValue, staffValue) || (isEmpty(previousDecision.submittedValue) && isEmpty(staffValue))) && (
