@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -43,6 +43,7 @@ import {
   UserX,
   Users,
   X,
+  XCircle,
   History,
   RotateCcw,
 } from 'lucide-react';
@@ -62,6 +63,7 @@ import { candidateApi } from '../API/candidateApi';
 import { companyMemberResearchApi } from '../API/companyMemberResearchApi';
 import { EditProjectModal } from '../components/EditProjectModal';
 import { ConfirmModal } from '../components/Shared/ConfirmModal';
+import AiExtractionProgressBar from '../components/Shared/AiExtractionProgressBar';
 import {
   RELATIONSHIP_OPTIONS,
   normalizeRelationshipInput,
@@ -3584,9 +3586,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [extractionJob, setExtractionJob] = useState<any>(null);
 
   const [extractingImportJobId, setExtractingImportJobId] = useState<number | null>(null);
-  const [projectDocuments, setProjectDocuments] = useState<WorkbenchDocumentResponse[]>([]);
-  const [projectDocumentsError, setProjectDocumentsError] = useState<string | null>(null);
-  const [projectDocumentsLoading, setProjectDocumentsLoading] = useState(false);
+  const [taskDocuments, setTaskDocuments] = useState<WorkbenchDocumentResponse[]>([]);
+  const [taskDocumentsError, setTaskDocumentsError] = useState<string | null>(null);
+  const [taskDocumentsLoading, setTaskDocumentsLoading] = useState(false);
   const [documentsTabItems, setDocumentsTabItems] = useState<WorkbenchDocumentResponse[]>([]);
   const [documentsTabLoading, setDocumentsTabLoading] = useState(false);
   const [documentsTabError, setDocumentsTabError] = useState<string | null>(null);
@@ -3606,8 +3608,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [companyMembersError, setCompanyMembersError] = useState<string | null>(null);
   const [documentSearch, setDocumentSearch] = useState('');
   const [documentSort, setDocumentSort] = useState<'newest' | 'oldest' | 'name' | 'type' | 'size'>('newest');
-  const [selectedProjectDocumentIds, setSelectedProjectDocumentIds] = useState<number[]>([]);
+  const [selectedTaskDocumentIds, setSelectedTaskDocumentIds] = useState<number[]>([]);
+  const validSelectedTaskDocumentIds = useMemo(() => {
+    const taskDocIds = new Set(taskDocuments.map((doc) => doc.id));
+    return selectedTaskDocumentIds.filter((id) => taskDocIds.has(id));
+  }, [selectedTaskDocumentIds, taskDocuments]);
   const [extractingSelectedDocuments, setExtractingSelectedDocuments] = useState(false);
+  const [isCancellingExtraction, setIsCancellingExtraction] = useState(false);
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [aiProgress, setAiProgress] = useState<{ percent: number; label: string } | null>(null);
   const [pendingExtractionReviews, setPendingExtractionReviews] = useState<StaffExtractionReview[]>([]);
   const [lastExtractionReviews, setLastExtractionReviews] = useState<StaffExtractionReview[]>([]);
@@ -3946,7 +3954,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       || Boolean(workbench?.documents?.some((document) => document.latestExtractionId));
 
     if (selectedStaffTask && ['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION'].includes(selectedStaffTask.taskType)) {
-      if (step === 'AI extraction') return extractingSelectedDocuments || selectedProjectDocumentIds.length > 0 || hasAiExtraction;
+      if (step === 'AI extraction') return extractingSelectedDocuments || selectedTaskDocumentIds.length > 0 || hasAiExtraction;
       if (step === 'Candidate draft') return hasCandidateDraft;
       if (step === 'Submit review') return Boolean(hasSubmittedReview || staffTaskStatus === 'IN_REVIEW' || staffTaskStatus === 'DONE');
       return false;
@@ -4289,40 +4297,44 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setTasks(mergedTasks.map((task) => mapApiTaskToCard(task, projectMembers)));
   }, [apiTasks, availableTasks, projectMembers, isStaffView]);
 
+  const loadTaskDocuments = useCallback(async (projectId: number, taskId: number) => {
+    setTaskDocumentsLoading(true);
+    setTaskDocumentsError(null);
+    try {
+      const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(
+        `/projects/${projectId}/tasks/${taskId}/documents`,
+        {
+          params: { includeHidden: false, page: 0, size: 100 },
+        }
+      );
+      const documents = unwrapList<WorkbenchDocumentResponse>(documentsPayload);
+      setTaskDocuments(documents);
+      setSelectedTaskDocumentIds((prev) => {
+        const validDocIds = new Set(documents.map((d) => d.id));
+        return prev.filter((id) => validDocIds.has(id));
+      });
+      return documents;
+    } catch (error) {
+      setTaskDocuments([]);
+      setSelectedTaskDocumentIds([]);
+      setTaskDocumentsError(error instanceof Error ? error.message : 'Cannot load task documents.');
+      return [];
+    } finally {
+      setTaskDocumentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!selectedStaffTask || !['COMPANY_DATA_PREPARATION', 'DOCUMENT_COLLECTION', 'ROLE_EVALUATION', 'FINANCIAL_RESEARCH'].includes(selectedStaffTask.taskType)) {
-      setProjectDocuments([]);
-      setProjectDocumentsError(null);
-      setSelectedProjectDocumentIds([]);
+      setTaskDocuments([]);
+      setTaskDocumentsError(null);
+      setSelectedTaskDocumentIds([]);
       return;
     }
 
-    let cancelled = false;
-    setProjectDocumentsLoading(true);
-    setProjectDocumentsError(null);
-
-    api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
-      params: { includeHidden: false, page: 0, size: 100 },
-    })
-      .then((payload) => {
-        if (cancelled) return;
-        const documents = unwrapList<WorkbenchDocumentResponse>(payload);
-        setProjectDocuments(documents);
-        setSelectedProjectDocumentIds([]);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setProjectDocuments([]);
-        setProjectDocumentsError(error instanceof Error ? error.message : 'Cannot load project documents.');
-      })
-      .finally(() => {
-        if (!cancelled) setProjectDocumentsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedStaffTask?.id, selectedStaffTask?.projectId, selectedStaffTask?.taskType]);
+    setSelectedTaskDocumentIds([]);
+    void loadTaskDocuments(selectedStaffTask.projectId, selectedStaffTask.id);
+  }, [selectedStaffTask?.id, selectedStaffTask?.projectId, selectedStaffTask?.taskType, loadTaskDocuments]);
 
   useEffect(() => {
     setInReviewSelectedCandidateId(null);
@@ -4356,6 +4368,85 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     };
   }, [activeTab, currentProjectId]);
 
+  const handleExtractionComplete = async () => {
+    queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    setWorkbenchMessage('Candidate draft created successfully from extractions.');
+    if (selectedStaffTask) {
+      await loadTaskWorkbench(selectedStaffTask, { loadCandidateDraft: true });
+    }
+    setExtractingSelectedDocuments(false);
+    setToast({
+      kind: 'success',
+      message: (
+        <>
+          <strong>AI Extraction completed</strong>
+          <span>Company data has been extracted successfully.</span>
+        </>
+      ),
+    });
+    window.setTimeout(() => setExtractionJob(null), 1200);
+  };
+
+  const handleConfirmCancelExtraction = async () => {
+    if (!currentProjectId || !selectedStaffTask) {
+      setShowCancelConfirmModal(false);
+      return;
+    }
+
+    setIsCancellingExtraction(true);
+
+    try {
+      if (extractionJobId) {
+        await projectApi.cancelExtractionJob(
+          Number(currentProjectId),
+          selectedStaffTask.id,
+          extractionJobId
+        );
+      }
+
+      if (extractionJob) {
+        setExtractionJob({
+          ...extractionJob,
+          status: 'CANCELLED',
+          stage: 'CANCELLED',
+        });
+      }
+      setExtractionJobId(null);
+      setExtractingSelectedDocuments(false);
+      setExtractingImportJobId(null);
+      setShowCancelConfirmModal(false);
+
+      setToast({
+        kind: 'success',
+        message: (
+          <>
+            <strong>AI extraction was cancelled.</strong>
+            <span>You can restart extraction at any time.</span>
+          </>
+        ),
+      });
+
+      window.setTimeout(() => {
+        setExtractionJob(null);
+      }, 4000);
+    } catch (err: unknown) {
+      console.error('Failed to cancel extraction:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Please try again.';
+      setToast({
+        kind: 'error',
+        message: (
+          <>
+            <strong>Failed to cancel extraction</strong>
+            <span>{errorMessage}</span>
+          </>
+        ),
+      });
+      setShowCancelConfirmModal(false);
+    } finally {
+      setIsCancellingExtraction(false);
+    }
+  };
+
   // Async Multi-Document Extraction Polling
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -4366,22 +4457,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           if (res.success && res.data) {
             setExtractionJob(res.data);
             if (res.data.status === 'COMPLETED') {
+              // Stop polling immediately and let the progress bar smoothly animate to 100%
               setExtractionJobId(null);
-              queryClient.invalidateQueries({ queryKey: ['candidates'] });
-              setExtractingSelectedDocuments(false);
-              setWorkbenchMessage('Candidate draft created successfully from extractions.');
-              await loadTaskWorkbench(selectedStaffTask);
-              setToast({
-                kind: 'success',
-                message: (
-                  <>
-                    <strong>AI Extraction completed</strong>
-                    <span>Company data has been extracted successfully.</span>
-                  </>
-                ),
-              });
-              // Clear progress after short delay
-              window.setTimeout(() => setExtractionJob(null), 2000);
             } else if (res.data.status === 'FAILED') {
               setExtractionJobId(null);
               setExtractingSelectedDocuments(false);
@@ -4395,7 +4472,22 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </>
                 ),
               });
-              window.setTimeout(() => setExtractionJob(null), 2000);
+            } else if (res.data.status === 'CANCELLED') {
+              setExtractionJobId(null);
+              setExtractingSelectedDocuments(false);
+              setExtractingImportJobId(null);
+              setToast({
+                kind: 'success',
+                message: (
+                  <>
+                    <strong>AI extraction was cancelled.</strong>
+                    <span>You can restart extraction at any time.</span>
+                  </>
+                ),
+              });
+              window.setTimeout(() => {
+                setExtractionJob(null);
+              }, 4000);
             }
           }
         } catch (e) {
@@ -5583,6 +5675,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         setStaffCandidateEdit(emptyStaffCandidateEdit);
       }
 
+      if (task.taskType === 'COMPANY_DATA_PREPARATION') {
+        try {
+          const latestJobRes = await projectApi.getLatestExtractionJob(task.projectId, task.id);
+          const job = latestJobRes?.data;
+          if (job) {
+            if (job.status === 'PENDING' || job.status === 'PROCESSING') {
+              setExtractionJobId(job.jobId);
+              setExtractionJob(job);
+              setExtractingSelectedDocuments(true);
+            } else if (job.status === 'FAILED') {
+              setExtractionJobId(null);
+              setExtractionJob(job);
+              setExtractingSelectedDocuments(false);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load latest extraction job', e);
+        }
+      }
+
       if (task.status === 'IN_REVIEW' || task.status === 'DONE') {
         const pendingSub = payload.data?.submissions?.find((s: any) => s.status === 'IN_REVIEW' || s.status === 'APPROVED') ?? payload.data?.submissions?.[0];
         const candId = pendingSub?.targetEntityId || payload.data?.candidateDrafts?.[0]?.candidateId;
@@ -6214,10 +6326,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         : 'Evidence uploaded. You can run AI extraction now.');
       await loadStaffWorkbench(selectedStaffTask);
       if (selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION') {
-        const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
-          params: { includeHidden: false, page: 0, size: 100 },
-        });
-        setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
+        await loadTaskDocuments(selectedStaffTask.projectId, selectedStaffTask.id);
       }
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot upload file.');
@@ -6260,24 +6369,23 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     try {
       const taskId = documentPendingDelete.taskId || selectedStaffTask?.id;
-      const url = `/projects/${documentPendingDelete.projectId}/documents/${encodeURIComponent(documentPendingDelete.rawDocumentId)}${taskId ? `?taskId=${taskId}` : ''}`;
+      const url = taskId
+        ? `/projects/${documentPendingDelete.projectId}/tasks/${encodeURIComponent(taskId)}/documents/${encodeURIComponent(documentPendingDelete.rawDocumentId)}`
+        : `/projects/${documentPendingDelete.projectId}/documents/${encodeURIComponent(documentPendingDelete.rawDocumentId)}`;
       await api.delete(url);
 
       const deletedDocId = documentPendingDelete.id;
       setToast({ kind: 'success', message: 'Document deleted successfully.' });
       setDocumentPendingDelete(null);
 
-      setProjectDocuments((prev) => prev.filter((doc) => doc.id !== deletedDocId));
-      setSelectedProjectDocumentIds((prev) => prev.filter((id) => id !== deletedDocId));
+      setTaskDocuments((prev) => prev.filter((doc) => doc.id !== deletedDocId));
+      setSelectedTaskDocumentIds((prev) => prev.filter((id) => id !== deletedDocId));
       setWorkbench((current) => current ? { ...current, documents: current.documents?.filter((doc) => doc.id !== deletedDocId) } : current);
 
       if (selectedStaffTask) {
         await loadStaffWorkbench(selectedStaffTask);
         if (selectedStaffTask.taskType !== 'PARTNER_CONTRACT_COLLECTION') {
-          const documentsPayload = await api.get<PageResult<WorkbenchDocumentResponse>>(`/projects/${selectedStaffTask.projectId}/documents`, {
-            params: { includeHidden: false, page: 0, size: 100 },
-          });
-          setProjectDocuments(unwrapList<WorkbenchDocumentResponse>(documentsPayload));
+          await loadTaskDocuments(selectedStaffTask.projectId, selectedStaffTask.id);
         }
       }
       if (currentProjectId) {
@@ -6431,19 +6539,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const toggleProjectDocumentSelection = (documentId: number) => {
+  const toggleTaskDocumentSelection = (documentId: number) => {
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before selecting documents.');
       return;
     }
-    setSelectedProjectDocumentIds((current) => (
+    setSelectedTaskDocumentIds((current) => (
       current.includes(documentId)
         ? current.filter((id) => id !== documentId)
         : [...current, documentId]
     ));
   };
 
-  const extractProjectDocumentsForReview = async (selectedDocuments: WorkbenchDocumentResponse[]) => {
+  const extractTaskDocumentsForReview = async (selectedDocuments: WorkbenchDocumentResponse[]) => {
     if (!selectedStaffTask) return;
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before running AI extraction.');
@@ -6451,7 +6559,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
 
     if (selectedDocuments.length === 0) {
-      setWorkbenchError('Please select at least one project document to extract.');
+      setWorkbenchError('Please select at least one document to extract.');
       return;
     }
 
@@ -6671,7 +6779,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setStaffCandidateEdit(candidateToEditForm(candidatePayload.data));
       setLastExtractionReviews(pendingExtractionReviews);
       setPendingExtractionReviews([]);
-      setSelectedProjectDocumentIds([]);
+      setSelectedTaskDocumentIds([]);
       setWorkbenchMessage(`Candidate draft created from ${pendingExtractionReviews.length} reviewed extraction(s).`);
       await loadTaskWorkbench(selectedStaffTask);
     } catch (error) {
@@ -6699,8 +6807,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setWorkbenchMessage('Returned to the latest AI extraction review. Update the fields, then create the candidate draft again.');
   };
 
-  const handleExtractSelectedProjectDocuments = async () => {
-    await extractProjectDocumentsForReview(projectDocuments.filter((document) => selectedProjectDocumentIds.includes(document.id)));
+  const handleExtractSelectedTaskDocuments = async () => {
+    const docsToExtract = taskDocuments.filter((document) => validSelectedTaskDocumentIds.includes(document.id));
+    await extractTaskDocumentsForReview(docsToExtract);
   };
 
   const handleCreateManualCandidate = async () => {
@@ -7066,7 +7175,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       }
       const url = isPartnerContract
         ? `${API_BASE_URL}/projects/${document.projectId}/tasks/${encodeURIComponent(taskId!)}/partner-contracts/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`
-        : `${API_BASE_URL}/projects/${document.projectId}/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`;
+        : (taskId
+            ? `${API_BASE_URL}/projects/${document.projectId}/tasks/${encodeURIComponent(taskId)}/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`
+            : `${API_BASE_URL}/projects/${document.projectId}/documents/${encodeURIComponent(document.rawDocumentId)}/download?download=${action === 'download'}`);
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -7128,7 +7239,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     );
 
     if (sourceDocumentIds.size > 0) {
-      projectDocuments
+      taskDocuments
         .filter((document) =>
           sourceDocumentIds.has(document.rawDocumentId || '')
           || sourceDocumentIds.has(String(document.id))
@@ -7137,7 +7248,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
 
     return Array.from(documentsByKey.values());
-  }, [managerCandidateDrafts, projectDocuments, workbench?.documents]);
+  }, [managerCandidateDrafts, taskDocuments, workbench?.documents]);
 
   const handleViewTaskHistory = async (taskItem: StaffWorkHistoryItemResponse) => {
     setSelectedHistoryTask(taskItem);
@@ -8857,7 +8968,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   const approvedAtDate = inReviewPendingSub?.reviewedAt
                     || (submittedCandidateData ? getCandidateReviewDate(submittedCandidateData) : null);
                   const sourceDocIds = (submittedCandidateData?.sourceDocumentIds || candDraft?.sourceDocumentIds || []) as string[];
-                  const sourceDocs = projectDocuments.filter((d) =>
+                  const sourceDocs = taskDocuments.filter((d) =>
                     sourceDocIds.some((id) => String(id) === String(d.id) || (d.rawDocumentId && String(id) === String(d.rawDocumentId)))
                   );
 
@@ -8980,18 +9091,36 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   className={styles.button}
                                   type="button"
                                   onClick={() => void handleCreateManualCandidate()}
-                                  disabled={!canUseStaffWorkbench || staffCandidateLoading}
+                                  disabled={!canUseStaffWorkbench || staffCandidateLoading || extractingSelectedDocuments}
                                 >
                                   {staffCandidateLoading ? 'Creating...' : 'Enter Manually'}
                                 </button>
+                                {extractingSelectedDocuments && (
+                                  <button
+                                    className={styles.button}
+                                    type="button"
+                                    onClick={() => setShowCancelConfirmModal(true)}
+                                    disabled={isCancellingExtraction}
+                                    style={{
+                                      borderColor: '#fca5a5',
+                                      color: '#dc2626',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <XCircle size={15} />
+                                    {isCancellingExtraction ? 'Cancelling...' : 'Cancel Extraction'}
+                                  </button>
+                                )}
                                 <button
                                   className={`${styles.button} ${styles.primaryButton}`}
                                   type="button"
-                                  onClick={() => void handleExtractSelectedProjectDocuments()}
-                                  disabled={!canUseStaffWorkbench || extractingSelectedDocuments || selectedProjectDocumentIds.length === 0}
+                                  onClick={() => void handleExtractSelectedTaskDocuments()}
+                                  disabled={!canUseStaffWorkbench || extractingSelectedDocuments || validSelectedTaskDocumentIds.length === 0}
                                 >
                                   <Sparkles size={16} />
-                                  {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${selectedProjectDocumentIds.length})`}
+                                  {extractingSelectedDocuments ? 'Extracting...' : `Extract AI (${validSelectedTaskDocumentIds.length})`}
                                 </button>
                               </div>
                             </div>
@@ -9007,86 +9136,48 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               />
                               <FileText size={24} />
                               <strong>{uploadingEvidence ? 'Uploading document...' : 'Upload document'}</strong>
-                              <span>Upload a new file to the project document library.</span>
+                              <span>Upload a new file to this task.</span>
                             </label>
 
                             <div className={styles.documentSelectionSummary}>
-                              <span>{projectDocuments.length} project document{projectDocuments.length !== 1 ? 's' : ''}</span>
+                              <span>{taskDocuments.length} document{taskDocuments.length !== 1 ? 's' : ''}</span>
                             </div>
 
                             {extractionJob && (
-                              <div className={styles.aiProgressPanel}>
-                                <div className={styles.aiProgressHead}>
-                                  <div>
-                                    <strong>AI Extraction</strong>
-                                    <span>Processing {extractionJob.totalDocuments > 0 ? extractionJob.totalDocuments : (selectedProjectDocumentIds.length || 1)} document(s)</span>
-                                  </div>
-                                  <b>
-                                    {extractionJob.status === 'COMPLETED' ? '100%' :
-                                      extractionJob.status === 'FAILED' ? 'Failed' :
-                                        extractionJob.progress != null ? `${extractionJob.progress}%` :
-                                          'Processing...'}
-                                  </b>
-                                </div>
-
-                                <div className={styles.aiProgressTrack}>
-                                  {extractionJob.status === 'COMPLETED' ? (
-                                    <span style={{ width: '100%' }} />
-                                  ) : extractionJob.status === 'FAILED' ? (
-                                    <span style={{ width: '100%', backgroundColor: 'var(--error)' }} />
-                                  ) : extractionJob.progress != null ? (
-                                    <span style={{ width: `${extractionJob.progress}%` }} />
-                                  ) : (
-                                    <span className={styles.indeterminateBar} />
-                                  )}
-                                </div>
-
-                                <div className={styles.aiProgressChecklist}>
-                                  <div className={styles.checklistRow}>
-                                    <span>{extractionJob.stage === 'PREPARING' || extractionJob.stage === 'EXTRACTING' || extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Preparing documents
-                                  </div>
-                                  <div className={styles.checklistRow}>
-                                    <span>{extractionJob.stage === 'MERGING' || extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> AI analysis in progress
-                                  </div>
-                                  <div className={styles.checklistRow}>
-                                    <span>{extractionJob.stage === 'CREATING_CANDIDATE' || extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Merging results
-                                  </div>
-                                  <div className={styles.checklistRow}>
-                                    <span>{extractionJob.stage === 'COMPLETED' ? '●' : '○'}</span> Creating candidate draft
-                                  </div>
-                                </div>
-
-                                {extractionJob.status === 'FAILED' && (
-                                  <div className={styles.aiProgressError}>
-                                    {extractionJob.errorMessage || 'Extraction failed.'}
-                                  </div>
-                                )}
-
-                                {extractionJob.status !== 'COMPLETED' && extractionJob.status !== 'FAILED' && (
-                                  <small>Please keep this modal open while AI is processing.</small>
-                                )}
-                              </div>
+                              <AiExtractionProgressBar
+                                status={extractionJob.status}
+                                stage={extractionJob.stage}
+                                progress={extractionJob.progress}
+                                jobId={extractionJob.jobId}
+                                title="AI Extraction"
+                                documentCount={extractionJob.totalDocuments > 0 ? extractionJob.totalDocuments : (validSelectedTaskDocumentIds.length || 1)}
+                                errorMessage={extractionJob.errorMessage}
+                                subtext={extractionJob.status !== 'COMPLETED' && extractionJob.status !== 'FAILED' && extractionJob.status !== 'CANCELLED' ? 'Please keep this modal open while AI is processing.' : undefined}
+                                onCancel={() => setShowCancelConfirmModal(true)}
+                                isCancelling={isCancellingExtraction}
+                                onCompleted={handleExtractionComplete}
+                              />
                             )}
 
                             <div className={styles.projectDocumentList}>
-                              {projectDocumentsError && (
+                              {taskDocumentsError && (
                                 <div className={styles.inlineError} style={{ margin: '0.5rem 1rem' }}>
-                                  Unable to load project documents. {projectDocumentsError}
+                                  Unable to load task documents. {taskDocumentsError}
                                 </div>
                               )}
-                              {projectDocumentsLoading && <div className={styles.empty}>Loading project documents...</div>}
-                              {!projectDocumentsLoading && !projectDocumentsError && projectDocuments.length === 0 && (
-                                <div className={styles.empty}>No project documents found. Upload documents from the project document screen first.</div>
+                              {taskDocumentsLoading && <div className={styles.empty}>Loading documents...</div>}
+                              {!taskDocumentsLoading && !taskDocumentsError && taskDocuments.length === 0 && (
+                                <div className={styles.empty}>No documents found for this task. Upload a document to get started.</div>
                               )}
-                              {projectDocuments.map((document) => {
-                                const selected = selectedProjectDocumentIds.includes(document.id);
+                              {taskDocuments.map((document) => {
+                                const selected = selectedTaskDocumentIds.includes(document.id);
                                 return (
                                   <article className={`${styles.documentItem} ${selected ? styles.documentItemSelected : ''}`} key={document.id}>
                                     <label className={styles.documentCheckbox}>
                                       <input
                                         type="checkbox"
                                         checked={selected}
-                                        onChange={() => toggleProjectDocumentSelection(document.id)}
+                                        onChange={() => toggleTaskDocumentSelection(document.id)}
                                         disabled={!canUseStaffWorkbench || extractingSelectedDocuments}
                                       />
                                     </label>
@@ -9264,7 +9355,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       taskTypeLabel={taskTypeText[selectedStaffTask.taskType].title}
                       dueDate={selectedStaffTask.dueDate}
                       targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
-                      documents={projectDocuments}
+                      documents={taskDocuments}
                       canEdit={canUseStaffWorkbench}
                       uploadingDocument={uploadingEvidence}
                       onUploadDocument={(file: File) => handleUploadEvidence(file)}
@@ -10228,6 +10319,19 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           if (!cancellingSubmission) setShowCancelSubmissionModal(false);
         }}
         onConfirm={() => void handleCancelStaffSubmission()}
+      />
+      <ConfirmModal
+        isOpen={showCancelConfirmModal}
+        title="Cancel AI Extraction?"
+        message="Are you sure you want to cancel the in-progress AI extraction? Any partially extracted data will be discarded, but your uploaded documents will remain intact."
+        cancelText="Keep Extracting"
+        confirmText={isCancellingExtraction ? 'Cancelling...' : 'Cancel Extraction'}
+        confirmDisabled={isCancellingExtraction}
+        isDestructive={true}
+        onCancel={() => {
+          if (!isCancellingExtraction) setShowCancelConfirmModal(false);
+        }}
+        onConfirm={() => void handleConfirmCancelExtraction()}
       />
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>

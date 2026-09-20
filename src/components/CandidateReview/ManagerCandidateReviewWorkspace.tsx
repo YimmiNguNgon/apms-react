@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, CheckCircle, XCircle, Clock, Send, X as XIcon, Loader2, CheckCheck, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
-import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
+import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, FieldReviewDecision, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
 import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, isManualCandidate, normalizeCandidateFieldValue, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
 import { parseEvidenceCitations } from './EvidenceSection';
@@ -241,47 +241,74 @@ const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, k
 
   const effectiveValue = rawPending ?? rawStaffReviewed ?? rawReviewed ?? rawFieldValue ?? rawDomain;
 
-  if (!approval) {
-    if (!field) {
-      if (domainVal !== undefined) {
-        return {
-          fieldName: key,
-          value: domainVal,
-          staffReviewedValue: domainVal,
-          managerReviewStatus: 'PENDING',
-        };
+  const currentRound = candidate?.currentReviewRound ?? candidate?.revisionNumber ?? 1;
+
+  const currentManagerStatus = approval ? normalizeManagerStatus(approval.status) : normalizeManagerStatus(field?.managerReviewStatus);
+  const currentComment = approval?.comment ?? field?.managerReviewComment;
+  const currentReviewedAt = approval?.reviewedAt ?? field?.managerReviewedAt;
+  const currentReviewedRevision = approval?.reviewedRevision ?? field?.reviewedRevision;
+
+  const currentDecision: FieldReviewDecision = field?.currentDecision ?? {
+    roundNumber: currentRound,
+    status: currentManagerStatus,
+    comment: currentComment ?? null,
+    submittedValue: effectiveValue,
+    reviewedAt: currentReviewedAt ?? null,
+    reviewedByUserId: (approval?.reviewedByAccountId as any) ?? field?.managerReviewedByUserId ?? null,
+  };
+
+  // Previous decision resolution: strictly earlier rounds only (< currentRound). Round 1 is strictly null!
+  let previousDecision: FieldReviewDecision | null = null;
+  if (currentRound > 1) {
+    if (field?.previousDecision && field.previousDecision.roundNumber < currentRound) {
+      previousDecision = {
+        ...field.previousDecision,
+        status: normalizeManagerStatus(field.previousDecision.status),
+      };
+    } else {
+      const rawPrevStatus = approval?.previousStatus
+        ? normalizeManagerStatus(approval.previousStatus)
+        : (field?.previousManagerReviewStatus ? normalizeManagerStatus(field.previousManagerReviewStatus) : undefined);
+
+      if (rawPrevStatus && rawPrevStatus !== 'PENDING') {
+        const prevRound = approval?.previousReviewedRevision ?? field?.previousReviewedRevision ?? (currentRound - 1);
+        if (prevRound < currentRound) {
+          previousDecision = {
+            roundNumber: prevRound,
+            status: rawPrevStatus,
+            comment: approval?.previousComment ?? field?.previousManagerReviewComment ?? null,
+            submittedValue: field?.previousSubmittedValue ?? approval?.pendingValue,
+            reviewedAt: (field as any)?.previousManagerReviewedAt ?? null,
+            reviewedByUserId: null,
+          };
+        }
       }
-      return undefined;
     }
-    return {
-      ...field,
-      value: effectiveValue !== undefined ? effectiveValue : field.value,
-      staffReviewedValue: effectiveValue !== undefined ? effectiveValue : field.staffReviewedValue,
-    };
   }
 
   return {
     ...(field || { fieldName: key }),
     value: effectiveValue !== undefined ? effectiveValue : field?.value,
     staffReviewedValue: effectiveValue !== undefined ? effectiveValue : field?.staffReviewedValue,
-    managerReviewStatus: normalizeManagerStatus(approval.status),
-    managerReviewComment: approval.comment ?? field?.managerReviewComment,
-    managerReviewedAt: approval.reviewedAt ?? field?.managerReviewedAt,
-    reviewedRevision: approval.reviewedRevision ?? field?.reviewedRevision,
-    previousManagerReviewStatus: approval.previousStatus ? normalizeManagerStatus(approval.previousStatus) : field?.previousManagerReviewStatus,
-    previousManagerReviewComment: approval.previousComment ?? field?.previousManagerReviewComment,
-    previousSubmittedValue: approval.pendingValue ?? field?.previousSubmittedValue,
-    previousReviewedRevision: approval.previousReviewedRevision ?? field?.previousReviewedRevision,
-    changedInRevision: approval.changedInRevision ?? field?.changedInRevision,
+    managerReviewStatus: currentManagerStatus,
+    managerReviewComment: currentComment,
+    managerReviewedAt: currentReviewedAt,
+    reviewedRevision: currentReviewedRevision,
+    currentDecision,
+    previousDecision,
+    previousManagerReviewStatus: previousDecision?.status,
+    previousManagerReviewComment: previousDecision?.comment ?? undefined,
+    previousSubmittedValue: previousDecision?.submittedValue,
+    previousReviewedRevision: previousDecision?.roundNumber,
+    submittedRound: field?.submittedRound ?? currentRound,
+    resubmittedInCurrentRound: field?.resubmittedInCurrentRound ?? (currentRound > 1 && previousDecision !== null),
+    changedInRevision: approval?.changedInRevision ?? field?.changedInRevision,
   };
 };
 
 const isCandidateFieldProvided = (candidate: CandidateResponse | null | undefined, key: string): boolean => {
   if (!candidate) return false;
   const approval = fieldApprovalForKey(candidate, key);
-  if (approval && approval.status && approval.status !== 'STALE' && approval.status !== 'PENDING_REVIEW') {
-    return true;
-  }
   if (approval && normalizeCandidateFieldValue(approval.pendingValue) !== null) {
     return true;
   }
@@ -299,10 +326,9 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
   let total = 0, approved = 0, rejected = 0, needsReview = 0, pending = 0, notProvided = 0, staffEdited = 0, lowConfidence = 0;
   const allKeys = Object.values(FIELD_DEFS).flat().map(f => f.key);
   for (const key of allKeys) {
-    const isProvided = !isManual || isCandidateFieldProvided(candidate, key);
-    if (isManual && !isProvided) {
+    const isProvided = isCandidateFieldProvided(candidate, key);
+    if (!isProvided) {
       notProvided++;
-      continue;
     }
 
     const field = effectiveFieldForKey(candidate, key);
@@ -333,7 +359,7 @@ function getReviewStats(candidate: CandidateResponse | null | undefined): Review
     lowConfidence,
     percentage: total > 0 ? Math.round((reviewed / total) * 100) : 0,
     canComplete: total > 0 && pending === 0 && rejected === 0 && needsReview === 0,
-    canSendBack: (total === 0 || rejected > 0 || needsReview > 0) && pending === 0,
+    canSendBack: (rejected > 0 || needsReview > 0) && pending === 0,
   };
 }
 
@@ -473,6 +499,56 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
 
   const queryClient = useQueryClient();
 
+  const scrollBodyRef = React.useRef<HTMLDivElement>(null);
+  const pendingScrollTargetRef = React.useRef<string | null>(null);
+  const isNavigatingPendingRef = React.useRef<boolean>(false);
+  const prevTabRef = React.useRef<TabType>(activeTab);
+
+  const scrollFieldIntoView = useCallback((fieldId: string) => {
+    const container = scrollBodyRef.current;
+    const element = document.getElementById(`field-${fieldId}`);
+    if (!container || !element) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+
+    const targetTop =
+      container.scrollTop +
+      elementRect.top -
+      containerRect.top -
+      16;
+
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: 'smooth',
+    });
+  }, []);
+
+  // Reset scroll to top when changing tabs manually (Section 5)
+  useEffect(() => {
+    if (prevTabRef.current !== activeTab) {
+      prevTabRef.current = activeTab;
+      if (!isNavigatingPendingRef.current) {
+        scrollBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  }, [activeTab]);
+
+  // Render-aware scroll for Next Pending Field navigation (Section 4)
+  useEffect(() => {
+    const target = pendingScrollTargetRef.current;
+    if (!target) return;
+
+    const el = document.getElementById(`field-${target}`);
+    if (el && scrollBodyRef.current) {
+      scrollFieldIntoView(target);
+      setHighlightedField(target);
+      window.setTimeout(() => setHighlightedField(current => current === target ? null : current), 1600);
+      pendingScrollTargetRef.current = null;
+      isNavigatingPendingRef.current = false;
+    }
+  }, [activeTab, serverCandidate, scrollFieldIntoView]);
+
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -554,12 +630,12 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     const map = {} as Record<TabType, SectionReviewSummary>;
     for (const tab of CANDIDATE_TABS) {
       const tabFields = FIELD_DEFS[tab];
-      const submittedFields = tabFields.filter(f => !isManual || isCandidateFieldProvided(serverCandidate, f.key));
+      const submittedCount = tabFields.filter(f => isCandidateFieldProvided(serverCandidate, f.key)).length;
       let pendingCount = 0;
       let reviewedCount = 0;
       let rejectedCount = 0;
 
-      for (const f of submittedFields) {
+      for (const f of tabFields) {
         const field = effectiveFieldForKey(serverCandidate, f.key);
         const status = normalizeManagerStatus(field?.managerReviewStatus);
         if (status === 'PENDING') {
@@ -572,7 +648,6 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         }
       }
 
-      const submittedCount = submittedFields.length;
       map[tab] = {
         tab,
         totalFields: tabFields.length,
@@ -580,12 +655,12 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         reviewedCount,
         pendingCount,
         rejectedCount,
-        complete: submittedCount > 0 && reviewedCount === submittedCount,
-        hasData: submittedCount > 0,
+        complete: tabFields.length > 0 && reviewedCount === tabFields.length,
+        hasData: tabFields.length > 0,
       };
     }
     return map;
-  }, [serverCandidate, isManual]);
+  }, [serverCandidate]);
 
   const isActiveManagerReview =
     serverCandidate?.status === 'PENDING_REVIEW' ||
@@ -630,41 +705,42 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     }
   }, [projectId, candidateId, queryClient, addToast]);
 
-  const handleApproveAllInTab = useCallback(async () => {
-    if (isReadOnly || isEffectiveReadOnly || !serverCandidate) return;
+  const [bulkConfirmTab, setBulkConfirmTab] = useState<TabType | null>(null);
+  const [bulkApproving, setBulkApproving] = useState(false);
 
-    const pendingFields = FIELD_DEFS[activeTab].filter(f => {
-      if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) {
-        return false;
-      }
+  const handleConfirmBulkApproveInTab = useCallback(async () => {
+    if (!bulkConfirmTab || isReadOnly || isEffectiveReadOnly || !serverCandidate || bulkApproving) return;
+
+    const pendingFields = FIELD_DEFS[bulkConfirmTab].filter(f => {
       const field = effectiveFieldForKey(serverCandidate, f.key);
       return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
     });
 
-    if (pendingFields.length === 0) return;
+    if (pendingFields.length === 0) {
+      setBulkConfirmTab(null);
+      return;
+    }
 
-    const payload: Record<string, any> = {};
-    pendingFields.forEach(f => {
-      payload[f.key] = {
-        managerReviewStatus: 'ACCEPTED',
-        managerReviewComment: '',
-        isManager: true,
-        manager: true
-      };
-    });
-
+    setBulkApproving(true);
     try {
-      const res = await candidateApi.reviewCandidateFields(projectId, candidateId, payload);
+      const res = await candidateApi.bulkApproveFields(
+        projectId,
+        candidateId,
+        pendingFields.map(f => f.key)
+      );
       if (res?.data) {
         setServerCandidate(res.data);
       }
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate', candidateId] });
-      addToast('Batch Approved', `Approved ${pendingFields.length} fields in ${activeTab}`);
-    } catch (e) {
-      addToast('Error', 'Could not batch approve fields', 'error');
+      addToast('Section Approved', `Approved ${pendingFields.length} fields in ${bulkConfirmTab}`);
+      setBulkConfirmTab(null);
+    } catch (e: any) {
+      addToast('Error', e?.message || 'Could not batch approve fields', 'error');
+    } finally {
+      setBulkApproving(false);
     }
-  }, [isReadOnly, isEffectiveReadOnly, serverCandidate, activeTab, projectId, candidateId, queryClient, addToast, isManual]);
+  }, [bulkConfirmTab, isReadOnly, isEffectiveReadOnly, serverCandidate, bulkApproving, projectId, candidateId, queryClient, addToast]);
 
   // ── Complete Review ──
   const effectiveSubmissionId = submissionId || currentSubmission?.id;
@@ -748,34 +824,26 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   const handleNextPending = useCallback(() => {
     for (const tab of CANDIDATE_TABS) {
       const pendingFields = FIELD_DEFS[tab].filter(f => {
-        if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) {
-          return false;
-        }
         const field = effectiveFieldForKey(serverCandidate, f.key);
         return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
       });
       if (pendingFields.length > 0) {
         const nextField = pendingFields[0].key;
-        const scrollToField = () => {
-          const el = document.getElementById(`field-${nextField}`);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setHighlightedField(nextField);
-            window.setTimeout(() => setHighlightedField((current) => current === nextField ? null : current), 1600);
-          }
-        };
 
         if (activeTab !== tab) {
+          isNavigatingPendingRef.current = true;
+          pendingScrollTargetRef.current = nextField;
           setActiveTab(tab);
-          setTimeout(scrollToField, 100);
         } else {
-          scrollToField();
+          scrollFieldIntoView(nextField);
+          setHighlightedField(nextField);
+          window.setTimeout(() => setHighlightedField((current) => current === nextField ? null : current), 1600);
         }
         return;
       }
     }
     addToast('All Done', 'No pending fields remaining.', 'success');
-  }, [activeTab, serverCandidate, addToast, isManual]);
+  }, [activeTab, serverCandidate, addToast, scrollFieldIntoView]);
 
   // ── Tab Content ──
   const renderTabContent = () => {
@@ -807,7 +875,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             label={f.label}
             fieldKey={f.key}
             fieldResult={effectiveFieldForKey(serverCandidate, f.key)}
-            currentRevisionNumber={serverCandidate?.revisionNumber ?? 1}
+            currentRevisionNumber={serverCandidate?.currentReviewRound ?? serverCandidate?.revisionNumber ?? 1}
             evidenceItems={evidenceItems}
             onDecision={async (decision, comment) => {
               await handleFieldDecision(f.key, decision, comment, f.label);
@@ -932,7 +1000,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   // ── Header Information ──
   const draftTitle = serverCandidate.draftName
     || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft');
-  const roundNumber = currentSubmission?.submittedRevisionNumber || serverCandidate.revisionNumber || 1;
+  const roundNumber = currentSubmission?.submittedRevisionNumber || serverCandidate.currentReviewRound || serverCandidate.revisionNumber || 1;
   const submittedBy = currentSubmission?.submittedByName || serverCandidate.metadata?.createdBy || 'Staff';
   const submittedAt = currentSubmission?.submittedAt || currentSubmission?.createdAt || serverCandidate.lastSubmittedAt || serverCandidate.metadata?.createdAt;
   const companyLegalName = serverCandidate.identity?.legalName || 'Unknown Company';
@@ -949,6 +1017,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
   }
 
   // ── Sidebar status message ──
+  const isZeroSubmitted = isManual && stats.notProvided === stats.total;
   let sidebarMessage: React.ReactNode = null;
   if (serverCandidate.status === 'APPROVED') {
     sidebarMessage = (
@@ -962,10 +1031,10 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
         Candidate was rejected.
       </div>
     );
-  } else if (stats.total === 0) {
+  } else if (isZeroSubmitted && stats.pending > 0) {
     sidebarMessage = (
-      <div className={styles.sidebarWarnBanner}>
-        No fields were submitted by Staff. Send back to Staff for revision.
+      <div className={styles.sidebarInfoBanner}>
+        Staff did not provide values for this submission. You can accept the missing optional information or request specific fields to be completed.
       </div>
     );
   } else if (stats.pending > 0) {
@@ -992,169 +1061,220 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
     <div className={styles.workspace}>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {!unifiedTopBar && banner && (
-        <div style={{ marginBottom: 16 }}>
-          {banner}
-        </div>
-      )}
-
-      {/* ── Top Task Header (matches Staff Workspace inviteHead style) ── */}
-      <div className={styles.managerTaskHeader}>
-        <div className={styles.managerTaskHeaderInfo}>
-          <h2 className={styles.managerTaskTitle}>
-            {taskTitle || 'Research Basic Company Information'}
-          </h2>
-          <div className={styles.managerTaskMeta}>
-            <span
-              className={
-                isReadOnly
+      {/* ── Fixed Header Zone (Title, Meta, Close, Compact Summary) ── */}
+      <div className={styles.modalFixedHeader}>
+        {/* ── Top Task Header (matches Staff Workspace inviteHead style) ── */}
+        <div className={styles.managerTaskHeader}>
+          <div className={styles.managerTaskHeaderInfo}>
+            <h2 className={styles.managerTaskTitle}>
+              {taskTitle || 'Research Basic Company Information'}
+            </h2>
+            <div className={styles.managerTaskMeta}>
+              <span
+                className={
+                  isReadOnly
+                    ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
+                        ? styles.managerReviewStatusDone
+                        : serverCandidate?.status === 'REVISION_REQUIRED' || serverCandidate?.status === 'REJECTED' || currentSubmission?.status === 'CHANGES_REQUESTED'
+                        ? styles.managerReviewStatusChanges
+                        : styles.managerReviewStatusDefault)
+                    : styles.inReviewBadge
+                }
+              >
+                {isReadOnly
                   ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
-                      ? styles.managerReviewStatusDone
-                      : serverCandidate?.status === 'REVISION_REQUIRED' || serverCandidate?.status === 'REJECTED' || currentSubmission?.status === 'CHANGES_REQUESTED'
-                      ? styles.managerReviewStatusChanges
-                      : styles.managerReviewStatusDefault)
-                  : styles.inReviewBadge
-              }
+                      ? 'DONE'
+                      : serverCandidate?.status === 'REVISION_REQUIRED'
+                      ? 'CHANGES REQUESTED'
+                      : serverCandidate?.status || currentSubmission?.status || 'DONE')
+                  : 'IN REVIEW'}
+              </span>
+
+              {taskDueDate && (
+                <>
+                  <span className={styles.metaSeparator}>&bull;</span>
+                  <span className={styles.metaItem}>Due {formatReviewDate(taskDueDate)}</span>
+                </>
+              )}
+
+              {companyLegalName && (
+                <>
+                  <span className={styles.metaSeparator}>&bull;</span>
+                  <span className={styles.metaItem}>Target: <strong>{companyLegalName}</strong></span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {!unifiedTopBar && (
+            <button
+              type="button"
+              className={styles.iconCloseButton}
+              onClick={onCancel}
+              aria-label="Close review workspace"
             >
-              {isReadOnly
-                ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
-                    ? 'DONE'
-                    : serverCandidate?.status === 'REVISION_REQUIRED'
-                    ? 'CHANGES REQUESTED'
-                    : serverCandidate?.status || currentSubmission?.status || 'DONE')
-                : 'IN REVIEW'}
-            </span>
-
-            {taskDueDate && (
-              <>
-                <span className={styles.metaSeparator}>&bull;</span>
-                <span className={styles.metaItem}>Due {formatReviewDate(taskDueDate)}</span>
-              </>
-            )}
-
-            {companyLegalName && (
-              <>
-                <span className={styles.metaSeparator}>&bull;</span>
-                <span className={styles.metaItem}>Target: <strong>{companyLegalName}</strong></span>
-              </>
-            )}
-          </div>
+              <XIcon size={18} />
+            </button>
+          )}
         </div>
 
-        {!unifiedTopBar && (
-          <button
-            type="button"
-            className={styles.iconCloseButton}
-            onClick={onCancel}
-            aria-label="Close review workspace"
-          >
-            <XIcon size={18} />
-          </button>
+        {/* ── Submission Summary Card (matches Staff Workspace draft summary) ── */}
+        <div className={styles.submissionSummaryCard}>
+          <div className={styles.submissionSummaryTop}>
+            <div className={styles.submissionSummaryBadges}>
+              <span className={isManual ? styles.manualEntryBadge : styles.aiExtractedBadge}>
+                {isManual ? 'MANUAL ENTRY' : 'AI EXTRACTED'}
+              </span>
+              <span className={styles.inReviewSubBadge}>
+                {isReadOnly
+                  ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
+                      ? 'APPROVED'
+                      : serverCandidate?.status === 'REVISION_REQUIRED'
+                      ? 'CHANGES REQUESTED'
+                      : serverCandidate?.status || 'REVIEWED')
+                  : 'IN REVIEW'}
+              </span>
+              <span className={styles.metaSeparator}>&bull;</span>
+              <span className={styles.summaryRoundText}>Round {roundNumber}</span>
+            </div>
+          </div>
+
+          <h3 className={styles.submissionDraftTitle}>
+            {draftTitle}
+          </h3>
+
+          <div className={styles.submissionSummaryMetaRow}>
+            {submittedAt && (
+              <span><strong>Submitted:</strong> {formatReviewDate(submittedAt)}</span>
+            )}
+            <span><strong>Submitted by:</strong> {submittedBy}</span>
+            {isReadOnly && reviewedAt && (
+              <span><strong>Reviewed:</strong> {formatReviewDate(reviewedAt)}</span>
+            )}
+            <span>
+              <strong>Source:</strong>{' '}
+              {isManual
+                ? 'Manual Entry'
+                : (sourceDocNames.length > 0 ? sourceDocNames.join(', ') : 'AI Extraction')}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Fixed Section Tabs Zone (Permanently visible outside scroll body) ── */}
+      <div className={styles.modalFixedTabs}>
+        {!unifiedTopBar && banner && (
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
+            {banner}
+          </div>
         )}
-      </div>
-
-      {/* ── Submission Summary Card (matches Staff Workspace draft summary) ── */}
-      <div className={styles.submissionSummaryCard}>
-        <div className={styles.submissionSummaryTop}>
-          <div className={styles.submissionSummaryBadges}>
-            <span className={isManual ? styles.manualEntryBadge : styles.aiExtractedBadge}>
-              {isManual ? 'MANUAL ENTRY' : 'AI EXTRACTED'}
-            </span>
-            <span className={styles.inReviewSubBadge}>
-              {isReadOnly
-                ? (serverCandidate?.status === 'APPROVED' || currentSubmission?.status === 'APPROVED'
-                    ? 'APPROVED'
-                    : serverCandidate?.status === 'REVISION_REQUIRED'
-                    ? 'CHANGES REQUESTED'
-                    : serverCandidate?.status || 'REVIEWED')
-                : 'IN REVIEW'}
-            </span>
-            <span className={styles.metaSeparator}>&bull;</span>
-            <span className={styles.summaryRoundText}>Round {roundNumber}</span>
+        {isZeroSubmitted && !isReadOnly && !isEffectiveReadOnly && (
+          <div style={{
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            marginTop: '8px',
+            marginBottom: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#1e40af',
+            fontSize: '13px',
+            lineHeight: '1.4',
+          }}>
+            <AlertTriangle size={16} style={{ color: '#3b82f6', flexShrink: 0 }} />
+            <div>
+              Staff did not provide values for this submission. You can accept the missing optional information or request specific fields to be completed.
+            </div>
           </div>
-        </div>
+        )}
+        <div className={styles.tabsContainer}>
+          {CANDIDATE_TABS.map(tab => {
+            const summary = sectionSummaries[tab];
+            const isActive = activeTab === tab;
+            const total = summary.totalFields;
+            const reviewed = summary.reviewedCount;
+            const hasChanges = summary.rejectedCount > 0;
+            const isComplete = total > 0 && reviewed === total && !hasChanges;
+            const isInProgress = reviewed > 0 && reviewed < total && !hasChanges;
 
-        <h3 className={styles.submissionDraftTitle}>
-          {draftTitle}
-        </h3>
+            let statusClass = styles.tabUnreviewed;
+            if (isComplete) statusClass = styles.tabComplete;
+            else if (hasChanges) statusClass = styles.tabHasChanges;
+            else if (isInProgress) statusClass = styles.tabInProgress;
 
-        <div className={styles.submissionSummaryMetaRow}>
-          {submittedAt && (
-            <span><strong>Submitted:</strong> {formatReviewDate(submittedAt)}</span>
-          )}
-          <span><strong>Submitted by:</strong> {submittedBy}</span>
-          {isReadOnly && reviewedAt && (
-            <span><strong>Reviewed:</strong> {formatReviewDate(reviewedAt)}</span>
-          )}
-          <span>
-            <strong>Source:</strong>{' '}
-            {isManual
-              ? 'Manual Entry'
-              : (sourceDocNames.length > 0 ? sourceDocNames.join(', ') : 'AI Extraction')}
-          </span>
+            return (
+              <button
+                key={tab}
+                type="button"
+                className={`${styles.managerTab} ${statusClass} ${isActive ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                <span>{tab}</span>
+                <span className={styles.tabFraction}>
+                  {reviewed}/{total}
+                </span>
+                {isComplete && <span className={styles.tabCompleteCheck}>✓</span>}
+                {hasChanges && (
+                  <span className={styles.tabChangesWarning} title={`${summary.rejectedCount} field(s) have changes requested`}>
+                    ⚠
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Main Layout */}
-      <div className={`${styles.layoutContainer} ${isReadOnly ? styles.layoutContainerReadOnly : ''}`}>
+      {/* ── Single Vertical Scroll Area for Main Review Content & Sticky Sidebar ── */}
+      <div ref={scrollBodyRef} className={styles.modalScrollBody}>
+        {/* Main Layout */}
+        <div className={`${styles.layoutContainer} ${isReadOnly ? styles.layoutContainerReadOnly : ''}`}>
         {/* Left Column (Full width when read-only) */}
         <div className={styles.mainContent}>
-          <div className={styles.tabsContainer}>
-            {CANDIDATE_TABS.map(tab => {
-              const summary = sectionSummaries[tab];
-              const isActive = activeTab === tab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`${styles.tab} ${styles.managerTab} ${isActive ? styles.tabActive : ''}`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  <span>{tab}</span>
-                  <span className={styles.tabCount}>
-                    {isManual ? summary.submittedCount : summary.totalFields}
-                  </span>
-                  {!isReadOnly && summary.pendingCount > 0 && (
-                    <span className={styles.tabPendingDot}>{summary.pendingCount} pending</span>
-                  )}
-                  {!isReadOnly && summary.rejectedCount > 0 && (
-                    <span className={styles.tabRejectedDot} title={`${summary.rejectedCount} field(s) rejected`}>
-                      {summary.rejectedCount} rejected
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
 
           {(() => {
-            const hasPendingInTab = FIELD_DEFS[activeTab].some(f => {
-              if (isManual && !isCandidateFieldProvided(serverCandidate, f.key)) return false;
+            const pendingInActiveTab = FIELD_DEFS[activeTab].filter(f => {
               const field = effectiveFieldForKey(serverCandidate, f.key);
               return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
             });
+            const pendingCount = pendingInActiveTab.length;
+            const totalCount = FIELD_DEFS[activeTab].length;
+            const showBulkBtn = !isReadOnly && !isEffectiveReadOnly && pendingCount > 0;
+            const changesRequestedCount = stats.needsReview + stats.rejected;
+
             return (
               <div className={styles.quickFilterBar}>
                 <div>
                   <span className={styles.quickFilterTitle}>Reviewed fields</span>
                   <small className={styles.quickFilterSubtitle}>
-                    {stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'} &middot;{' '}
+                    {stats.reviewed} / {stats.total} fields reviewed &middot;{' '}
                     <span style={{ color: '#16a34a', fontWeight: 600 }}>{stats.approved} approved</span> &middot;{' '}
-                    <span style={{ color: stats.rejected > 0 ? '#dc2626' : undefined, fontWeight: stats.rejected > 0 ? 600 : undefined }}>{stats.rejected} rejected</span>
+                    <span style={{ color: changesRequestedCount > 0 ? '#c2410c' : undefined, fontWeight: changesRequestedCount > 0 ? 600 : undefined }}>
+                      {changesRequestedCount} changes requested
+                    </span>
                     {stats.pending > 0 && (
                       <> &middot; <span style={{ color: '#64748b' }}>{stats.pending} pending</span></>
                     )}
                   </small>
                 </div>
-                {!isReadOnly && !isEffectiveReadOnly && hasPendingInTab && (
+                {showBulkBtn && (
                   <div className={styles.quickFilterActions}>
                     <button
                       type="button"
                       className={styles.approveAllBtn}
-                      onClick={handleApproveAllInTab}
-                      title={`Approve all pending fields in ${activeTab}`}
+                      onClick={() => setBulkConfirmTab(activeTab)}
+                      title={
+                        pendingCount === totalCount
+                          ? `Approve all ${totalCount} pending fields in ${activeTab}`
+                          : `Approve remaining ${pendingCount} pending fields in ${activeTab}`
+                      }
                     >
-                      <CheckCheck size={14} /> Approve All
+                      <CheckCheck size={15} />{' '}
+                      {pendingCount === totalCount
+                        ? `Approve All in ${activeTab} (${totalCount})`
+                        : `Approve Remaining in ${activeTab} (${pendingCount})`}
                     </button>
                   </div>
                 )}
@@ -1247,7 +1367,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
             {/* Progress bar */}
             <div className={styles.progressBarWrap}>
               <div className={styles.managerProgressLabels}>
-                <span>{stats.reviewed} / {stats.total} {isManual ? 'submitted fields reviewed' : 'reviewed'}</span>
+                <span>{stats.reviewed} / {stats.total} {isManual ? 'fields reviewed' : 'reviewed'}</span>
                 <strong>{stats.percentage}%</strong>
               </div>
               <div className={styles.progressBarTrack}>
@@ -1265,8 +1385,8 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 <strong>{stats.approved}</strong>
               </div>
               <div className={styles.managerStatRow}>
-                <span className={styles.managerStatRejected}><XCircle size={13} /> Rejected</span>
-                <strong>{stats.rejected}</strong>
+                <span className={styles.managerStatChanges}><AlertTriangle size={13} /> Changes Requested</span>
+                <strong>{stats.needsReview + stats.rejected}</strong>
               </div>
 
               <div className={styles.managerStatRow}>
@@ -1277,7 +1397,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
               {isManual && stats.notProvided > 0 && (
                 <div className={styles.managerStatRow}>
                   <span className={styles.managerStatNotProvided}>
-                    Not provided
+                    Missing Values
                   </span>
                   <strong style={{ color: '#94a3b8' }}>{stats.notProvided}</strong>
                 </div>
@@ -1314,7 +1434,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 </button>
               )}
 
-              {!stats.canComplete && stats.pending === 0 && (stats.total === 0 || stats.rejected > 0 || stats.needsReview > 0) && (
+              {!stats.canComplete && stats.pending === 0 && (stats.rejected > 0 || stats.needsReview > 0) && (
                 <button
                   className={styles.btnSendBack}
                   onClick={handleSendBack}
@@ -1332,7 +1452,7 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
                 <button
                   className={styles.btnCompleteDisabled}
                   disabled
-                  title={isManual ? `${stats.pending} submitted field(s) still need a decision` : `${stats.pending} fields still need a decision`}
+                  title={`${stats.pending} field(s) still need a decision`}
                 >
                   <CheckCircle size={16} /> Approve Candidate
                 </button>
@@ -1384,17 +1504,89 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
           </div>
         )}
       </div>
+      </div>
 
     </div>
   );
 
-  return ReactDOM.createPortal(
-    <div className={styles.managerReviewBackdrop} onClick={onCancel}>
-      <div className={styles.managerReviewModal} onClick={(e) => e.stopPropagation()}>
-        {unifiedTopBar}
-        {workspaceContent}
-      </div>
-    </div>,
-    document.body
+  return (
+    <>
+      {ReactDOM.createPortal(
+        <div className={styles.managerReviewBackdrop} onClick={onCancel}>
+          <div className={styles.managerReviewModal} onClick={(e) => e.stopPropagation()}>
+            {unifiedTopBar}
+            {workspaceContent}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {bulkConfirmTab && ReactDOM.createPortal(
+        <div className={styles.bulkConfirmOverlay} onClick={() => { if (!bulkApproving) setBulkConfirmTab(null); }}>
+          <div className={styles.bulkConfirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.bulkConfirmHeader}>
+              <h3>
+                {(() => {
+                  const pendingFields = FIELD_DEFS[bulkConfirmTab].filter(f => {
+                    const field = effectiveFieldForKey(serverCandidate, f.key);
+                    return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
+                  });
+                  return pendingFields.length === FIELD_DEFS[bulkConfirmTab].length
+                    ? `Approve all pending fields in ${bulkConfirmTab}?`
+                    : `Approve remaining pending fields in ${bulkConfirmTab}?`;
+                })()}
+              </h3>
+            </div>
+            <div className={styles.bulkConfirmBody}>
+              {(() => {
+                const count = FIELD_DEFS[bulkConfirmTab].filter(f => {
+                  const field = effectiveFieldForKey(serverCandidate, f.key);
+                  return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
+                }).length;
+                return (
+                  <>
+                    <p>
+                      <strong>{count} pending field{count !== 1 ? 's' : ''}</strong> will be marked as Approved.
+                    </p>
+                    <p className={styles.bulkConfirmSubtext}>
+                      Empty fields will remain empty; approval means the omission is accepted.
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+            <div className={styles.bulkConfirmActions}>
+              <button
+                type="button"
+                className={styles.bulkConfirmCancelBtn}
+                onClick={() => setBulkConfirmTab(null)}
+                disabled={bulkApproving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.bulkConfirmApproveBtn}
+                onClick={handleConfirmBulkApproveInTab}
+                disabled={bulkApproving}
+              >
+                {bulkApproving ? (
+                  <><Loader2 size={14} className={styles.spin} /> Approving&hellip;</>
+                ) : (
+                  (() => {
+                    const count = FIELD_DEFS[bulkConfirmTab].filter(f => {
+                      const field = effectiveFieldForKey(serverCandidate, f.key);
+                      return normalizeManagerStatus(field?.managerReviewStatus) === 'PENDING';
+                    }).length;
+                    return `Approve ${count} Field${count !== 1 ? 's' : ''}`;
+                  })()
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };

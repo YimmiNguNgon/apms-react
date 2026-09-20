@@ -536,6 +536,7 @@ export interface CandidateResponse {
   sourceDocumentIds?: string[];
   candidateOrder?: number;
   revisionNumber?: number;
+  currentReviewRound?: number;
   draftName?: string | null;
   draftSequence?: number | null;
   documentVersion?: number;
@@ -616,6 +617,15 @@ export interface CandidateFieldEvidence {
   [key: string]: unknown;
 }
 
+export interface FieldReviewDecision {
+  roundNumber: number;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'NEEDS_REVIEW' | 'APPROVED' | 'REVISION_REQUIRED' | string;
+  comment?: string | null;
+  submittedValue?: unknown;
+  reviewedAt?: string | null;
+  reviewedByUserId?: number | null;
+}
+
 export interface AiFieldResult {
   fieldName?: string;
   value?: unknown;
@@ -642,6 +652,10 @@ export interface AiFieldResult {
   reviewedValue?: unknown;
   staffReviewedValue?: unknown;
   reviewStatus?: FieldReviewStatus | string; // Synthetic status used by frontend
+  currentDecision?: FieldReviewDecision | null;
+  previousDecision?: FieldReviewDecision | null;
+  submittedRound?: number;
+  resubmittedInCurrentRound?: boolean;
 }
 
 export interface ApproveCandidateRequest {
@@ -782,8 +796,8 @@ export interface AiExtractionResult {
   [key: string]: unknown;
 }
 
-export type AiExtractionJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-export type AiExtractionJobStage = 'PREPARING' | 'EXTRACTING' | 'MERGING' | 'CREATING_CANDIDATE' | 'DONE' | 'COMPLETED' | 'FAILED';
+export type AiExtractionJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type AiExtractionJobStage = 'PREPARING' | 'EXTRACTING' | 'MERGING' | 'CREATING_CANDIDATE' | 'DONE' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 export interface AiExtractionJobResponse {
   jobId: string;
@@ -794,6 +808,8 @@ export interface AiExtractionJobResponse {
   processedDocuments: number;
   candidateId: number | null;
   errorMessage: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: number | null;
 }
 
 export interface MergeCandidateResponse {

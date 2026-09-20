@@ -3,12 +3,12 @@
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
   transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   align-self: start;
   height: auto;
   min-width: 0;
@@ -272,8 +272,8 @@
 }
 .managerPending     { background: #f1f5f9; color: #64748b; }
 .managerApproved    { background: #dcfce7; color: #166534; }
-.managerRejected    { background: #fef2f2; color: #991b1b; }
-.managerNeedsReview { background: #fef3c7; color: #92400e; }
+.managerRejected    { background: #fff7ed; color: #c2410c; }
+.managerNeedsReview { background: #fff7ed; color: #c2410c; }
 .staffEditedHint,
 .lowConfidenceHint {
   display: inline-flex;
@@ -557,7 +557,7 @@
 .actionBar {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 14px;
   flex-wrap: wrap;
 }
 .btnAction {
@@ -566,13 +566,16 @@
   justify-content: center;
   gap: 6px;
   font-size: 13px;
-  font-weight: 500;
-  padding: 0 12px;
-  height: 32px;
-  border-radius: 6px;
+  font-weight: 600;
+  padding: 0 14px;
+  height: 34px;
+  border-radius: 7px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
   border: 1px solid transparent;
+}
+.btnAction:active {
+  transform: translateY(1px);
 }
 .btnActionSelected {
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(37, 99, 235, 0.28);
@@ -583,41 +586,75 @@
   cursor: not-allowed;
 }
 .btnApprove {
-  background: #f0fdf4;
-  color: #166534;
-  border-color: #bbf7d0;
+  background: #ECFDF5;
+  color: #047857;
+  border-color: #86EFAC;
 }
 .btnApprove:not(:disabled):hover {
-  background: #dcfce7;
+  background: #D1FAE5;
+  border-color: #4ADE80;
 }
-.btnNeedsReviewWarning {
-  background: #fffbeb;
-  color: #92400e;
-  border-color: #fde68a;
+.btnRequestChanges {
+  background: #FFF7ED;
+  color: #C2410C;
+  border-color: #FDBA74;
 }
-.btnNeedsReviewWarning:not(:disabled):hover {
-  background: #fef3c7;
+.btnRequestChanges:not(:disabled):hover {
+  background: #FFEDD5;
+  border-color: #FB923C;
 }
-.btnRejectOutline {
-  background: white;
-  color: #dc2626;
-  border-color: #fca5a5;
+
+/* ── Resolved Status Row ── */
+.resolvedActionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
 }
-.btnRejectOutline:not(:disabled):hover {
-  background: #fef2f2;
+.resolvedBadgeApproved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
-.btnUndo {
-  background: #ffffff;
-  color: #475569;
-  border-color: #cbd5e1;
+.resolvedBadgeChanges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #FFF7ED;
+  color: #C2410C;
+  border: 1px solid #FDBA74;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+.btnUndoText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: #64748b;
   font-size: 12px;
-  height: 28px;
-  padding: 0 10px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
 }
-.btnUndo:not(:disabled):hover {
+.btnUndoText:not(:disabled):hover {
   background: #f1f5f9;
   color: #0f172a;
-  border-color: #94a3b8;
 }
 
 /* ── Modal (Comments) ── */

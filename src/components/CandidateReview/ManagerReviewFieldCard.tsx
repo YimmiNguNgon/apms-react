@@ -160,8 +160,8 @@ const SwotRenderer: React.FC<{ items: any[] }> = ({ items }) => {
   );
 };
 
-const renderValue = (fieldKey: string, val: any): React.ReactNode => {
-  if (isEmpty(val)) return <span className={styles.emptyValue}>N/A</span>;
+const renderValue = (fieldKey: string, val: any, isManual?: boolean): React.ReactNode => {
+  if (isEmpty(val)) return <span className={styles.emptyValue}>{isManual ? 'Not provided' : 'N/A'}</span>;
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
   
   if (fieldKey === 'financial' || fieldKey === 'innovation' || fieldKey === 'market' || fieldKey === 'risk' || fieldKey === 'compliance') {
@@ -213,11 +213,12 @@ const mapStaffStatus = (s: string, isSameAsAi: boolean): { text: string; icon: R
   }
 };
 
-const mapManagerStatus = (s: string): { text: string; className: string; icon: React.ReactNode } => {
+const mapManagerStatus = (rawStatus: unknown): { text: string; className: string; icon: React.ReactNode } => {
+  const s = normalizeManagerStatus(rawStatus);
   switch (s) {
     case 'ACCEPTED':          return { text: 'Approved', className: styles.managerApproved, icon: <CheckCircle size={13} /> };
-    case 'REJECTED':          return { text: 'Rejected', className: styles.managerRejected, icon: <XCircle size={13} /> };
-    case 'CHANGES_REQUESTED': return { text: 'Needs Review', className: styles.managerNeedsReview, icon: <AlertTriangle size={13} /> };
+    case 'REJECTED':          return { text: 'Changes Requested', className: styles.managerRejected, icon: <AlertTriangle size={13} /> };
+    case 'CHANGES_REQUESTED': return { text: 'Changes Requested', className: styles.managerNeedsReview, icon: <AlertTriangle size={13} /> };
     default:                  return { text: 'Manager Pending', className: styles.managerPending, icon: <Clock size={13} /> };
   }
 };
@@ -309,7 +310,9 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   const [mutatingAction, setMutatingAction] = useState<'ACCEPTED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'PENDING' | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const status = normalizeManagerStatus(fieldResult?.managerReviewStatus);
+  const currentRound = currentRevisionNumber ?? 1;
+  const currentDecision = fieldResult?.currentDecision;
+  const status = normalizeManagerStatus(currentDecision?.status ?? fieldResult?.managerReviewStatus);
   const originalValue = fieldResult?.value;
   const staffValue = getEffectiveReviewedValue(fieldResult);
   const isChanged = isCandidateFieldEdited(originalValue, staffValue);
@@ -326,20 +329,58 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   const isNeedsReview = status === 'CHANGES_REQUESTED';
   const isPending = status === 'PENDING';
   const hasDecision = isAccepted || isRejected || isNeedsReview;
+
+  // Decision belongs to current round if roundNumber matches currentRound (or reviewedRevision matches currentRound, or unspecified for active draft)
   const isCurrentRoundDecision =
     hasDecision &&
-    currentRevisionNumber != null &&
-    fieldResult?.reviewedRevision != null &&
-    fieldResult.reviewedRevision === currentRevisionNumber;
+    (currentDecision?.roundNumber == null || currentDecision.roundNumber === currentRound) &&
+    (fieldResult?.reviewedRevision == null || fieldResult.reviewedRevision === currentRound);
+
   const isLowConfidence = hasConfidence && confidence < 0.6;
-  const managerComment = fieldResult?.managerReviewComment;
-  const managerReviewedAt = fieldResult?.managerReviewedAt;
+  const managerComment = currentDecision?.comment ?? fieldResult?.managerReviewComment;
+  const managerReviewedAt = currentDecision?.reviewedAt ?? fieldResult?.managerReviewedAt;
   const evidenceCount = evidenceItems.length;
 
-  // Previous decision history (Round 2+)
-  const prevStatus = fieldResult?.previousManagerReviewStatus;
-  const prevComment = fieldResult?.previousManagerReviewComment;
-  const previousSubmittedValue = fieldResult?.previousSubmittedValue;
+  // Canonical previous review resolution: strictly earlier rounds (< currentRound)
+  // Round 1 must NEVER have a previous decision!
+  const previousDecision = (() => {
+    if (currentRound <= 1) return null;
+
+    if (fieldResult?.previousDecision && fieldResult.previousDecision.roundNumber < currentRound) {
+      const prevNorm = normalizeManagerStatus(fieldResult.previousDecision.status);
+      if (prevNorm !== 'PENDING') {
+        return {
+          ...fieldResult.previousDecision,
+          status: prevNorm,
+        };
+      }
+    }
+
+    const rawPrev = fieldResult?.previousManagerReviewStatus;
+    if (!rawPrev) return null;
+    const norm = normalizeManagerStatus(rawPrev);
+    if (norm === 'PENDING') return null;
+
+    const prevRev = fieldResult?.previousReviewedRevision ?? (currentRound - 1);
+    if (prevRev >= currentRound) return null;
+
+    return {
+      roundNumber: prevRev,
+      status: norm,
+      comment: fieldResult?.previousManagerReviewComment || null,
+      submittedValue: fieldResult?.previousSubmittedValue,
+      reviewedAt: (fieldResult as any)?.previousManagerReviewedAt || null,
+      reviewedByUserId: (fieldResult as any)?.previousManagerReviewedByUserId || null,
+    };
+  })();
+
+  const hasResubmittedInCurrentRound =
+    currentRound > 1 &&
+    previousDecision !== null &&
+    (fieldResult?.resubmittedInCurrentRound === true ||
+      isChanged ||
+      !isEmpty(staffValue) ||
+      previousDecision.submittedValue !== undefined);
 
   const handleApprove = useCallback(async () => {
     if (mutatingAction || disabled) return;
@@ -367,14 +408,12 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
     }
   }, [onDecision, mutatingAction, disabled]);
 
-  const openRejectModal = useCallback(() => {
-    setPendingDecision('REJECTED');
+  const openRequestChangesModal = useCallback(() => {
+    setPendingDecision('CHANGES_REQUESTED');
     setComment(managerComment || '');
     setMutationError(null);
     setIsCommentModalOpen(true);
   }, [managerComment]);
-
-
 
   const submitCommentDecision = useCallback(async () => {
     if (!comment.trim() || !pendingDecision || mutatingAction) return;
@@ -386,7 +425,7 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
       setComment('');
       setPendingDecision(null);
     } catch (err: any) {
-      setMutationError(err?.message || `Unable to ${pendingDecision === 'REJECTED' ? 'reject' : 'request review for'} this field.`);
+      setMutationError(err?.message || `Unable to ${pendingDecision === 'CHANGES_REQUESTED' ? 'request changes for' : 'reject'} this field.`);
     } finally {
       setMutatingAction(null);
     }
@@ -400,27 +439,6 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
   }, [mutatingAction]);
 
   const isValueEmpty = isEmpty(staffValue) && isEmpty(originalValue);
-  const isProvided = !isValueEmpty || hasDecision;
-
-  if (isManual && !isProvided) {
-    return (
-      <div className={`${styles.cardCompact} ${styles.cardNotProvided} ${highlighted ? styles.cardHighlighted : ''}`}>
-        <div className={styles.compactHeader}>
-          <span className={styles.fieldLabelText}>{label}</span>
-          <div className={styles.headerRightBadge}>
-            <span className={styles.notProvidedBadge}>
-              Not provided
-            </span>
-          </div>
-        </div>
-        <div className={styles.cardBody}>
-          <div className={styles.notProvidedValue}>
-            <span className={styles.notProvidedPlaceholder}>No value provided</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Card CSS class
   const cardClass = [
@@ -459,16 +477,16 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
           <div className={styles.diffContainer}>
             <div className={styles.diffBlock}>
               <span className={styles.diffLabel}>AI Original</span>
-              <div className={styles.diffOriginalValue}>{renderValue(fieldKey, originalValue)}</div>
+              <div className={styles.diffOriginalValue}>{renderValue(fieldKey, originalValue, isManual)}</div>
             </div>
             <div className={styles.diffBlock}>
               <span className={styles.diffLabelNew}>Staff Submitted</span>
-              <div className={styles.diffNewValue}>{renderValue(fieldKey, staffValue)}</div>
+              <div className={styles.diffNewValue}>{renderValue(fieldKey, staffValue, isManual)}</div>
             </div>
           </div>
         ) : (
           <div className={styles.valueBlock}>
-            {renderValue(fieldKey, staffValue ?? originalValue)}
+            {renderValue(fieldKey, staffValue ?? originalValue, isManual)}
           </div>
         )}
       </div>
@@ -478,7 +496,11 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
         <div className={styles.secondaryMetaLeft}>
           {isManual ? (
             <span className={styles.secondaryStaffEdited}>
-              <Check size={12} /> Entered manually by Staff
+              {isValueEmpty ? (
+                <>Not provided by Staff</>
+              ) : (
+                <><Check size={12} /> Entered manually by Staff</>
+              )}
             </span>
           ) : isChanged ? (
             <span className={styles.secondaryStaffEdited}>Staff edited</span>
@@ -564,8 +586,8 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
         </div>
       )}
 
-      {/* Manager Comment (post-decision) */}
-      {hasDecision && managerComment && (
+      {/* Manager Comment (post-decision in current round) */}
+      {isCurrentRoundDecision && managerComment && (
         <div className={`${styles.feedbackBlock} ${isRejected ? styles.feedbackRejected : styles.feedbackWarning}`}>
           <div className={styles.feedbackTitle}>Manager feedback</div>
           <div className={styles.feedbackText}>&ldquo;{managerComment}&rdquo;</div>
@@ -578,33 +600,40 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
       )}
 
       {/* Approved timestamp when no comment */}
-      {isAccepted && !managerComment && (
+      {isAccepted && isCurrentRoundDecision && !managerComment && (
         <div className={styles.approvedTimestamp}>
           {managerReviewedAt
-            ? `Approved in Round ${fieldResult?.reviewedRevision ?? 1} (${formatTimestamp(managerReviewedAt)})`
-            : `Approved in Round ${fieldResult?.reviewedRevision ?? 1}`}
+            ? `Approved in Round ${currentRound} (${formatTimestamp(managerReviewedAt)})`
+            : `Approved in Round ${currentRound}`}
         </div>
       )}
 
-      {/* Previous decision history (Round 2+) */}
-      {prevStatus && prevStatus !== 'PENDING' && (
+      {/* Previous review history (Round 2+) */}
+      {previousDecision && (
         <div className={styles.historyBlock}>
           <div className={styles.historyTitle}>
-            Previous decision — Round {fieldResult?.previousReviewedRevision ?? 1}
+            Previous review — Round {previousDecision.roundNumber}
           </div>
           <span className={styles.historyBadge}>
-            {mapManagerStatus(prevStatus).icon} {mapManagerStatus(prevStatus).text}
+            {mapManagerStatus(previousDecision.status).icon} {mapManagerStatus(previousDecision.status).text}
           </span>
-          {prevComment && <div className={styles.historyComment}>&ldquo;{prevComment}&rdquo;</div>}
-          {previousSubmittedValue !== undefined && (
+          {previousDecision.comment && <div className={styles.historyComment}>&ldquo;{previousDecision.comment}&rdquo;</div>}
+          {previousDecision.submittedValue !== undefined && (
             <div className={styles.historyComment}>
-              <strong>Previous submitted value:</strong> {renderValue(fieldKey, previousSubmittedValue)}
+              <strong>Previous submitted value:</strong> {renderValue(fieldKey, previousDecision.submittedValue, isManual)}
             </div>
           )}
-          <div className={styles.historyComment}>
-            <strong>Current Staff revision:</strong> {renderValue(fieldKey, staffValue)}
-          </div>
-          {isPending && deepEqual(previousSubmittedValue, staffValue) && (
+          {previousDecision.reviewedAt && (
+            <div className={styles.historyComment}>
+              <strong>Reviewed:</strong> {formatTimestamp(previousDecision.reviewedAt)}
+            </div>
+          )}
+          {hasResubmittedInCurrentRound && (
+            <div className={styles.historyComment}>
+              <strong>Current Staff revision:</strong> {renderValue(fieldKey, staffValue, isManual)}
+            </div>
+          )}
+          {isPending && (deepEqual(previousDecision.submittedValue, staffValue) || (isEmpty(previousDecision.submittedValue) && isEmpty(staffValue))) && (
             <div style={{ marginTop: 6, fontSize: 12, color: '#b45309', display: 'flex', alignItems: 'center', gap: 4 }}>
               <AlertTriangle size={12} />
               <span>Resubmitted value unchanged from previous round.</span>
@@ -638,30 +667,43 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
 
           <button
             type="button"
-            className={`${styles.btnAction} ${styles.btnRejectOutline}`}
-            onClick={openRejectModal}
+            className={`${styles.btnAction} ${styles.btnRequestChanges}`}
+            onClick={openRequestChangesModal}
             disabled={disabled || isFieldMutating}
           >
-            <X size={14} /> Reject
+            <AlertTriangle size={14} /> Request Changes
           </button>
         </div>
       )}
 
-      {!disabled && hasDecision && isCurrentRoundDecision && (
-        <div className={styles.actionBar}>
-          <button
-            type="button"
-            className={`${styles.btnAction} ${styles.btnUndo}`}
-            onClick={handleUndo}
-            disabled={disabled || isFieldMutating}
-            title="Reset field decision to pending"
-          >
-            {mutatingAction === 'PENDING' ? (
-              <><Loader2 size={13} className={styles.spin} /> Undoing&hellip;</>
-            ) : (
-              <><RotateCcw size={13} /> Undo decision</>
-            )}
-          </button>
+      {/* Resolved State & Undo Action */}
+      {hasDecision && (
+        <div className={styles.resolvedActionBar}>
+          {isAccepted ? (
+            <span className={styles.resolvedBadgeApproved}>
+              <Check size={13} /> Approved
+            </span>
+          ) : (
+            <span className={styles.resolvedBadgeChanges}>
+              <AlertTriangle size={13} /> Changes Requested
+            </span>
+          )}
+
+          {!disabled && isCurrentRoundDecision && (
+            <button
+              type="button"
+              className={styles.btnUndoText}
+              onClick={handleUndo}
+              disabled={disabled || isFieldMutating}
+              title="Reset field decision to pending"
+            >
+              {mutatingAction === 'PENDING' ? (
+                <><Loader2 size={12} className={styles.spin} /> Undoing&hellip;</>
+              ) : (
+                <><RotateCcw size={12} /> Undo</>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -670,17 +712,17 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
       {isCommentModalOpen && ReactDOM.createPortal(
         <div className={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget && !mutatingAction) cancelModal(); }}>
           <div className={styles.modalContent}>
-            <h3>Reject Field</h3>
+            <h3>Request Changes</h3>
             <div className={styles.modalFieldName}>{label}</div>
             <p>
-              Why is this field being rejected?
+              Why are changes being requested for this field?
               <span className={styles.required}> *</span>
             </p>
             <textarea
               className={styles.commentInput}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Describe why this field is incorrect or needs correction\u2026"
+              placeholder="Describe what needs to be changed or provided for this field…"
               autoFocus
             />
             <div className={styles.modalHelper}>
@@ -695,14 +737,14 @@ export const ManagerReviewFieldCard: React.FC<ManagerReviewFieldCardProps> = ({
               <button type="button" className={styles.btnCancel} onClick={cancelModal} disabled={isFieldMutating}>Cancel</button>
               <button
                 type="button"
-                className={`${styles.btnSubmit} ${styles.btnSubmitReject}`}
+                className={styles.btnSubmit}
                 onClick={submitCommentDecision}
                 disabled={isFieldMutating || !comment.trim()}
               >
                 {mutatingAction ? (
-                  <><Loader2 size={14} className={styles.spin} /> {pendingDecision === 'REJECTED' ? 'Rejecting\u2026' : 'Submitting\u2026'}</>
+                  <><Loader2 size={14} className={styles.spin} /> Submitting&hellip;</>
                 ) : (
-                  pendingDecision === 'REJECTED' ? 'Reject Field' : 'Request Review'
+                  'Request Changes'
                 )}
               </button>
             </div>

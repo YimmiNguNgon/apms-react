@@ -99,6 +99,13 @@ export const candidateApi = {
     );
   },
 
+  bulkApproveFields: async (projectId: number | string, candidateId: string, fieldPaths?: string[]) => {
+    return api.post<CandidateResponse>(
+      `/projects/${projectId}/candidates/${candidateId}/review/bulk-approve`,
+      { fieldPaths }
+    );
+  },
+
   completeFieldReview: async (projectId: number | string, candidateId: string) => {
     return api.post<CandidateResponse>(
       `/projects/${projectId}/candidates/${candidateId}/review/complete`

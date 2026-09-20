@@ -434,6 +434,67 @@ export const projectApi = {
       throw error;
     }
   },
+  getLatestExtractionJob: async (projectId: number, taskId: number) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi/latest`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return payload as ApiResponse<AiExtractionJobResponse | null>;
+    } catch (error) {
+      console.error("Error getting latest extraction job:", error);
+      return null;
+    }
+  },
+  getActiveExtractionJob: async (projectId: number, taskId: number) => {
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi/active`, {
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return payload as ApiResponse<AiExtractionJobResponse | null>;
+    } catch (error) {
+      console.error("Error getting active extraction job:", error);
+      return null;
+    }
+  },
+  cancelExtractionJob: async (projectId: number, taskId: number, jobId: string) => {
+    if (!jobId) {
+      throw new Error("Cannot cancel extraction job without a valid jobId");
+    }
+    try {
+      const response = await fetch(`${BASE_URL}/${projectId}/tasks/${taskId}/extract-multi/${jobId}/cancel`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeader(),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to cancel extraction job");
+      }
+
+      return payload as ApiResponse<AiExtractionJobResponse>;
+    } catch (error) {
+      console.error("Error cancelling extraction job:", error);
+      throw error;
+    }
+  },
   getProjectReviewHistory: async (projectId: string | number): Promise<ApiResponse<ManagerReviewHistoryItem[]>> => {
     try {
       const response = await fetch(`${BASE_URL}/${projectId}/review-history`, {

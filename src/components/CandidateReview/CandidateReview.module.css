@@ -1503,10 +1503,10 @@
 }
 
 .managerReviewModal {
-  width: min(1520px, calc(100vw - 48px));
-  max-width: 1520px;
-  height: auto;
-  max-height: calc(100dvh - 48px);
+  width: min(1480px, calc(100vw - 32px));
+  max-width: 1480px;
+  height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 32px);
   background-color: #f8fafc;
   border-radius: 14px;
   border: 1px solid rgba(226, 232, 240, 0.9);
@@ -1519,30 +1519,73 @@
 }
 
 .managerReviewModal .workspace {
-  height: auto;
-  max-height: calc(100dvh - 48px);
+  flex: 1;
   min-height: 0;
-  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background-color: #f8fafc;
+  padding: 0;
+}
+
+.modalFixedHeader {
+  flex-shrink: 0;
+  padding: 20px 24px 0 24px;
+  background-color: #f8fafc;
+}
+
+.modalFixedTabs {
+  flex-shrink: 0;
+  background: #ffffff;
+  padding: 0 24px;
+  border-bottom: 1px solid #e2e8f0;
+  z-index: 20;
+}
+
+.modalScrollBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 24px 24px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.modalScrollBody::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modalScrollBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalScrollBody::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.modalScrollBody::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .managerReviewModal .layoutContainer {
-  flex: 1;
-  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 20px;
-  overflow: hidden;
+  align-items: start;
+  min-height: 100%;
+  overflow: visible;
 }
 
 .managerReviewModal .sidebar {
   width: 300px;
   min-width: 280px;
   max-width: 320px;
-  overflow-y: auto;
+  position: sticky;
+  top: 12px;
+  align-self: start;
 }
 
 .managerReviewModal .layoutContainerReadOnly {
@@ -1550,18 +1593,41 @@
 }
 
 .managerReviewModal .mainContent {
-  flex: 1;
-  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.managerReviewModal .tabsContainer {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  min-height: 52px;
+  background: #ffffff;
+  border-bottom: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+
+.modalFixedTabs .managerTab {
+  height: 52px;
+  padding: 0 4px;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.modalFixedTabs .managerTab:hover {
+  background: transparent;
+  color: #0f172a;
 }
 
 .managerReviewModal .tabContent {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 6px;
+  min-width: 0;
+  overflow: visible;
 }
 
 .managerReviewHeader {
@@ -2207,19 +2273,64 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 2px 8px 2px;
+  padding: 8px 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: #64748b;
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
   cursor: pointer;
   transition: all 0.15s ease;
+  border-radius: 4px 4px 0 0;
 }
 
 .managerTab:hover {
   color: #0f172a;
+  background: rgba(241, 245, 249, 0.6);
+}
+
+.tabUnreviewed {
+  color: #64748b;
+}
+
+.tabInProgress {
+  color: #2563eb;
+  border-bottom-color: #bfdbfe;
+}
+
+.tabComplete {
+  color: #059669;
+}
+
+.tabHasChanges {
+  color: #d97706;
+}
+
+.tabFraction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tabCompleteCheck {
+  color: #059669;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: -2px;
+}
+
+.tabChangesWarning {
+  color: #d97706;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: -2px;
 }
 
 .managerTab.tabActive {
@@ -2228,32 +2339,9 @@
   font-weight: 700;
 }
 
-.tabCount {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.tabActive .tabCount {
+.managerTab.tabActive .tabFraction {
   background: #eff6ff;
   color: #1d4ed8;
-}
-
-.tabIssueDot {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #fff7ed;
-  color: #c2410c;
-  font-size: 10px;
-  font-weight: 600;
 }
 
 /* --- Manual Candidate Manager Tabs --- */
@@ -2364,22 +2452,125 @@
 .approveAllBtn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  color: #475569;
-  font-size: 12px;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
   font-weight: 600;
+  font-size: 13px;
+  background: #ECFDF5;
+  border: 1px solid #86EFAC;
+  color: #047857;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.approveAllBtn:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+.approveAllBtn:hover:not(:disabled) {
+  background: #D1FAE5;
+  border-color: #4ADE80;
+  color: #047857;
+}
+
+.approveAllBtn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.approveAllBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Bulk Approve Confirmation Modal ── */
+.bulkConfirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4100;
+}
+
+.bulkConfirmModal {
+  background: #ffffff;
+  width: 440px;
+  max-width: 90vw;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bulkConfirmHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
   color: #0f172a;
+}
+
+.bulkConfirmBody p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.bulkConfirmSubtext {
+  color: #64748b !important;
+  font-size: 13px !important;
+}
+
+.bulkConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.bulkConfirmCancelBtn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bulkConfirmCancelBtn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.bulkConfirmApproveBtn {
+  background: #059669;
+  border: 1px solid #047857;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.bulkConfirmApproveBtn:hover:not(:disabled) {
+  background: #047857;
+}
+
+.bulkConfirmApproveBtn:disabled,
+.bulkConfirmCancelBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .quickFilterBar small {
@@ -2607,6 +2798,11 @@
 
 .managerStatRejected {
   color: #dc2626;
+  font-weight: 600;
+}
+
+.managerStatChanges {
+  color: #c2410c;
   font-weight: 600;
 }
 
@@ -3075,7 +3271,15 @@
   }
 
   .managerReviewModal .workspace {
-    padding: 12px;
+    padding: 0;
+  }
+
+  .modalFixedHeader {
+    padding: 12px 12px 0 12px;
+  }
+
+  .modalScrollBody {
+    padding: 2px 12px 12px 12px;
   }
 
   .candidateHeader,
