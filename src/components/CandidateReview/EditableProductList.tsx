@@ -7,8 +7,6 @@ import styles from './CandidateReview.module.css';
 
 interface Product {
   name?: string;
-  category?: string;
-  description?: string;
 }
 
 interface EditableProductListProps {
@@ -51,11 +49,15 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
   const handleSaveList = () => {
     let finalProducts = draftProducts;
     if (adding && draft.name?.trim()) {
-      finalProducts = [...draftProducts, draft];
+      finalProducts = [...draftProducts, { name: draft.name.trim() }];
       setDraftProducts(finalProducts);
       setDraft({});
       setAdding(false);
     }
+    finalProducts = finalProducts
+      .filter((p) => p && p.name && p.name.trim())
+      .map((p) => ({ name: p.name!.trim() }));
+
     const isEdited = isCandidateFieldEdited(fieldResult?.value, finalProducts);
     if (!isEdited) {
       onChange(fieldKey, finalProducts, isManual ? (normalizeCandidateFieldValue(finalProducts) === null ? 'PENDING' : 'ADDED') : 'CONFIRMED');
@@ -82,11 +84,12 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
   };
 
   const addProduct = () => {
-    if (!draft.name?.trim()) {
+    const trimmed = draft.name?.trim();
+    if (!trimmed) {
       setAdding(false);
       return;
     }
-    const newList = [...draftProducts, draft];
+    const newList = [...draftProducts, { name: trimmed }];
     setDraftProducts(newList);
     setDraft({});
     setAdding(false);
@@ -119,8 +122,6 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
           {(showAll ? currentValue : currentValue.slice(0, initialShowCount)).map((p, idx) => (
             <div key={idx} className={styles.productPill}>
               <strong>{p.name}</strong>
-              {p.category && <span className={styles.productCat}>{p.category}</span>}
-              {p.description && <p className={styles.productDesc}>{p.description}</p>}
             </div>
           ))}
           {currentValue.length > initialShowCount && (
@@ -161,7 +162,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
         {draftProducts.map((p, idx) => (
           <div key={idx} className={styles.productCard}>
             <div className={styles.editContainer}>
-              <div className={styles.grid2Col}>
+              <div>
                 <input 
                   type="text" 
                   placeholder="Product Name" 
@@ -169,21 +170,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
                   onChange={(e) => updateProduct(idx, 'name', e.target.value)} 
                   className={styles.input} 
                 />
-                <input 
-                  type="text" 
-                  placeholder="Category" 
-                  value={p.category || ''} 
-                  onChange={(e) => updateProduct(idx, 'category', e.target.value)} 
-                  className={styles.input} 
-                />
               </div>
-              <textarea 
-                placeholder="Description" 
-                value={p.description || ''} 
-                onChange={(e) => updateProduct(idx, 'description', e.target.value)} 
-                className={styles.textarea} 
-                rows={2} 
-              />
               <div className={styles.productActions}>
                 <button type="button" className={styles.btnDanger} onClick={() => deleteProduct(idx)}>
                   <Trash2 size={14} /> Remove
@@ -196,7 +183,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
         {adding ? (
           <div className={styles.productCard}>
             <div className={styles.editContainer}>
-              <div className={styles.grid2Col}>
+              <div>
                 <input 
                   type="text" 
                   placeholder="Product Name" 
@@ -205,21 +192,7 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
                   className={styles.input}
                   autoFocus 
                 />
-                <input 
-                  type="text" 
-                  placeholder="Category" 
-                  value={draft.category || ''} 
-                  onChange={(e) => setDraft({...draft, category: e.target.value})} 
-                  className={styles.input} 
-                />
               </div>
-              <textarea 
-                placeholder="Description" 
-                value={draft.description || ''} 
-                onChange={(e) => setDraft({...draft, description: e.target.value})} 
-                className={styles.textarea} 
-                rows={2} 
-              />
               <div className={styles.productActions}>
                 <button type="button" className={styles.btnSecondary} onClick={() => { setDraft({}); setAdding(false); }}>
                   <X size={14} /> Cancel

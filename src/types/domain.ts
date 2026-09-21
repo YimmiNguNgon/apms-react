@@ -198,8 +198,6 @@ export interface AdminUpdateEnterpriseBasicInfoRequest {
 
 export interface AdminEnterpriseProductRequest {
   name: string;
-  category?: string;
-  description?: string;
 }
 
 export interface AdminUpdateEnterpriseBusinessFieldsRequest {
@@ -268,7 +266,7 @@ export interface UpdateCompanyProfileRequest {
   markets?: string[];
   targetCustomers?: string[];
   productsServices?: string[];
-  products?: Array<{ name?: string; category?: string; description?: string }>;
+  products?: Array<{ name?: string }>;
   description?: string;
   businessModel?: string;
   foundedYear?: number | null;
@@ -306,7 +304,7 @@ export interface CompanyProfileBusiness {
   businessModel?: string;
   foundedYear?: number | null;
   companyDescription?: string | null;
-  products?: Array<{ name?: string; category?: string; description?: string }>;
+  products?: Array<{ name?: string }>;
   markets?: string[];
   targetCustomers?: string[];
 }
@@ -1543,8 +1541,6 @@ export interface OwnerCompanyIntelligenceResponse {
   }>;
   products: Array<{
     name: string;
-    category: string;
-    description: string;
   }>;
   evidence: Array<{
     sourceName: string;

@@ -513,16 +513,12 @@ const CandidateProductPanel: React.FC<{ title: string; data: unknown }> = ({ tit
           {items.map((item, index) => {
             const product: Record<string, unknown> = isRecord(item) ? item : { name: item };
             const name = formatPanelValue(product.name) || `Item ${index + 1}`;
-            const category = formatPanelValue(product.category);
-            const description = formatPanelValue(product.description);
 
             return (
               <article className={styles.productReviewCard} key={`${title}-${index}`}>
                 <div className={styles.productReviewHead}>
                   <strong>{name}</strong>
-                  {category && <span>{category}</span>}
                 </div>
-                {description && <p>{description}</p>}
               </article>
             );
           })}
@@ -1076,16 +1072,12 @@ const ParsedProductsPreview: React.FC<{ value: string }> = ({ value }) => {
     <div className={styles.extractionProductGrid}>
       {items.map((product, index) => {
         const name = formatPanelValue(product.name) || `Item ${index + 1}`;
-        const category = formatPanelValue(product.category);
-        const description = formatPanelValue(product.description);
 
         return (
           <article className={styles.extractionProductCard} key={`${name}-${index}`}>
             <div className={styles.extractionProductHead}>
               <strong>{name}</strong>
-              {category && <span>{category}</span>}
             </div>
-            {description && <p>{description}</p>}
           </article>
         );
       })}
@@ -2232,15 +2224,15 @@ const EditableInsightList: React.FC<{
 
 const productRowsFromText = (value: string) => {
   const rows = splitLines(value).map((line) => {
-    const [name = '', category = '', ...descriptionParts] = line.split('|').map((part) => part.trim());
-    return { name, category, description: descriptionParts.join(' | ') };
+    const [name = ''] = line.split('|').map((part) => part.trim());
+    return { name };
   });
-  return rows.length ? rows : [{ name: '', category: '', description: '' }];
+  return rows.length ? rows : [{ name: '' }];
 };
 
-const productRowsToText = (rows: Array<{ name: string; category: string; description: string }>) =>
+const productRowsToText = (rows: Array<{ name: string }>) =>
   rows
-    .map((row) => [row.name, row.category, row.description].map((part) => part.trim()).filter(Boolean).join(' | '))
+    .map((row) => [row.name].map((part) => part.trim()).filter(Boolean).join(' | '))
     .filter(Boolean)
     .join('\n');
 
@@ -2251,13 +2243,13 @@ const EditableProductList: React.FC<{
   const rows = productRowsFromText(value);
   const filledCount = rows.filter((row) => row.name.trim()).length;
 
-  const updateRow = (index: number, patch: Partial<{ name: string; category: string; description: string }>) => {
+  const updateRow = (index: number, patch: Partial<{ name: string }>) => {
     const next = rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row);
     onChange(productRowsToText(next));
   };
 
   const addRow = () => {
-    onChange(productRowsToText([...rows, { name: '', category: '', description: '' }]));
+    onChange(productRowsToText([...rows, { name: '' }]));
   };
 
   const removeRow = (index: number) => {
@@ -2293,14 +2285,6 @@ const EditableProductList: React.FC<{
             <label>
               <span>Name</span>
               <input value={row.name} placeholder="Exynos 2600" onChange={(event) => updateRow(index, { name: event.target.value })} />
-            </label>
-            <label>
-              <span>Category</span>
-              <input value={row.category} placeholder="System LSI Semiconductor" onChange={(event) => updateRow(index, { category: event.target.value })} />
-            </label>
-            <label>
-              <span>Description</span>
-              <textarea value={row.description} placeholder="Short description from AI evidence" onChange={(event) => updateRow(index, { description: event.target.value })} />
             </label>
           </div>
         ))}
@@ -2624,11 +2608,8 @@ const productsToText = (value: unknown) => {
   return value
     .map((item) => {
       if (!item || typeof item !== 'object') return candidateField(item, '');
-      const product = item as { name?: unknown; category?: unknown; description?: unknown };
-      return [product.name, product.category, product.description]
-        .map((part) => formatTextValue(part))
-        .filter(Boolean)
-        .join(' | ');
+      const product = item as { name?: unknown };
+      return formatTextValue(product.name);
     })
     .filter(Boolean)
     .join('\n');

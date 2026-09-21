@@ -143,31 +143,25 @@ const areStringListsEqual = (a: string[], b: string[]): boolean => {
 };
 
 const areProductsEqual = (
-  a: Array<{ name?: string; category?: string; description?: string }>,
-  b: Array<{ name?: string; category?: string; description?: string }>
+  a: Array<{ name?: string }>,
+  b: Array<{ name?: string }>
 ): boolean => {
   const normA = (a || [])
     .map((p) => ({
       name: normalizeString(p.name),
-      category: normalizeString(p.category),
-      description: normalizeString(p.description),
     }))
-    .filter((p) => p.name || p.category || p.description);
+    .filter((p) => p.name);
 
   const normB = (b || [])
     .map((p) => ({
       name: normalizeString(p.name),
-      category: normalizeString(p.category),
-      description: normalizeString(p.description),
     }))
-    .filter((p) => p.name || p.category || p.description);
+    .filter((p) => p.name);
 
   if (normA.length !== normB.length) return false;
   for (let i = 0; i < normA.length; i++) {
     if (
-      normA[i].name !== normB[i].name ||
-      normA[i].category !== normB[i].category ||
-      normA[i].description !== normB[i].description
+      normA[i].name !== normB[i].name
     ) {
       return false;
     }
@@ -828,12 +822,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const initialIndustries = [...(profile.business?.industries || intelligence?.company?.industries || [])];
     const initialMarkets = [...(profile.business?.markets || intelligence?.company?.markets || [])];
     const initialTargetCustomers = [...(profile.business?.targetCustomers || [])];
-    const initialProducts: Array<{ name: string; category?: string; description?: string }> = (
+    const initialProducts: Array<{ name: string }> = (
       profile.business?.products || intelligence?.products || []
     ).map((p: any) => ({
       name: typeof p === 'string' ? p : (p.name || ''),
-      category: typeof p === 'object' && p.category ? p.category : '',
-      description: typeof p === 'object' && p.description ? p.description : '',
     }));
     const initialBusinessModel = profile.business?.businessModel || intelligence?.company?.businessModel || '';
     const initialFoundedYear = profile.business?.foundedYear != null ? profile.business.foundedYear : null;
@@ -1034,9 +1026,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         } else if (activeTab === 'business-fields') {
           const validProducts: AdminEnterpriseProductRequest[] = draftProducts
             .map(p => ({
-              name: normalizeString(p.name),
-              category: normalizeString(p.category) || undefined,
-              description: normalizeString(p.description) || undefined,
+              name: normalizeString(p.name) as string,
             }))
             .filter(p => p.name);
 
@@ -1092,8 +1082,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const validProducts = draftProducts
       .map(p => ({
         name: normalizeString(p.name),
-        category: normalizeString(p.category) || undefined,
-        description: normalizeString(p.description) || undefined,
       }))
       .filter(p => p.name);
 
@@ -1826,39 +1814,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                               disabled={isSavingProfile}
                             />
                           </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px' }}>
-                            <div>
-                              <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
-                                Category
-                              </label>
-                              <input
-                                type="text"
-                                style={inlineInputStyle}
-                                value={p.category || ''}
-                                onChange={(e) => handleProductChange(idx, 'category', e.target.value)}
-                                placeholder="Category (e.g. Memory / Semiconductor)..."
-                                disabled={isSavingProfile}
-                              />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
-                                Description
-                              </label>
-                              <textarea
-                                style={{
-                                  ...inlineInputStyle,
-                                  minHeight: '44px',
-                                  fontFamily: 'inherit',
-                                  resize: 'vertical',
-                                }}
-                                value={p.description || ''}
-                                onChange={(e) => handleProductChange(idx, 'description', e.target.value)}
-                                placeholder="Short description..."
-                                disabled={isSavingProfile}
-                              />
-                            </div>
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -1873,15 +1828,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
                       <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                           <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
-                          {p.category && (
-                            <span style={{ fontSize: '0.62rem', background: '#EFF6FF', color: '#1D4ED8', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                              {p.category}
-                            </span>
-                          )}
                         </div>
-                        {p.description && <p style={{ margin: 0, fontSize: '0.7rem', color: '#475569', lineHeight: '1.4' }}>{p.description}</p>}
                       </div>
                     ))}
                     {products.length > 5 && (

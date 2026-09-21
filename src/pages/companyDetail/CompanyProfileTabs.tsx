@@ -29,7 +29,7 @@ export interface SwotPayload {
 }
 
 export interface BusinessFieldsPayload {
-  products: Array<{ name: string; category: string; description: string }>;
+  products: Array<{ name: string }>;
   markets: string[];
   targetCustomers: string[];
 }
@@ -96,7 +96,7 @@ interface SwotDraft {
 }
 
 interface BfDraft {
-  products: Array<{ name: string; category: string; description: string }>;
+  products: Array<{ name: string }>;
   markets: string[];
   targetCustomers: string[];
 }
@@ -365,8 +365,6 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
       setBfDraft({
         products: (profile.business?.products || []).map((p) => ({
           name: p.name ?? '',
-          category: p.category ?? '',
-          description: p.description ?? '',
         })),
         markets: [...(profile.business?.markets || [])],
         targetCustomers: [...(profile.business?.targetCustomers || [])],
@@ -439,11 +437,9 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     if (!bfDraft) return;
     void runSave(() =>
       onSaveBusinessFields?.({
-        products: bfDraft.products.map((p) => ({
-          name: p.name.trim(),
-          category: p.category.trim(),
-          description: p.description.trim(),
-        })),
+        products: bfDraft.products
+          .map((p) => ({ name: p.name.trim() }))
+          .filter((p) => p.name.length > 0),
         markets: bfDraft.markets,
         targetCustomers: bfDraft.targetCustomers,
       }),
@@ -792,15 +788,9 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
                       <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                           <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
-                          {p.category && (
-                            <span style={{ fontSize: '0.62rem', background: '#EFF6FF', color: '#1D4ED8', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                              {p.category}
-                            </span>
-                          )}
                         </div>
-                        {p.description && <p style={{ margin: 0, fontSize: '0.7rem', color: '#475569', lineHeight: '1.4' }}>{p.description}</p>}
                       </div>
                     ))}
                     {products.length > 5 && (
@@ -909,7 +899,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
             <h2 style={C.h2}>Sản phẩm & Dịch vụ (Products & Services)</h2>
             <button
               type="button"
-              onClick={() => setBfDraft((prev) => (prev ? { ...prev, products: [...prev.products, { name: '', category: '', description: '' }] } : prev))}
+              onClick={() => setBfDraft((prev) => (prev ? { ...prev, products: [...prev.products, { name: '' }] } : prev))}
               style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', cursor: 'pointer' }}
             >
               + Thêm sản phẩm/dịch vụ
@@ -920,10 +910,8 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {bfDraft.products.map((p, idx) => (
-                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.6fr auto', gap: '6px', alignItems: 'center', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px', alignItems: 'center', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
                   <input placeholder="Tên sản phẩm" value={p.name} onChange={(e) => updateProduct(idx, 'name', e.target.value)} style={INPUT_STYLE} />
-                  <input placeholder="Phân loại" value={p.category} onChange={(e) => updateProduct(idx, 'category', e.target.value)} style={INPUT_STYLE} />
-                  <input placeholder="Mô tả" value={p.description} onChange={(e) => updateProduct(idx, 'description', e.target.value)} style={INPUT_STYLE} />
                   <button
                     type="button"
                     onClick={() => removeProduct(idx)}

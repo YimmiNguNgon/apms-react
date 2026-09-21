@@ -143,7 +143,7 @@ export interface EnterpriseCompetitor {
   markets: string[] | null;
   businessModel: string | null;
   leadership: { name: string; position: string; sourceUrl: string | null; researchedAt: string }[];
-  products: { name: string; category: string; description: string }[];
+  products: { name: string }[];
 }
 
 const repairMojibake = (value: string) => {
@@ -689,7 +689,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
             marketExpansion,
             hiringActivity,
             financialSignals: toFinancialSignals(profile),
-            techInvestments: (profile?.business?.products ?? []).map((product) => ({ area: product.category || product.name || 'Product', details: product.description || 'Chưa có dữ liệu xác minh', patentsCount: 0, techStack: [] })),
+            techInvestments: (profile?.business?.products ?? []).map((product) => ({ area: product.name || 'Product', details: 'Chưa có dữ liệu xác minh', patentsCount: 0, techStack: [] })),
             strengths: profile?.insights?.strengths ?? [],
             weaknesses: profile?.insights?.weaknesses ?? [],
             aiRecommendation: intelligence?.executiveBrief?.summary || null,
@@ -717,7 +717,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
             markets: intelligence?.company?.markets || profile?.business?.markets || [],
             businessModel: intelligence?.company?.businessModel || profile?.business?.businessModel || null,
             leadership: Array.isArray(intelligence?.leadership) ? intelligence.leadership.map((m: any) => ({ name: m.name, position: m.position, sourceUrl: m.sourceUrl || null, researchedAt: formatBackendDate(m.researchedAt) })) : (Array.isArray(profile?.companyMembers) ? profile.companyMembers.map((m: any) => ({ name: m.fullName, position: m.position, sourceUrl: m.sourceUrl || null, researchedAt: formatBackendDate(m.researchedAt) })) : []),
-            products: Array.isArray(intelligence?.products) ? intelligence.products : (Array.isArray(profile?.business?.products) ? profile.business.products.map((p: any) => ({ name: p.name, category: p.category, description: p.description })) : [])
+            products: Array.isArray(intelligence?.products) ? intelligence.products : (Array.isArray(profile?.business?.products) ? profile.business.products.map((p: any) => ({ name: p.name })) : [])
           };
         });
 
@@ -1404,8 +1404,7 @@ export const CompetitorIntelligenceView: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                   {selected.products.map((p, idx) => (
                     <div key={idx} style={{ borderBottom: idx < selected.products.length - 1 ? '1px solid var(--cds-border-subtle-00)' : 'none', paddingBottom: '6px' }}>
-                      <strong style={{ color: 'var(--cds-text-primary)' }}>{p.name}</strong> <span style={{ fontSize: '11px', color: 'var(--cds-text-helper)' }}>({p.category})</span>
-                      <p style={{ margin: '4px 0 0', color: 'var(--cds-text-secondary)' }}>{p.description}</p>
+                      <strong style={{ color: 'var(--cds-text-primary)' }}>{p.name}</strong>
                     </div>
                   ))}
                 </div>
