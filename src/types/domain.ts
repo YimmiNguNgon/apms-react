@@ -812,7 +812,7 @@ export interface AiExtractionJobResponse {
   progress: number | null;
   totalDocuments: number;
   processedDocuments: number;
-  candidateId: number | null;
+  candidateId: string | null;
   errorMessage: string | null;
   cancelledAt?: string | null;
   cancelledBy?: number | null;

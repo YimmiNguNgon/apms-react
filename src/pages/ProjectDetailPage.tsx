@@ -89,9 +89,9 @@ import ManagerFinancialResearchReviewWorkspace from '../components/FinancialRese
 import { ContractResearchWorkbench } from '../components/ContractResearch/ContractResearchWorkbench';
 import { ManagerContractResearchReviewWorkspace } from '../components/ContractResearch/ManagerContractResearchReviewWorkspace';
 import type {
+  AiExtractionJobResponse,
   CompanyMemberResearchDraftResponse,
   CompanyMemberResearchItem,
-  CandidateDraftSummary,
   CreateProjectTaskRequest,
   MergeCandidateResponse,
   PageResult,
@@ -393,9 +393,6 @@ const getCandidateEmptyStateMessage = (
   return { title: 'No candidates match your current review filters.' };
 };
 const isStaffEditableCandidateStatus = (status?: CandidateStatus | null) => status === 'DRAFT' || status === 'REVISION_REQUIRED';
-const selectPreferredStaffCandidateDraft = (drafts: CandidateDraftSummary[] = []) => (
-  drafts.find((draft) => draft.status === 'DRAFT')
-);
 
 type CandidateReviewTab = 'profile' | 'swot' | 'evidence';
 type ManagerCandidateTab = 'overview' | 'swot' | 'evidence' | 'decision';
@@ -3587,7 +3584,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   // Async Multi-Document Extraction States
   const [extractionJobId, setExtractionJobId] = useState<string | null>(null);
-  const [extractionJob, setExtractionJob] = useState<any>(null);
+  const [extractionJob, setExtractionJob] = useState<AiExtractionJobResponse | null>(null);
 
   const [extractingImportJobId, setExtractingImportJobId] = useState<number | null>(null);
   const [taskDocuments, setTaskDocuments] = useState<WorkbenchDocumentResponse[]>([]);
@@ -3699,6 +3696,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [fieldAiLoading, setFieldAiLoading] = useState(false);
   const [fieldAiError, setFieldAiError] = useState<string | null>(null);
   const [staffCandidate, setStaffCandidate] = useState<CandidateResponse | null>(null);
+  const staffCandidateRequest = useRef(0);
+  const completedExtractionJob = useRef<string | null>(null);
   const [newsResearchDraftCount, setNewsResearchDraftCount] = useState(0);
   const [staffCandidateEdit, setStaffCandidateEdit] = useState<StaffCandidateEditForm>(emptyStaffCandidateEdit);
   const [candidateReviewTab, setCandidateReviewTab] = useState<CandidateReviewTab>('profile');
@@ -4342,6 +4341,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   useEffect(() => {
     setInReviewSelectedCandidateId(null);
+    staffCandidateRequest.current++;
+    setStaffCandidateLoading(false);
+    return () => { staffCandidateRequest.current++; };
   }, [selectedStaffTask?.id]);
 
   useEffect(() => {
@@ -4373,11 +4375,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [activeTab, currentProjectId]);
 
   const handleExtractionComplete = async () => {
+    const job = extractionJob;
+    const task = selectedStaffTask;
+    if (!task || !job || job.status !== 'COMPLETED' || completedExtractionJob.current === job.jobId) return;
+    completedExtractionJob.current = job.jobId;
+    setExtractingSelectedDocuments(false);
+    setExtractingImportJobId(null);
+    if (!job.candidateId) {
+      setWorkbenchError('Extraction completed but no candidate ID was returned. Please select the draft from the list.');
+      return;
+    }
+    const opened = await handleOpenStaffCandidate(job.candidateId);
+    if (!opened) return;
     queryClient.invalidateQueries({ queryKey: ['candidates'] });
     setWorkbenchMessage('Candidate draft created successfully from extractions.');
-    if (selectedStaffTask) {
-      await loadTaskWorkbench(selectedStaffTask, { loadCandidateDraft: true });
-    }
+    await loadTaskWorkbench(task);
     setExtractingSelectedDocuments(false);
     setToast({
       kind: 'success',
@@ -4388,7 +4400,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         </>
       ),
     });
-    window.setTimeout(() => setExtractionJob(null), 1200);
+    window.setTimeout(() => setExtractionJob((current) => current?.jobId === job.jobId ? null : current), 1200);
   };
 
   const handleConfirmCancelExtraction = async () => {
@@ -4453,11 +4465,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   // Async Multi-Document Extraction Polling
   useEffect(() => {
+    let cancelled = false;
+    let polling = false;
     let interval: ReturnType<typeof setInterval>;
     if (extractionJobId && selectedStaffTask) {
       interval = setInterval(async () => {
+        if (cancelled || polling) return;
+        polling = true;
         try {
           const res = await projectApi.getExtractionJobStatus(Number(currentProjectId), selectedStaffTask.id, extractionJobId);
+          if (cancelled) return;
           if (res.success && res.data) {
             setExtractionJob(res.data);
             if (res.data.status === 'COMPLETED') {
@@ -4496,10 +4513,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           }
         } catch (e) {
           console.error(e);
+        } finally {
+          polling = false;
         }
       }, 2000);
     }
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [extractionJobId, selectedStaffTask]);
 
 
@@ -5660,7 +5679,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setSelectedStaffTask(task);
   };
 
-  const loadTaskWorkbench = async (task: ProjectTaskResponse, options: { loadCandidateDraft?: boolean } = {}) => {
+  const loadTaskWorkbench = async (task: ProjectTaskResponse) => {
     setWorkbenchLoading(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -5669,15 +5688,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const payload = await taskApi.getTaskWorkbench(task.projectId, task.id);
       setWorkbench(payload.data);
 
-      const firstDraftId = selectPreferredStaffCandidateDraft(payload.data?.candidateDrafts ?? [])?.candidateId;
-      if (options.loadCandidateDraft && firstDraftId) {
-        const candidatePayload = await candidateApi.getCandidateById(firstDraftId);
-        setStaffCandidate(candidatePayload.data);
-        setStaffCandidateEdit(candidateToEditForm(candidatePayload.data));
-      } else if (options.loadCandidateDraft) {
-        setStaffCandidate(null);
-        setStaffCandidateEdit(emptyStaffCandidateEdit);
-      }
 
       if (task.taskType === 'COMPANY_DATA_PREPARATION') {
         try {
@@ -5786,6 +5796,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const resetStaffWorkbenchForms = () => {
+    staffCandidateRequest.current++;
     setStaffTaskNote('');
     setStaffCandidate(null);
     setStaffCandidateEdit(emptyStaffCandidateEdit);
@@ -6584,6 +6595,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         setExtractingImportJobId(selectedDocuments[0].id);
       }
 
+      setExtractionJob(null);
+      completedExtractionJob.current = null;
       const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, rawDocumentIds);
       if (res.success && res.data && res.data.jobId) {
         setExtractionJobId(res.data.jobId);
@@ -6817,25 +6830,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return;
     }
 
-    const activeDraft = workbench?.candidateDrafts?.find((draft) => draft.status === 'DRAFT');
-    if (activeDraft) {
-      await handleOpenStaffCandidate(activeDraft.candidateId);
-      return;
-    }
-
-    setStaffCandidateLoading(true);
     setWorkbenchError(null);
     try {
-      const payload = await candidateApi.createManualCandidate(currentProjectId!, selectedStaffTask.id);
-      setStaffCandidate(payload.data);
-      setStaffCandidateEdit(candidateToEditForm(payload.data));
+      const selected = await selectStaffCandidate(async () => {
+        const payload = await candidateApi.createManualCandidate(selectedStaffTask.projectId, selectedStaffTask.id);
+        return payload.data;
+      });
+      if (!selected) return;
       setWorkbenchMessage('Draft manual candidate created. Enter fields and submit.');
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       await loadTaskWorkbench(selectedStaffTask);
     } catch (error: any) {
       setWorkbenchError('Failed to create manual candidate: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setStaffCandidateLoading(false);
     }
   };
 
@@ -6862,22 +6868,45 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
+  const selectStaffCandidate = async (load: () => Promise<CandidateResponse>) => {
+    const request = ++staffCandidateRequest.current;
+    setStaffCandidateLoading(true);
+    setStaffCandidate(null);
+    setStaffCandidateEdit(emptyStaffCandidateEdit);
+    setPendingExtractionReviews([]);
+    setLastExtractionReviews([]);
+    setFieldAiAssist(null);
+    setFieldAiError(null);
+    try {
+      const candidate = await load();
+      if (request !== staffCandidateRequest.current) return false;
+      if (!candidate?.id) throw new Error('No candidate ID was returned.');
+      setStaffCandidate(candidate);
+      setStaffCandidateEdit(candidateToEditForm(candidate));
+      return true;
+    } catch (error) {
+      if (request !== staffCandidateRequest.current) return false;
+      throw error;
+    } finally {
+      if (request === staffCandidateRequest.current) setStaffCandidateLoading(false);
+    }
+  };
+
   const handleOpenStaffCandidate = async (candidateId: string) => {
     if (!canUseStaffWorkbench) {
       setWorkbenchError('Please start this task before opening candidate drafts.');
       return;
     }
-    setStaffCandidateLoading(true);
     setWorkbenchError(null);
 
     try {
-      const payload = await candidateApi.getCandidateById(candidateId);
-      setStaffCandidate(payload.data);
-      setStaffCandidateEdit(candidateToEditForm(payload.data));
+      return await selectStaffCandidate(async () => {
+        const payload = await candidateApi.getCandidateById(candidateId);
+        if (payload.data?.id !== candidateId) throw new Error('Candidate response does not match the selected draft.');
+        return payload.data;
+      });
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot load candidate detail.');
-    } finally {
-      setStaffCandidateLoading(false);
     }
   };
 
@@ -9088,24 +9117,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 >
                                   {staffCandidateLoading ? 'Creating...' : 'Enter Manually'}
                                 </button>
-                                {extractingSelectedDocuments && (
-                                  <button
-                                    className={styles.button}
-                                    type="button"
-                                    onClick={() => setShowCancelConfirmModal(true)}
-                                    disabled={isCancellingExtraction}
-                                    style={{
-                                      borderColor: '#fca5a5',
-                                      color: '#dc2626',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: 6,
-                                    }}
-                                  >
-                                    <XCircle size={15} />
-                                    {isCancellingExtraction ? 'Cancelling...' : 'Cancel Extraction'}
-                                  </button>
-                                )}
                                 <button
                                   className={`${styles.button} ${styles.primaryButton}`}
                                   type="button"
@@ -9297,6 +9308,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           )}
 
                           <CandidateReviewWorkspace
+                            key={staffCandidate.id}
                             projectId={String(currentProjectId)}
                             candidateId={staffCandidate.id}
                             taskId={selectedStaffTask.id}
@@ -9316,6 +9328,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 .catch(console.error);
                             }}
                             onCancel={() => {
+                              staffCandidateRequest.current++;
                               setStaffCandidate(null);
                               setStaffCandidateEdit(emptyStaffCandidateEdit);
                             }}

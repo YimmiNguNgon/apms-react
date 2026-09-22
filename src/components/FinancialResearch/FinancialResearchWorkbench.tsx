@@ -287,30 +287,6 @@ function SelectedReportSummary({
                 : 'View Source PDF'}
             </button>
           )}
-          {isExtracting && canEdit && onCancel && (
-            <button
-              type="button"
-              onClick={() => onCancel(report.id)}
-              disabled={isCancelling}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '5px 12px',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: 6,
-                color: '#b91c1c',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: isCancelling ? 'not-allowed' : 'pointer',
-              }}
-              title="Hủy quá trình trích xuất AI"
-            >
-              {isCancelling ? <Loader2 size={12} className={styles.spinIcon} /> : <XCircle size={13} />}
-              {isCancelling ? 'Đang hủy...' : 'Hủy trích xuất'}
-            </button>
-          )}
           <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
             {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
           </span>

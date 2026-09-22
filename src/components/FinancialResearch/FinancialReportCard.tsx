@@ -10,8 +10,6 @@ interface Props {
   onDelete: (reportId: string) => void;
   onEdit?: (report: FinancialReportEntry) => void;
   onViewPdf: (documentId: string) => void;
-  onCancelExtract?: (reportId: string) => void;
-  isCancellingExtract?: boolean;
   isOpeningPdf?: boolean;
   metricCount: number;
   needsReviewCount: number;
@@ -63,8 +61,6 @@ export default function FinancialReportCard({
   isEligible = false,
   canEdit = true,
   isAnyExtracting = false,
-  onCancelExtract,
-  isCancellingExtract = false,
   onSelect,
   onToggleSelection,
   isManagerMode = false,
@@ -263,58 +259,25 @@ export default function FinancialReportCard({
           </div>
         )}
 
-        {canEditCard && !isManual && (
-          isExtracting && onCancelExtract ? (
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={(event) => { stop(event); onCancelExtract(report.id); }}
-              disabled={isCancellingExtract}
-              title="Hủy quá trình trích xuất AI cho báo cáo này"
-              style={{
-                padding: '4px 10px',
-                fontSize: '11px',
-                color: '#dc2626',
-                borderColor: '#fca5a5',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                cursor: isCancellingExtract ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {isCancellingExtract ? (
-                <Loader2 size={12} className={styles.spinIcon} />
-              ) : (
-                <XCircle size={12} />
-              )}
-              {isCancellingExtract ? 'Đang hủy...' : 'Hủy AI'}
-            </button>
-          ) : (
+        {canEditCard && !isManual && !isExtracting && (
             <button
               className={isExtracted || isFailed ? styles.secondaryButton : styles.primaryButton}
               type="button"
               onClick={(event) => { stop(event); onExtract(report.id); }}
-              disabled={isExtracting || isAnyExtracting}
+              disabled={isAnyExtracting}
               title={
-                isExtracting
-                  ? 'Báo cáo này đang được AI trích xuất...'
-                  : isAnyExtracting
+                isAnyExtracting
                   ? 'Một tài liệu khác đang được AI trích xuất. Vui lòng đợi hoàn tất.'
                   : undefined
               }
               style={{
                 padding: '4px 10px',
                 fontSize: '11px',
-                opacity: (isExtracting || isAnyExtracting) ? 0.6 : 1,
-                cursor: (isExtracting || isAnyExtracting) ? 'not-allowed' : 'pointer',
+                opacity: isAnyExtracting ? 0.6 : 1,
+                cursor: isAnyExtracting ? 'not-allowed' : 'pointer',
               }}
             >
-              {isExtracting ? (
-                <>
-                  <Loader2 size={12} className={styles.spinIcon} />
-                  Processing
-                </>
-              ) : isExtracted ? (
+              {isExtracted ? (
                 <>
                   <RefreshCw size={12} />
                   Re-extract
@@ -326,7 +289,6 @@ export default function FinancialReportCard({
                 </>
               )}
             </button>
-          )
         )}
       </div>
     </article>

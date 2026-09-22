@@ -2145,36 +2145,6 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             <Loader2 size={13} className={styles.spinIcon} />
                             Extracting...
                           </span>
-                          {selectedContractEditable && (
-                            <button
-                              type="button"
-                              onClick={() => handleCancelExtract(selectedContract.id)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                padding: '4px 10px',
-                                background: '#fef2f2',
-                                border: '1px solid #fecaca',
-                                borderRadius: 6,
-                                color: '#b91c1c',
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = '#fee2e2';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = '#fef2f2';
-                              }}
-                              title="Cancel AI extraction"
-                            >
-                              <X size={13} />
-                              Cancel
-                            </button>
-                          )}
                         </div>
                       ) : (
                         <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
