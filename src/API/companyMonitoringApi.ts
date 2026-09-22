@@ -6,11 +6,7 @@ import type {
   CompanyMonitoringReviewRequest,
   CompanyMonitoringAssignmentResponse,
   CompanyMonitoringReviewResponse,
-  CompanyProfileUpdateProposalResponse,
-  RelationshipChangeProposalRequest,
-  RelationshipChangeProposalResponse,
-  RelationshipChangeReviewRequest,
-  RelationshipHistoryResponse
+  CompanyProfileUpdateProposalResponse
 } from '../types/domain';
 
 export const companyMonitoringApi = {
@@ -183,42 +179,5 @@ export const companyMonitoringApi = {
   ): Promise<CompanyMonitoringAssignmentResponse | null> => {
     const response = await api.get<CompanyMonitoringAssignmentResponse | null>(`/company-monitoring/company/${companyProfileId}`);
     return response.data;
-  },
-
-  proposeRelationshipChange: async (
-    assignmentId: number,
-    data: RelationshipChangeProposalRequest
-  ): Promise<RelationshipChangeProposalResponse> => {
-    const response = await api.post<RelationshipChangeProposalResponse>(`/company-monitoring/${assignmentId}/relationship-changes`, data);
-    return response.data;
-  },
-
-  getPendingProposals: async (
-    companyProfileId: string
-  ): Promise<RelationshipChangeProposalResponse[]> => {
-    const response = await api.get<RelationshipChangeProposalResponse[]>(`/company-profiles/${companyProfileId}/relationship-changes/pending`);
-    return response.data;
-  },
-
-  approveProposal: async (
-    id: number
-  ): Promise<RelationshipChangeProposalResponse> => {
-    const response = await api.patch<RelationshipChangeProposalResponse>(`/relationship-changes/${id}/approve`);
-    return response.data;
-  },
-
-  rejectProposal: async (
-    id: number,
-    data: RelationshipChangeReviewRequest
-  ): Promise<RelationshipChangeProposalResponse> => {
-    const response = await api.patch<RelationshipChangeProposalResponse>(`/relationship-changes/${id}/reject`, data);
-    return response.data;
-  },
-
-  getRelationshipHistory: async (
-    companyProfileId: string
-  ): Promise<RelationshipHistoryResponse[]> => {
-    const response = await api.get<RelationshipHistoryResponse[]>(`/company-profiles/${companyProfileId}/relationship-history`);
-    return response.data;
-  },
+  }
 };

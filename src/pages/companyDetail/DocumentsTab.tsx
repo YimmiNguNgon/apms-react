@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -12,22 +12,37 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Edit3,
 } from 'lucide-react';
-import { contractResearchApi } from '../../API/contractResearchApi';
+import { companyProfileContractApi } from '../../API/companyProfileContractApi';
 import { API_BASE_URL } from '../../services/api';
-import type { ContractEntry, ExtractedContractField, ContractValue } from '../../types/contractResearch';
-import { SecureTotpAccessGate, type SecureTotpGateState } from '../../components/SecureTotpAccessGate';
-import totpApi, { type StepUpVerifyResponse } from '../../API/totpApi';
-import { ownerSecureAccess } from '../../utils/ownerSecureAccess';
+import type {
+  CompanyProfileContractDto,
+  UpdateCompanyProfileContractRequest,
+} from '../../types/companyProfileContract';
+import type {
+  ContractStatus,
+  ExtractedContractField,
+  ContractValue,
+  ContractParty,
+} from '../../types/contractResearch';
 import styles from './DocumentsTab.module.css';
 
 const PAGE_SIZE = 5;
-const DOCUMENTS_SCOPE = 'COMPANY_PROFILE_DOCUMENTS';
+
+export interface ContractTabHandle {
+  isDirty: () => boolean;
+  save: () => Promise<void>;
+  cancel: () => void;
+}
 
 interface DocumentsTabProps {
   companyProfileId: string;
+  projectId?: number | null;
   userRole?: string | null;
   currentUserId?: number | string | null;
+  editable?: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'EXPIRED';
@@ -46,704 +61,1269 @@ const formatContractValue = (cv?: ExtractedContractField<ContractValue> | null):
   return '—';
 };
 
-export const DocumentsTab: React.FC<DocumentsTabProps> = ({ companyProfileId, userRole, currentUserId }) => {
-  const [authState, setAuthState] = useState<SecureTotpGateState | 'VERIFIED'>('CHECKING');
-  const [lockedUntil, setLockedUntil] = useState<string | null>(null);
-  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [stepUpToken, setStepUpToken] = useState<string | null>(null);
+const normStr = (val: string | null | undefined): string => {
+  return (val ?? '').trim();
+};
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  const [currentPage, setCurrentPage] = useState(0);
-  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
-  const [openingPdfId, setOpeningPdfId] = useState<string | null>(null);
+const computeDerivedContractStatus = (
+  effectiveDate?: string | null,
+  expiryDate?: string | null
+): ContractStatus => {
+  if (effectiveDate && expiryDate && expiryDate < effectiveDate) {
+    return 'UNKNOWN';
+  }
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${y}-${m}-${d}`;
 
-  const checkInitialState = async () => {
-    const isOwner = userRole === 'ROLE_BUSINESS_OWNER' || userRole === 'BUSINESS_OWNER' || userRole === 'ROLE_OWNER' || userRole === 'OWNER' || userRole === 'ROLE_SYSTEM_ADMIN' || userRole === 'SYSTEM_ADMIN' || userRole === 'ROLE_ADMIN' || userRole === 'ADMIN';
-    const isManager = userRole === 'ROLE_MANAGER' || userRole === 'MANAGER' || userRole === 'ROLE_BUSINESS_DEVELOPMENT_MANAGER' || userRole === 'BUSINESS_DEVELOPMENT_MANAGER';
+  if (expiryDate && expiryDate < todayStr) {
+    return 'EXPIRED';
+  }
+  if (effectiveDate && effectiveDate > todayStr) {
+    return 'NOT_EFFECTIVE';
+  }
+  if (effectiveDate && (!expiryDate || expiryDate >= todayStr)) {
+    return 'ACTIVE';
+  }
+  return 'UNKNOWN';
+};
 
-    if (!isOwner && !isManager) {
-      setAuthState('FORBIDDEN');
-      return;
-    }
+const isContractModified = (
+  orig: CompanyProfileContractDto,
+  draft: CompanyProfileContractDto
+): boolean => {
+  if (normStr(orig.title) !== normStr(draft.title)) return true;
+  if (normStr(orig.documentDate) !== normStr(draft.documentDate)) return true;
 
-    try {
-      setAuthState('CHECKING');
-      const storedSession = ownerSecureAccess.get(currentUserId);
-      let secureStatus;
-      try {
-        secureStatus = await totpApi.getStepUpStatus(DOCUMENTS_SCOPE, companyProfileId, storedSession?.token);
-      } catch (err: unknown) {
-        const status = (err as { status?: number; response?: { status?: number } })?.status ?? (err as { response?: { status?: number } })?.response?.status;
-        if (status === 403) {
-          setAuthState('FORBIDDEN');
-          return;
-        }
-        console.warn('getStepUpStatus failed', err);
-      }
+  const oCommon = orig.commonData;
+  const dCommon = draft.commonData;
 
-      if (storedSession?.token && secureStatus?.data?.secureAccessActive) {
-        setStepUpToken(storedSession.token);
-        setAuthState('VERIFIED');
-        return;
-      }
+  if (normStr(oCommon?.contractNumber?.value) !== normStr(dCommon?.contractNumber?.value)) return true;
+  if (normStr(oCommon?.signingDate?.value) !== normStr(dCommon?.signingDate?.value)) return true;
+  if (normStr(oCommon?.effectiveDate?.value) !== normStr(dCommon?.effectiveDate?.value)) return true;
+  if (normStr(oCommon?.expiryDate?.value) !== normStr(dCommon?.expiryDate?.value)) return true;
+  if (normStr(oCommon?.term?.value) !== normStr(dCommon?.term?.value)) return true;
+  if (normStr(oCommon?.governingLaw?.value) !== normStr(dCommon?.governingLaw?.value)) return true;
+  if (normStr(oCommon?.purpose?.value) !== normStr(dCommon?.purpose?.value)) return true;
 
-      const statusRes = await totpApi.getStatus();
+  // Compare contract value
+  const oVal = oCommon?.contractValue?.value;
+  const dVal = dCommon?.contractValue?.value;
+  if (normStr(oVal?.amount != null ? String(oVal.amount) : '') !== normStr(dVal?.amount != null ? String(dVal.amount) : '')) return true;
+  if (normStr(oVal?.currency) !== normStr(dVal?.currency)) return true;
+  if (normStr(oVal?.rawAmountText) !== normStr(dVal?.rawAmountText)) return true;
 
-      if (!statusRes.data.enrolled || !statusRes.data.enabled) {
-        setAuthState('NOT_ENROLLED');
-      } else if (statusRes.data.locked) {
-        setLockedUntil(statusRes.data.lockedUntil || 'Vài phút nữa');
-        setAuthState('LOCKED');
-      } else {
-        setAuthState('TOTP_REQUIRED');
-      }
-    } catch (err) {
-      console.error('Failed to check TOTP status', err);
-      setAuthState('TOTP_REQUIRED');
-    }
-  };
+  // Compare parties
+  const oParties = oCommon?.parties || [];
+  const dParties = dCommon?.parties || [];
+  if (oParties.length !== dParties.length) return true;
+  for (let i = 0; i < oParties.length; i++) {
+    const op = oParties[i];
+    const dp = dParties[i];
+    if (normStr(op.legalName) !== normStr(dp.legalName)) return true;
+    if (normStr(op.taxCode) !== normStr(dp.taxCode)) return true;
+    if (normStr(op.address) !== normStr(dp.address)) return true;
+    if (normStr(op.representative) !== normStr(dp.representative)) return true;
+    if (normStr(op.role) !== normStr(dp.role)) return true;
+  }
 
-  useEffect(() => {
-    void checkInitialState();
-  }, [companyProfileId, userRole, currentUserId]);
+  return false;
+};
 
-  const handleVerified = (secureSession: StepUpVerifyResponse) => {
-    const savedSession = ownerSecureAccess.save(secureSession, currentUserId);
-    setStepUpToken(savedSession.token);
-    setAuthState('VERIFIED');
-    setIsVerifyModalOpen(false);
-    setIsSetupModalOpen(false);
-  };
+export const DocumentsTab = forwardRef<ContractTabHandle, DocumentsTabProps>(
+  ({ companyProfileId, projectId, userRole, currentUserId, editable = false, onDirtyChange }, ref) => {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+    const [currentPage, setCurrentPage] = useState(0);
+    const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+    const [openingPdfId, setOpeningPdfId] = useState<string | null>(null);
 
-  // Fetch approved contracts from research API
-  const {
-    data: contracts = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ['approved-contracts', companyProfileId],
-    queryFn: () => contractResearchApi.getApprovedContracts(companyProfileId),
-    enabled: Boolean(companyProfileId) && authState === 'VERIFIED',
-    staleTime: 30_000,
-  });
+    const backfillAttemptedRef = useRef(false);
 
-  // Filtered list based on search and status
-  const filteredContracts = useMemo(() => {
-    return contracts.filter((contract) => {
-      // Status filter
-      if (statusFilter === 'ACTIVE' && contract.derivedContractStatus !== 'ACTIVE') {
-        return false;
-      }
-      if (statusFilter === 'EXPIRED' && contract.derivedContractStatus !== 'EXPIRED') {
-        return false;
-      }
+    const isOwner =
+      userRole === 'ROLE_BUSINESS_OWNER' ||
+      userRole === 'BUSINESS_OWNER' ||
+      userRole === 'ROLE_OWNER' ||
+      userRole === 'OWNER' ||
+      userRole === 'ROLE_SYSTEM_ADMIN' ||
+      userRole === 'SYSTEM_ADMIN' ||
+      userRole === 'ROLE_ADMIN' ||
+      userRole === 'ADMIN';
+    const isManager =
+      userRole === 'ROLE_MANAGER' ||
+      userRole === 'MANAGER' ||
+      userRole === 'ROLE_BUSINESS_DEVELOPMENT_MANAGER' ||
+      userRole === 'BUSINESS_DEVELOPMENT_MANAGER';
+    const isStaff =
+      userRole === 'ROLE_STAFF' ||
+      userRole === 'STAFF' ||
+      userRole === 'ROLE_BUSINESS_DEVELOPMENT_STAFF' ||
+      userRole === 'BUSINESS_DEVELOPMENT_STAFF';
 
-      // Search filter
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim();
-        const titleMatch = (contract.title || '').toLowerCase().includes(query);
-        const docNameMatch = (contract.documentName || '').toLowerCase().includes(query);
-        const numberMatch = (contract.commonData?.contractNumber?.value || '').toLowerCase().includes(query);
-        const partiesMatch = (contract.commonData?.parties || []).some(
-          (p) =>
-            (p.legalName || '').toLowerCase().includes(query) ||
-            (p.taxCode || '').toLowerCase().includes(query) ||
-            (p.representative || '').toLowerCase().includes(query),
-        );
-        return titleMatch || docNameMatch || numberMatch || partiesMatch;
-      }
+    const hasAccess = isOwner || isManager || isStaff;
 
-      return true;
+    // Fetch canonical contracts from profile contract API (strictly read-only)
+    const {
+      data: canonicalContracts = [],
+      isLoading,
+      isError,
+      refetch,
+    } = useQuery({
+      queryKey: ['canonical-company-contracts', companyProfileId, projectId],
+      queryFn: () => companyProfileContractApi.getCompanyContracts(companyProfileId, projectId),
+      enabled: Boolean(companyProfileId) && hasAccess,
+      staleTime: 30_000,
     });
-  }, [contracts, statusFilter, searchQuery]);
 
-  // Total pages and paginated items for left column
-  const totalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
-  const paginatedContracts = useMemo(() => {
-    const start = currentPage * PAGE_SIZE;
-    return filteredContracts.slice(start, start + PAGE_SIZE);
-  }, [filteredContracts, currentPage]);
-
-  // Reset page to 0 when filter/search changes
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [searchQuery, statusFilter]);
-
-  // Auto-select first contract on page if current selection is invalid
-  useEffect(() => {
-    if (paginatedContracts.length > 0) {
-      const isStillInPage = paginatedContracts.some((c) => c.id === selectedContractId);
-      if (!isStillInPage) {
-        setSelectedContractId(paginatedContracts[0].id);
+    // Idempotent migration trigger: if profile has no canonical contracts, attempt one profile-scoped backfill
+    useEffect(() => {
+      if (
+        hasAccess &&
+        !isStaff &&
+        !isLoading &&
+        canonicalContracts.length === 0 &&
+        !backfillAttemptedRef.current
+      ) {
+        backfillAttemptedRef.current = true;
+        companyProfileContractApi
+          .backfillCompanyContracts(companyProfileId)
+          .then((promotedCount) => {
+            if (promotedCount > 0) {
+              void refetch();
+            }
+          })
+          .catch((err) => {
+            console.warn('Idempotent profile backfill check:', err);
+          });
       }
-    } else {
-      setSelectedContractId(null);
-    }
-  }, [paginatedContracts, selectedContractId]);
+    }, [hasAccess, isLoading, canonicalContracts.length, companyProfileId, refetch]);
 
-  // Currently selected contract
-  const selectedContract = useMemo(() => {
-    if (!selectedContractId) return paginatedContracts[0] || null;
-    return contracts.find((c) => c.id === selectedContractId) || paginatedContracts[0] || null;
-  }, [contracts, selectedContractId, paginatedContracts]);
+    // Draft state for inline editing
+    const [draftContracts, setDraftContracts] = useState<CompanyProfileContractDto[]>([]);
 
-  // Open PDF file handler
-  const handleViewPdf = async (contract: ContractEntry) => {
-    if (!contract.documentId) return;
-    setOpeningPdfId(contract.id);
-    try {
-      const token =
-        localStorage.getItem('apms-token') ||
-        localStorage.getItem('accessToken') ||
-        localStorage.getItem('token');
-
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    useEffect(() => {
+      if (!editable) {
+        setDraftContracts(JSON.parse(JSON.stringify(canonicalContracts)));
       }
+    }, [canonicalContracts, editable]);
 
-      let res: Response | null = null;
-      if (contract.projectId) {
-        try {
-          res = await fetch(
-            `${API_BASE_URL}/projects/${contract.projectId}/documents/${encodeURIComponent(contract.documentId)}/download?download=false`,
-            { headers },
-          );
-        } catch (e) {
-          console.warn('Project document fetch failed, trying direct endpoint', e);
+    // Active dataset: draft in edit mode, canonical in view mode
+    const displayContracts = editable ? draftContracts : canonicalContracts;
+
+    // Check dirty state
+    const isDirty = useMemo(() => {
+      if (!editable) return false;
+      if (canonicalContracts.length !== draftContracts.length) return true;
+      for (const draft of draftContracts) {
+        const orig = canonicalContracts.find((c) => c.id === draft.id);
+        if (!orig || isContractModified(orig, draft)) {
+          return true;
         }
       }
+      return false;
+    }, [editable, canonicalContracts, draftContracts]);
 
-      if (!res || !res.ok) {
-        res = await fetch(
-          `${API_BASE_URL}/documents/${encodeURIComponent(contract.documentId)}/download?download=false`,
-          { headers },
+    useEffect(() => {
+      if (editable) {
+        onDirtyChange?.(isDirty);
+      }
+    }, [editable, isDirty, onDirtyChange]);
+
+    // Expose handle to CompanyDetail
+    useImperativeHandle(
+      ref,
+      () => ({
+        isDirty: () => isDirty,
+        save: async () => {
+          const dirtyRequests: UpdateCompanyProfileContractRequest[] = [];
+          for (const draft of draftContracts) {
+            const orig = canonicalContracts.find((c) => c.id === draft.id);
+            if (!orig || isContractModified(orig, draft)) {
+              dirtyRequests.push({
+                id: draft.id,
+                title: draft.title || undefined,
+                documentDate: draft.documentDate || undefined,
+                contractNumber: draft.commonData?.contractNumber?.value || undefined,
+                signingDate: draft.commonData?.signingDate?.value || undefined,
+                effectiveDate: draft.commonData?.effectiveDate?.value || undefined,
+                expiryDate: draft.commonData?.expiryDate?.value || undefined,
+                term: draft.commonData?.term?.value || undefined,
+                contractValue: draft.commonData?.contractValue?.value
+                  ? {
+                      amount: draft.commonData.contractValue.value.amount ?? null,
+                      currency: draft.commonData.contractValue.value.currency || 'VND',
+                      rawAmountText: draft.commonData.contractValue.value.rawAmountText || undefined,
+                    }
+                  : undefined,
+                governingLaw: draft.commonData?.governingLaw?.value || undefined,
+                purpose: draft.commonData?.purpose?.value || undefined,
+                parties: draft.commonData?.parties?.map((p) => ({
+                  id: p.id,
+                  legalName: p.legalName,
+                  taxCode: p.taxCode || null,
+                  address: p.address || null,
+                  representative: p.representative || null,
+                  role: p.role || null,
+                  confidence: p.confidence ?? null,
+                  sourcePage: p.sourcePage ?? null,
+                  evidence: p.evidence ?? null,
+                  qualityStatus: p.qualityStatus,
+                  verificationStatus: p.verificationStatus,
+                  inputMethod: p.inputMethod,
+                })),
+                cooperationAgreementData: draft.cooperationAgreementData || undefined,
+                partnershipAgreementData: draft.partnershipAgreementData || undefined,
+                jointVentureAgreementData: draft.jointVentureAgreementData || undefined,
+                businessCooperationContractData: draft.businessCooperationContractData || undefined,
+              });
+            }
+          }
+
+          if (dirtyRequests.length > 0) {
+            await companyProfileContractApi.batchUpdateCompanyContracts(companyProfileId, {
+              contracts: dirtyRequests,
+            });
+            await refetch();
+          }
+        },
+        cancel: () => {
+          setDraftContracts(JSON.parse(JSON.stringify(canonicalContracts)));
+          onDirtyChange?.(false);
+        },
+      }),
+      [isDirty, draftContracts, canonicalContracts, companyProfileId, refetch, onDirtyChange]
+    );
+
+    // Helpers to mutate draft
+    const updateCurrentDraft = useCallback(
+      (updater: (contract: CompanyProfileContractDto) => void) => {
+        if (!selectedContractId) return;
+        setDraftContracts((prev) =>
+          prev.map((c) => {
+            if (c.id !== selectedContractId) return c;
+            const clone: CompanyProfileContractDto = JSON.parse(JSON.stringify(c));
+            updater(clone);
+            // Recompute derivedContractStatus strictly from dates
+            const eff = clone.commonData?.effectiveDate?.value;
+            const exp = clone.commonData?.expiryDate?.value;
+            clone.derivedContractStatus = computeDerivedContractStatus(eff, exp);
+            return clone;
+          })
         );
-      }
+      },
+      [selectedContractId]
+    );
 
-      if (!res.ok) {
-        throw new Error(`Failed to load document (${res.status})`);
-      }
+    // Filtered list based on search and status
+    const filteredContracts = useMemo(() => {
+      return displayContracts.filter((contract) => {
+        // Status filter
+        if (statusFilter === 'ACTIVE' && contract.derivedContractStatus !== 'ACTIVE') {
+          return false;
+        }
+        if (statusFilter === 'EXPIRED' && contract.derivedContractStatus !== 'EXPIRED') {
+          return false;
+        }
 
-      const blob = await res.blob();
-      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-      const fileUrl = window.URL.createObjectURL(pdfBlob);
-      window.open(fileUrl, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => window.URL.revokeObjectURL(fileUrl), 120_000);
-    } catch (err) {
-      console.error('Error opening PDF:', err);
-      window.alert('Không thể tải tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.');
-    } finally {
-      setOpeningPdfId(null);
+        // Search filter
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase().trim();
+          const titleMatch = (contract.title || '').toLowerCase().includes(query);
+          const docNameMatch = (contract.documentName || contract.sourceDocumentName || '').toLowerCase().includes(query);
+          const numberMatch = (contract.commonData?.contractNumber?.value || '').toLowerCase().includes(query);
+          const partiesMatch = (contract.commonData?.parties || []).some(
+            (p) =>
+              (p.legalName || '').toLowerCase().includes(query) ||
+              (p.taxCode || '').toLowerCase().includes(query) ||
+              (p.representative || '').toLowerCase().includes(query)
+          );
+          return titleMatch || docNameMatch || numberMatch || partiesMatch;
+        }
+
+        return true;
+      });
+    }, [displayContracts, statusFilter, searchQuery]);
+
+    // Total pages and paginated items for left column
+    const totalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
+    const paginatedContracts = useMemo(() => {
+      const start = currentPage * PAGE_SIZE;
+      return filteredContracts.slice(start, start + PAGE_SIZE);
+    }, [filteredContracts, currentPage]);
+
+    // Reset page to 0 when filter/search changes
+    useEffect(() => {
+      setCurrentPage(0);
+    }, [searchQuery, statusFilter]);
+
+    // Auto-select first contract on page if current selection is invalid
+    useEffect(() => {
+      if (paginatedContracts.length > 0) {
+        const isStillInPage = paginatedContracts.some((c) => c.id === selectedContractId);
+        if (!isStillInPage) {
+          setSelectedContractId(paginatedContracts[0].id);
+        }
+      } else {
+        setSelectedContractId(null);
+      }
+    }, [paginatedContracts, selectedContractId]);
+
+    // Currently selected contract
+    const selectedContract = useMemo(() => {
+      if (!selectedContractId) return paginatedContracts[0] || null;
+      return displayContracts.find((c) => c.id === selectedContractId) || paginatedContracts[0] || null;
+    }, [displayContracts, selectedContractId, paginatedContracts]);
+
+    // Open PDF file handler
+    const handleViewPdf = async (contract: CompanyProfileContractDto) => {
+      const docId = contract.documentId || contract.sourceDocumentId;
+      if (!docId) return;
+      setOpeningPdfId(contract.id);
+      try {
+        const token =
+          localStorage.getItem('apms-token') ||
+          localStorage.getItem('accessToken') ||
+          localStorage.getItem('token');
+
+        const headers: HeadersInit = {};
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        let res: Response | null = null;
+        const effectiveProjectId = projectId || contract.projectId;
+        const projectParam = effectiveProjectId ? `&projectId=${effectiveProjectId}` : '';
+
+        if (companyProfileId) {
+          try {
+            res = await fetch(
+              `${API_BASE_URL}/company-profiles/${encodeURIComponent(companyProfileId)}/documents/${encodeURIComponent(docId)}/download?download=false${projectParam}`,
+              { headers }
+            );
+          } catch (e) {
+            console.warn('Company profile document fetch failed, trying project endpoint', e);
+          }
+        }
+
+        if ((!res || !res.ok) && effectiveProjectId) {
+          try {
+            res = await fetch(
+              `${API_BASE_URL}/projects/${effectiveProjectId}/documents/${encodeURIComponent(docId)}/download?download=false`,
+              { headers }
+            );
+          } catch (e) {
+            console.warn('Project document fetch failed, trying direct endpoint', e);
+          }
+        }
+
+        if (!res || !res.ok) {
+          res = await fetch(
+            `${API_BASE_URL}/documents/${encodeURIComponent(docId)}/download?download=false`,
+            { headers }
+          );
+        }
+
+        if (!res.ok) {
+          throw new Error(`Failed to load document (${res.status})`);
+        }
+
+        const blob = await res.blob();
+        const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+        const fileUrl = window.URL.createObjectURL(pdfBlob);
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => window.URL.revokeObjectURL(fileUrl), 120_000);
+      } catch (err) {
+        console.error('Error opening PDF:', err);
+        window.alert('Không thể tải tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.');
+      } finally {
+        setOpeningPdfId(null);
+      }
+    };
+
+    if (!hasAccess) {
+      return (
+        <div className={styles.container}>
+          <div className={styles.headerSection}>
+            <div className={styles.titleRow}>
+              <h2 className={styles.title}>Hợp đồng đối tác</h2>
+            </div>
+            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
+          </div>
+          <div className={styles.emptyStateContainer}>
+            <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
+            <p className={styles.emptyTitle}>Không có quyền truy cập</p>
+            <p className={styles.emptyDesc}>Bạn không có quyền truy cập hợp đồng của doanh nghiệp này.</p>
+          </div>
+        </div>
+      );
     }
-  };
 
-  if (authState !== 'VERIFIED') {
-    return (
-      <SecureTotpAccessGate
-        state={authState}
-        lockedUntil={lockedUntil}
-        setupOpen={isSetupModalOpen}
-        verifyOpen={isVerifyModalOpen}
-        scope={DOCUMENTS_SCOPE}
-        resourceId={companyProfileId}
-        forbiddenText={'Bạn không có quyền truy cập hợp đồng của doanh nghiệp này. Chỉ Quản lý phụ trách doanh nghiệp hoặc Business Owner mới có quyền truy cập.'}
-        requiredText={'Bạn đang truy cập tài liệu hợp đồng đối tác bảo mật. Vui lòng xác thực Authenticator để tiếp tục.'}
-        onOpenSetup={() => setIsSetupModalOpen(true)}
-        onCloseSetup={() => setIsSetupModalOpen(false)}
-        onSetupSuccess={handleVerified}
-        onOpenVerify={() => setIsVerifyModalOpen(true)}
-        onCloseVerify={() => setIsVerifyModalOpen(false)}
-        onVerified={handleVerified}
-      />
-    );
-  }
-
-  // 1. Loading State
-  if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Hợp đồng đối tác</h2>
+    // 1. Loading State
+    if (isLoading) {
+      return (
+        <div className={styles.container}>
+          <div className={styles.headerSection}>
+            <div className={styles.titleRow}>
+              <h2 className={styles.title}>Hợp đồng đối tác</h2>
+            </div>
+            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
           </div>
-          <p className={styles.subtitle}>Danh mục hợp đồng đã được thẩm định & phê duyệt.</p>
-        </div>
-        <div className={styles.emptyStateContainer}>
-          <div className={styles.spinner} />
-          <p className={styles.emptyTitle} style={{ marginTop: 10 }}>Đang tải hợp đồng đối tác...</p>
-          <p className={styles.emptyDesc}>Đang truy xuất các hợp đồng chính thức đã được Manager phê duyệt.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Error State
-  if (isError) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Hợp đồng đối tác</h2>
+          <div className={styles.emptyStateContainer}>
+            <div className={styles.spinner} />
+            <p className={styles.emptyTitle} style={{ marginTop: 10 }}>Đang tải hợp đồng đối tác...</p>
+            <p className={styles.emptyDesc}>Đang truy xuất các hợp đồng chính thức từ cơ sở dữ liệu doanh nghiệp.</p>
           </div>
-          <p className={styles.subtitle}>Danh mục hợp đồng đã được thẩm định & phê duyệt.</p>
         </div>
-        <div className={styles.emptyStateContainer}>
-          <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
-          <p className={styles.emptyTitle}>Không thể tải danh sách hợp đồng</p>
-          <p className={styles.emptyDesc}>Đã xảy ra lỗi khi tải dữ liệu hợp đồng. Vui lòng thử lại.</p>
-          <button
-            type="button"
-            className={styles.paginationBtn}
-            onClick={() => void refetch()}
-            style={{ marginTop: 12, padding: '6px 14px' }}
-          >
-            <RefreshCw size={13} /> Thử lại
-          </button>
-        </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // 3. Global Empty State (No approved contracts yet)
-  if (contracts.length === 0) {
+    // 2. Error State
+    if (isError) {
+      return (
+        <div className={styles.container}>
+          <div className={styles.headerSection}>
+            <div className={styles.titleRow}>
+              <h2 className={styles.title}>Hợp đồng đối tác</h2>
+            </div>
+            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
+          </div>
+          <div className={styles.emptyStateContainer}>
+            <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
+            <p className={styles.emptyTitle}>Không thể tải danh sách hợp đồng</p>
+            <p className={styles.emptyDesc}>Đã xảy ra lỗi khi tải dữ liệu hợp đồng. Vui lòng thử lại.</p>
+            <button
+              type="button"
+              className={styles.paginationBtn}
+              onClick={() => void refetch()}
+              style={{ marginTop: 12, padding: '6px 14px' }}
+            >
+              <RefreshCw size={13} /> Thử lại
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. Global Empty State (No approved contracts yet)
+    if (displayContracts.length === 0) {
+      return (
+        <div className={styles.container}>
+          <div className={styles.emptyStateContainer}>
+            <p className={styles.emptyTitle}>Chưa có hợp đồng được phê duyệt</p>
+            <p className={styles.emptyDesc}>Hợp đồng sau khi được Quản lý duyệt từ nghiên cứu tài liệu sẽ hiển thị tại đây.</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Hợp đồng đối tác</h2>
-            <span className={styles.countBadge}>0 hợp đồng</span>
-          </div>
-          <p className={styles.subtitle}>Tài liệu hợp đồng đối tác đã được Manager phê duyệt.</p>
-        </div>
-        <div className={styles.emptyStateContainer}>
-          <div className={styles.emptyIcon}>
-            <FileText size={22} />
-          </div>
-          <p className={styles.emptyTitle}>Chưa có hợp đồng được phê duyệt</p>
-          <p className={styles.emptyDesc}>
-            Các hợp đồng đối tác sau khi được trích xuất bằng AI và Manager phê duyệt từ Partner Contract Collection sẽ tự động xuất hiện tại đây.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.headerSection}>
-        <div className={styles.titleRow}>
-          <h2 className={styles.title}>Hợp đồng đối tác</h2>
-          <span className={styles.countBadge}>{contracts.length} hợp đồng</span>
-        </div>
-        <p className={styles.subtitle}>
-          Danh mục hợp đồng và các điều khoản pháp lý đã được thẩm định & phê duyệt cho doanh nghiệp này.
-        </p>
-      </div>
-
-      {/* Toolbar: Search & Status Filter */}
-      <div className={styles.toolbar}>
-        <div className={styles.searchWrapper}>
-          <Search size={14} className={styles.searchIcon} />
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Tìm theo tên HĐ, số hiệu, đối tác..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        <div className={styles.filterGroup}>
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${statusFilter === 'ALL' ? styles.filterBtnActive : ''}`}
-            onClick={() => setStatusFilter('ALL')}
-          >
-            Tất cả ({contracts.length})
-          </button>
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${statusFilter === 'ACTIVE' ? styles.filterBtnActive : ''}`}
-            onClick={() => setStatusFilter('ACTIVE')}
-          >
-            Đang hiệu lực ({contracts.filter((c) => c.derivedContractStatus === 'ACTIVE').length})
-          </button>
-          <button
-            type="button"
-            className={`${styles.filterBtn} ${statusFilter === 'EXPIRED' ? styles.filterBtnActive : ''}`}
-            onClick={() => setStatusFilter('EXPIRED')}
-          >
-            Hết hiệu lực ({contracts.filter((c) => c.derivedContractStatus === 'EXPIRED').length})
-          </button>
-        </div>
-      </div>
-
-      {/* Master-Detail Layout */}
-      <div className={styles.masterDetailLayout}>
-        {/* Left Column: Master List */}
-        <div className={styles.masterColumn}>
-          <div className={styles.masterHeader}>
-            <span>Danh sách ({filteredContracts.length})</span>
-            <span>Trang {currentPage + 1}/{totalPages}</span>
+        {/* Toolbar: Search & Status Filter */}
+        <div className={styles.toolbar}>
+          <div className={styles.searchWrapper}>
+            <Search size={14} className={styles.searchIcon} />
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Tìm theo tên HĐ, số hiệu, đối tác..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
 
-          <div className={styles.masterList}>
-            {paginatedContracts.length === 0 ? (
-              <div style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
-                <FileSearch size={24} style={{ margin: '0 auto 8px', opacity: 0.7 }} />
-                <p style={{ margin: 0, fontWeight: 600 }}>Không tìm thấy hợp đồng</p>
-                <p style={{ margin: '4px 0 0', fontSize: '11px' }}>Thử thay đổi từ khóa hoặc bộ lọc</p>
-              </div>
-            ) : (
-              paginatedContracts.map((contract) => {
-                const isActive = selectedContract?.id === contract.id;
-                const status = contract.derivedContractStatus;
-                const contractNumber = contract.commonData?.contractNumber?.value;
-                const signDate = contract.commonData?.signingDate?.value || contract.documentDate;
-                const valueText = formatContractValue(contract.commonData?.contractValue);
-                const term = contract.commonData?.term?.value;
+          <div className={styles.filterGroup}>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${statusFilter === 'ALL' ? styles.filterBtnActive : ''}`}
+              onClick={() => setStatusFilter('ALL')}
+            >
+              Tất cả ({displayContracts.length})
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${statusFilter === 'ACTIVE' ? styles.filterBtnActive : ''}`}
+              onClick={() => setStatusFilter('ACTIVE')}
+            >
+              Đang hiệu lực ({displayContracts.filter((c) => c.derivedContractStatus === 'ACTIVE').length})
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${statusFilter === 'EXPIRED' ? styles.filterBtnActive : ''}`}
+              onClick={() => setStatusFilter('EXPIRED')}
+            >
+              Hết hiệu lực ({displayContracts.filter((c) => c.derivedContractStatus === 'EXPIRED').length})
+            </button>
+          </div>
+        </div>
 
-                return (
-                  <div
-                    key={contract.id}
-                    className={`${styles.contractCard} ${isActive ? styles.contractCardActive : ''}`}
-                    onClick={() => setSelectedContractId(contract.id)}
-                  >
-                    <div className={styles.cardTopRow}>
-                      {status === 'ACTIVE' ? (
+        {/* Master-Detail Layout */}
+        <div className={styles.masterDetailLayout}>
+          {/* Left Column: Master List */}
+          <div className={styles.masterColumn}>
+            <div className={styles.masterHeader}>
+              <span>Danh sách ({filteredContracts.length})</span>
+              <span>Trang {currentPage + 1}/{totalPages}</span>
+            </div>
+
+            <div className={styles.masterList}>
+              {paginatedContracts.length === 0 ? (
+                <div style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                  <FileSearch size={24} style={{ margin: '0 auto 8px', opacity: 0.7 }} />
+                  <p style={{ margin: 0, fontWeight: 600 }}>Không tìm thấy hợp đồng</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '11px' }}>Thử thay đổi từ khóa hoặc bộ lọc</p>
+                </div>
+              ) : (
+                paginatedContracts.map((contract) => {
+                  const isActive = selectedContract?.id === contract.id;
+                  const status = contract.derivedContractStatus;
+                  const contractNumber = contract.commonData?.contractNumber?.value;
+                  const signDate = contract.commonData?.signingDate?.value || contract.documentDate;
+                  const valueText = formatContractValue(contract.commonData?.contractValue);
+                  const term = contract.commonData?.term?.value;
+
+                  return (
+                    <div
+                      key={contract.id}
+                      className={`${styles.contractCard} ${isActive ? styles.contractCardActive : ''}`}
+                      onClick={() => setSelectedContractId(contract.id)}
+                    >
+                      <div className={styles.cardTopRow}>
+                        {status === 'ACTIVE' ? (
+                          <span className={styles.statusChipActive}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />
+                            Đang hiệu lực
+                          </span>
+                        ) : status === 'EXPIRED' ? (
+                          <span className={styles.statusChipExpired}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
+                            Hết hiệu lực
+                          </span>
+                        ) : status === 'NOT_EFFECTIVE' ? (
+                          <span className={styles.statusChipOther} style={{ color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
+                            Chưa có hiệu lực
+                          </span>
+                        ) : (
+                          <span className={styles.statusChipOther}>
+                            {status || 'Đã duyệt'}
+                          </span>
+                        )}
+
+                        {signDate && <span className={styles.cardDate}>{signDate}</span>}
+                      </div>
+
+                      <h4 className={styles.cardTitle} title={contract.title || contract.documentName || undefined}>
+                        {contract.title || contract.documentName || 'Hợp đồng chưa đặt tên'}
+                      </h4>
+
+                      {contractNumber && (
+                        <div className={styles.cardNumber}>
+                          Số HĐ: <strong>{contractNumber}</strong>
+                        </div>
+                      )}
+
+                      <div className={styles.cardBottomRow}>
+                        <span className={styles.cardValue}>
+                          {valueText !== '—' ? valueText : 'Thỏa thuận nguyên tắc'}
+                        </span>
+                        {term && <span className={styles.cardTerm}>{term}</span>}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Pagination Bar */}
+            <div className={styles.paginationBar}>
+              <button
+                type="button"
+                className={styles.paginationBtn}
+                disabled={currentPage <= 0}
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft size={13} /> Trước
+              </button>
+              <span className={styles.paginationInfo}>
+                Trang {currentPage + 1} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className={styles.paginationBtn}
+                disabled={currentPage >= totalPages - 1}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+              >
+                Sau <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Detail Workspace */}
+          <div className={styles.detailColumn}>
+            {selectedContract ? (
+              <>
+                {/* Detail Header */}
+                <div className={styles.detailHeader}>
+                  <div className={styles.detailHeaderLeft}>
+                    <div className={styles.detailBadges}>
+                      {selectedContract.derivedContractStatus === 'ACTIVE' ? (
                         <span className={styles.statusChipActive}>
                           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />
                           Đang hiệu lực
                         </span>
-                      ) : status === 'EXPIRED' ? (
+                      ) : selectedContract.derivedContractStatus === 'EXPIRED' ? (
                         <span className={styles.statusChipExpired}>
                           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
                           Hết hiệu lực
                         </span>
-                      ) : status === 'NOT_EFFECTIVE' ? (
+                      ) : selectedContract.derivedContractStatus === 'NOT_EFFECTIVE' ? (
                         <span className={styles.statusChipOther} style={{ color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa' }}>
                           <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
                           Chưa có hiệu lực
                         </span>
                       ) : (
                         <span className={styles.statusChipOther}>
-                          {status || 'Đã duyệt'}
+                          {selectedContract.derivedContractStatus || 'Đã duyệt'}
                         </span>
                       )}
 
-                      {signDate && <span className={styles.cardDate}>{signDate}</span>}
+                      <span className={styles.approvedBadge}>
+                        <ShieldCheck size={11} /> Manager Approved
+                      </span>
+
+                      {editable && (
+                        <span className={styles.editingBadge}>
+                          <Edit3 size={11} /> Đang chỉnh sửa
+                        </span>
+                      )}
                     </div>
 
-                    <h4 className={styles.cardTitle} title={contract.title || contract.documentName || undefined}>
-                      {contract.title || contract.documentName || 'Hợp đồng chưa đặt tên'}
-                    </h4>
-
-                    {contractNumber && (
-                      <div className={styles.cardNumber}>
-                        Số HĐ: <strong>{contractNumber}</strong>
+                    {editable ? (
+                      <div style={{ marginTop: 4, marginBottom: 6 }}>
+                        <input
+                          type="text"
+                          className={styles.editInput}
+                          style={{ fontSize: 15, fontWeight: 700 }}
+                          value={selectedContract.title || ''}
+                          placeholder="Tiêu đề hợp đồng..."
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateCurrentDraft((c) => {
+                              c.title = val;
+                            });
+                          }}
+                        />
                       </div>
-                    )}
-
-                    <div className={styles.cardBottomRow}>
-                      <span className={styles.cardValue}>
-                        {valueText !== '—' ? valueText : 'Thỏa thuận nguyên tắc'}
-                      </span>
-                      {term && <span className={styles.cardTerm}>{term}</span>}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Pagination Bar (4-5 items per page) */}
-          <div className={styles.paginationBar}>
-            <button
-              type="button"
-              className={styles.paginationBtn}
-              disabled={currentPage <= 0}
-              onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-            >
-              <ChevronLeft size={13} /> Trước
-            </button>
-            <span className={styles.paginationInfo}>
-              Trang {currentPage + 1} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className={styles.paginationBtn}
-              disabled={currentPage >= totalPages - 1}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-            >
-              Sau <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* Right Column: Detail Workspace */}
-        <div className={styles.detailColumn}>
-          {selectedContract ? (
-            <>
-              {/* Detail Header */}
-              <div className={styles.detailHeader}>
-                <div className={styles.detailHeaderLeft}>
-                  <div className={styles.detailBadges}>
-                    {selectedContract.derivedContractStatus === 'ACTIVE' ? (
-                      <span className={styles.statusChipActive}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981' }} />
-                        Đang hiệu lực
-                      </span>
-                    ) : selectedContract.derivedContractStatus === 'EXPIRED' ? (
-                      <span className={styles.statusChipExpired}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
-                        Hết hiệu lực
-                      </span>
-                    ) : selectedContract.derivedContractStatus === 'NOT_EFFECTIVE' ? (
-                      <span className={styles.statusChipOther} style={{ color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa' }}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f97316' }} />
-                        Chưa có hiệu lực
-                      </span>
                     ) : (
-                      <span className={styles.statusChipOther}>
-                        {selectedContract.derivedContractStatus || 'Đã duyệt'}
-                      </span>
+                      <h3 className={styles.detailTitle}>
+                        {selectedContract.title || selectedContract.documentName || 'Hợp đồng đối tác'}
+                      </h3>
                     )}
 
-                    <span className={styles.approvedBadge}>
-                      <ShieldCheck size={11} /> Manager Approved
-                    </span>
-                  </div>
-
-                  <h3 className={styles.detailTitle}>
-                    {selectedContract.title || selectedContract.documentName || 'Hợp đồng đối tác'}
-                  </h3>
-
-                  <div className={styles.detailSubtitle}>
-                    {selectedContract.documentName && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <FileText size={12} /> {selectedContract.documentName}
-                      </span>
-                    )}
-                    {selectedContract.documentDate && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        • <Calendar size={12} /> Ngày ký: {selectedContract.documentDate}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {selectedContract.documentId && (
-                  <button
-                    type="button"
-                    className={styles.pdfBtn}
-                    onClick={() => void handleViewPdf(selectedContract)}
-                    disabled={openingPdfId === selectedContract.id}
-                    title="Mở toàn văn file PDF gốc"
-                  >
-                    {openingPdfId === selectedContract.id ? (
-                      <>
-                        <Loader2 size={13} className={styles.spinner} style={{ width: 13, height: 13, borderWidth: 2 }} />
-                        <span>Đang mở PDF...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ExternalLink size={13} />
-                        <span>Xem PDF gốc</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              {/* Detail Body */}
-              <div className={styles.detailContent}>
-                {/* 1. Legal & General Terms */}
-                <div className={styles.sectionBlock}>
-                  <div className={styles.sectionHeader}>
-                    <span className={styles.sectionNumber}>1</span>
-                    Thông tin điều khoản chung & Pháp lý
-                  </div>
-
-                  <div className={styles.termsGrid}>
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Số hiệu hợp đồng</span>
-                      <span className={styles.termValue}>
-                        {selectedContract.commonData?.contractNumber?.value || '—'}
-                      </span>
-                      {selectedContract.commonData?.contractNumber?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.contractNumber.sourcePage}
+                    <div className={styles.detailSubtitle}>
+                      {(selectedContract.documentName || selectedContract.sourceDocumentName) && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <FileText size={12} /> {selectedContract.documentName || selectedContract.sourceDocumentName}
                         </span>
                       )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Ngày ký (Signing Date)</span>
-                      <span className={styles.termValue}>
-                        {selectedContract.commonData?.signingDate?.value || selectedContract.documentDate || '—'}
-                      </span>
-                      {selectedContract.commonData?.signingDate?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.signingDate.sourcePage}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Ngày hiệu lực</span>
-                      <span className={styles.termValue}>
-                        {selectedContract.commonData?.effectiveDate?.value || '—'}
-                      </span>
-                      {selectedContract.commonData?.effectiveDate?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.effectiveDate.sourcePage}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Ngày hết hạn</span>
-                      <span className={styles.termValue}>
-                        {selectedContract.commonData?.expiryDate?.value || '—'}
-                      </span>
-                      {selectedContract.commonData?.expiryDate?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.expiryDate.sourcePage}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Giá trị hợp đồng</span>
-                      <span className={styles.termValue} style={{ color: '#059669' }}>
-                        {formatContractValue(selectedContract.commonData?.contractValue)}
-                      </span>
-                      {selectedContract.commonData?.contractValue?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.contractValue.sourcePage}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Luật áp dụng & Giải quyết tranh chấp</span>
-                      <span className={styles.termValue}>
-                        {(() => {
-                          const val = selectedContract.commonData?.governingLaw?.value;
-                          if (!val) return '—';
-                          const parts = val.split('|').map((item: string) => item.trim()).filter(Boolean);
-                          if (parts.length <= 1) return val;
-                          return (
-                            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {parts.map((p: string, idx: number) => (
-                                <span key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                                  <span style={{ color: '#94a3b8' }}>•</span>
-                                  <span>{p}</span>
-                                </span>
-                              ))}
-                            </span>
-                          );
-                        })()}
-                      </span>
-                      {selectedContract.commonData?.governingLaw?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.governingLaw.sourcePage}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.termCard}>
-                      <span className={styles.termLabel}>Mục đích hợp tác</span>
-                      <span className={styles.termValue}>
-                        {selectedContract.commonData?.purpose?.value || '—'}
-                      </span>
-                      {selectedContract.commonData?.purpose?.sourcePage && (
-                        <span className={styles.termEvidence}>
-                          Trang {selectedContract.commonData.purpose.sourcePage}
+                      {selectedContract.documentDate && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          • <Calendar size={12} /> Ngày ký: {selectedContract.documentDate}
                         </span>
                       )}
                     </div>
                   </div>
-                </div>
 
-                {/* 2. Contracting Parties & Responsibilities */}
-                <div className={styles.sectionBlock}>
-                  <div className={styles.sectionHeader}>
-                    <span className={styles.sectionNumber}>2</span>
-                    Các bên tham gia ký kết & Cam kết pháp lý
-                  </div>
-
-                  {selectedContract.commonData?.parties && selectedContract.commonData.parties.length > 0 ? (
-                    <div className={styles.partiesList}>
-                      {selectedContract.commonData.parties.map((party, pIdx) => {
-                        const roleLabel = party.role || `BÊN ${String.fromCharCode(65 + pIdx)}`;
-                        const name = party.legalName || 'Đối tác chưa xác định';
-
-                        // Check if party has specific responsibilities in cooperationAgreementData
-                        const matchedResp = selectedContract.cooperationAgreementData?.responsibilities?.find(
-                          (r) => r.party && (r.party.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(r.party.toLowerCase())),
-                        );
-
-                        return (
-                          <div key={party.id || pIdx} className={styles.partyCard}>
-                            <div className={styles.partyHeader}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <span className={styles.partyRoleBadge}>{roleLabel}</span>
-                                <span className={styles.partyName}>{name}</span>
-                              </div>
-                              {party.taxCode && (
-                                <span className={styles.partyTaxCode}>MST: {party.taxCode}</span>
-                              )}
-                            </div>
-
-                            <div className={styles.partyDetails}>
-                              {party.representative && (
-                                <div>
-                                  <span style={{ color: '#94a3b8' }}>Đại diện: </span>
-                                  <strong>{party.representative}</strong>
-                                </div>
-                              )}
-                              {party.address && (
-                                <div>
-                                  <span style={{ color: '#94a3b8' }}>Địa chỉ: </span>
-                                  <span>{party.address}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {(matchedResp?.responsibility || party.evidence) && (
-                              <div className={styles.partyQuote}>
-                                <strong>Cam kết / Trách nhiệm: </strong>
-                                {matchedResp?.responsibility || party.evidence}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '14px', background: '#f8fafc', borderRadius: 8, color: '#94a3b8', fontSize: 12 }}>
-                      Chưa ghi nhận thông tin chi tiết các bên ký kết.
-                    </div>
+                  {(selectedContract.documentId || selectedContract.sourceDocumentId) && (
+                    <button
+                      type="button"
+                      className={styles.pdfBtn}
+                      onClick={() => void handleViewPdf(selectedContract)}
+                      disabled={openingPdfId === selectedContract.id}
+                      title="Mở toàn văn file PDF gốc"
+                    >
+                      {openingPdfId === selectedContract.id ? (
+                        <>
+                          <Loader2 size={13} className={styles.spinner} style={{ width: 13, height: 13, borderWidth: 2 }} />
+                          <span>Đang mở PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ExternalLink size={13} />
+                          <span>Xem PDF gốc</span>
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
+
+                {/* Detail Body */}
+                <div className={styles.detailContent}>
+                  {/* 1. Legal & General Terms */}
+                  <div className={styles.sectionBlock}>
+                    <div className={styles.sectionHeader}>
+                      <span className={styles.sectionNumber}>1</span>
+                      Thông tin điều khoản chung & Pháp lý
+                    </div>
+
+                    <div className={styles.termsGrid}>
+                      {/* Contract Number */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Số hiệu hợp đồng</span>
+                        {editable ? (
+                          <input
+                            type="text"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.contractNumber?.value || ''}
+                            placeholder="Số hợp đồng..."
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.contractNumber) {
+                                  c.commonData.contractNumber = {
+                                    value: val,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.contractNumber.value = val;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.contractNumber?.value || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.contractNumber?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.contractNumber.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Signing Date */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Ngày ký (Signing Date)</span>
+                        {editable ? (
+                          <input
+                            type="date"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.signingDate?.value || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.signingDate) {
+                                  c.commonData.signingDate = {
+                                    value: val || null,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.signingDate.value = val || null;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.signingDate?.value || selectedContract.documentDate || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.signingDate?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.signingDate.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Effective Date */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Ngày hiệu lực</span>
+                        {editable ? (
+                          <input
+                            type="date"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.effectiveDate?.value || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.effectiveDate) {
+                                  c.commonData.effectiveDate = {
+                                    value: val || null,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.effectiveDate.value = val || null;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.effectiveDate?.value || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.effectiveDate?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.effectiveDate.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Expiry Date */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Ngày hết hạn</span>
+                        {editable ? (
+                          <input
+                            type="date"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.expiryDate?.value || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.expiryDate) {
+                                  c.commonData.expiryDate = {
+                                    value: val || null,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.expiryDate.value = val || null;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.expiryDate?.value || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.expiryDate?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.expiryDate.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Term */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Thời hạn (Term)</span>
+                        {editable ? (
+                          <input
+                            type="text"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.term?.value || ''}
+                            placeholder="Thời hạn (vd: 12 tháng, 3 năm)..."
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.term) {
+                                  c.commonData.term = {
+                                    value: val,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.term.value = val;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.term?.value || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.term?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.term.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Contract Value */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Giá trị hợp đồng</span>
+                        {editable ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              className={styles.editInput}
+                              style={{ flex: 1 }}
+                              value={
+                                selectedContract.commonData?.contractValue?.value?.amount != null
+                                  ? String(selectedContract.commonData.contractValue.value.amount)
+                                  : selectedContract.commonData?.contractValue?.value?.rawAmountText || ''
+                              }
+                              placeholder="Số tiền hoặc giá trị..."
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateCurrentDraft((c) => {
+                                  if (!c.commonData) c.commonData = { parties: [] };
+                                  if (!c.commonData.contractValue) {
+                                    c.commonData.contractValue = {
+                                      value: {
+                                        amount: val,
+                                        currency: 'VND',
+                                        rawAmountText: val,
+                                      },
+                                      sourcePage: null,
+                                      evidence: null,
+                                      confidence: null,
+                                      qualityStatus: 'VALID',
+                                      verificationStatus: 'UNVERIFIED',
+                                      inputMethod: 'MANUAL',
+                                    };
+                                  } else {
+                                    if (!c.commonData.contractValue.value) {
+                                      c.commonData.contractValue.value = {
+                                        amount: val,
+                                        currency: 'VND',
+                                        rawAmountText: val,
+                                      };
+                                    } else {
+                                      c.commonData.contractValue.value.amount = val;
+                                      c.commonData.contractValue.value.rawAmountText = val;
+                                    }
+                                  }
+                                });
+                              }}
+                            />
+                            <input
+                              type="text"
+                              className={styles.editInput}
+                              style={{ width: 64 }}
+                              value={selectedContract.commonData?.contractValue?.value?.currency || 'VND'}
+                              placeholder="VND"
+                              onChange={(e) => {
+                                const curr = e.target.value;
+                                updateCurrentDraft((c) => {
+                                  if (!c.commonData) c.commonData = { parties: [] };
+                                  if (c.commonData.contractValue?.value) {
+                                    c.commonData.contractValue.value.currency = curr;
+                                  }
+                                });
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span className={styles.termValue} style={{ color: '#059669' }}>
+                            {formatContractValue(selectedContract.commonData?.contractValue)}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.contractValue?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.contractValue.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Governing Law */}
+                      <div className={styles.termCard}>
+                        <span className={styles.termLabel}>Luật áp dụng & Giải quyết tranh chấp</span>
+                        {editable ? (
+                          <input
+                            type="text"
+                            className={styles.editInput}
+                            value={selectedContract.commonData?.governingLaw?.value || ''}
+                            placeholder="Luật Việt Nam | Tòa án..."
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.governingLaw) {
+                                  c.commonData.governingLaw = {
+                                    value: val,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.governingLaw.value = val;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {(() => {
+                              const val = selectedContract.commonData?.governingLaw?.value;
+                              if (!val) return '—';
+                              const parts = val.split('|').map((item: string) => item.trim()).filter(Boolean);
+                              if (parts.length <= 1) return val;
+                              return (
+                                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  {parts.map((p: string, idx: number) => (
+                                    <span key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                                      <span style={{ color: '#94a3b8' }}>•</span>
+                                      <span>{p}</span>
+                                    </span>
+                                  ))}
+                                </span>
+                              );
+                            })()}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.governingLaw?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.governingLaw.sourcePage}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Purpose */}
+                      <div className={styles.termCard} style={{ gridColumn: '1 / -1' }}>
+                        <span className={styles.termLabel}>Mục đích hợp tác</span>
+                        {editable ? (
+                          <textarea
+                            className={styles.editTextarea}
+                            value={selectedContract.commonData?.purpose?.value || ''}
+                            placeholder="Mục đích và nội dung hợp tác cốt lõi..."
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateCurrentDraft((c) => {
+                                if (!c.commonData) c.commonData = { parties: [] };
+                                if (!c.commonData.purpose) {
+                                  c.commonData.purpose = {
+                                    value: val,
+                                    sourcePage: null,
+                                    evidence: null,
+                                    confidence: null,
+                                    qualityStatus: 'VALID',
+                                    verificationStatus: 'UNVERIFIED',
+                                    inputMethod: 'MANUAL',
+                                  };
+                                } else {
+                                  c.commonData.purpose.value = val;
+                                }
+                              });
+                            }}
+                          />
+                        ) : (
+                          <span className={styles.termValue}>
+                            {selectedContract.commonData?.purpose?.value || '—'}
+                          </span>
+                        )}
+                        {selectedContract.commonData?.purpose?.sourcePage && (
+                          <span className={styles.termEvidence}>
+                            Trang {selectedContract.commonData.purpose.sourcePage}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Contracting Parties & Responsibilities */}
+                  <div className={styles.sectionBlock}>
+                    <div className={styles.sectionHeader}>
+                      <span className={styles.sectionNumber}>2</span>
+                      Các bên tham gia ký kết & Cam kết pháp lý
+                    </div>
+
+                    {selectedContract.commonData?.parties && selectedContract.commonData.parties.length > 0 ? (
+                      <div className={styles.partiesList}>
+                        {selectedContract.commonData.parties.map((party, pIdx) => {
+                          const roleLabel = party.role || `BÊN ${String.fromCharCode(65 + pIdx)}`;
+                          const name = party.legalName || 'Đối tác chưa xác định';
+
+                          const matchedResp = selectedContract.cooperationAgreementData?.responsibilities?.find(
+                            (r) =>
+                              r.party &&
+                              (r.party.toLowerCase().includes(name.toLowerCase()) ||
+                                name.toLowerCase().includes(r.party.toLowerCase()))
+                          );
+
+                          return (
+                            <div key={party.id || pIdx} className={styles.partyCard}>
+                              <div className={styles.partyHeader}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
+                                  {editable ? (
+                                    <input
+                                      type="text"
+                                      className={styles.editInput}
+                                      style={{ width: 120 }}
+                                      value={party.role || ''}
+                                      placeholder="Vai trò..."
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateCurrentDraft((c) => {
+                                          if (c.commonData?.parties?.[pIdx]) {
+                                            c.commonData.parties[pIdx].role = val;
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className={styles.partyRoleBadge}>{roleLabel}</span>
+                                  )}
+
+                                  {editable ? (
+                                    <input
+                                      type="text"
+                                      className={styles.editInput}
+                                      style={{ flex: 1, minWidth: 200, fontWeight: 700 }}
+                                      value={party.legalName || ''}
+                                      placeholder="Tên pháp lý bên tham gia..."
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateCurrentDraft((c) => {
+                                          if (c.commonData?.parties?.[pIdx]) {
+                                            c.commonData.parties[pIdx].legalName = val;
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  ) : (
+                                    <span className={styles.partyName}>{name}</span>
+                                  )}
+                                </div>
+
+                                {editable ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 11.5, color: '#64748b' }}>MST:</span>
+                                    <input
+                                      type="text"
+                                      className={styles.editInput}
+                                      style={{ width: 140, fontFamily: 'monospace' }}
+                                      value={party.taxCode || ''}
+                                      placeholder="Mã số thuế..."
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateCurrentDraft((c) => {
+                                          if (c.commonData?.parties?.[pIdx]) {
+                                            c.commonData.parties[pIdx].taxCode = val;
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  </div>
+                                ) : (
+                                  party.taxCode && (
+                                    <span className={styles.partyTaxCode}>MST: {party.taxCode}</span>
+                                  )
+                                )}
+                              </div>
+
+                              <div className={styles.partyDetails}>
+                                {editable ? (
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, width: '100%' }}>
+                                    <div>
+                                      <span style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 2 }}>Người đại diện:</span>
+                                      <input
+                                        type="text"
+                                        className={styles.editInput}
+                                        value={party.representative || ''}
+                                        placeholder="Đại diện pháp luật..."
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          updateCurrentDraft((c) => {
+                                            if (c.commonData?.parties?.[pIdx]) {
+                                              c.commonData.parties[pIdx].representative = val;
+                                            }
+                                          });
+                                        }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <span style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 2 }}>Địa chỉ trụ sở:</span>
+                                      <input
+                                        type="text"
+                                        className={styles.editInput}
+                                        value={party.address || ''}
+                                        placeholder="Địa chỉ trụ sở..."
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          updateCurrentDraft((c) => {
+                                            if (c.commonData?.parties?.[pIdx]) {
+                                              c.commonData.parties[pIdx].address = val;
+                                            }
+                                          });
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {party.representative && (
+                                      <div>
+                                        <span style={{ color: '#94a3b8' }}>Đại diện: </span>
+                                        <strong>{party.representative}</strong>
+                                      </div>
+                                    )}
+                                    {party.address && (
+                                      <div>
+                                        <span style={{ color: '#94a3b8' }}>Địa chỉ: </span>
+                                        <span>{party.address}</span>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+
+                              {(matchedResp?.responsibility || party.evidence) && (
+                                <div className={styles.partyQuote}>
+                                  <strong>Cam kết / Trách nhiệm: </strong>
+                                  {matchedResp?.responsibility || party.evidence}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '14px', background: '#f8fafc', borderRadius: 8, color: '#94a3b8', fontSize: 12 }}>
+                        Chưa ghi nhận thông tin chi tiết các bên ký kết.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className={styles.emptyDetailPrompt}>
+                <FileText size={32} />
+                <span>Chọn một hợp đồng từ danh sách bên trái để xem chi tiết</span>
               </div>
-            </>
-          ) : (
-            <div className={styles.emptyDetailPrompt}>
-              <FileText size={32} />
-              <span>Chọn một hợp đồng từ danh sách bên trái để xem chi tiết</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  }
+);
+
+DocumentsTab.displayName = 'DocumentsTab';
 
 export default DocumentsTab;

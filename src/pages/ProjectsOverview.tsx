@@ -244,7 +244,7 @@ export const ProjectsOverview: React.FC = () => {
     try {
       const [relRes, profilesRes] = await Promise.all([
         projectApi.getTargetRelationshipTypes(),
-        api.get<PageResponse<ProfileResponse>>('/profiles', { params: { page: 0, size: 100 } }),
+        api.get<PageResponse<ProfileResponse>>('/profiles', { params: { page: 0, size: 100, officialOnly: true } }),
       ]);
       if (relRes?.success && Array.isArray(relRes.data) && relRes.data.length) {
         setRelationshipOptions(relRes.data);

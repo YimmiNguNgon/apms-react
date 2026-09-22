@@ -2,12 +2,21 @@ import { API_BASE_URL, clearAuthSession, storeAuthSession } from '../services/ap
 
 const BASE_URL = `${API_BASE_URL}/auth`;
 
-type LoginPayload = {
+export type LoginPayload = {
   accessToken: string;
   refreshToken: string;
   id: number;
   email: string;
   roles: string[];
+};
+
+export type MfaChallengePayload = {
+  mfaRequired?: boolean;
+  mfaEnrollmentRequired?: boolean;
+  challengeId: string;
+  method?: string;
+  qrCodeDataUrl?: string | null;
+  manualEntryKey?: string | null;
 };
 
 export type VerificationPayload = {
@@ -21,19 +30,19 @@ export type VerificationPayload = {
 type AuthResponse = {
   success?: boolean;
   message?: string | null;
-  data?: LoginPayload | VerificationPayload;
+  data?: LoginPayload | VerificationPayload | MfaChallengePayload;
 } | LoginPayload;
 
 const getToken = () => localStorage.getItem('apms-token') || localStorage.getItem('accessToken');
 
-const unwrapAuthPayload = (payload: AuthResponse | null): LoginPayload | VerificationPayload | null => {
+const unwrapAuthPayload = (payload: AuthResponse | null): LoginPayload | VerificationPayload | MfaChallengePayload | null => {
   if (!payload) return null;
   if ('data' in payload && payload.data) return payload.data;
   if ('accessToken' in payload) return payload;
   return null;
 };
 
-const parseAuthPayload = async (response: Response): Promise<LoginPayload | VerificationPayload> => {
+const parseAuthPayload = async (response: Response): Promise<LoginPayload | VerificationPayload | MfaChallengePayload> => {
   const payload = await response.json().catch(() => null) as AuthResponse | null;
 
   if (response.status === 403 && payload && 'data' in payload && payload.data && 'requiresEmailVerification' in payload.data) {
@@ -44,17 +53,22 @@ const parseAuthPayload = async (response: Response): Promise<LoginPayload | Veri
     throw new Error(message || 'Failed to login');
   }
 
-  const data = unwrapAuthPayload(payload) as LoginPayload | null;
-  if (!data?.accessToken) {
+  const data = unwrapAuthPayload(payload);
+  if (data && ('mfaRequired' in data || 'mfaEnrollmentRequired' in data)) {
+    return data as MfaChallengePayload;
+  }
+
+  const loginData = data as LoginPayload | null;
+  if (!loginData?.accessToken) {
     throw new Error('Login response did not include an access token.');
   }
 
   storeAuthSession({
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
+    accessToken: loginData.accessToken,
+    refreshToken: loginData.refreshToken,
   });
 
-  return data;
+  return loginData;
 };
 
 export const loginApi = {
@@ -72,6 +86,45 @@ export const loginApi = {
     } catch (error) {
       console.error('Error logging in:', error);
       throw error;
+    }
+  },
+  verifyMfa: async (challengeId: string, totpCode: string): Promise<LoginPayload> => {
+    const response = await fetch(`${BASE_URL}/mfa/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ challengeId, totpCode }),
+    });
+
+    const payload = await response.json().catch(() => null) as { success?: boolean; message?: string; data?: LoginPayload } | null;
+    if (!response.ok) {
+      throw new Error(payload?.message || 'Invalid or expired verification code.');
+    }
+
+    const data = payload?.data || (payload as unknown as LoginPayload);
+    if (!data?.accessToken) {
+      throw new Error('Verification response did not include an access token.');
+    }
+
+    storeAuthSession({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+    });
+
+    return data;
+  },
+  cancelMfa: async (challengeId: string): Promise<void> => {
+    try {
+      await fetch(`${BASE_URL}/mfa/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ challengeId }),
+      });
+    } catch {
+      // Safe pre-auth cancellation
     }
   },
   verifyEmailOtp: async (verificationTicket: string, otp: string) => {

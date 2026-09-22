@@ -134,10 +134,16 @@ export const financialResearchApi = {
       `/company-profiles/${companyProfileId}/financials/research`
     ),
 
-  getCanonicalFinancials: (companyProfileId: string) =>
-    api.get<CompanyProfileFinancialRow[]>(
-      `/company-profiles/${companyProfileId}/financials`
-    ),
+  getCanonicalFinancials: (companyProfileId: string, projectId?: number | null) => {
+    const params: Record<string, any> = {};
+    if (projectId) {
+      params.projectId = projectId;
+    }
+    return api.get<CompanyProfileFinancialRow[]>(
+      `/company-profiles/${companyProfileId}/financials`,
+      { params }
+    );
+  },
 
   updateCanonicalFinancials: (companyProfileId: string, data: BatchUpdateCompanyFinancialsRequest) =>
     api.put<CompanyProfileFinancialRow[]>(

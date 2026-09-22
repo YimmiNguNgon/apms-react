@@ -28,6 +28,7 @@ export interface FinancialsTabHandle {
 
 interface FinancialsTabProps {
   companyId: string;
+  projectId?: number | null;
   editable?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
 }
@@ -94,6 +95,7 @@ const isImportantMetric = (label: string) => {
 
 const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   companyId,
+  projectId,
   editable = false,
   onDirtyChange,
 }, ref) => {
@@ -115,14 +117,14 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ['company-profile-canonical-financials', companyId],
-    queryFn: () => financialResearchApi.getCanonicalFinancials(companyId).then(res => res.data || []),
+    queryKey: ['company-profile-canonical-financials', companyId, projectId],
+    queryFn: () => financialResearchApi.getCanonicalFinancials(companyId, projectId).then(res => res.data || []),
     staleTime: 30_000,
   });
 
   // Explicit backfill for legacy approved research if canonical rows are empty
   useEffect(() => {
-    if (!isLoading && !isError && canonicalRows && canonicalRows.length === 0 && !hasAttemptedBackfill) {
+    if (!isLoading && !isError && canonicalRows && canonicalRows.length === 0 && !hasAttemptedBackfill && editable) {
       setHasAttemptedBackfill(true);
       financialResearchApi.backfillCanonicalFinancials(companyId)
         .then(res => {
@@ -134,7 +136,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           console.warn('Backfill legacy approved research skipped or errored:', err);
         });
     }
-  }, [isLoading, isError, canonicalRows, hasAttemptedBackfill, companyId, refetch]);
+  }, [isLoading, isError, canonicalRows, hasAttemptedBackfill, companyId, refetch, editable]);
 
   const prevEditableRef = React.useRef(editable);
 
@@ -546,14 +548,6 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   if (isLoading) {
     return (
       <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Financial Reports</h2>
-          </div>
-          <p className={styles.subtitle}>
-            Canonical financial data and approved reports for this company profile.
-          </p>
-        </div>
         <div className={styles.stateContainer}>
           <div className={styles.stateIcon}>
             <Loader2 size={26} className={styles.spin} />
@@ -569,14 +563,6 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   if (isError) {
     return (
       <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Financial Reports</h2>
-          </div>
-          <p className={styles.subtitle}>
-            Canonical financial data and approved reports for this company profile.
-          </p>
-        </div>
         <div className={styles.stateContainer}>
           <div className={styles.stateIcon}>
             <FileText size={26} />
@@ -598,19 +584,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   if (activeRows.length === 0 && !editable) {
     return (
       <div className={styles.container}>
-        <div className={styles.headerSection}>
-          <div className={styles.titleRow}>
-            <h2 className={styles.title}>Financial Reports</h2>
-          </div>
-          <p className={styles.subtitle}>
-            Canonical financial data and approved reports for this company profile.
-          </p>
-        </div>
         <div className={styles.stateContainer}>
-          <div className={styles.stateIcon}>
-            <FileSearch size={28} />
-          </div>
-          <h3 className={styles.stateTitle}>No Financial Data</h3>
           <p className={styles.stateSubtitle}>
             No official canonical financial rows exist for this company profile yet.
           </p>

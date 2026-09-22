@@ -481,20 +481,20 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   };
 
   const renderOverview = () => {
-    const tradeName = profile.identity?.tradeName;
-    const legalName = profile.identity?.legalName;
-    const taxCode = profile.identity?.taxCode || 'Not updated';
-    const regNo = profile.identity?.registrationNumber || 'Not updated';
+    const tradeName = profile.identity?.tradeName?.trim();
+    const legalName = profile.identity?.legalName?.trim();
+    const taxCode = profile.identity?.taxCode?.trim() || 'N/A';
+    const regNo = profile.identity?.registrationNumber?.trim() || 'N/A';
     const empCount = profile.companySize?.employeeCount || intelligence?.company?.employeeCount;
     const empTier = profile.companySize?.employeeTier;
-    const sizeStr = empCount ? `${empCount} personnel ${empTier ? `(${empTier})` : ""}` : (empTier || "Not updated");
-    const website = profile.contact?.website || intelligence?.company?.website || 'Not updated';
-    const email = profile.contact?.emails?.[0] || 'Not updated';
-    const phone = profile.contact?.phones?.[0] || 'Not updated';
+    const sizeStr = empCount ? `${empCount} personnel ${empTier ? `(${empTier})` : ""}` : (empTier || "N/A");
+    const website = profile.contact?.website?.trim() || intelligence?.company?.website?.trim() || '';
+    const email = profile.contact?.emails?.[0]?.trim() || '';
+    const phone = profile.contact?.phones?.[0]?.trim() || '';
     const effectiveAddresses = (profile.contact?.addresses && profile.contact.addresses.length > 0)
       ? profile.contact.addresses.map((a) => a.fullAddress || '').filter(Boolean)
       : ((profile.contact as any)?.address ? [(profile.contact as any).address] : []);
-    const address = effectiveAddresses[0] || intelligence?.company?.headquarters || 'Not updated';
+    const address = effectiveAddresses[0]?.trim() || intelligence?.company?.headquarters?.trim() || '';
 
     const setField = (key: keyof OverviewDraft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
@@ -551,13 +551,13 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           <section style={C.card}>
             <div style={C.cardHeader}><h2 style={C.h2}>Legal & Identity Information</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('tradeName', 'Trade Name', tradeName || 'Not updated', !!tradeName, () => (
+              {renderEditableField('tradeName', 'Trade Name', tradeName || 'N/A', !!tradeName, () => (
                 <input value={overviewDraft!.tradeName} onChange={setField('tradeName')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('legalName', 'Legal Name', legalName || 'Not updated', !!legalName, () => (
+              {renderEditableField('legalName', 'Legal Name', legalName || 'N/A', !!legalName, () => (
                 <input value={overviewDraft!.legalName} onChange={setField('legalName')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('taxCode', 'Tax Code', taxCode, taxCode !== 'Not updated', () => (
+              {renderEditableField('taxCode', 'Tax Code', taxCode, taxCode !== 'N/A', () => (
                 <input value={overviewDraft!.taxCode} onChange={setField('taxCode')} style={INPUT_STYLE} />
               ))}
             </div>
@@ -566,19 +566,19 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           <section style={C.card}>
             <div style={C.cardHeader}><h2 style={C.h2}>Contact & Size Information</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('website', 'Website', website !== 'Not updated' ? <a href={website} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>{website}</strong>, website !== 'Not updated', () => (
+              {renderEditableField('website', 'Website', website ? <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>N/A</strong>, !!website, () => (
                 <input value={overviewDraft!.website} onChange={setField('website')} placeholder="https://..." style={INPUT_STYLE} />
               ))}
-              {renderEditableField('email', 'Contact Email', email, email !== 'Not updated', () => (
+              {renderEditableField('email', 'Contact Email', email || 'N/A', !!email, () => (
                 <input type="email" value={overviewDraft!.email} onChange={setField('email')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('phone', 'Phone', phone, phone !== 'Not updated', () => (
+              {renderEditableField('phone', 'Phone', phone || 'N/A', !!phone, () => (
                 <input value={overviewDraft!.phone} onChange={setField('phone')} style={INPUT_STYLE} />
               ))}
-              {renderEditableField('employeeCount', 'Employee Count', empCount ? `${empCount} employees` : 'Not updated', !!empCount, () => (
+              {renderEditableField('employeeCount', 'Employee Count', empCount ? `${empCount} employees` : 'N/A', !!empCount, () => (
                 <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} placeholder="Count (e.g. 150)" />
               ))}
-              {renderEditableField('foundedYear', 'Founded Year', profile.business?.foundedYear ? String(profile.business.foundedYear) : 'Not updated', !!profile.business?.foundedYear, () => (
+              {renderEditableField('foundedYear', 'Founded Year', profile.business?.foundedYear ? String(profile.business.foundedYear) : 'N/A', !!profile.business?.foundedYear, () => (
                 <input type="number" min={1800} max={new Date().getFullYear()} value={overviewDraft!.foundedYear} onChange={setField('foundedYear')} style={INPUT_STYLE} placeholder="e.g. 1995" />
               ))}
               {renderEditableField('address', effectiveAddresses.length > 1 ? 'Addresses' : 'Address', effectiveAddresses.length > 1 ? (
@@ -587,7 +587,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                     <li key={idx} style={{ marginBottom: '2px' }}>{addr}</li>
                   ))}
                 </ul>
-              ) : address, address !== 'Not updated', () => (
+              ) : (address || 'N/A'), (effectiveAddresses.length > 1 ? true : !!address), () => (
                 <textarea rows={Math.min(4, Math.max(2, overviewDraft!.address.split('\n').length))} value={overviewDraft!.address} onChange={setField('address')} style={{ ...INPUT_STYLE, resize: 'vertical' }} placeholder="One address per line..." />
               ), true)}
             </div>
@@ -596,10 +596,10 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           <section style={C.card}>
             <div style={C.cardHeader}><h2 style={C.h2}>Introduction & Business Model</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('companyDescription', 'Company Description', profile.business?.companyDescription || 'Not updated', !!profile.business?.companyDescription, () => (
+              {renderEditableField('companyDescription', 'Company Description', profile.business?.companyDescription || 'N/A', !!profile.business?.companyDescription, () => (
                 <textarea rows={4} value={overviewDraft!.companyDescription} onChange={setField('companyDescription')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} placeholder="Company description..." />
               ), true)}
-              {renderEditableField('businessModel', 'Business Model', profile.business?.businessModel || 'Not updated', !!profile.business?.businessModel, () => (
+              {renderEditableField('businessModel', 'Business Model', profile.business?.businessModel || 'N/A', !!profile.business?.businessModel, () => (
                 <textarea rows={4} value={overviewDraft!.businessModel} onChange={setField('businessModel')} style={{ ...INPUT_STYLE, resize: 'vertical', lineHeight: '1.5' }} placeholder="Business model..." />
               ), true)}
             </div>
@@ -773,103 +773,97 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {!hasData ? (
-          <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>No business field data available.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <section style={C.card}>
-                <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Products & Services</h2>
-                </div>
-                {products.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
-                      <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
-                        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <section style={C.card}>
+              <div style={C.cardHeader}>
+                <h2 style={C.h2}>Products & Services</h2>
+              </div>
+              {products.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
+                    <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
                       </div>
-                    ))}
-                    {products.length > 5 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllProducts(!showAllProducts)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#1D4ED8',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          padding: '4px 0',
-                          textAlign: 'left'
-                        }}
-                      >
-                        {showAllProducts ? 'Show less' : `Show ${products.length - 5} more products`}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Not updated</p>
-                )}
-              </section>
+                    </div>
+                  ))}
+                  {products.length > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllProducts(!showAllProducts)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#1D4ED8',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        padding: '4px 0',
+                        textAlign: 'left'
+                      }}
+                    >
+                      {showAllProducts ? 'Show less' : `Show ${products.length - 5} more products`}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <strong style={C.muted}>N/A</strong>
+              )}
+            </section>
 
-              <section style={C.card}>
-                <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Industry</h2>
+            <section style={C.card}>
+              <div style={C.cardHeader}>
+                <h2 style={C.h2}>Industry</h2>
+              </div>
+              {industries.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {industries.map((ind, i) => (
+                    <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>
+                      {ind}
+                    </span>
+                  ))}
                 </div>
-                {industries.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {industries.map((ind, i) => (
-                      <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>
-                        {ind}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>Not updated</p>
-                )}
-              </section>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <section style={C.card}>
-                <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Markets & Customers</h2>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
-                    {markets.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {markets.map((m, idx) => (
-                          <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                            {m}
-                          </span>
-                        ))}
-                      </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not updated</span>}
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
-                    {targetCustomers.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {targetCustomers.map((c, idx) => (
-                          <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not updated</span>}
-                  </div>
-                </div>
-              </section>
-            </div>
+              ) : (
+                <strong style={C.muted}>N/A</strong>
+              )}
+            </section>
           </div>
-        )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <section style={C.card}>
+              <div style={C.cardHeader}>
+                <h2 style={C.h2}>Markets & Customers</h2>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
+                  {markets.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {markets.map((m, idx) => (
+                        <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                          {m}
+                        </span>
+                      ))}
+                    </div>
+                  ) : <strong style={C.muted}>N/A</strong>}
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
+                  {targetCustomers.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {targetCustomers.map((c, idx) => (
+                        <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  ) : <strong style={C.muted}>N/A</strong>}
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     );
   };

@@ -19,7 +19,7 @@ export const ROLE_PAGES: Record<Role, string[]> = {
   [ROLES.ADMIN]: ['admin-dashboard', 'users', 'roles', 'permissions', 'access-control', 'activity-history', 'audit-logs', 'system-settings', 'security-settings', 'crawler-control', 'profile', 'system-chat', 'ai-assistant', 'news', 'article-detail', 'company-profiles', 'companies', 'profile-visibility', 'company-detail', 'relationship-assessment-detail', 'partner-ecosystem', 'owner-profile', 'company-monitoring', 'owner-company-profile', 'admin-my-enterprise'],
   [ROLES.OWNER]: ['owner-dashboard', 'partner-ecosystem', 'competitor-intelligence', 'relationship-map', 'project-detail', 'company-profiles', 'companies', 'my-companies', 'company-detail', 'relationship-assessment-detail', 'news', 'article-detail', 'profile', 'system-chat', 'ai-assistant', 'owner-profile', 'owner-internal-news'],
   [ROLES.MANAGER]: ['manager-dashboard', 'partner-evaluation', 'competitor-intelligence', 'company-assignment', 'analysis-history', 'risk-monitoring', 'partner-status', 'suggested-actions-approval', 'team-kpi', 'reports', 'companies', 'my-companies', 'profile-visibility', 'company-profiles', 'company-detail', 'relationship-assessment-detail', 'partner-ecosystem', 'verify', 'news', 'article-detail', 'profile', 'project-management', 'project-detail', 'system-chat', 'ai-assistant', 'owner-profile', 'company-monitoring'],
-  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'company-profiles', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'companies', 'company-detail', 'relationship-assessment-detail', 'partner-ecosystem', 'add-company', 'ai-agent', 'ai-assistant', 'news', 'article-detail', 'profile', 'system-chat', 'owner-profile', 'staff-monitoring'],
+  [ROLES.STAFF]: ['staff-dashboard', 'my-tasks', 'project-management', 'project-detail', 'upload-documents', 'candidate-review', 'partner-management', 'competitor-management', 'ai-extracted-data', 'search-companies', 'personal-ai-agent', 'ai-training-mode', 'learning-center', 'company-detail', 'relationship-assessment-detail', 'partner-ecosystem', 'add-company', 'ai-agent', 'ai-assistant', 'news', 'article-detail', 'profile', 'system-chat', 'owner-profile', 'staff-monitoring'],
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -176,7 +176,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password?: string): Promise<boolean> => {
     try {
       const payload = await loginApi.login(email, password || '');
-      if ('requiresEmailVerification' in payload) return false;
+      if (!('accessToken' in payload)) return false;
       return applyLoginPayload(payload);
     } catch (err: unknown) {
       throw new Error(err instanceof Error ? err.message : 'Cannot connect to the server.', { cause: err });

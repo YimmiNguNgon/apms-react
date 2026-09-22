@@ -6,6 +6,9 @@ import type {
   AdminUpdateEnterpriseBasicInfoRequest,
   AdminUpdateEnterpriseBusinessFieldsRequest,
   AdminUpdateEnterpriseLeadershipRequest,
+  CompanyProfileManagerHistoryDto,
+  EligibleManagerDto,
+  TransferResponsibilityRequest,
 } from '../types/domain';
 
 export const companyProfileApi = {
@@ -81,6 +84,25 @@ export const companyProfileApi = {
 
   updateAdminEnterpriseLeadership: async (payload: AdminUpdateEnterpriseLeadershipRequest) => {
     const res = await api.put<ProfileResponse>('/admin/my-enterprise/leadership', payload);
+    return res.data;
+  },
+
+  transferResponsibility: async (companyProfileId: string, payload: TransferResponsibilityRequest) => {
+    const res = await api.patch<void>(`/company-profiles/${companyProfileId}/responsible-manager`, payload);
+    return res.data;
+  },
+
+  getManagementHistory: async (companyProfileId: string) => {
+    const res = await api.get<CompanyProfileManagerHistoryDto[]>(
+      `/company-profiles/${companyProfileId}/management-history`
+    );
+    return res.data;
+  },
+
+  getEligibleManagers: async (companyProfileId: string) => {
+    const res = await api.get<EligibleManagerDto[]>(
+      `/company-profiles/${companyProfileId}/eligible-managers`
+    );
     return res.data;
   },
 };

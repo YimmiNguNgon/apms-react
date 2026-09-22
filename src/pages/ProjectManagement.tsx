@@ -52,7 +52,7 @@ type DuplicateTaxCodeState = {
   loading: boolean;
   checked: boolean;
   exists: boolean;
-  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | null;
+  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | 'OPEN_RESEARCH_PROJECT' | null;
   companyProfileId?: string;
   projectId?: number;
   companyName?: string;
@@ -61,6 +61,9 @@ type DuplicateTaxCodeState = {
   openProjectId?: number;
   openProjectName?: string;
   openProjectStatus?: string;
+  existingOfficialCompany?: boolean;
+  openResearchProject?: boolean;
+  canCurrentManagerManage?: boolean;
 } | null;
 
 type OpenProjectConflictState = {
@@ -255,7 +258,13 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     setCompanyOptionsLoading(true);
     try {
       const res = await api.get<PageResult<ProfileResponse>>('/profiles', {
-        params: { page: 0, size: 100, excludeOwner: true },
+        params: {
+          page: 0,
+          size: 100,
+          excludeOwner: true,
+          officialOnly: true,
+          managedByMe: currentUser?.role === ROLES.MANAGER ? true : undefined,
+        },
         signal,
       });
 
@@ -271,7 +280,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         setCompanyOptionsLoading(false);
       }
     }
-  }, []);
+  }, [currentUser?.role]);
 
   const reloadKrReference = useCallback(async (signal?: AbortSignal) => {
     setKrReferenceLoading(true);
@@ -562,6 +571,9 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
           openProjectId: data.openProjectId,
           openProjectName: data.openProjectName,
           openProjectStatus: data.openProjectStatus,
+          existingOfficialCompany: data.existingOfficialCompany,
+          openResearchProject: data.openResearchProject,
+          canCurrentManagerManage: data.canCurrentManagerManage,
         });
       }
     } catch (err) {
@@ -615,9 +627,15 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
-    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY' && taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT') {
-      setFeedback({ kind: 'error', message: 'Company tax code already exists in an active project. Duplicate creation is not allowed.' });
-      return;
+    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY' && taxCodeCheck?.checked && taxCodeCheck.exists) {
+      if (taxCodeCheck.existingOfficialCompany || taxCodeCheck.matchType === 'COMPANY_PROFILE') {
+        setFeedback({ kind: 'error', message: 'An official company already exists with this tax code. Please select the "Update existing company" project type.' });
+        return;
+      }
+      if (taxCodeCheck.openResearchProject || taxCodeCheck.matchType === 'OPEN_RESEARCH_PROJECT' || taxCodeCheck.matchType === 'ACTIVE_PROJECT' || taxCodeCheck.hasOpenProject) {
+        setFeedback({ kind: 'error', message: 'A New Company Research project already exists for this Tax Code. Complete or close the existing project before creating another one.' });
+        return;
+      }
     }
 
     if (!projectForm.plannedEndDate) {
@@ -832,7 +850,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
     (projectForm.projectType === 'RESEARCH_NEW_COMPANY' &&
       !!taxCodeCheck?.checked &&
       !!taxCodeCheck.exists &&
-      (taxCodeCheck.matchType === 'ACTIVE_PROJECT' || !!taxCodeCheck.hasOpenProject));
+      (taxCodeCheck.matchType === 'ACTIVE_PROJECT' || taxCodeCheck.matchType === 'OPEN_RESEARCH_PROJECT' || !!taxCodeCheck.openResearchProject || !!taxCodeCheck.hasOpenProject));
 
   const handleExistingTargetCompanyChange = (selectedId: string) => {
     const profile = findCompanyProfile(companyOptions, selectedId);
@@ -1067,7 +1085,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                           onBlur={(event) => void handleTaxCodeCheck(event.target.value)}
                         />
                         {taxCodeCheck?.loading && <span style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px', display: 'block' }}>Checking tax code...</span>}
-                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'COMPANY_PROFILE' && (
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && (taxCodeCheck.existingOfficialCompany || taxCodeCheck.matchType === 'COMPANY_PROFILE') && (
                           taxCodeCheck.hasOpenProject ? (
                             <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', padding: '8px 12px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '6px' }}>
                               <div style={{ fontWeight: 600, marginBottom: '2px' }}>
@@ -1084,23 +1102,31 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                             </div>
                           ) : (
                             <div style={{ backgroundColor: '#fff3cd', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#856404', marginTop: '4px' }}>
-                              Found existing company: <strong>{taxCodeCheck.companyName}</strong>. 
-                              <button type="button" onClick={() => {
-                                const existingId = taxCodeCheck.companyProfileId || '';
-                                handleExistingTargetCompanyChange(existingId);
-                                setProjectForm((prev) => ({
-                                  ...prev,
-                                  projectType: 'UPDATE_EXISTING_COMPANY',
-                                }));
-                              }} style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                                Use existing company
-                              </button>
+                              {taxCodeCheck.canCurrentManagerManage === false ? (
+                                <span>
+                                  Found existing company: <strong>{taxCodeCheck.companyName}</strong>. This company is currently managed by another manager.
+                                </span>
+                              ) : (
+                                <>
+                                  Found existing company: <strong>{taxCodeCheck.companyName}</strong>.{' '}
+                                  <button type="button" onClick={() => {
+                                    const existingId = taxCodeCheck.companyProfileId || '';
+                                    handleExistingTargetCompanyChange(existingId);
+                                    setProjectForm((prev) => ({
+                                      ...prev,
+                                      projectType: 'UPDATE_EXISTING_COMPANY',
+                                    }));
+                                  }} style={{ marginLeft: '6px', border: 'none', background: 'transparent', color: '#0056b3', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                                    Use existing company
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )
                         )}
-                        {taxCodeCheck?.checked && taxCodeCheck.exists && taxCodeCheck.matchType === 'ACTIVE_PROJECT' && (
+                        {taxCodeCheck?.checked && taxCodeCheck.exists && (taxCodeCheck.openResearchProject || taxCodeCheck.matchType === 'OPEN_RESEARCH_PROJECT' || (taxCodeCheck.matchType === 'ACTIVE_PROJECT' && !taxCodeCheck.existingOfficialCompany)) && (
                           <div style={{ backgroundColor: '#f8d7da', padding: '6px 8px', borderRadius: '4px', fontSize: '0.82rem', color: '#721c24', marginTop: '4px' }}>
-                            Company is already being researched in an active project (<strong>{taxCodeCheck.companyName}</strong>). Duplicate creation is blocked.
+                            A New Company Research project already exists for this Tax Code (<strong>{taxCodeCheck.companyName || taxCodeCheck.openProjectName || 'Open Project'}</strong>). Duplicate creation is blocked.
                           </div>
                         )}
                       </div>

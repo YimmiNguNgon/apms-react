@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../services/api';
 import i18n from '../i18n';
 import type { PageResult, ProfileResponse, DashboardSummaryDto } from '../types/domain';
+import { useUser, ROLES } from '../context/UserContext';
+import { AccessDeniedPage } from '../components/AccessDeniedPage';
 
 interface CompanyListProps {
   setActivePage: (page: string) => void;
@@ -101,6 +103,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({
   subtitle,
 }) => {
   const { t } = useTranslation('company-list');
+  const { currentUser } = useUser();
   const [profiles, setProfiles] = useState<ProfileResponse[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [unfilteredTotal, setUnfilteredTotal] = useState<number | null>(null);
@@ -118,6 +121,10 @@ export const CompanyList: React.FC<CompanyListProps> = ({
   const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
 
   const fetchProfiles = async (page = 0) => {
+    if (currentUser?.role === ROLES.STAFF) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -169,6 +176,10 @@ export const CompanyList: React.FC<CompanyListProps> = ({
     setStatsLoading(true);
 
     const loadStats = async () => {
+      if (currentUser?.role === ROLES.STAFF) {
+        setStatsLoading(false);
+        return;
+      }
       try {
         const [summaryRes, industriesRes, relTypesRes] = await Promise.allSettled([
           api.get<DashboardSummaryDto>('/dashboard/summary'),
@@ -268,6 +279,10 @@ export const CompanyList: React.FC<CompanyListProps> = ({
 
   const pageStart = totalElements === 0 ? 0 : currentPage * PAGE_SIZE + 1;
   const pageEnd = Math.min((currentPage + 1) * PAGE_SIZE, totalElements);
+
+  if (currentUser?.role === ROLES.STAFF) {
+    return <AccessDeniedPage />;
+  }
 
   return (
     <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page company-profiles-page" id="page-company-profiles">

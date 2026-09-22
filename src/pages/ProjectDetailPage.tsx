@@ -7479,6 +7479,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               </div>
             )}
 
+            {apiProject?.status === 'CLOSED' && (
+              <div className={styles.summaryClosureSection}>
+                <div className={styles.summarySectionLabel}>Closure Information</div>
+                <div className={styles.summaryClosureField}>
+                  <div className={styles.summaryClosureSubLabel}>Reason for closing</div>
+                  <p className={styles.summaryClosureText}>
+                    {apiProject.closeReason?.trim() || 'Not recorded'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {(() => {
               const safeProgress = Math.max(0, Math.min(100, Math.round(apiProject?.progressPercentage || 0)));
               const isCompleted = safeProgress >= 100 || apiProject?.status === 'COMPLETED';

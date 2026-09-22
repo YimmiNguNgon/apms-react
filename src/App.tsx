@@ -112,6 +112,7 @@ import { MyTasksWorkspace } from './pages/MyTasksWorkspace';
 
 // ── Shared pages ──
 import { ProfilePage } from './pages/ProfilePage';
+import { AccessDeniedPage } from './components/AccessDeniedPage';
 
 // ─────────────────────────────────────────────────────────────
 // INNER APP
@@ -164,7 +165,7 @@ const MainApp: React.FC = () => {
       return;
     }
 
-    if (!activePage || !currentUser.allowedPages.includes(activePage)) {
+    if (!activePage) {
       const defaultPage = ROLE_DEFAULT_PAGE[currentUser.role];
       navigateToPage(defaultPage);
     }
@@ -274,14 +275,16 @@ const MainApp: React.FC = () => {
 
     if (!canView(activePage)) {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
-          <div style={{ fontSize: 48 }}>🔒</div>
-          <h2 style={{ color: 'var(--text-primary)' }}>{t('app.accessDeniedTitle')}</h2>
-          <p style={{ color: 'var(--text-muted)' }}>{t('app.accessDeniedBody')}</p>
-          <button className="btn btn-primary" onClick={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}>
-            {t('app.backToDashboard')}
-          </button>
-        </div>
+        <AccessDeniedPage
+          onBack={() => {
+            if (typeof window !== 'undefined' && window.history.length > 1) {
+              window.history.back();
+            } else {
+              navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role]);
+            }
+          }}
+          onDashboard={() => navigateToPage(ROLE_DEFAULT_PAGE[currentUser.role])}
+        />
       );
     }
 

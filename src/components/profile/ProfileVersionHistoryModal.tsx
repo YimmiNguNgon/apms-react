@@ -95,13 +95,7 @@ export const ProfileVersionHistoryModal: React.FC<ProfileVersionHistoryModalProp
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0F172A' }}>
                 Company Profile Version History
               </h2>
-              <span style={companyBadgeStyle}>
-                {profile.identity?.tradeName || profile.identity?.legalName || profile.companyId}
-              </span>
             </div>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
-              Official immutable record of all approved changes and manual edits.
-            </p>
           </div>
           <button type="button" onClick={onClose} style={closeButtonStyle}>✕</button>
         </div>

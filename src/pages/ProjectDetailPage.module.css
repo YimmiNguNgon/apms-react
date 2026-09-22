@@ -7459,6 +7459,30 @@
   overflow-wrap: anywhere;
 }
 
+.summaryClosureSection {
+  padding: 8px 0 4px;
+}
+
+.summaryClosureField {
+  margin-top: 2px;
+}
+
+.summaryClosureSubLabel {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.summaryClosureText {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #334155;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .summaryProgressSection {
   margin-top: 12px;
   padding-top: 12px;

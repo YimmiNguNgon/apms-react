@@ -22,11 +22,8 @@ import type {
   MonitoringReviewResult
 } from '../types/domain';
 import { useUser, ROLES } from '../context/UserContext';
-import { CompanyRelationshipChangeModal } from './CompanyMonitoring/CompanyRelationshipChangeModal';
 import { AssignMonitorModal } from './CompanyMonitoring/AssignMonitorModal';
-import { PendingProposalsList } from './CompanyMonitoring/PendingProposalsList';
 import { PendingProfileUpdatesList } from './CompanyMonitoring/PendingProfileUpdatesList';
-import { CompanyRelationshipHistoryList } from './CompanyMonitoring/CompanyRelationshipHistoryList';
 import { StaffMonitoringReviewPage } from '../pages/StaffMonitoringReviewPage';
 import styles from './CompanyMonitoringCard.module.css';
 
@@ -48,8 +45,6 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
   const [isReviewing, setIsReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<MonitoringReviewResult>('NO_CHANGE');
   const [reviewNote, setReviewNote] = useState('');
-
-  const [isRelationshipModalOpen, setIsRelationshipModalOpen] = useState(false);
 
   const fetchAssignment = async () => {
     try {
@@ -257,9 +252,6 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
               <button onClick={() => setIsReviewing(true)} className={styles.reviewButton}>
                 {t('submit_review', 'Submit Review')}
               </button>
-              <button onClick={() => setIsRelationshipModalOpen(true)} className={styles.secondaryButton}>
-                Propose Relationship Change
-              </button>
             </div>
           )}
         </div>
@@ -267,20 +259,8 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
 
       {canManage && (
         <div style={{ marginTop: '32px' }}>
-          <PendingProposalsList companyProfileId={companyProfileId} />
           <PendingProfileUpdatesList companyProfileId={companyProfileId} />
         </div>
-      )}
-
-      <CompanyRelationshipHistoryList companyProfileId={companyProfileId} />
-
-      {assignment && (
-        <CompanyRelationshipChangeModal
-          open={isRelationshipModalOpen}
-          onClose={() => setIsRelationshipModalOpen(false)}
-          assignmentId={assignment.id}
-          onSuccess={fetchAssignment}
-        />
       )}
 
       {isReviewing && assignment && (

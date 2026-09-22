@@ -11,6 +11,7 @@ import type {
   ProjectResponse,
   UpdateCompanyProfileRequest,
   CompanyProfileMember,
+  CompanyProfileAddress,
   AdminUpdateEnterpriseBasicInfoRequest,
   AdminUpdateEnterpriseBusinessFieldsRequest,
   AdminEnterpriseProductRequest,
@@ -26,10 +27,11 @@ import { canUseRelationshipCloseness } from './companyDetail/utils';
 import BoardMembersTab from './companyDetail/BoardMembersTab';
 import FinancialsTab, { type FinancialsTabHandle } from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
-import DocumentsTab from './companyDetail/DocumentsTab';
+import DocumentsTab, { type ContractTabHandle } from './companyDetail/DocumentsTab';
 import ConfidentialNewsTab from './companyDetail/ConfidentialNewsTab';
 import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
+import { AccessDeniedPage } from '../components/AccessDeniedPage';
 
 interface CompanyDetailProps {
   companyId?: string;
@@ -119,6 +121,15 @@ const inlineInputStyle: React.CSSProperties = {
 const normalizeString = (val: string | null | undefined): string => {
   if (val == null) return '';
   return val.trim();
+};
+
+const resolvePayloadString = (draftVal: string, baselineVal?: string | null): string | undefined => {
+  const normDraft = normalizeString(draftVal);
+  const normBaseline = normalizeString(baselineVal);
+  if (!normDraft && !normBaseline) {
+    return undefined;
+  }
+  return normDraft;
 };
 
 const normalizeNumber = (val: number | string | null | undefined): number | null => {
@@ -414,6 +425,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [sources, setSources] = useState<ProfileSourcesResponse | null>(null);
   const [loading, setLoading] = useState(!initialProfile);
   const [error, setError] = useState<string | null>(null);
+  const [isForbidden, setIsForbidden] = useState(false);
   const [listingEditing, setListingEditing] = useState(false);
   const [tickerDraft, setTickerDraft] = useState('');
   const [exchangeDraft, setExchangeDraft] = useState('NONE');
@@ -431,6 +443,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [isInlineEditing, setIsInlineEditing] = useState(false);
   const financialsTabRef = useRef<FinancialsTabHandle>(null);
   const [isFinancialsDirty, setIsFinancialsDirty] = useState(false);
+  const contractTabRef = useRef<ContractTabHandle>(null);
+  const [isContractDirty, setIsContractDirty] = useState(false);
   const isOverviewEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'overview');
   const isBusinessFieldsEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'business-fields');
   const isLeadershipEditing = isInlineEditing && (!isAdminMyEnterprise || activeTab === 'board');
@@ -608,6 +622,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       };
     }
 
+    if (currentUser?.role === ROLES.STAFF && (navContext.source !== 'project' || !contextProjectId)) {
+      setLoading(false);
+      setIsForbidden(true);
+      return;
+    }
+
     if (!resolvedId) {
       setLoading(false);
       setError('Chưa chọn hồ sơ doanh nghiệp.');
@@ -619,11 +639,17 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     void (async () => {
       setLoading(true);
       setError(null);
+      setIsForbidden(false);
 
       try {
+        const profileParams: Record<string, any> = {};
+        if (contextProjectId) {
+          profileParams.projectId = contextProjectId;
+        }
+
         const [profileRes, sourcesRes] = await Promise.all([
-          api.get<ProfileResponse>(`/profiles/${resolvedId}`, { signal: controller.signal }),
-          api.get<ProfileSourcesResponse>(`/profiles/${resolvedId}/sources`, { signal: controller.signal }).catch(() => null),
+          api.get<ProfileResponse>(`/profiles/${resolvedId}`, { params: profileParams, signal: controller.signal }),
+          api.get<ProfileSourcesResponse>(`/profiles/${resolvedId}/sources`, { params: profileParams, signal: controller.signal }).catch(() => null),
         ]);
 
         let intelRes = null;
@@ -665,12 +691,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         } else {
           setProjects(listProjects);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!controller.signal.aborted) {
           setProfile(null);
           setSources(null);
           setIntelligence(null);
           setProjects([]);
+          const is403 = err?.response?.status === 403 || err?.status === 403;
+          if (is403) {
+            setIsForbidden(true);
+          }
           setError(err instanceof Error ? err.message : 'Không thể tải thông tin hồ sơ doanh nghiệp.');
         }
       } finally {
@@ -681,7 +711,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     return () => {
       controller.abort();
     };
-  }, [resolvedId, currentUser, reloadTrigger, isAdminMyEnterprise, initialProfile]);
+  }, [resolvedId, currentUser, reloadTrigger, isAdminMyEnterprise, initialProfile, contextProjectId, navContext.source]);
 
   // Defensive Route / Tab Guard:
   // If company is not eligible for Relationship Closeness and current tab is relationship-closeness,
@@ -898,7 +928,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const handleCancelEdit = () => {
     financialsTabRef.current?.cancel();
+    contractTabRef.current?.cancel();
     setIsFinancialsDirty(false);
+    setIsContractDirty(false);
     setIsInlineEditing(false);
     setEditBaseline(null);
     setSaveProfileError(null);
@@ -907,7 +939,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const hasSemanticChanges = useMemo(() => {
     if (!isInlineEditing) return false;
     const hasFinancialChanges = isFinancialsDirty;
-    if (!editBaseline) return hasFinancialChanges;
+    const hasContractChanges = isContractDirty;
+    if (!editBaseline) return hasFinancialChanges || hasContractChanges;
     const hasBasicChanges = (
       normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
       normalizeString(draftLegalName) !== normalizeString(editBaseline.legalName) ||
@@ -941,11 +974,13 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       hasBasicChanges ||
       hasBusinessFieldsChanges ||
       hasLeadershipChanges ||
-      hasFinancialChanges
+      hasFinancialChanges ||
+      hasContractChanges
     );
   }, [
     isInlineEditing,
     isFinancialsDirty,
+    isContractDirty,
     isAdminMyEnterprise,
     activeTab,
     editBaseline,
@@ -997,9 +1032,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     ) : false;
 
     const hasFinancialChanges = financialsTabRef.current?.isDirty() ?? isFinancialsDirty;
+    const hasContractChanges = contractTabRef.current?.isDirty() ?? isContractDirty;
 
     let profileSavedSuccessfully = !hasProfileChanges;
     let financialSavedSuccessfully = !hasFinancialChanges;
+    let contractSavedSuccessfully = !hasContractChanges;
 
     // 1. Save Profile section if dirty
     if (hasProfileChanges && editBaseline) {
@@ -1009,16 +1046,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
         if (activeTab === 'overview') {
           const basicPayload: AdminUpdateEnterpriseBasicInfoRequest = {
-            tradeName: normalizeString(draftTradeName) || undefined,
-            legalName: normalizeString(draftLegalName) || undefined,
-            taxCode: normalizeString(draftTaxCode) || undefined,
-            website: normalizeString(draftWebsite) || undefined,
-            email: normalizeString(draftEmail) || undefined,
-            phone: normalizeString(draftPhone) || undefined,
-            headOfficeAddress: normalizeString(draftAddress) || undefined,
+            tradeName: resolvePayloadString(draftTradeName, editBaseline.tradeName),
+            legalName: resolvePayloadString(draftLegalName, editBaseline.legalName),
+            taxCode: resolvePayloadString(draftTaxCode, editBaseline.taxCode),
+            website: resolvePayloadString(draftWebsite, editBaseline.website),
+            email: resolvePayloadString(draftEmail, editBaseline.email),
+            phone: resolvePayloadString(draftPhone, editBaseline.phone),
+            headOfficeAddress: resolvePayloadString(draftAddress, editBaseline.address),
             employeeCount: parsedCount !== null ? parsedCount : undefined,
-            employeeTier: normalizeString(draftEmployeeTier) || undefined,
-            businessModel: normalizeString(draftBusinessModel) || undefined,
+            employeeTier: resolvePayloadString(draftEmployeeTier, editBaseline.employeeTier),
+            businessModel: resolvePayloadString(draftBusinessModel, editBaseline.businessModel),
             expectedMajorVersion: editBaseline.majorVersion,
             expectedRevision: editBaseline.revision,
           };
@@ -1094,36 +1131,85 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         }))
         .filter(m => m.fullName);
 
-      const payload: UpdateCompanyProfileRequest = {
-        tradeName: normalizeString(draftTradeName),
-        legalName: normalizeString(draftLegalName),
-        taxCode: normalizeString(draftTaxCode),
-        website: normalizeString(draftWebsite),
-        emails: normalizeString(draftEmail)
-          ? [normalizeString(draftEmail), ...(profile.contact?.emails?.slice(1) || [])]
-          : ((profile.contact?.emails?.length ?? 0) > 1 ? profile.contact!.emails!.slice(1) : []),
-        phones: normalizeString(draftPhone)
-          ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
-          : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []),
-        addresses: normalizeString(draftAddress)
-          ? draftAddress.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-          : [],
-        headOfficeAddress: normalizeString(draftAddress),
-        employeeCount: parsedCount !== null ? parsedCount : undefined,
-        employeeTier: normalizeString(draftEmployeeTier),
-        foundedYear: normalizeNumber(draftFoundedYear),
-        companyDescription: normalizeString(draftCompanyDescription) || undefined,
-        businessModel: normalizeString(draftBusinessModel),
-        industries: draftIndustries,
-        markets: draftMarkets,
-        targetCustomers: draftTargetCustomers,
-        products: validProducts,
+      const isDirty = (draft: string, baseline?: string | null) =>
+        normalizeString(draft) !== normalizeString(baseline);
 
-        companyMembers: validMembers,
+      const isArrayDirty = (draft: string[], baseline?: string[]) =>
+        !areStringListsEqual(draft, baseline || []);
+
+      const payload: UpdateCompanyProfileRequest = {
         expectedMajorVersion: editBaseline.majorVersion,
         expectedRevision: editBaseline.revision,
-
       };
+
+      if (isDirty(draftTradeName, editBaseline.tradeName)) {
+        payload.tradeName = normalizeString(draftTradeName);
+      }
+      if (isDirty(draftLegalName, editBaseline.legalName)) {
+        payload.legalName = normalizeString(draftLegalName);
+      }
+      if (isDirty(draftTaxCode, editBaseline.taxCode)) {
+        payload.taxCode = normalizeString(draftTaxCode);
+      }
+      if (isDirty(draftWebsite, editBaseline.website)) {
+        payload.website = normalizeString(draftWebsite);
+      }
+      if (isDirty(draftEmail, editBaseline.email)) {
+        payload.emails = normalizeString(draftEmail)
+          ? [normalizeString(draftEmail), ...(profile.contact?.emails?.slice(1) || [])]
+          : ((profile.contact?.emails?.length ?? 0) > 1 ? profile.contact!.emails!.slice(1) : []);
+      }
+      if (isDirty(draftPhone, editBaseline.phone)) {
+        payload.phones = normalizeString(draftPhone)
+          ? [normalizeString(draftPhone), ...(profile.contact?.phones?.slice(1) || [])]
+          : ((profile.contact?.phones?.length ?? 0) > 1 ? profile.contact!.phones!.slice(1) : []);
+      }
+      if (isDirty(draftAddress, editBaseline.address)) {
+        const lines = draftAddress.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const existingList = profile.contact?.addresses || [];
+        const addrObjs: CompanyProfileAddress[] = lines.map((line, i) => {
+          const existing = existingList[i];
+          return {
+            type: existing?.type || (i === 0 ? 'HEADQUARTERS' : 'BRANCH'),
+            fullAddress: line,
+            city: existing?.city,
+            country: existing?.country,
+          };
+        });
+        payload.addressObjects = addrObjs;
+        payload.addresses = lines;
+        payload.headOfficeAddress = lines[0] || '';
+      }
+      if (normalizeNumber(draftEmployeeCount) !== normalizeNumber(editBaseline.employeeCount)) {
+        payload.employeeCount = parsedCount !== null ? parsedCount : undefined;
+      }
+      if (isDirty(draftEmployeeTier, editBaseline.employeeTier)) {
+        payload.employeeTier = normalizeString(draftEmployeeTier);
+      }
+      if (normalizeNumber(draftFoundedYear) !== normalizeNumber(editBaseline.foundedYear)) {
+        payload.foundedYear = normalizeNumber(draftFoundedYear);
+      }
+      if (isDirty(draftCompanyDescription, editBaseline.companyDescription)) {
+        payload.companyDescription = normalizeString(draftCompanyDescription);
+      }
+      if (isDirty(draftBusinessModel, editBaseline.businessModel)) {
+        payload.businessModel = normalizeString(draftBusinessModel);
+      }
+      if (isArrayDirty(draftIndustries, editBaseline.industries)) {
+        payload.industries = draftIndustries.map(s => s.trim()).filter(Boolean);
+      }
+      if (isArrayDirty(draftMarkets, editBaseline.markets)) {
+        payload.markets = draftMarkets.map(s => s.trim()).filter(Boolean);
+      }
+      if (isArrayDirty(draftTargetCustomers, editBaseline.targetCustomers)) {
+        payload.targetCustomers = draftTargetCustomers.map(s => s.trim()).filter(Boolean);
+      }
+      if (!areProductsEqual(draftProducts, editBaseline.products)) {
+        payload.products = validProducts;
+      }
+      if (!areMembersEqual(draftMembers, editBaseline.members)) {
+        payload.companyMembers = validMembers;
+      }
 
       try {
         const updated = await companyProfileApi.updateCompanyProfile(targetId, payload);
@@ -1157,8 +1243,21 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       }
     }
 
-    // 3. Only exit edit mode if both sections succeeded
-    if (profileSavedSuccessfully && financialSavedSuccessfully) {
+    // 3. Save Contract section if dirty and prior saves did not fail
+    if (hasContractChanges && profileSavedSuccessfully && financialSavedSuccessfully) {
+      try {
+        await contractTabRef.current?.save();
+        contractSavedSuccessfully = true;
+        setIsContractDirty(false);
+      } catch (err: any) {
+        console.error('Failed to update canonical contracts:', err);
+        setSaveProfileError(err.message || 'Profile saved, but failed to save contract changes. Please review and try again.');
+        contractSavedSuccessfully = false;
+      }
+    }
+
+    // 4. Only exit edit mode if all dirty sections succeeded
+    if (profileSavedSuccessfully && financialSavedSuccessfully && contractSavedSuccessfully) {
       setReloadTrigger(prev => prev + 1);
       setIsInlineEditing(false);
       setEditBaseline(null);
@@ -1202,19 +1301,26 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
 
   const renderOverviewTab = () => {
-    const taxCode = profile?.identity?.taxCode || 'Not updated';
-    const regNo = profile?.identity?.registrationNumber || 'Not updated';
-    const empCount = profile?.companySize?.employeeCount || intelligence?.company?.employeeCount;
-    const empTier = profile?.companySize?.employeeTier;
-    const sizeStr = empCount ? `${empCount} personnel ${empTier ? `(${empTier})` : ''}` : (empTier || 'Not updated');
-    const website = profile?.contact?.website || intelligence?.company?.website || 'Not updated';
-    const email = profile?.contact?.emails?.[0] || 'Not updated';
-    const phone = profile?.contact?.phones?.[0] || 'Not updated';
+    const rawTradeName = profile?.identity?.tradeName?.trim();
+    const tradeName = rawTradeName || 'N/A';
+    const rawLegalName = profile?.identity?.legalName?.trim();
+    const legalName = rawLegalName || 'N/A';
+    const rawTaxCode = profile?.identity?.taxCode?.trim();
+    const taxCode = rawTaxCode || 'N/A';
+    const regNo = profile?.identity?.registrationNumber?.trim() || 'N/A';
+
+    const empCount = profile?.companySize?.employeeCount ?? intelligence?.company?.employeeCount;
+    const foundedYear = profile?.business?.foundedYear;
+
+    const rawWebsite = profile?.contact?.website?.trim() || intelligence?.company?.website?.trim() || '';
+    const rawEmail = profile?.contact?.emails?.[0]?.trim() || '';
+    const rawPhone = profile?.contact?.phones?.[0]?.trim() || '';
+
     const contactAddresses = profile?.contact?.addresses;
     const effectiveAddresses = (contactAddresses && contactAddresses.length > 0)
       ? contactAddresses.map(a => a.fullAddress || '').filter(Boolean)
       : ((profile?.contact as any)?.address ? [(profile?.contact as any).address] : []);
-    const address = effectiveAddresses[0] || intelligence?.company?.headquarters || 'Not updated';
+    const address = effectiveAddresses[0]?.trim() || intelligence?.company?.headquarters?.trim() || '';
 
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', alignItems: 'start' }} id="company-detail-2col-grid">
@@ -1263,7 +1369,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     disabled={isSavingProfile}
                   />
                 ) : (
-                  <strong style={tradeName ? C.value : C.muted}>{tradeName || 'Not updated'}</strong>
+                  <strong style={rawTradeName ? C.value : C.muted}>{tradeName}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1278,7 +1384,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     disabled={isSavingProfile}
                   />
                 ) : (
-                  <strong style={legalName ? C.value : C.muted}>{legalName || 'Not updated'}</strong>
+                  <strong style={rawLegalName ? C.value : C.muted}>{legalName}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1293,7 +1399,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     disabled={isSavingProfile}
                   />
                 ) : (
-                  <strong style={{ ...(taxCode !== 'Not updated' ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
+                  <strong style={{ ...(rawTaxCode ? C.value : C.muted), fontFamily: 'monospace' }}>{taxCode}</strong>
                 )}
               </div>
             </div>
@@ -1450,14 +1556,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     placeholder="Website"
                     disabled={isSavingProfile}
                   />
+                ) : rawWebsite ? (
+                  <a href={rawWebsite.startsWith('http') ? rawWebsite : `https://${rawWebsite}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
+                    {rawWebsite}
+                  </a>
                 ) : (
-                  website !== 'Not updated' ? (
-                    <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
-                      {website}
-                    </a>
-                  ) : (
-                    <strong style={C.muted}>{website}</strong>
-                  )
+                  <strong style={C.muted}>N/A</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1472,7 +1576,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     disabled={isSavingProfile}
                   />
                 ) : (
-                  <strong style={email !== 'Not updated' ? C.value : C.muted}>{email}</strong>
+                  <strong style={rawEmail ? C.value : C.muted}>{rawEmail || 'N/A'}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1487,7 +1591,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     disabled={isSavingProfile}
                   />
                 ) : (
-                  <strong style={phone !== 'Not updated' ? C.value : C.muted}>{phone}</strong>
+                  <strong style={rawPhone ? C.value : C.muted}>{rawPhone || 'N/A'}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1503,7 +1607,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     min={0}
                   />
                 ) : (
-                  <strong style={empCount ? C.value : C.muted}>{empCount ? `${empCount} employees` : 'Not updated'}</strong>
+                  <strong style={empCount != null ? C.value : C.muted}>{empCount != null ? `${empCount} employees` : 'N/A'}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1520,7 +1624,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     max={new Date().getFullYear()}
                   />
                 ) : (
-                  <strong style={profile?.business?.foundedYear ? C.value : C.muted}>{profile?.business?.foundedYear || 'Not updated'}</strong>
+                  <strong style={foundedYear != null ? C.value : C.muted}>{foundedYear != null ? String(foundedYear) : 'N/A'}</strong>
                 )}
               </div>
               <div style={C.fieldCell}>
@@ -1540,90 +1644,98 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                       <li key={idx} style={{ marginBottom: '2px' }}>{addr}</li>
                     ))}
                   </ul>
+                ) : effectiveAddresses.length === 1 && effectiveAddresses[0]?.trim() ? (
+                  <strong style={C.value}>{effectiveAddresses[0].trim()}</strong>
                 ) : (
-                  <strong style={address !== 'Not updated' ? C.value : C.muted}>{address}</strong>
+                  <strong style={C.muted}>N/A</strong>
                 )}
               </div>
             </div>
           </section>
 
           {/* Panel 3: Description & Summary */}
-          {(isOverviewEditing || profile?.business?.companyDescription || profile?.business?.businessModel || intelligence?.company?.businessModel) && (
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Company Description & Business Model</h2>
+          <section style={C.card}>
+            <div style={C.cardHeader}>
+              <h2 style={C.h2}>Company Description & Business Model</h2>
+            </div>
+            {isOverviewEditing ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <span style={C.fieldLabel}>Company Description</span>
+                  <textarea
+                    style={{
+                      width: '100%',
+                      minHeight: '80px',
+                      padding: '6px 8px',
+                      fontSize: '0.74rem',
+                      color: '#334155',
+                      lineHeight: '1.5',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: '4px',
+                      fontFamily: 'inherit',
+                      outline: 'none',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                    }}
+                    value={draftCompanyDescription}
+                    onChange={(e) => setDraftCompanyDescription(e.target.value)}
+                    placeholder="Enter company description..."
+                    disabled={isSavingProfile}
+                  />
+                </div>
+                <div>
+                  <span style={C.fieldLabel}>Business Model</span>
+                  <textarea
+                    style={{
+                      width: '100%',
+                      minHeight: '80px',
+                      padding: '6px 8px',
+                      fontSize: '0.74rem',
+                      color: '#334155',
+                      lineHeight: '1.5',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: '4px',
+                      fontFamily: 'inherit',
+                      outline: 'none',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                    }}
+                    value={draftBusinessModel}
+                    onChange={(e) => setDraftBusinessModel(e.target.value)}
+                    placeholder="Enter business model..."
+                    disabled={isSavingProfile}
+                  />
+                </div>
               </div>
-              {isOverviewEditing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div>
-                    <span style={C.fieldLabel}>Company Description</span>
-                    <textarea
-                      style={{
-                        width: '100%',
-                        minHeight: '80px',
-                        padding: '6px 8px',
-                        fontSize: '0.74rem',
-                        color: '#334155',
-                        lineHeight: '1.5',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '4px',
-                        fontFamily: 'inherit',
-                        outline: 'none',
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                      }}
-                      value={draftCompanyDescription}
-                      onChange={(e) => setDraftCompanyDescription(e.target.value)}
-                      placeholder="Enter company description..."
-                      disabled={isSavingProfile}
-                    />
-                  </div>
-                  <div>
-                    <span style={C.fieldLabel}>Business Model</span>
-                    <textarea
-                      style={{
-                        width: '100%',
-                        minHeight: '80px',
-                        padding: '6px 8px',
-                        fontSize: '0.74rem',
-                        color: '#334155',
-                        lineHeight: '1.5',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '4px',
-                        fontFamily: 'inherit',
-                        outline: 'none',
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                      }}
-                      value={draftBusinessModel}
-                      onChange={(e) => setDraftBusinessModel(e.target.value)}
-                      placeholder="Enter business model..."
-                      disabled={isSavingProfile}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {profile?.business?.companyDescription && (
-                    <div>
-                      <strong style={C.fieldLabel}>Company Description</strong>
-                      <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
-                        {profile.business.companyDescription}
-                      </p>
-                    </div>
-                  )}
-                  {(profile?.business?.businessModel || intelligence?.company?.businessModel) && (
-                    <div>
-                      <strong style={C.fieldLabel}>Business Model</strong>
-                      <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5' }}>
-                        {profile?.business?.businessModel || intelligence?.company?.businessModel}
-                      </p>
-                    </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <strong style={C.fieldLabel}>Company Description</strong>
+                  {profile?.business?.companyDescription?.trim() ? (
+                    <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                      {profile.business.companyDescription.trim()}
+                    </p>
+                  ) : (
+                    <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>
+                      N/A
+                    </p>
                   )}
                 </div>
-              )}
-            </section>
-          )}
+                <div>
+                  <strong style={C.fieldLabel}>Business Model</strong>
+                  {(profile?.business?.businessModel?.trim() || intelligence?.company?.businessModel?.trim()) ? (
+                    <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                      {profile?.business?.businessModel?.trim() || intelligence?.company?.businessModel?.trim()}
+                    </p>
+                  ) : (
+                    <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>
+                      N/A
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
 
           {/* Panel 4: AI Extracted Facts */}
           {intelligence && (
@@ -1723,224 +1835,218 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {!isExtendedEditing && !hasData ? (
-          <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>No business field data available.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
-            {/* Products & Services Column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <section style={C.card}>
-                <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h2 style={C.h2}>Products & Services</h2>
-                  {isExtendedEditing && (
-                    <button
-                      type="button"
-                      onClick={handleAddProduct}
-                      disabled={isSavingProfile}
-                      style={{
-                        background: '#2563EB',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        fontSize: '0.68rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Plus size={11} />
-                      Add Product / Service
-                    </button>
-                  )}
-                </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
+          {/* Products & Services Column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <section style={C.card}>
+              <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={C.h2}>Products & Services</h2>
+                {isExtendedEditing && (
+                  <button
+                    type="button"
+                    onClick={handleAddProduct}
+                    disabled={isSavingProfile}
+                    style={{
+                      background: '#2563EB',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Plus size={11} />
+                    Add Product / Service
+                  </button>
+                )}
+              </div>
 
-                {isExtendedEditing ? (
-                  draftProducts.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {draftProducts.map((p, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            background: '#F8FAFC',
-                            padding: '8px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #CBD5E1',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                              Product #{idx + 1}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteProduct(idx)}
-                              disabled={isSavingProfile}
-                              title="Delete Product"
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#EF4444',
-                                cursor: 'pointer',
-                                padding: '2px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                fontSize: '0.68rem',
-                              }}
-                            >
-                              <Trash2 size={12} />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-
-                          <div>
-                            <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
-                              Name *
-                            </label>
-                            <input
-                              type="text"
-                              style={inlineInputStyle}
-                              value={p.name}
-                              onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
-                              placeholder="Product or service name..."
-                              disabled={isSavingProfile}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '16px', textAlign: 'center', background: '#F8FAFC', borderRadius: '6px', border: '1px dashed #CBD5E1' }}>
-                      <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
-                        No product/service recorded. Click <strong>+ Add Product / Service</strong> above to add one.
-                      </p>
-                    </div>
-                  )
-                ) : products.length > 0 ? (
+              {isExtendedEditing ? (
+                draftProducts.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
-                      <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
+                    {draftProducts.map((p, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#F8FAFC',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #CBD5E1',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                            Product #{idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(idx)}
+                            disabled={isSavingProfile}
+                            title="Delete Product"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#EF4444',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '0.68rem',
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
+                            Name *
+                          </label>
+                          <input
+                            type="text"
+                            style={inlineInputStyle}
+                            value={p.name}
+                            onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
+                            placeholder="Product or service name..."
+                            disabled={isSavingProfile}
+                          />
                         </div>
                       </div>
                     ))}
-                    {products.length > 5 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllProducts(!showAllProducts)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#1D4ED8',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          padding: '4px 0',
-                          textAlign: 'left'
-                        }}
-                      >
-                        {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
-                      </button>
-                    )}
                   </div>
                 ) : (
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>No product/service categories recorded.</p>
-                )}
-              </section>
-            </div>
-
-            {/* Industry & Markets Column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <section style={C.card}>
-                <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Industry</h2>
+                  <div style={{ padding: '16px', textAlign: 'center', background: '#F8FAFC', borderRadius: '6px', border: '1px dashed #CBD5E1' }}>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+                      No product/service recorded. Click <strong>+ Add Product / Service</strong> above to add one.
+                    </p>
+                  </div>
+                )
+              ) : products.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
+                    <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
+                      </div>
+                    </div>
+                  ))}
+                  {products.length > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllProducts(!showAllProducts)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#1D4ED8',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        padding: '4px 0',
+                        textAlign: 'left'
+                      }}
+                    >
+                      {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
+                    </button>
+                  )}
                 </div>
+              ) : (
+                <strong style={C.muted}>N/A</strong>
+              )}
+            </section>
+          </div>
+
+          {/* Industry & Markets Column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <section style={C.card}>
+              <div style={C.cardHeader}>
+                <h2 style={C.h2}>Industry</h2>
+              </div>
+              <div>
+                {isExtendedEditing ? (
+                  <CompactTagEditor
+                    tags={draftIndustries}
+                    onChange={setDraftIndustries}
+                    placeholder="Add industry (e.g. Semiconductor)..."
+                    tagBg="#E0E7FF"
+                    tagColor="#3730A3"
+                    disabled={isSavingProfile}
+                  />
+                ) : industries.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {industries.map((ind, idx) => (
+                      <span key={idx} style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                ) : <strong style={C.muted}>N/A</strong>}
+              </div>
+            </section>
+
+            <section style={C.card}>
+              <div style={C.cardHeader}>
+                <h2 style={C.h2}>Markets & Customers</h2>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Markets */}
                 <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active market</span>
                   {isExtendedEditing ? (
                     <CompactTagEditor
-                      tags={draftIndustries}
-                      onChange={setDraftIndustries}
-                      placeholder="Add industry (e.g. Semiconductor)..."
-                      tagBg="#E0E7FF"
-                      tagColor="#3730A3"
+                      tags={draftMarkets}
+                      onChange={setDraftMarkets}
+                      placeholder="Add market (e.g. South Korea)..."
+                      tagBg="#F1F5F9"
+                      tagColor="#334155"
                       disabled={isSavingProfile}
                     />
-                  ) : industries.length > 0 ? (
+                  ) : markets.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {industries.map((ind, idx) => (
-                        <span key={idx} style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          {ind}
+                      {markets.map((m, idx) => (
+                        <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                          {m}
                         </span>
                       ))}
                     </div>
-                  ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not yet updated</span>}
+                  ) : <strong style={C.muted}>N/A</strong>}
                 </div>
-              </section>
 
-              <section style={C.card}>
-                <div style={C.cardHeader}>
-                  <h2 style={C.h2}>Markets & Customers</h2>
+                {/* Customers */}
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target customers</span>
+                  {isExtendedEditing ? (
+                    <CompactTagEditor
+                      tags={draftTargetCustomers}
+                      onChange={setDraftTargetCustomers}
+                      placeholder="Add customer group (e.g. AI Server Providers)..."
+                      tagBg="#ECFDF5"
+                      tagColor="#065F46"
+                      disabled={isSavingProfile}
+                    />
+                  ) : targetCustomers.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {targetCustomers.map((c, idx) => (
+                        <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  ) : <strong style={C.muted}>N/A</strong>}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Markets */}
-                  <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active market</span>
-                    {isExtendedEditing ? (
-                      <CompactTagEditor
-                        tags={draftMarkets}
-                        onChange={setDraftMarkets}
-                        placeholder="Add market (e.g. South Korea)..."
-                        tagBg="#F1F5F9"
-                        tagColor="#334155"
-                        disabled={isSavingProfile}
-                      />
-                    ) : markets.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {markets.map((m, idx) => (
-                          <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                            {m}
-                          </span>
-                        ))}
-                      </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not yet updated</span>}
-                  </div>
-
-                  {/* Customers */}
-                  <div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target customers</span>
-                    {isExtendedEditing ? (
-                      <CompactTagEditor
-                        tags={draftTargetCustomers}
-                        onChange={setDraftTargetCustomers}
-                        placeholder="Add customer group (e.g. AI Server Providers)..."
-                        tagBg="#ECFDF5"
-                        tagColor="#065F46"
-                        disabled={isSavingProfile}
-                      />
-                    ) : targetCustomers.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {targetCustomers.map((c, idx) => (
-                          <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    ) : <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Not yet updated</span>}
-                  </div>
-                </div>
-              </section>
-            </div>
+              </div>
+            </section>
           </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -2127,6 +2233,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             <FinancialsTab
               ref={financialsTabRef}
               companyId={resolvedId}
+              projectId={contextProjectId}
               editable={isInlineEditing}
               onDirtyChange={setIsFinancialsDirty}
             />
@@ -2146,11 +2253,16 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           </div>
         );
       case 'documents':
-        if (currentUser?.role === ROLES.STAFF) return null;
         return (
-          <div style={{ padding: '4px 0' }}>
-            <DocumentsTab companyProfileId={relationshipClosenessProfileId} userRole={currentUser?.role} currentUserId={currentUser?.id} />
-          </div>
+            <DocumentsTab
+              ref={contractTabRef}
+              companyProfileId={relationshipClosenessProfileId}
+              projectId={contextProjectId}
+              userRole={currentUser?.role}
+              currentUserId={currentUser?.id}
+              editable={isInlineEditing}
+              onDirtyChange={setIsContractDirty}
+            />
         );
       case 'relationship-closeness':
         if (!canUseRelationshipCloseness(profile?.relationshipType, isOwnerProfile, isDrawerMode, profile?.canAccessRelationshipCloseness)) return null;
@@ -2200,6 +2312,14 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       setActivePage('companies');
     }
   };
+
+  if (isForbidden) {
+    return (
+      <div style={{ background: '#F8FAFC', minHeight: '100vh', padding: '24px', color: '#0F172A' }}>
+        <AccessDeniedPage onBack={handleBackToSource} />
+      </div>
+    );
+  }
 
   if (error || !profile) {
     return (
@@ -2302,7 +2422,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                         : navContext.source === 'my-companies'
                           ? 'Back to My Companies'
                           : navContext.source === 'profile-visibility'
-                            ? 'Back to Profile Visibility'
+                            ? 'Back to Profile Management'
                             : (currentUser?.role === ROLES.STAFF && localStorage.getItem('apms-back-page') !== 'staff-monitoring')
                               ? 'Back to Dashboard'
                               : 'Back to Company Profiles'}
@@ -2325,7 +2445,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     {navContext.source === 'project' 
                       ? 'Project' 
                       : navContext.source === 'profile-visibility'
-                        ? 'Profile Visibility'
+                        ? 'Profile Management'
                         : 'Company Detail'}
                   </span>
                   <span>/</span>

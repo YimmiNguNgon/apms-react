@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   AlertTriangle,
   Briefcase,
+  Building2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -51,6 +52,25 @@ export interface AiChatResponse {
   sources: AiSourceReference[];
   suggestedActions: string[];
   navigationActions?: AiNavigationAction[];
+}
+
+export interface AiMentionItem {
+  type: 'PROJECT' | 'COMPANY';
+  projectId?: number;
+  companyProfileId?: string;
+  companyId?: string;
+  label: string;
+  trigger: string;
+}
+
+export interface AutocompleteOption {
+  type: 'PROJECT' | 'COMPANY';
+  projectId?: number;
+  companyProfileId?: string;
+  companyId?: string;
+  primaryLabel: string;
+  secondaryLabel?: string;
+  badge?: string;
 }
 
 export interface AiChatSession {
@@ -159,14 +179,148 @@ export const STAFF_QUESTION_CATALOG: QuestionCategory[] = [
   },
 ];
 
+export const OWNER_PRIMARY_QUESTIONS: string[] = [
+  'Show me an overview of our business ecosystem',
+  'Who are our current partners?',
+  'What are the major risks across our ecosystem?',
+  'Which partner should we prioritize for strategic collaboration?',
+];
+
+export const OWNER_QUESTION_CATALOG: QuestionCategory[] = [
+  {
+    title: 'Ecosystem Overview',
+    questions: [
+      'Show me an overview of our business ecosystem',
+      'Who are our current partners?',
+      'Who are our potential partners?',
+      'Who are our competitors in the market?',
+      'Who are our key customers and suppliers?',
+      'Summarize the health and status of our partner ecosystem',
+    ],
+  },
+  {
+    title: 'Relationship & Closeness Assessment',
+    questions: [
+      { label: 'What is our relationship with a company?', template: 'What is our relationship with @Company?' },
+      { label: 'How close is our relationship with a company?', template: 'How close is our relationship with @Company?' },
+      'Which relationships need immediate attention or review?',
+      'What is our relationship closeness distribution?',
+      'Show all unrated partner relationships',
+    ],
+  },
+  {
+    title: 'Risk Intelligence & Signals',
+    questions: [
+      'What are the major risks across our ecosystem?',
+      'What are the latest risk signals across our monitored companies?',
+      { label: 'What risks should I know about a company?', template: 'What risks should I know about @Company?' },
+      'Are there any critical partner warnings or dependency issues?',
+    ],
+  },
+  {
+    title: 'Strategic Opportunities & Priorities',
+    questions: [
+      'Which partner should we prioritize for strategic collaboration?',
+      { label: 'What opportunities do we have with a company?', template: 'What opportunities do we have with @Company?' },
+      'What strategic insights or recommendations do you have for next quarter?',
+      'Which weak relationships present high growth potential?',
+    ],
+  },
+  {
+    title: 'Company Profile & Comparison',
+    questions: [
+      { label: 'What do we know about a company?', template: 'What do we know about @Company?' },
+      { label: 'Compare two companies', template: 'Compare @Company and @Company' },
+      { label: 'Which is a better strategic partner?', template: 'Which is a better strategic partner, @Company vs @Company?' },
+      { label: 'Strengths and weaknesses of a company', template: 'What are the key strengths and weaknesses of @Company?' },
+    ],
+  },
+  {
+    title: 'Relationship Strengthening',
+    questions: [
+      { label: 'Should we strengthen our relationship with a company?', template: 'Should we strengthen our relationship with @Company?' },
+      { label: 'Action steps to upgrade closeness with a company', template: 'What action steps are needed to upgrade our closeness with @Company?' },
+    ],
+  },
+  {
+    title: 'Basic Company',
+    questions: [
+      { label: 'Company profile details', template: 'What do we know about @Company?' },
+      { label: 'Public news about a company', template: 'What public news do we have about @Company?' },
+      { label: 'Legal name and trade name', template: 'What is the legal name and trade name of @Company?' },
+      { label: 'Official tax code and registration number', template: 'What is the official tax code and registration number of @Company?' },
+      { label: 'Headquarters address and operational locations', template: 'Where is the headquarters address and operational locations of @Company?' },
+      { label: 'Official website and contact information', template: 'What is the official website and contact information for @Company?' },
+      { label: 'Industries and sectors', template: 'What industries and sectors does @Company operate in?' },
+      { label: 'Core business model', template: 'What is the core business model of @Company?' },
+      { label: 'Main products and services', template: 'What are the main products and services delivered by @Company?' },
+      { label: 'Target customers and target markets', template: 'Who are the primary target customers and target markets of @Company?' },
+      { label: 'Company leadership', template: 'Who is the leadership at @Company?' },
+    ],
+  },
+  {
+    title: 'Financial',
+    questions: [
+      { label: 'Latest annual revenue and revenue tier', template: 'What is the latest annual revenue and revenue tier of @Company?' },
+      { label: 'Recorded revenue currency', template: 'What is the revenue currency recorded for @Company?' },
+      { label: 'Monthly revenue growth rate', template: 'What is the monthly revenue growth rate of @Company?' },
+      { label: 'Revenue trend across reporting periods', template: 'How has @Company\'s revenue trended across the recorded reporting periods?' },
+      { label: 'Compare revenue scale and financial tier', template: 'Compare the revenue scale and financial tier between @Company and @Company' },
+    ],
+  },
+  {
+    title: 'Contract',
+    questions: [
+      { label: 'Active contracts or strategic agreements', template: 'What active contracts or strategic agreements do we have with @Company?' },
+      { label: 'Contract number, signing date, and effective date', template: 'What is the contract number, signing date, and effective date for @Company?' },
+      { label: 'Contract term and expiration date', template: 'What is the contract term and when does the agreement with @Company expire?' },
+      { label: 'Current derived status of the contract', template: 'What is the current derived status of the contract with @Company?' },
+      { label: 'Total contract value and currency', template: 'What is the total contract value and currency specified in the agreement with @Company?' },
+    ],
+  },
+];
+
 export const MANAGER_PRIMARY_QUESTIONS: string[] = [
   'What needs my review?',
   'Which tasks are overdue?',
   'How are my projects progressing?',
-  'What should I focus on next?',
+  'What should I focus on next as a manager?',
 ];
 
 export const MANAGER_QUESTION_CATALOG: QuestionCategory[] = [
+  {
+    title: 'Project & Workload',
+    questions: [
+      'What projects am I managing?',
+      'How are my projects progressing?',
+      { label: 'Progress of a specific project', template: 'What is the progress of project !Project?' },
+      { label: 'Active tasks in a project', template: 'What tasks are currently active in project !Project?' },
+      'Who on the team has the most tasks assigned?',
+    ],
+  },
+  {
+    title: 'Deadlines & Bottlenecks',
+    questions: [
+      'Which tasks are overdue?',
+      'Are there any bottlenecks or blocked tasks in my projects?',
+      'What should I focus on next as a manager?',
+    ],
+  },
+  {
+    title: 'Submission Review Queue',
+    questions: [
+      'What needs my review?',
+      'Which submissions are waiting for my review?',
+      { label: 'Submissions waiting for review in a project', template: 'Which submissions are waiting for my review in project !Project?' },
+      'Which submissions should I review first?',
+    ],
+  },
+  {
+    title: 'Returned Work & Revisions',
+    questions: [
+      'Which tasks were returned for revision?',
+    ],
+  },
   {
     title: 'General',
     questions: [
@@ -174,33 +328,13 @@ export const MANAGER_QUESTION_CATALOG: QuestionCategory[] = [
     ],
   },
   {
-    title: 'Project Management',
-    questions: [
-      'What projects am I managing?',
-      'How are my projects progressing?',
-      'What tasks are currently active?',
-      "How is my team's workload?",
-      'Which tasks are overdue?',
-      'What should I focus on next?',
-    ],
-  },
-  {
-    title: 'Reviews',
-    questions: [
-      'What needs my review?',
-      'Which submissions are waiting for review?',
-      'Which candidates need my review?',
-      'Which tasks were returned for revision?',
-    ],
-  },
-  {
     title: 'Company Intelligence',
     questions: [
-      { label: 'Find a company', template: 'Find [company name]' },
-      { label: 'Company information', template: 'What do we know about [company name]?' },
-      { label: 'Compare companies', template: 'Compare [company A] and [company B]' },
-      { label: 'Company relationship', template: 'What relationship do we have with [company name]?' },
-      { label: 'Public company news', template: 'Show public news about [company name]' },
+      { label: 'Find a company', template: 'Find @Company' },
+      { label: 'Company information', template: 'What do we know about @Company?' },
+      { label: 'Compare companies', template: 'Compare @Company and @Company' },
+      { label: 'Company relationship', template: 'What relationship do we have with @Company?' },
+      { label: 'Public company news', template: 'Show public news about @Company' },
     ],
   },
 ];
@@ -272,19 +406,47 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
   const isManagerMode = currentUser?.role === ROLES.MANAGER;
   const isStaffMode = currentUser?.role === ROLES.STAFF;
 
+  // Mention autocomplete and attached entities state
+  const [attachedMentions, setAttachedMentions] = useState<AiMentionItem[]>([]);
+  const [mentionMenu, setMentionMenu] = useState<{
+    open: boolean;
+    trigger: '!' | '@';
+    triggerIndex: number;
+    query: string;
+    options: AutocompleteOption[];
+    highlightedIndex: number;
+    isLoading: boolean;
+  }>({
+    open: false,
+    trigger: '@',
+    triggerIndex: -1,
+    query: '',
+    options: [],
+    highlightedIndex: 0,
+    isLoading: false,
+  });
+  const [pendingComparisonTemplate, setPendingComparisonTemplate] = useState<{
+    fullTemplate: string;
+    stage: number;
+    firstMention?: AiMentionItem;
+  } | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const activePrimaryQuestions = useMemo(() => {
     if (isStaffMode) return STAFF_PRIMARY_QUESTIONS;
     if (isManagerMode) return MANAGER_PRIMARY_QUESTIONS;
+    if (isOwnerMode) return OWNER_PRIMARY_QUESTIONS;
     return [];
-  }, [isStaffMode, isManagerMode]);
+  }, [isStaffMode, isManagerMode, isOwnerMode]);
 
   const activeQuestionCatalog = useMemo(() => {
     if (isStaffMode) return STAFF_QUESTION_CATALOG;
     if (isManagerMode) return MANAGER_QUESTION_CATALOG;
+    if (isOwnerMode) return OWNER_QUESTION_CATALOG;
     return [];
-  }, [isStaffMode, isManagerMode]);
+  }, [isStaffMode, isManagerMode, isOwnerMode]);
 
-  const hasStarterCatalog = isStaffMode || isManagerMode;
+  const hasStarterCatalog = isStaffMode || isManagerMode || isOwnerMode;
 
   // Auto-scroll on messages change
   useEffect(() => {
@@ -559,6 +721,17 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
     setProjectId(null);
     setProjectName(null);
     setActiveCompanyProfileId(null);
+    setAttachedMentions([]);
+    setPendingComparisonTemplate(null);
+    setMentionMenu({
+      open: false,
+      trigger: '@',
+      triggerIndex: -1,
+      query: '',
+      options: [],
+      highlightedIndex: 0,
+      isLoading: false,
+    });
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -566,7 +739,297 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
     }
   };
 
+  const openMentionAutocomplete = (trigger: '!' | '@', triggerIndex: number, query: string) => {
+    setMentionMenu(prev => ({
+      ...prev,
+      open: true,
+      trigger,
+      triggerIndex,
+      query,
+      isLoading: true,
+      highlightedIndex: 0,
+    }));
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        if (trigger === '!') {
+          const res = await api.get<any[]>(`/ai-assistant/projects/autocomplete?q=${encodeURIComponent(query)}&limit=8`);
+          const items: AutocompleteOption[] = (res.data || []).map((p: any) => ({
+            type: 'PROJECT',
+            projectId: p.projectId,
+            primaryLabel: p.projectName,
+            secondaryLabel: p.targetCompany ? `Target: ${p.targetCompany}` : (p.projectType || undefined),
+            badge: p.status || 'PROJECT',
+          }));
+          setMentionMenu(prev => ({
+            ...prev,
+            options: items,
+            isLoading: false,
+            highlightedIndex: 0,
+          }));
+        } else {
+          const res = await api.get<any[]>(`/owner/ai-assistant/companies/autocomplete?q=${encodeURIComponent(query)}&limit=8`);
+          const items: AutocompleteOption[] = (res.data || []).map((c: any) => ({
+            type: 'COMPANY',
+            companyProfileId: c.companyProfileId,
+            companyId: c.companyId,
+            primaryLabel: c.legalName,
+            secondaryLabel: c.tradeName ? `Trade: ${c.tradeName}` : (c.taxCode ? `Tax: ${c.taxCode}` : undefined),
+            badge: c.taxCode || 'APPROVED',
+          }));
+          setMentionMenu(prev => ({
+            ...prev,
+            options: items,
+            isLoading: false,
+            highlightedIndex: 0,
+          }));
+        }
+      } catch {
+        setMentionMenu(prev => ({ ...prev, options: [], isLoading: false }));
+      }
+    }, 200);
+  };
+
+  const selectMention = (option: AutocompleteOption) => {
+    const trigger = mentionMenu.trigger;
+    const triggerIndex = mentionMenu.triggerIndex;
+    const query = mentionMenu.query;
+
+    const label = option.primaryLabel;
+    const mentionText = `${trigger}${label}`;
+
+    const beforeTrigger = input.slice(0, triggerIndex);
+    const afterQuery = input.slice(triggerIndex + 1 + query.length);
+
+    let nextInput = beforeTrigger + mentionText + ' ';
+    let nextCursorPos = nextInput.length;
+
+    const newMention: AiMentionItem = {
+      type: option.type,
+      projectId: option.projectId,
+      companyProfileId: option.companyProfileId,
+      companyId: option.companyId,
+      label,
+      trigger,
+    };
+
+    const updatedMentions = [...attachedMentions.filter(m => m.label !== label), newMention];
+    setAttachedMentions(updatedMentions);
+
+    // Check progressive comparison template
+    if (pendingComparisonTemplate && pendingComparisonTemplate.stage === 1) {
+      const isVs = pendingComparisonTemplate.fullTemplate.includes(' vs ');
+      nextInput = `${beforeTrigger}${mentionText} ${isVs ? 'vs' : 'and'} @`;
+      nextCursorPos = nextInput.length;
+      setInput(nextInput);
+      setPendingComparisonTemplate({
+        fullTemplate: pendingComparisonTemplate.fullTemplate,
+        stage: 2,
+        firstMention: newMention,
+      });
+
+      const nextTriggerIndex = nextInput.lastIndexOf('@');
+      openMentionAutocomplete('@', nextTriggerIndex, '');
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = nextCursorPos;
+            textareaRef.current.selectionEnd = nextCursorPos;
+          }
+        }, 10);
+      }
+      return;
+    }
+
+    if (pendingComparisonTemplate && pendingComparisonTemplate.stage === 2) {
+      setPendingComparisonTemplate(null);
+      if (afterQuery.trim()) {
+        nextInput = nextInput + afterQuery.trim();
+      }
+    } else if (afterQuery.trim()) {
+      nextInput = nextInput + afterQuery.trim();
+    }
+
+    setInput(nextInput);
+    setMentionMenu(prev => ({ ...prev, open: false, options: [] }));
+
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = nextCursorPos;
+          textareaRef.current.selectionEnd = nextCursorPos;
+        }
+      }, 10);
+    }
+  };
+
+  const removeAttachedMention = (indexToRemove: number) => {
+    const toRemove = attachedMentions[indexToRemove];
+    if (toRemove) {
+      const mentionStr = `${toRemove.trigger}${toRemove.label}`;
+      setInput(prev => prev.replace(mentionStr, '').replace(/\s+/g, ' ').trim());
+    }
+    setAttachedMentions(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = event.target.value;
+    setInput(val);
+    event.target.style.height = 'auto';
+    event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`;
+
+    const cursorPos = event.target.selectionStart || 0;
+    const textBeforeCursor = val.slice(0, cursorPos);
+
+    // Prune detached mentions if label was removed
+    setAttachedMentions(prev => prev.filter(m => val.includes(m.trigger + m.label)));
+
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+    const lastBang = textBeforeCursor.lastIndexOf('!');
+
+    let activeTriggerIndex = -1;
+    let activeTrigger: '!' | '@' | null = null;
+
+    if (lastBang > lastAt) {
+      activeTriggerIndex = lastBang;
+      activeTrigger = '!';
+    } else if (lastAt >= 0) {
+      activeTriggerIndex = lastAt;
+      activeTrigger = '@';
+    }
+
+    if (activeTrigger === '!' && !isManagerMode) {
+      activeTrigger = null;
+    }
+    if (activeTrigger === '@' && !isOwnerMode && !isManagerMode) {
+      activeTrigger = null;
+    }
+
+    if (activeTrigger && activeTriggerIndex >= 0) {
+      const isStart = activeTriggerIndex === 0;
+      const prevChar = isStart ? '' : textBeforeCursor[activeTriggerIndex - 1];
+      const isBoundary = isStart || /\s/.test(prevChar);
+      const queryPart = textBeforeCursor.slice(activeTriggerIndex + 1);
+
+      if (isBoundary && !queryPart.includes('\n')) {
+        openMentionAutocomplete(activeTrigger, activeTriggerIndex, queryPart);
+        return;
+      }
+    }
+
+    if (mentionMenu.open) {
+      setMentionMenu(prev => ({ ...prev, open: false }));
+    }
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionMenu.open && mentionMenu.options.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setMentionMenu(prev => ({
+          ...prev,
+          highlightedIndex: (prev.highlightedIndex + 1) % prev.options.length,
+        }));
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setMentionMenu(prev => ({
+          ...prev,
+          highlightedIndex: (prev.highlightedIndex - 1 + prev.options.length) % prev.options.length,
+        }));
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const selected = mentionMenu.options[mentionMenu.highlightedIndex];
+        if (selected) {
+          selectMention(selected);
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMentionMenu(prev => ({ ...prev, open: false }));
+        return;
+      }
+    }
+
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void sendMessage();
+    }
+  };
+
   const handleSelectTemplate = (template: string) => {
+    if (template.includes('@Company and @Company') || template.includes('@Company vs @Company')) {
+      const prefix = template.split('@Company')[0];
+      setPendingComparisonTemplate({
+        fullTemplate: template,
+        stage: 1,
+      });
+      const newText = prefix + '@';
+      setInput(newText);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.focus();
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = newText.length;
+            textareaRef.current.selectionEnd = newText.length;
+          }
+        }, 10);
+      }
+      openMentionAutocomplete('@', prefix.length - 1, '');
+      return;
+    }
+
+    if (template.includes('@Company')) {
+      const parts = template.split('@Company');
+      const prefix = parts[0] + '@';
+      const suffix = parts.slice(1).join('@Company');
+      const newText = prefix + (suffix.trim() ? ' ' + suffix.trim() : '');
+      setInput(newText);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.focus();
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = prefix.length;
+            textareaRef.current.selectionEnd = prefix.length;
+          }
+        }, 10);
+      }
+      openMentionAutocomplete('@', parts[0].length, '');
+      return;
+    }
+
+    if (template.includes('!Project')) {
+      const parts = template.split('!Project');
+      const prefix = parts[0] + '!';
+      const suffix = parts.slice(1).join('!Project');
+      const newText = prefix + (suffix.trim() ? ' ' + suffix.trim() : '');
+      setInput(newText);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.focus();
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = prefix.length;
+            textareaRef.current.selectionEnd = prefix.length;
+          }
+        }, 10);
+      }
+      openMentionAutocomplete('!', parts[0].length, '');
+      return;
+    }
+
     setInput(template);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -587,6 +1050,10 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
     const msg = (override ?? input).trim();
     if (!msg || isSending) return;
 
+    const effectiveMentions: AiMentionItem[] = attachedMentions.filter(m =>
+      msg.includes(m.trigger + m.label)
+    );
+
     const currentTime = formatClockTime();
     setMessages((prev) => [
       ...prev,
@@ -594,6 +1061,9 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
       { role: 'ai', content: '', isLoading: true, timestamp: currentTime },
     ]);
     setInput('');
+    setAttachedMentions([]);
+    setPendingComparisonTemplate(null);
+    setMentionMenu(prev => ({ ...prev, open: false }));
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -602,9 +1072,11 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
     try {
       const endpoint = isOwnerMode ? '/owner/ai-assistant/chat' : '/ai-assistant/chat';
 
-      const effectiveProjectId = projectId
+      const projectMention = effectiveMentions.find(m => m.type === 'PROJECT' && m.projectId);
+      const fallbackProjectId = projectId
         ? Number(projectId)
         : (projectsList[0] ? projectsList[0].id : undefined);
+      const effectiveProjectId = projectMention?.projectId ?? fallbackProjectId;
 
       if (!isOwnerMode && !effectiveProjectId) {
         setMessages((prev) => {
@@ -619,12 +1091,31 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
         return;
       }
 
+      const companyMention = effectiveMentions.find(m => m.type === 'COMPANY' && m.companyProfileId);
+      const effectiveCompanyProfileId = companyMention?.companyProfileId ?? (
+        isOwnerMode
+          ? (window.location.hash.startsWith('#company-detail') ? localStorage.getItem('apms-selected-company') || undefined : undefined)
+          : activeCompanyProfileId || undefined
+      );
+
       const payload: {
         question: string;
         sessionId?: string;
         projectId?: number;
         companyProfileId?: string;
-      } = { question: msg };
+        mentions?: any[];
+      } = {
+        question: msg,
+        mentions: effectiveMentions.map(m => ({
+          type: m.type,
+          projectId: m.projectId,
+          id: m.projectId,
+          companyProfileId: m.companyProfileId,
+          companyId: m.companyId,
+          label: m.label,
+          trigger: m.trigger,
+        })),
+      };
 
       // Pass sessionId only if we are continuing an active session
       if (activeSessionId) {
@@ -633,15 +1124,8 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
       if (!isOwnerMode && effectiveProjectId) {
         payload.projectId = effectiveProjectId;
       }
-
-      if (isOwnerMode) {
-        const isCompanyDetailPage = window.location.hash.startsWith('#company-detail');
-        const storedCompanyId = isCompanyDetailPage ? localStorage.getItem('apms-selected-company') : undefined;
-        if (storedCompanyId) {
-          payload.companyProfileId = storedCompanyId;
-        }
-      } else if (activeCompanyProfileId) {
-        payload.companyProfileId = activeCompanyProfileId;
+      if (effectiveCompanyProfileId) {
+        payload.companyProfileId = effectiveCompanyProfileId;
       }
 
       const res = await api.post<AiChatResponse>(endpoint, payload, { timeoutMs: 60000 });
@@ -1143,6 +1627,112 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
           {/* Sticky Composer */}
           <footer className={styles.composerWrapper}>
             <div className={styles.composerInner}>
+              {/* Attached Mention Badges */}
+              {attachedMentions.length > 0 && (
+                <div className={styles.attachedMentionsBar}>
+                  {attachedMentions.map((m, idx) => (
+                    <span
+                      key={`${m.trigger}-${m.label}-${idx}`}
+                      className={`${styles.attachedMentionBadge} ${
+                        m.type === 'PROJECT' ? styles.attachedMentionBadgeProject : ''
+                      }`}
+                    >
+                      {m.type === 'PROJECT' ? <FolderKanban size={13} /> : <Building2 size={13} />}
+                      <span className={styles.attachedMentionLabel}>
+                        {m.trigger}{m.label}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.attachedMentionRemove}
+                        onClick={() => removeAttachedMention(idx)}
+                        title="Remove mention"
+                        aria-label={`Remove mention ${m.label}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Mention Autocomplete Popover */}
+              {mentionMenu.open && (
+                <div className={styles.mentionPopover}>
+                  <div className={styles.mentionPopoverHeader}>
+                    <span>
+                      {mentionMenu.trigger === '!' ? (
+                        <>
+                          <FolderKanban size={13} /> Mention Project (!...)
+                        </>
+                      ) : (
+                        <>
+                          <Building2 size={13} /> Mention Company (@...)
+                        </>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.attachedMentionRemove}
+                      onClick={() => setMentionMenu(prev => ({ ...prev, open: false }))}
+                      title="Close"
+                      aria-label="Close mentions"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <div className={styles.mentionList}>
+                    {mentionMenu.isLoading ? (
+                      <div className={styles.mentionLoading}>
+                        <Loader2 size={16} className={styles.spin} />
+                        <span>Searching {mentionMenu.trigger === '!' ? 'projects' : 'companies'}...</span>
+                      </div>
+                    ) : mentionMenu.options.length === 0 ? (
+                      <div className={styles.mentionEmpty}>
+                        No matching {mentionMenu.trigger === '!' ? 'projects' : 'approved companies'} found.
+                      </div>
+                    ) : (
+                      mentionMenu.options.map((opt, optIdx) => {
+                        const isHighlighted = optIdx === mentionMenu.highlightedIndex;
+                        return (
+                          <button
+                            key={opt.companyProfileId || opt.projectId || optIdx}
+                            type="button"
+                            className={`${styles.mentionOption} ${
+                              isHighlighted ? styles.mentionOptionHighlighted : ''
+                            }`}
+                            onClick={() => selectMention(opt)}
+                            onMouseEnter={() =>
+                              setMentionMenu(prev => ({ ...prev, highlightedIndex: optIdx }))
+                            }
+                          >
+                            <div className={styles.mentionOptionMain}>
+                              <div className={styles.mentionPrimaryRow}>
+                                {opt.type === 'PROJECT' ? (
+                                  <FolderKanban size={14} color="#15803d" />
+                                ) : (
+                                  <Building2 size={14} color="#1d4ed8" />
+                                )}
+                                <span className={styles.mentionPrimaryLabel}>
+                                  {opt.primaryLabel}
+                                </span>
+                              </div>
+                              {opt.secondaryLabel && (
+                                <span className={styles.mentionSecondaryLabel}>
+                                  {opt.secondaryLabel}
+                                </span>
+                              )}
+                            </div>
+                            {opt.badge && (
+                              <span className={styles.mentionBadge}>{opt.badge}</span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
               <form
                 className={styles.composerForm}
                 onSubmit={(event) => {
@@ -1159,20 +1749,11 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
                     isStaffMode
                       ? 'Ask about your projects, tasks, deadlines, or next actions...'
                       : isManagerMode
-                      ? 'Ask about your team progress, pending reviews, or company profiles...'
-                      : 'Ask about your business ecosystem, relationships, risks, or opportunities...'
+                      ? 'Ask about your projects (!), team progress, or reviews...'
+                      : 'Ask about your business ecosystem, companies (@), or risks...'
                   }
-                  onChange={(event) => {
-                    setInput(event.target.value);
-                    event.target.style.height = 'auto';
-                    event.target.style.height = `${Math.min(event.target.scrollHeight, 140)}px`;
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault();
-                      void sendMessage();
-                    }
-                  }}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                 />
                 <button
                   type="submit"

@@ -132,7 +132,7 @@ const MANAGER_MENU: MenuSection[] = [
     title: 'menu.data',
     items: [
       { id: 'companies', label: 'menu.companyProfiles' },
-      { id: 'profile-visibility', label: 'Profile Visibility' },
+      { id: 'profile-visibility', label: 'Profile Management' },
       { id: 'owner-profile', label: 'My Enterprise' },
       { id: 'news',      label: 'News' },
     ],

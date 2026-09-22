@@ -159,11 +159,14 @@ export interface ProfileResponse {
   revision?: number;
   versionLabel?: string;
   responsibleManagerId?: number;
+  responsibleManagerName?: string;
   canEditProfile?: boolean;
   canManageVisibility?: boolean;
   canPublish?: boolean;
   publishBlockReason?: string | null;
   canAccessRelationshipCloseness?: boolean;
+  canTransferManagement?: boolean;
+  isCurrentResponsibleManager?: boolean;
 }
 
 export interface ProfileVisibilitySummaryDto {
@@ -171,6 +174,32 @@ export interface ProfileVisibilitySummaryDto {
   published: number;
   hidden: number;
   blockedFromPublishing: number;
+}
+
+export interface CompanyProfileManagerHistoryDto {
+  id: string;
+  companyProfileId: string;
+  companyId?: string;
+  previousManagerAccountId?: number;
+  previousManagerDisplayName?: string;
+  newManagerAccountId: number;
+  newManagerDisplayName?: string;
+  transferredByAccountId: number;
+  transferredByDisplayName?: string;
+  reason: string;
+  transferredAt: string;
+}
+
+export interface EligibleManagerDto {
+  accountId: number;
+  displayName: string;
+  email: string;
+}
+
+export interface TransferResponsibilityRequest {
+  newManagerAccountId: number;
+  reason: string;
+  expectedCurrentManagerAccountId?: number;
 }
 
 
@@ -258,6 +287,7 @@ export interface UpdateCompanyProfileRequest {
   phones?: string[];
   headOfficeAddress?: string;
   addresses?: string[];
+  addressObjects?: CompanyProfileAddress[];
   address?: string;
   employeeTier?: string;
   employeeCount?: number;
@@ -436,7 +466,7 @@ export interface OpenProjectCheckResponse {
 
 export interface DuplicateTaxCodeCheckResponse {
   exists: boolean;
-  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | null;
+  matchType: 'COMPANY_PROFILE' | 'ACTIVE_PROJECT' | 'OPEN_RESEARCH_PROJECT' | null;
   companyProfileId?: string;
   projectId?: number;
   companyName?: string;
@@ -445,6 +475,9 @@ export interface DuplicateTaxCodeCheckResponse {
   openProjectId?: number;
   openProjectName?: string;
   openProjectStatus?: string;
+  existingOfficialCompany?: boolean;
+  openResearchProject?: boolean;
+  canCurrentManagerManage?: boolean;
 }
 
 export interface MatchingProject {
@@ -1608,52 +1641,10 @@ export interface CompanyMonitoringReviewResponse {
   reviewedAt: string;
   result: MonitoringReviewResult;
   updateProposalId: string | null;
-  relationshipChangeProposalId?: number | null;
   proposalStatus?: string | null;
   note: string | null;
 }
 
-export interface RelationshipChangeProposalRequest {
-  newRelationshipType: string;
-  reason?: string;
-  effectiveAt?: string;
-}
-
-export interface RelationshipChangeReviewRequest {
-  rejectReason?: string;
-}
-
-export interface RelationshipChangeProposalResponse {
-  id: number;
-  companyProfileId: string;
-  monitoringAssignmentId: number;
-  oldRelationshipType: string;
-  newRelationshipType: string;
-  reason?: string;
-  effectiveAt?: string;
-  proposedByAccountId: number;
-  proposedByAccountName: string;
-  proposedAt: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  reviewedByAccountId?: number;
-  reviewedByAccountName?: string;
-  reviewedAt?: string;
-  rejectReason?: string;
-}
-
-export interface RelationshipHistoryResponse {
-  id: number;
-  companyProfileId: string;
-  oldRelationshipType: string;
-  newRelationshipType: string;
-  reason?: string;
-  effectiveAt?: string;
-  changedAt: string;
-  proposedByAccountId: number;
-  proposedByAccountName: string;
-  approvedByAccountId: number;
-  approvedByAccountName: string;
-}
 export interface CompanyProfileUpdateProposalResponse {
   id: string;
   projectId?: number | null;
