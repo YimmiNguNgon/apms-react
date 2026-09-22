@@ -378,6 +378,7 @@ export interface ContractEntry {
 }
 
 export interface ContractResearchResponse {
+  createdContractId?: string;
   id: string;
   taskId: number;
   projectId: number;

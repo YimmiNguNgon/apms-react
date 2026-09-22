@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { api } from '../../services/api';
 import { contractResearchApi } from '../../API/contractResearchApi';
 import type { ContractResearchResponse } from '../../types/contractResearch';
 import { FileUp, Loader2, X, FileText, Sparkles, Edit3 } from 'lucide-react';
@@ -10,7 +9,7 @@ interface Props {
   projectId: number;
   taskId: number;
   onClose: () => void;
-  onSuccess: (updatedResearch: ContractResearchResponse, createdContractId?: string) => void;
+  onSuccess: (updatedResearch: ContractResearchResponse, createdContractId: string) => void;
 }
 
 export default function AddContractModal({ open, projectId, taskId, onClose, onSuccess }: Props) {
@@ -24,6 +23,9 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
   // Submit state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [submitStage, setSubmitStage] = useState('Creating Entry...');
+  const submissionInFlight = React.useRef(false);
+  const uploadedSource = React.useRef<{ file: File; id: string } | null>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -31,6 +33,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
       setFile(null);
       setDataEntryMethod('AI_EXTRACTION');
       setErrorMessage(null);
+      uploadedSource.current = null;
     }
   }, [open]);
 
@@ -38,6 +41,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submissionInFlight.current) return;
     setErrorMessage(null);
 
     if (dataEntryMethod === 'AI_EXTRACTION' && !file) {
@@ -50,19 +54,25 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
       return;
     }
 
+    if (dataEntryMethod === 'AI_EXTRACTION' && file
+        && (!file.name.toLowerCase().endsWith('.pdf') || file.size === 0 || file.size > 50 * 1024 * 1024)) {
+      setErrorMessage('Select a non-empty PDF of at most 50MB.');
+      return;
+    }
+
+    submissionInFlight.current = true;
     setIsSubmitting(true);
     try {
       let finalDocId: string | null = null;
-      if (file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('taskId', String(taskId));
-
-        const uploadRes = await api.post<any>(`/projects/${projectId}/documents/upload`, formData);
-        const dataObj = uploadRes.data?.data || uploadRes.data;
-        finalDocId = dataObj?.rawDocumentId || (dataObj?.id ? String(dataObj.id) : null);
+      if (dataEntryMethod === 'AI_EXTRACTION' && file) {
+        setSubmitStage('Uploading source PDF...');
+        if (uploadedSource.current?.file !== file) {
+          uploadedSource.current = { file, id: await contractResearchApi.uploadSource(projectId, taskId, file) };
+        }
+        finalDocId = uploadedSource.current.id;
       }
 
+      setSubmitStage('Creating Entry...');
       const updated = await contractResearchApi.createContract(projectId, taskId, {
         title: title.trim(),
         documentId: finalDocId,
@@ -71,17 +81,17 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
         dataEntryMethod,
       });
 
-      // Find the newly created contract ID
-      const newContract = updated.contracts?.[updated.contracts.length - 1];
+      if (!updated.createdContractId) throw new Error('Create response did not return the contract ID. Refresh the contract list before retrying.');
 
       // Reset form
       setTitle('');
       setFile(null);
 
-      onSuccess(updated, newContract?.id);
+      onSuccess(updated, updated.createdContractId);
     } catch (err: any) {
       setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to create contract entry.');
     } finally {
+      submissionInFlight.current = false;
       setIsSubmitting(false);
     }
   };
@@ -103,7 +113,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
   };
 
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
+    <div className={styles.modalOverlay} onClick={() => { if (!isSubmitting) onClose(); }}>
       <div
         className={styles.deleteConfirmModal}
         onClick={(e) => e.stopPropagation()}
@@ -126,6 +136,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting}
             style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4 }}
           >
             <X size={18} />
@@ -222,7 +233,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
                     Manual Entry
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    Enter contract fields manually; reference PDF is optional
+                    Enter contract fields manually
                   </div>
                 </div>
               </div>
@@ -230,7 +241,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
           </div>
 
           {/* 3. Upload Box */}
-          <div>
+          <div style={{ display: dataEntryMethod === 'MANUAL' ? 'none' : undefined }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block' }}>
                 {dataEntryMethod === 'AI_EXTRACTION' ? 'Source Contract PDF *' : 'Reference Contract PDF (Optional)'}
@@ -331,7 +342,7 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
               {isSubmitting ? (
                 <>
                   <Loader2 size={14} className={styles.spinIcon} />
-                  Creating Entry...
+                  {submitStage}
                 </>
               ) : dataEntryMethod === 'MANUAL' ? (
                 'Create Manual Contract'

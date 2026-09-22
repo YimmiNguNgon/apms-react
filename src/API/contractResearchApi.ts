@@ -12,6 +12,15 @@ import type {
 } from '../types/contractResearch';
 
 export const contractResearchApi = {
+  uploadSource: async (projectId: number, taskId: number, file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<{ rawDocumentId: string }>(
+      `/projects/${projectId}/tasks/${taskId}/partner-contracts/documents`, formData
+    );
+    if (!response.data?.rawDocumentId) throw new Error('Upload did not return a source document ID.');
+    return response.data.rawDocumentId;
+  },
   getResearch: (projectId: number, taskId: number): Promise<ContractResearchResponse> =>
     api.get<ContractResearchResponse>(
       `/projects/${projectId}/tasks/${taskId}/contract-research`

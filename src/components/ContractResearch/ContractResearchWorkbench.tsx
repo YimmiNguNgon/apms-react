@@ -2884,10 +2884,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           if (createdContractId) {
             setSelectedContractId(createdContractId);
           }
-          setToast({
-            message: 'New contract added. Click "Extract Contract Data" to begin extracting terms.',
-            type: 'success',
-          });
+          setToast({ message: 'Contract entry created successfully.', type: 'success' });
         }}
       />
 
