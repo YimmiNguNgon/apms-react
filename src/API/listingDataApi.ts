@@ -49,7 +49,8 @@ interface OwnerProfileSnapshot {
   documents?: Array<{ docType?: string; docTitle?: string; fileUrl?: string; reportYear?: number; reportPeriod?: string; publishedAt?: string }>;
 }
 
-export const OWNER_COMPANY_ID = '6a31a0000000000000000001';
+// Deprecated: Owner organization ID is resolved dynamically from backend
+export const OWNER_COMPANY_ID = '';
 
 interface LeadershipLikeMember {
   name?: string | null;

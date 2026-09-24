@@ -1,0 +1,760 @@
+import React, { useState } from 'react';
+import { Building2, X, AlertCircle, Loader2 } from 'lucide-react';
+import type { CreateOwnerEnterpriseRequest, ProfileResponse } from '../../types/domain';
+import { companyProfileApi } from '../../API/companyProfileApi';
+
+interface CreateMyEnterpriseModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (profile: ProfileResponse) => void;
+}
+
+type TabKey = 'identity' | 'contact' | 'description' | 'business';
+
+export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+}) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('identity');
+
+  // Form fields
+  const [legalName, setLegalName] = useState('');
+  const [tradeName, setTradeName] = useState('');
+  const [taxCode, setTaxCode] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [stockTicker, setStockTicker] = useState('');
+  const [stockExchange, setStockExchange] = useState('');
+
+  const [website, setWebsite] = useState('');
+  const [emailsText, setEmailsText] = useState('');
+  const [phonesText, setPhonesText] = useState('');
+  const [address, setAddress] = useState('');
+  const [foundedYear, setFoundedYear] = useState<string>('');
+  const [employeeCount, setEmployeeCount] = useState<string>('');
+  const [employeeTier, setEmployeeTier] = useState('');
+  const [revenueTier, setRevenueTier] = useState('');
+
+  const [companyDescription, setCompanyDescription] = useState('');
+  const [businessModel, setBusinessModel] = useState('');
+
+  const [industriesText, setIndustriesText] = useState('');
+  const [productsText, setProductsText] = useState('');
+  const [marketsText, setMarketsText] = useState('');
+  const [targetCustomersText, setTargetCustomersText] = useState('');
+
+  // UI state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  if (!isOpen) return null;
+
+  const splitCommaList = (val: string): string[] => {
+    return val
+      .split(/[,;\n]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  };
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!legalName.trim()) {
+      errors.legalName = 'Tên pháp lý là bắt buộc';
+    }
+    if (!tradeName.trim()) {
+      errors.tradeName = 'Tên thương mại là bắt buộc';
+    }
+    if (!taxCode.trim()) {
+      errors.taxCode = 'Mã số thuế là bắt buộc';
+    }
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!validate()) {
+      setActiveTab('identity');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload: CreateOwnerEnterpriseRequest = {
+        legalName: legalName.trim(),
+        tradeName: tradeName.trim(),
+        taxCode: taxCode.trim(),
+        registrationNumber: registrationNumber.trim() || undefined,
+        stockTicker: stockTicker.trim().toUpperCase() || undefined,
+        stockExchange: stockExchange.trim().toUpperCase() || undefined,
+
+        website: website.trim() || undefined,
+        emails: splitCommaList(emailsText),
+        phones: splitCommaList(phonesText),
+        addresses: address.trim() ? [address.trim()] : undefined,
+        address: address.trim() || undefined,
+
+        foundedYear: foundedYear.trim() ? parseInt(foundedYear.trim(), 10) : undefined,
+        employeeCount: employeeCount.trim() ? parseInt(employeeCount.trim(), 10) : undefined,
+        employeeTier: employeeTier.trim() || undefined,
+        revenueTier: revenueTier.trim() || undefined,
+
+        companyDescription: companyDescription.trim() || undefined,
+        businessModel: businessModel.trim() || undefined,
+
+        industries: splitCommaList(industriesText),
+        products: splitCommaList(productsText),
+        markets: splitCommaList(marketsText),
+        targetCustomers: splitCommaList(targetCustomersText),
+      };
+
+      const created = await companyProfileApi.createAdminMyEnterprise(payload);
+      if (created) {
+        onSuccess(created);
+        onClose();
+      } else {
+        throw new Error('Không nhận được dữ liệu phản hồi từ máy chủ.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Đã xảy ra lỗi khi tạo hồ sơ doanh nghiệp chủ quản.';
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={overlayStyle} onClick={onClose}>
+      <div style={modalContainerStyle} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={headerIconContainer}>
+              <Building2 size={20} color="#2563EB" />
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0F172A' }}>
+                Thiết lập Doanh nghiệp chủ quản (My Enterprise)
+              </h2>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
+                Khởi tạo thông tin hồ sơ doanh nghiệp chủ quản lần đầu cho hệ thống APMS
+              </p>
+            </div>
+          </div>
+          <button style={closeButtonStyle} onClick={onClose} aria-label="Đóng">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Tab Navigation */}
+        <div style={tabBarStyle}>
+          <button
+            type="button"
+            style={activeTab === 'identity' ? activeTabStyle : inactiveTabStyle}
+            onClick={() => setActiveTab('identity')}
+          >
+            Thông tin định danh & Pháp lý *
+          </button>
+          <button
+            type="button"
+            style={activeTab === 'contact' ? activeTabStyle : inactiveTabStyle}
+            onClick={() => setActiveTab('contact')}
+          >
+            Liên hệ & Quy mô
+          </button>
+          <button
+            type="button"
+            style={activeTab === 'description' ? activeTabStyle : inactiveTabStyle}
+            onClick={() => setActiveTab('description')}
+          >
+            Giới thiệu & Mô hình
+          </button>
+          <button
+            type="button"
+            style={activeTab === 'business' ? activeTabStyle : inactiveTabStyle}
+            onClick={() => setActiveTab('business')}
+          >
+            Lĩnh vực kinh doanh
+          </button>
+        </div>
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div style={errorBannerStyle}>
+            <AlertCircle size={16} color="#DC2626" style={{ flexShrink: 0, marginTop: 2 }} />
+            <span style={{ fontSize: '0.85rem', color: '#B91C1C' }}>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} style={formContainerStyle}>
+          <div style={scrollContentStyle}>
+            {/* TAB: IDENTITY */}
+            {activeTab === 'identity' && (
+              <div style={tabContentStyle}>
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>
+                    Tên pháp lý (Legal Name) <span style={requiredMark}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    style={{ ...inputStyle, ...(validationErrors.legalName ? inputErrorStyle : {}) }}
+                    value={legalName}
+                    onChange={(e) => {
+                      setLegalName(e.target.value);
+                      if (validationErrors.legalName) {
+                        setValidationErrors((prev) => ({ ...prev, legalName: '' }));
+                      }
+                    }}
+                    placeholder="Ví dụ: CÔNG TY CỔ PHẦN CÔNG NGHỆ VÀ TRUYỀN THÔNG APMS"
+                  />
+                  {validationErrors.legalName && (
+                    <span style={errorTextStyle}>{validationErrors.legalName}</span>
+                  )}
+                </div>
+
+                <div style={twoColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>
+                      Tên thương mại (Trade Name) <span style={requiredMark}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      style={{ ...inputStyle, ...(validationErrors.tradeName ? inputErrorStyle : {}) }}
+                      value={tradeName}
+                      onChange={(e) => {
+                        setTradeName(e.target.value);
+                        if (validationErrors.tradeName) {
+                          setValidationErrors((prev) => ({ ...prev, tradeName: '' }));
+                        }
+                      }}
+                      placeholder="Ví dụ: APMS Tech"
+                    />
+                    {validationErrors.tradeName && (
+                      <span style={errorTextStyle}>{validationErrors.tradeName}</span>
+                    )}
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>
+                      Mã số thuế (Tax Code) <span style={requiredMark}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      style={{ ...inputStyle, ...(validationErrors.taxCode ? inputErrorStyle : {}) }}
+                      value={taxCode}
+                      onChange={(e) => {
+                        setTaxCode(e.target.value);
+                        if (validationErrors.taxCode) {
+                          setValidationErrors((prev) => ({ ...prev, taxCode: '' }));
+                        }
+                      }}
+                      placeholder="Ví dụ: 0101234567"
+                    />
+                    {validationErrors.taxCode && (
+                      <span style={errorTextStyle}>{validationErrors.taxCode}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={threeColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Số ĐKKD (Registration No.)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={registrationNumber}
+                      onChange={(e) => setRegistrationNumber(e.target.value)}
+                      placeholder="0101234567"
+                    />
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Mã chứng khoán (Ticker)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={stockTicker}
+                      onChange={(e) => setStockTicker(e.target.value)}
+                      placeholder="Ví dụ: APM"
+                    />
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Sàn giao dịch (Exchange)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={stockExchange}
+                      onChange={(e) => setStockExchange(e.target.value)}
+                      placeholder="HOSE / HNX / UPCoM"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: CONTACT & SCALE */}
+            {activeTab === 'contact' && (
+              <div style={tabContentStyle}>
+                <div style={twoColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Website</label>
+                    <input
+                      type="url"
+                      style={inputStyle}
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      placeholder="https://example.com"
+                    />
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Năm thành lập</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      value={foundedYear}
+                      onChange={(e) => setFoundedYear(e.target.value)}
+                      placeholder="2010"
+                    />
+                  </div>
+                </div>
+
+                <div style={twoColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Emails liên hệ</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={emailsText}
+                      onChange={(e) => setEmailsText(e.target.value)}
+                      placeholder="contact@enterprise.com, info@enterprise.com"
+                    />
+                    <span style={hintStyle}>Nhiều email cách nhau bằng dấu phẩy</span>
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Số điện thoại</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={phonesText}
+                      onChange={(e) => setPhonesText(e.target.value)}
+                      placeholder="+84 24 1234 5678, +84 90 123 4567"
+                    />
+                    <span style={hintStyle}>Nhiều số cách nhau bằng dấu phẩy</span>
+                  </div>
+                </div>
+
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>Địa chỉ trụ sở chính</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Số 10, Đường ABC, Phường XYZ, Quận 1, TP. Hồ Chí Minh"
+                  />
+                </div>
+
+                <div style={threeColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Số lượng nhân viên</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      value={employeeCount}
+                      onChange={(e) => setEmployeeCount(e.target.value)}
+                      placeholder="500"
+                    />
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Quy mô nhân sự (Tier)</label>
+                    <select
+                      style={selectStyle}
+                      value={employeeTier}
+                      onChange={(e) => setEmployeeTier(e.target.value)}
+                    >
+                      <option value="">-- Chọn phân hạng --</option>
+                      <option value="1-50">1 - 50 nhân viên</option>
+                      <option value="51-200">51 - 200 nhân viên</option>
+                      <option value="201-1000">201 - 1,000 nhân viên</option>
+                      <option value="1001-5000">1,001 - 5,000 nhân viên</option>
+                      <option value="5000+">Trên 5,000 nhân viên</option>
+                    </select>
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Phân hạng doanh thu</label>
+                    <select
+                      style={selectStyle}
+                      value={revenueTier}
+                      onChange={(e) => setRevenueTier(e.target.value)}
+                    >
+                      <option value="">-- Chọn phân hạng --</option>
+                      <option value="TIER_1">&lt; 10 tỷ VNĐ</option>
+                      <option value="TIER_2">10 - 50 tỷ VNĐ</option>
+                      <option value="TIER_3">50 - 200 tỷ VNĐ</option>
+                      <option value="TIER_4">200 - 1,000 tỷ VNĐ</option>
+                      <option value="TIER_5">&gt; 1,000 tỷ VNĐ</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: DESCRIPTION & MODEL */}
+            {activeTab === 'description' && (
+              <div style={tabContentStyle}>
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>Mô tả doanh nghiệp</label>
+                  <textarea
+                    rows={4}
+                    style={textareaStyle}
+                    value={companyDescription}
+                    onChange={(e) => setCompanyDescription(e.target.value)}
+                    placeholder="Mô tả tóm tắt về lịch sử, sứ mệnh, thế mạnh của doanh nghiệp..."
+                  />
+                </div>
+
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>Mô hình kinh doanh (Business Model)</label>
+                  <textarea
+                    rows={3}
+                    style={textareaStyle}
+                    value={businessModel}
+                    onChange={(e) => setBusinessModel(e.target.value)}
+                    placeholder="Ví dụ: B2B SaaS, IT Outsourcing, Hệ thống tích hợp giải pháp..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* TAB: BUSINESS FIELDS */}
+            {activeTab === 'business' && (
+              <div style={tabContentStyle}>
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>Ngành nghề hoạt động (Industries)</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    value={industriesText}
+                    onChange={(e) => setIndustriesText(e.target.value)}
+                    placeholder="Công nghệ thông tin, Viễn thông, Phần mềm doanh nghiệp"
+                  />
+                  <span style={hintStyle}>Nhập danh sách cách nhau bằng dấu phẩy</span>
+                </div>
+
+                <div style={fieldGroupStyle}>
+                  <label style={labelStyle}>Sản phẩm & Dịch vụ chính (Products & Services)</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    value={productsText}
+                    onChange={(e) => setProductsText(e.target.value)}
+                    placeholder="Nền tảng Quản trị rủi ro, Tư vấn chuyển đổi số, Dịch vụ Cloud"
+                  />
+                  <span style={hintStyle}>Nhập danh sách cách nhau bằng dấu phẩy</span>
+                </div>
+
+                <div style={twoColRowStyle}>
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Thị trường / Khu vực (Markets & Regions)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={marketsText}
+                      onChange={(e) => setMarketsText(e.target.value)}
+                      placeholder="Việt Nam, Đông Nam Á, Nhật Bản"
+                    />
+                    <span style={hintStyle}>Cách nhau bằng dấu phẩy</span>
+                  </div>
+
+                  <div style={fieldGroupStyle}>
+                    <label style={labelStyle}>Khách hàng mục tiêu (Target Customers)</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={targetCustomersText}
+                      onChange={(e) => setTargetCustomersText(e.target.value)}
+                      placeholder="Ngân hàng & Tài chính, Bán lẻ, Cơ quan nhà nước"
+                    />
+                    <span style={hintStyle}>Cách nhau bằng dấu phẩy</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          <div style={footerStyle}>
+            <button
+              type="button"
+              style={cancelButtonStyle}
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              style={{
+                ...submitButtonStyle,
+                ...(isSubmitting ? { opacity: 0.7, cursor: 'not-allowed' } : {}),
+              }}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" style={{ marginRight: 6 }} />
+                  Đang tạo hồ sơ...
+                </>
+              ) : (
+                'Tạo Doanh nghiệp chủ quản'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Styles
+const overlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(15, 23, 42, 0.65)',
+  backdropFilter: 'blur(3px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1100,
+  padding: '16px',
+};
+
+const modalContainerStyle: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: '12px',
+  width: '100%',
+  maxWidth: '740px',
+  maxHeight: '90vh',
+  display: 'flex',
+  flexDirection: 'column',
+  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+  position: 'relative',
+  overflow: 'hidden',
+};
+
+const headerStyle: React.CSSProperties = {
+  padding: '16px 20px',
+  borderBottom: '1px solid #E2E8F0',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  background: '#F8FAFC',
+};
+
+const headerIconContainer: React.CSSProperties = {
+  width: 36,
+  height: 36,
+  borderRadius: 8,
+  background: '#EFF6FF',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const closeButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: '#64748B',
+  cursor: 'pointer',
+  padding: 6,
+  borderRadius: 6,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const tabBarStyle: React.CSSProperties = {
+  display: 'flex',
+  borderBottom: '1px solid #E2E8F0',
+  padding: '0 16px',
+  background: '#FFFFFF',
+  overflowX: 'auto',
+};
+
+const activeTabStyle: React.CSSProperties = {
+  padding: '10px 14px',
+  background: 'none',
+  border: 'none',
+  borderBottom: '2px solid #2563EB',
+  color: '#2563EB',
+  fontWeight: 600,
+  fontSize: '0.85rem',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+
+const inactiveTabStyle: React.CSSProperties = {
+  padding: '10px 14px',
+  background: 'none',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  color: '#64748B',
+  fontWeight: 500,
+  fontSize: '0.85rem',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+
+const errorBannerStyle: React.CSSProperties = {
+  background: '#FEF2F2',
+  borderBottom: '1px solid #FCA5A5',
+  padding: '10px 20px',
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 8,
+};
+
+const formContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  flex: 1,
+  overflow: 'hidden',
+};
+
+const scrollContentStyle: React.CSSProperties = {
+  padding: '20px',
+  overflowY: 'auto',
+  maxHeight: 'calc(90vh - 180px)',
+};
+
+const tabContentStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+};
+
+const fieldGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  flex: 1,
+};
+
+const twoColRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 16,
+};
+
+const threeColRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 12,
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: '0.825rem',
+  fontWeight: 600,
+  color: '#334155',
+};
+
+const requiredMark: React.CSSProperties = {
+  color: '#EF4444',
+  fontWeight: 700,
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: '6px',
+  border: '1px solid #CBD5E1',
+  fontSize: '0.875rem',
+  color: '#0F172A',
+  outline: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+};
+
+const inputErrorStyle: React.CSSProperties = {
+  borderColor: '#EF4444',
+  backgroundColor: '#FEF2F2',
+};
+
+const errorTextStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: '#DC2626',
+  marginTop: 2,
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: '#94A3B8',
+  marginTop: 2,
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: '6px',
+  border: '1px solid #CBD5E1',
+  fontSize: '0.875rem',
+  color: '#0F172A',
+  outline: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+  backgroundColor: '#FFFFFF',
+};
+
+const textareaStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: '6px',
+  border: '1px solid #CBD5E1',
+  fontSize: '0.875rem',
+  color: '#0F172A',
+  outline: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+  resize: 'vertical',
+  fontFamily: 'inherit',
+};
+
+const footerStyle: React.CSSProperties = {
+  padding: '14px 20px',
+  borderTop: '1px solid #E2E8F0',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 12,
+  background: '#F8FAFC',
+};
+
+const cancelButtonStyle: React.CSSProperties = {
+  padding: '8px 16px',
+  borderRadius: '6px',
+  border: '1px solid #CBD5E1',
+  background: '#FFFFFF',
+  color: '#475569',
+  fontSize: '0.875rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const submitButtonStyle: React.CSSProperties = {
+  padding: '8px 20px',
+  borderRadius: '6px',
+  border: 'none',
+  background: '#2563EB',
+  color: '#FFFFFF',
+  fontSize: '0.875rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+};

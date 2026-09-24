@@ -20,6 +20,7 @@ import { EditContractModal } from './EditContractModal';
 import { ContractEvidenceDrawer } from './ContractEvidenceDrawer';
 import { ContractProgressBar } from './ContractProgressBar';
 import { isContractEditableByStaff, isContractChangesRequested } from './contractEditability';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 import {
   FileText,
   FileUp,
@@ -1383,8 +1384,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   const handleReplaceContractFile = async (contractId: string, file: File) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-      setToast({ message: 'Chỉ hỗ trợ tệp định dạng PDF.', type: 'error' });
+    const err = validatePdfUpload(file);
+    if (err) {
+      setToast({ message: err, type: 'error' });
       return;
     }
     setIsReplacingContractFile(true);
@@ -3074,9 +3076,9 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         projectId={projectId}
         taskId={taskId}
         onClose={() => setEditContractModalContract(null)}
-        onSuccess={(updatedResearch) => {
+        onSuccess={(updatedResearch, toastMessage) => {
           setResearch(updatedResearch);
-          setToast({ message: 'Contract details updated successfully.', type: 'success' });
+          setToast({ message: toastMessage || 'Contract details updated successfully.', type: 'success' });
         }}
       />
 

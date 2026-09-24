@@ -9,6 +9,7 @@ import type {
   CompanyProfileManagerHistoryDto,
   EligibleManagerDto,
   TransferResponsibilityRequest,
+  CreateOwnerEnterpriseRequest,
 } from '../types/domain';
 
 export const companyProfileApi = {
@@ -72,6 +73,11 @@ export const companyProfileApi = {
     return res.data;
   },
 
+  createAdminMyEnterprise: async (payload: CreateOwnerEnterpriseRequest) => {
+    const res = await api.post<ProfileResponse>('/admin/my-enterprise', payload);
+    return res.data;
+  },
+
   updateAdminEnterpriseBasicInfo: async (payload: AdminUpdateEnterpriseBasicInfoRequest) => {
     const res = await api.patch<ProfileResponse>('/admin/my-enterprise/basic-info', payload);
     return res.data;
@@ -84,6 +90,16 @@ export const companyProfileApi = {
 
   updateAdminEnterpriseLeadership: async (payload: AdminUpdateEnterpriseLeadershipRequest) => {
     const res = await api.put<ProfileResponse>('/admin/my-enterprise/leadership', payload);
+    return res.data;
+  },
+
+  uploadLeadershipImage: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post<{ imageUrl: string; filename: string }>(
+      '/admin/my-enterprise/leadership/images',
+      formData
+    );
     return res.data;
   },
 

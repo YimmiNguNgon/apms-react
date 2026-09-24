@@ -90,6 +90,7 @@ export interface GraphCompanyDto {
   name: string;
   industry?: string;
   relationshipType?: string;
+  isOwner?: boolean;
   relationships?: GraphRelationship[];
 }
 
@@ -167,6 +168,9 @@ export interface ProfileResponse {
   canAccessRelationshipCloseness?: boolean;
   canTransferManagement?: boolean;
   isCurrentResponsibleManager?: boolean;
+  canViewSensitiveResearch?: boolean;
+  canViewFinancials?: boolean;
+  canViewContracts?: boolean;
 }
 
 export interface ProfileVisibilitySummaryDto {
@@ -196,6 +200,30 @@ export interface EligibleManagerDto {
   email: string;
 }
 
+export interface CreateOwnerEnterpriseRequest {
+  legalName: string;
+  tradeName: string;
+  taxCode: string;
+  registrationNumber?: string;
+  stockTicker?: string;
+  stockExchange?: string;
+  website?: string;
+  emails?: string[];
+  phones?: string[];
+  addresses?: string[];
+  address?: string;
+  employeeCount?: number;
+  employeeTier?: string;
+  revenueTier?: string;
+  foundedYear?: number;
+  companyDescription?: string;
+  businessModel?: string;
+  industries?: string[];
+  products?: string[];
+  markets?: string[];
+  targetCustomers?: string[];
+}
+
 export interface TransferResponsibilityRequest {
   newManagerAccountId: number;
   reason: string;
@@ -220,6 +248,8 @@ export interface AdminUpdateEnterpriseBasicInfoRequest {
   employeeCount?: number;
   employeeTier?: string;
   headOfficeAddress?: string;
+  foundedYear?: number | null;
+  companyDescription?: string;
   businessModel?: string;
   expectedMajorVersion?: number;
   expectedRevision?: number;
@@ -317,6 +347,10 @@ export interface CompanyProfileMember {
   researchedAt?: string | null;
   researchedBy?: number | null;
   taskId?: number | null;
+  pendingImageFile?: File;
+  previewUrl?: string | null;
+  imageFileName?: string | null;
+  imageFileSize?: number | null;
 }
 
 export interface CompanyProfileIdentity {
@@ -1393,6 +1427,24 @@ export interface UserSearchResponse {
   roles: string[];
   enabled: boolean;
   createdAt: string | null;
+}
+
+export interface UserProfileResponse {
+  id: number;
+  email: string;
+  fullName: string;
+  roles: string[];
+  enabled: boolean;
+  emailVerified?: boolean;
+  createdAt: string | null;
+  phone?: string | null;
+  department?: string | null;
+  bio?: string | null;
+  address?: string | null;
+}
+
+export interface UpdateMyProfileRequest {
+  fullName: string;
 }
 
 export interface CreateAccountRequest {

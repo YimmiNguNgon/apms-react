@@ -14,18 +14,23 @@ interface ListingTabsProps {
   isDrawerMode?: boolean;
   relationshipType?: string | null;
   canAccessRelationshipCloseness?: boolean;
+  canViewSensitiveResearch?: boolean;
   tabs?: ListingTabDef[];
 }
 
-export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, relationshipType, canAccessRelationshipCloseness, tabs: customTabs }) => {
+export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, relationshipType, canAccessRelationshipCloseness, canViewSensitiveResearch, tabs: customTabs }) => {
   const tabs = customTabs || LISTING_TABS.filter((tab) => {
     if (isDrawerMode && (tab.id === 'documents' || tab.id === 'relationship-closeness')) {
       return false;
     }
-    if (isOwnerProfile && (tab.id === 'documents' || tab.id === 'relationship-closeness')) {
+    if (isOwnerProfile && (tab.id === 'documents' || tab.id === 'relationship-closeness' || tab.id === 'financials')) {
       return false;
     }
     if (tab.id === 'relationship-closeness' && !canUseRelationshipCloseness(relationshipType, isOwnerProfile, isDrawerMode, canAccessRelationshipCloseness)) {
+      return false;
+    }
+    const isManager = userRole === 'BUSINESS_DEVELOPMENT_MANAGER' || userRole === 'ROLE_MANAGER';
+    if (isManager && !canViewSensitiveResearch && (tab.id === 'financials' || tab.id === 'documents' || tab.id === 'relationship-closeness')) {
       return false;
     }
     return true;

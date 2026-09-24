@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 import contractStyles from './ContractResearchWorkbench.module.css';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 
 interface Props {
   contract: ContractEntry;
@@ -120,11 +121,17 @@ export const ManualContractSummaryView: React.FC<Props> = ({
               >
                 <input
                   type="file"
-                  accept="application/pdf,.pdf"
+                  accept={PDF_ACCEPT_ATTRIBUTE}
                   style={{ display: 'none' }}
                   disabled={isReplacingFile}
                   onChange={async (e) => {
                     if (e.target.files?.[0]) {
+                      const err = validatePdfUpload(e.target.files[0]);
+                      if (err) {
+                        alert(err);
+                        e.target.value = '';
+                        return;
+                      }
                       await onReplaceFile(e.target.files[0]);
                       e.target.value = '';
                     }
@@ -143,11 +150,17 @@ export const ManualContractSummaryView: React.FC<Props> = ({
           >
             <input
               type="file"
-              accept="application/pdf,.pdf"
+              accept={PDF_ACCEPT_ATTRIBUTE}
               style={{ display: 'none' }}
               disabled={isReplacingFile}
               onChange={async (e) => {
                 if (e.target.files?.[0]) {
+                  const err = validatePdfUpload(e.target.files[0]);
+                  if (err) {
+                    alert(err);
+                    e.target.value = '';
+                    return;
+                  }
                   await onReplaceFile(e.target.files[0]);
                   e.target.value = '';
                 }

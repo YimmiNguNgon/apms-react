@@ -4,6 +4,7 @@ import { MonitoringReviewDetailsModal } from '../components/Monitoring/Monitorin
 import { EvidenceImagePreviewModal } from '../components/Monitoring/EvidenceImagePreviewModal';
 import { AlertTriangle, CheckCircle, Plus, XCircle } from 'lucide-react';
 import { api } from '../services/api';
+import { useUser, ROLES } from '../context/UserContext';
 import { accountApi } from '../API/accountApi';
 import { companyMonitoringApi } from '../API/companyMonitoringApi';
 import type {
@@ -17,6 +18,7 @@ import type {
 } from '../types/domain';
 
 type MonitoringTab = 'assignments' | 'pending' | 'history';
+export type MonitoringStatusFilter = 'ALL' | 'UNASSIGNED' | 'NOT_ASSIGNED' | 'ACTIVE';
 type MonitoringFormState = {
   companyProfileId: string;
   assignedStaffId: string;
@@ -466,6 +468,7 @@ export const ValueDisplay = ({ value, level = 0, isProposed = false }: { value: 
 };
 
 export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ setActivePage }) => {
+  const { currentUser } = useUser();
   const [activeTab, setActiveTab] = useState<MonitoringTab>('assignments');
   const [assignments, setAssignments] = useState<CompanyMonitoringAssignmentResponse[]>([]);
   const [managerProfiles, setManagerProfiles] = useState<ProfileResponse[]>([]);
@@ -484,7 +487,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const [formError, setFormError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<MonitoringStatusFilter>('ALL');
   const [frequencyFilter, setFrequencyFilter] = useState('ALL');
   const [proposalSearch, setProposalSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -522,6 +525,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       setLoading(true);
       setError(null);
       
+      const isManager = currentUser?.role === ROLES.MANAGER || (currentUser?.role as string) === 'BUSINESS_DEVELOPMENT_MANAGER';
       const [assignmentsRes, profilesRes] = await Promise.all([
         companyMonitoringApi.getAllAssignments({
           page: 0,
@@ -529,7 +533,12 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           sort: 'updatedAt,desc'
         }),
         api.get('/profiles', {
-          params: { excludeOwner: true, createdByMe: true, page: 0, size: 500 }
+          params: {
+            excludeOwner: true,
+            managedByMe: isManager ? true : undefined,
+            page: 0,
+            size: 500
+          }
         })
       ]);
       
@@ -548,7 +557,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   const loadMonitoringHistory = useCallback(async () => {
     try {
@@ -583,8 +592,14 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   // Compute unified unassigned and assigned rows
   const unassignedProfiles = useMemo(() => {
     const assignedIds = new Set(assignments.map(a => a.companyProfileId));
-    return managerProfiles.filter(p => p.reviewStatus === 'APPROVED' && !assignedIds.has(p.id));
-  }, [assignments, managerProfiles]);
+    return managerProfiles.filter(p => {
+      const isApproved = p.reviewStatus === 'APPROVED';
+      const isCurrentlyResponsible = currentUser?.role === ROLES.ADMIN
+        || p.isCurrentResponsibleManager === true
+        || (currentUser?.id && p.responsibleManagerId === currentUser.id);
+      return isApproved && isCurrentlyResponsible && !assignedIds.has(p.id) && !assignedIds.has(p.companyId || '');
+    });
+  }, [assignments, managerProfiles, currentUser]);
 
   const monitoringRows = useMemo<MonitoringRow[]>(() => {
     const rows: MonitoringRow[] = [];
@@ -776,6 +791,13 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter, frequencyFilter]);
+
+  useEffect(() => {
+    const valid: string[] = ['ALL', 'UNASSIGNED', 'NOT_ASSIGNED', 'ACTIVE'];
+    if (!valid.includes(statusFilter)) {
+      setStatusFilter('ALL');
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
     setProposalPage(1);
@@ -989,12 +1011,13 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       }
 
       if (statusFilter !== 'ALL') {
+        const isNotAssignedFilter = statusFilter === 'UNASSIGNED' || statusFilter === 'NOT_ASSIGNED';
         if (isUnassigned) {
-          if (statusFilter !== 'UNASSIGNED') return false;
+          if (!isNotAssignedFilter) return false;
         } else {
+          if (isNotAssignedFilter) return false;
           const matches = row.assignment.assignmentStatus === statusFilter ||
-            row.assignment.displayStatus === statusFilter ||
-            (statusFilter === 'ON_SCHEDULE' && row.assignment.displayStatus === 'UP_TO_DATE');
+            row.assignment.displayStatus === statusFilter;
           if (!matches) return false;
         }
       }
@@ -1406,14 +1429,21 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
-                <select className="search-input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <select
+                  className="search-input"
+                  value={['ALL', 'UNASSIGNED', 'NOT_ASSIGNED', 'ACTIVE'].includes(statusFilter) ? statusFilter : 'ALL'}
+                  onChange={(event) => {
+                    const next = event.target.value as MonitoringStatusFilter;
+                    if (next === 'UNASSIGNED' || next === 'NOT_ASSIGNED' || next === 'ACTIVE') {
+                      setStatusFilter(next);
+                    } else {
+                      setStatusFilter('ALL');
+                    }
+                  }}
+                >
                   <option value="ALL">All Statuses</option>
                   <option value="UNASSIGNED">Not Assigned</option>
                   <option value="ACTIVE">Active</option>
-                  <option value="PAUSED">Paused</option>
-                  <option value="DUE">Due</option>
-                  <option value="OVERDUE">Overdue</option>
-                  <option value="ON_SCHEDULE">On Schedule</option>
                 </select>
                 <select
                   className="search-input"

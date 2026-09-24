@@ -155,4 +155,71 @@ export const financialResearchApi = {
     api.post<number>(
       `/company-profiles/${companyProfileId}/financials/backfill`
     ),
+
+  createAdminMyEnterpriseFinancialReport: (params: {
+    title: string;
+    year: number;
+    period: string;
+    dataEntryMethod: 'AI_EXTRACTION' | 'MANUAL';
+    file?: File | null;
+  }) => {
+    const formData = new FormData();
+    formData.append('title', params.title);
+    formData.append('year', String(params.year));
+    formData.append('period', params.period);
+    formData.append('dataEntryMethod', params.dataEntryMethod);
+    if (params.file) {
+      formData.append('file', params.file);
+    }
+    return api.post<CompanyProfileFinancialRow[]>(
+      '/admin/my-enterprise/financials/reports',
+      formData,
+      { timeoutMs: 120000 }
+    );
+  },
+
+  updateAdminMyEnterpriseFinancialReport: (
+    reportId: string,
+    params: {
+      title?: string;
+      year?: number;
+      period?: string;
+      file?: File | null;
+    }
+  ) => {
+    const formData = new FormData();
+    if (params.title !== undefined) formData.append('title', params.title);
+    if (params.year !== undefined) formData.append('year', String(params.year));
+    if (params.period !== undefined) formData.append('period', params.period);
+    if (params.file) formData.append('file', params.file);
+    return api.put<CompanyProfileFinancialRow[]>(
+      `/admin/my-enterprise/financials/reports/${reportId}`,
+      formData,
+      { timeoutMs: 120000 }
+    );
+  },
+
+  extractAdminMyEnterpriseFinancialReport: (reportId: string, signal?: AbortSignal) =>
+    api.post<CompanyProfileFinancialRow[]>(
+      `/admin/my-enterprise/financials/reports/${reportId}/extract`,
+      undefined,
+      { timeoutMs: 120000, signal }
+    ),
+
+  reExtractAdminMyEnterpriseFinancialReport: (reportId: string, signal?: AbortSignal) =>
+    api.post<CompanyProfileFinancialRow[]>(
+      `/admin/my-enterprise/financials/reports/${reportId}/re-extract`,
+      undefined,
+      { timeoutMs: 120000, signal }
+    ),
+
+  cancelAdminMyEnterpriseFinancialReport: (reportId: string) =>
+    api.post<void>(
+      `/admin/my-enterprise/financials/reports/${reportId}/cancel-extract`
+    ),
+
+  deleteAdminMyEnterpriseFinancialReport: (reportId: string) =>
+    api.delete<void>(
+      `/admin/my-enterprise/financials/reports/${reportId}`
+    ),
 };

@@ -38,6 +38,7 @@ export interface RelationshipClosenessDashboardProps {
   companyName?: string;
   currentUserRole?: Role;
   setActivePage?: (page: string) => void;
+  isCurrentResponsibleManager?: boolean;
 }
 
 const formatDate = (val?: string | null) => {
@@ -76,6 +77,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
   companyName = '',
   currentUserRole,
   setActivePage,
+  isCurrentResponsibleManager,
 }) => {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<RelationshipOverviewResponse | null>(null);
@@ -108,6 +110,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
 
   const isOwner = currentUserRole === ROLES.OWNER;
   const isManager = currentUserRole === ROLES.MANAGER;
+  const canManagerAssess = isManager && isCurrentResponsibleManager !== false && overview?.canCreateAssessment !== false;
 
   const loadData = useCallback(async () => {
     try {
@@ -469,7 +472,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
     const hasOwnerDraft = Boolean(overview?.myDraft && overview.myDraft.draftType === 'OWNER_ADJUSTMENT');
 
     if (isFirstTime) {
-      if (!isManager) return null;
+      if (!canManagerAssess) return null;
       if (hasManagerDraft) {
         return (
           <button
@@ -534,7 +537,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
             </button>
           )}
 
-          {isManager && canReassess && (
+          {canManagerAssess && canReassess && (
             hasManagerDraft ? (
               <button
                 type="button"
@@ -698,7 +701,7 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
               : 'Doanh nghiệp này chưa có đánh giá mức độ thân thiết. Thực hiện đánh giá để xác định mức độ quan hệ hiện tại và theo dõi sự thay đổi qua các lần đánh giá sau.'}
           </p>
 
-          {isManager && (
+          {canManagerAssess && (
             <button
               type="button"
               className={styles.emptyCtaBtn}
@@ -880,27 +883,29 @@ export const RelationshipClosenessDashboard: React.FC<RelationshipClosenessDashb
                   </div>
                 </div>
                 <div>
-                  <button
-                    type="button"
-                    className={styles.btnSecondary}
-                    style={{
-                      padding: '5px 12px',
-                      fontSize: '0.78rem',
-                      whiteSpace: 'nowrap',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                    }}
-                    onClick={() =>
-                      navigateToAssessmentDetail({
-                        assessmentId: activeDraft.id,
-                        mode: 'edit',
-                      })
-                    }
-                  >
-                    <Edit3 size={13} />
-                    <span>Tiếp tục</span>
-                  </button>
+                  {(isOwner || canManagerAssess) && (
+                    <button
+                      type="button"
+                      className={styles.btnSecondary}
+                      style={{
+                        padding: '5px 12px',
+                        fontSize: '0.78rem',
+                        whiteSpace: 'nowrap',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}
+                      onClick={() =>
+                        navigateToAssessmentDetail({
+                          assessmentId: activeDraft.id,
+                          mode: 'edit',
+                        })
+                      }
+                    >
+                      <Edit3 size={13} />
+                      <span>Tiếp tục</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
