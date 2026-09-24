@@ -461,38 +461,52 @@ const UsersTab: React.FC<{
 
   return (
     <div className="admin-users-view">
-      <div className="admin-users-header">
-
-        <button className="btn btn-primary" onClick={openCreateForm}>
-          {t('users.createAccount')}
-        </button>
+      {/* Page Header Band */}
+      <div className="workspace-page-head">
+        <div>
+          <h1>{t('users.title', 'Users')}</h1>
+          <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {t('users.subtitle', 'Manage user accounts, roles, access status, and security permissions')}
+          </p>
+        </div>
+        <div className="workspace-head-actions">
+          <button className="btn btn-primary" type="button" onClick={openCreateForm}>
+            + {t('users.createAccount', 'Create account')}
+          </button>
+        </div>
       </div>
 
-      <div className="admin-users-layout">
-        <aside className="admin-directory-rail">
-          <label>
-            <span>{t('users.searchLabel')}</span>
-            <input className="admin-input" placeholder={t('users.searchPlaceholder')} value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
-          </label>
-          <label>
-            <span>{t('users.statusFilter')}</span>
-            <select className="admin-select" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0); }}>
-              <option value="all">{t('users.allStatuses')}</option>
-              <option value="active">{t('users.active')}</option>
-              <option value="inactive">{t('users.disabled')}</option>
-            </select>
-          </label>
+      {notice && <div className="workspace-inline-note" style={{ marginBottom: '12px' }}>✅ {notice}</div>}
+      {error && <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>❌ {error}</div>}
 
-        </aside>
+      <div className="manager-project-container">
+        {/* Unified Top Filter Toolbar */}
+        <div className="company-profiles-filters" style={{ gridTemplateColumns: 'minmax(0, 1fr) 220px' }}>
+          <input
+            className="search-input"
+            placeholder={t('users.searchPlaceholder', 'Search directory...')}
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          />
+          <select
+            className="search-input"
+            value={filter}
+            onChange={(e) => { setFilter(e.target.value); setPage(0); }}
+          >
+            <option value="all">{t('users.allStatuses', 'All statuses')}</option>
+            <option value="active">{t('users.active', 'Active')}</option>
+            <option value="inactive">{t('users.disabled', 'Disabled')}</option>
+          </select>
+        </div>
 
-        <div className="admin-directory-main">
-          {notice && <div className="workspace-inline-note" style={{ marginBottom: '12px' }}>✅ {notice}</div>}
-          {error && <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>❌ {error}</div>}
-          {loading ? (
-            <div className="admin-skeleton">Loading account directory...</div>
-          ) : (
-            <div className="admin-table-card user-directory-table">
+        {/* Scrollable Table Area */}
+        <div className="manager-project-table-scroll">
+          <div className="manager-project-table-inner" style={{ minWidth: '760px' }}>
+            {loading ? (
+              <div className="project-table-empty">
+                <p className="project-table-empty-title">Loading account directory...</p>
+              </div>
+            ) : (
               <table className="admin-table">
                 <thead>
                   <tr>
@@ -510,7 +524,7 @@ const UsersTab: React.FC<{
 
                     return (
                       <tr key={user.id || user.email}>
-                        <td className="admin-mono">#{user.id ?? '-'}</td>
+                        <td className="admin-mono" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>#{user.id ?? '-'}</td>
                         <td>
                           <strong>{user.name || user.fullName || user.username || 'Unnamed'}{isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(you)</span>}</strong>
                           <small>{user.username || ''}</small>
@@ -522,18 +536,18 @@ const UsersTab: React.FC<{
                           </span>
                         </td>
                         <td>
-                          <span className={`admin-status ${isActive ? 'active' : ''}`}>
-                            {isActive ? t('users.active') : t('users.disabled')}
+                          <span className={`project-status-badge ${isActive ? 'success' : 'neutral'}`}>
+                            {isActive ? t('users.active', 'Active') : t('users.disabled', 'Disabled')}
                           </span>
                         </td>
                         {showEmailStatus && (
                           <td>
                             {user.emailVerified === undefined ? (
-                              <span className="admin-status">{t('users.table.emailUnknown')}</span>
+                              <span className="project-status-badge neutral">{t('users.table.emailUnknown', 'Unknown')}</span>
                             ) : user.emailVerified ? (
-                              <span className="admin-status active">✓ {t('users.table.emailVerified')}</span>
+                              <span className="project-status-badge success">✓ {t('users.table.emailVerified', 'Verified')}</span>
                             ) : (
-                              <span className="admin-status" style={{ background: 'rgba(245,158,11,0.14)', color: '#B45309' }}>⚠ {t('users.table.emailUnverified')}</span>
+                              <span className="project-status-badge danger">⚠ {t('users.table.emailUnverified', 'Unverified')}</span>
                             )}
                           </td>
                         )}
@@ -551,9 +565,9 @@ const UsersTab: React.FC<{
                               setError('');
                               setRoleUser({ id: user.id, name: user.name || user.email, currentRole: roleKey, selectedRole: roleKey });
                             }}>Role</button>
-                            <button className={`btn btn-sm ${isActive ? '' : 'btn-outline'}`} disabled={!!isSelf || actionLoading}
+                            <button className={`btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'}`} disabled={!!isSelf || actionLoading}
                               title={isSelf ? 'Không thể vô hiệu hóa tài khoản của chính mình' : isActive ? 'Vô hiệu hóa tài khoản' : 'Kích hoạt tài khoản'}
-                              style={isActive ? { background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                              style={isActive ? { background: 'rgba(239,68,68,0.08)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.25)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                               onClick={() => { setError(''); setStatusConfirm({ id: user.id, email: user.email || '', activate: !isActive }); }}>
                               {isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
                             </button>
@@ -567,18 +581,22 @@ const UsersTab: React.FC<{
                   )}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
 
-              {totalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Page {page + 1} of {totalPages} ({filtered.length} total)</span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
-                    <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Unified Table Pagination */}
+        <div className="project-table-pagination">
+          <span>Showing {filtered.length === 0 ? 0 : page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length} accounts</span>
+          <div>
+            <button className="workspace-page-btn" disabled={page === 0} onClick={() => setPage(0)}>First</button>
+            <button className="workspace-page-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</button>
+            {Array.from({ length: totalPages }, (_, idx) => (
+              <button key={idx} className={`workspace-page-btn ${page === idx ? 'active' : ''}`} onClick={() => setPage(idx)}>{idx + 1}</button>
+            ))}
+            <button className="workspace-page-btn" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
+            <button className="workspace-page-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</button>
+          </div>
         </div>
       </div>
 
@@ -1448,14 +1466,12 @@ export const UserManagement: React.FC<{ defaultTab?: Tab; openCreate?: boolean }
   const current = pageMeta[tab] || { skin: 'users' };
 
   return (
-    <section className={`page active admin-console-page admin-user-management-page ${current.skin} role-dashboard role-dashboard-admin`}>
-
-
-      {tab === 'users' && (
-        <div className="workspace-panel admin-console-panel users-panel">
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page admin-page admin-user-management-page" id="page-user-management">
+      <div className="workspace-main-full">
+        {tab === 'users' && (
           <UsersTab openCreate={openCreate} onStats={(next) => setStats((prev) => ({ ...prev, ...next }))} />
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 };

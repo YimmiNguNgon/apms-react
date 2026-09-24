@@ -89,6 +89,7 @@ export interface GraphCompanyDto {
   companyId: string;
   name: string;
   industry?: string;
+  industries?: string[];
   relationshipType?: string;
   relationships?: GraphRelationship[];
 }

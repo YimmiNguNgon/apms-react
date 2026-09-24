@@ -5393,7 +5393,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setInviteEmail('');
       setSelectedAccount(null);
     } catch (error) {
-      setInviteError(error instanceof Error ? error.message : 'Cannot invite member.');
+      setInviteError(error instanceof Error ? error.message : 'Cannot add member.');
     } finally {
       setInviteLoading(false);
     }
@@ -7401,7 +7401,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       if (ensureProjectIsActive('adding staff')) setShowInviteModal(true);
                     }}
                   >
-                    <UserPlus size={16} />Invite Member
+                    <UserPlus size={16} />Add Member
                   </button>
                 )}
                 {isManager && isDraftProject && (
@@ -8348,7 +8348,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                       if (ensureProjectIsActive('adding staff')) setShowInviteModal(true);
                     }}
                   >
-                    <UserPlus size={16} />Invite Member
+                    <UserPlus size={16} />Add Member
                   </button>
                 )}
               </div>
@@ -8500,7 +8500,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={styles.inviteHead}>
                 <div>
                   <span className={styles.taskKey}>Project access</span>
-                  <h2 id="invite-member-title">Invite member</h2>
+                  <h2 id="invite-member-title">Add member</h2>
                   <p>Search an account from the database by email, then assign a project role.</p>
                 </div>
                 <button className={styles.iconButton} type="button" aria-label="Close invite member modal" onClick={() => setShowInviteModal(false)}>

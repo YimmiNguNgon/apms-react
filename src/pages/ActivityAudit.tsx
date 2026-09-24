@@ -172,78 +172,107 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
   }[tab];
 
   return (
-    <div className={styles.container} id="page-activity-history">
-      {/* Normalized Header */}
-      <section className={styles.hero}>
-        <div>
-          <h1 className={styles.heroTitle}>{pageMeta.title}</h1>
-          <p className={styles.heroDesc}>{pageMeta.desc}</p>
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page admin-page" id="page-activity-history">
+      <div className="workspace-main-full">
+        {/* Page Header Band */}
+        <div className="workspace-page-head">
+          <div>
+            <h1>{pageMeta.title}</h1>
+            <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              {pageMeta.desc}
+            </p>
+          </div>
+          <div className="workspace-head-actions">
+            <button
+              className="btn btn-outline"
+              type="button"
+              onClick={handleExportCsv}
+              disabled={exporting}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <span>{exporting ? 'Exporting…' : 'Export CSV'}</span>
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={fetchAuditLogs}
+              disabled={loading}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <span>{t('filters.refresh', 'Refresh')}</span>
+            </button>
+          </div>
         </div>
-        <div className={styles.heroMeter}>
-          <span className={styles.heroMeterCount}>{pageMeta.meter}</span>
-          <span className={styles.heroMeterLabel}>{pageMeta.meterLabel}</span>
-        </div>
-      </section>
 
+        {error && (
+          <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px' }}>
+            ❌ {error}
+          </div>
+        )}
 
-      {error && (
-        <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '12px 16px', borderRadius: '10px' }}>
-          ❌ {error}
-        </div>
-      )}
+        {/* Main Content Card Container */}
+        <div className="manager-project-container" style={{ marginBottom: '32px' }}>
+          {/* Unified Filter Toolbar */}
+          <div className="company-profiles-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', padding: '10px 14px' }}>
+            {/* Action filter */}
+            <select
+              className="search-input"
+              style={{ width: 'auto', minWidth: '160px' }}
+              value={filterAction}
+              onChange={(e) => { setFilterAction(e.target.value); setPage(0); }}
+            >
+              {actionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
 
-      {/* Main Content Area */}
-      <div>
-        {tab === 'audit' && (
-          <div className="admin-audit-console">
-            <div className="admin-toolbar" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '16px' }}>
-              {/* Action filter */}
-              <select className="admin-select" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(0); }}>
-                {actionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+            {/* Entity filter */}
+            <select
+              className="search-input"
+              style={{ width: 'auto', minWidth: '140px' }}
+              value={filterEntityType}
+              onChange={(e) => { setFilterEntityType(e.target.value); setPage(0); }}
+            >
+              {entityOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
 
-              {/* Entity filter */}
-              <select className="admin-select" value={filterEntityType} onChange={(e) => { setFilterEntityType(e.target.value); setPage(0); }}>
-                {entityOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+            {/* Search User/Detail */}
+            <input
+              className="search-input"
+              style={{ flex: '1 1 200px', minWidth: '180px' }}
+              placeholder={t('filters.searchPlaceholder', 'Search by user, email, or details...')}
+              value={searchUser}
+              onChange={(e) => setSearchUser(e.target.value)}
+            />
 
-              {/* Search User/Detail */}
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                <input
-                  className="admin-input"
-                  style={{ width: '220px' }}
-                  placeholder={t('filters.searchPlaceholder')}
-                  value={searchUser}
-                  onChange={(e) => setSearchUser(e.target.value)}
-                />
-              </div>
-
-              {/* Date Filters */}
+            {/* Date Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input
-                className="admin-input"
+                className="search-input"
+                style={{ width: 'auto' }}
                 type="date"
                 title={t('filters.fromDate')}
                 value={fromDate}
                 onChange={(e) => { setFromDate(e.target.value); setPage(0); }}
               />
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>–</span>
               <input
-                className="admin-input"
+                className="search-input"
+                style={{ width: 'auto' }}
                 type="date"
                 title={t('filters.toDate')}
                 value={toDate}
                 onChange={(e) => { setToDate(e.target.value); setPage(0); }}
               />
-
-              <button className="btn btn-outline" onClick={fetchAuditLogs} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span>{t('filters.refresh')}</span>
-              </button>
-
             </div>
+          </div>
 
-            {loading ? (
-              <div className="admin-skeleton">Loading audit logs...</div>
-            ) : (
-              <div className="admin-table-card">
+          {/* Scrollable Table Area */}
+          <div className="manager-project-table-scroll">
+            <div className="manager-project-table-inner" style={{ minWidth: '820px' }}>
+              {loading ? (
+                <div className="project-table-empty">
+                  <p className="project-table-empty-title">Loading audit logs...</p>
+                </div>
+              ) : (
                 <table className="admin-table">
                   <thead>
                     <tr>
@@ -259,11 +288,11 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                       const pill = getActionTypePill(log.action);
                       const timeStr = log.timestamp
                         ? new Date(log.timestamp).toLocaleString('vi-VN')
-                        : '-';
+                        : '—';
 
                       return (
                         <tr key={log.id || index}>
-                          <td className="admin-mono" style={{ whiteSpace: 'nowrap' }}>
+                          <td className="admin-mono" style={{ whiteSpace: 'nowrap', fontSize: '12px', color: 'var(--text-muted)' }}>
                             {timeStr}
                           </td>
                           <td>
@@ -271,15 +300,20 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                             {log.actorAccountId && <small style={{ display: 'block', color: 'var(--text-muted)' }}>ID: #{log.actorAccountId}</small>}
                           </td>
                           <td>
-                            <span className={`admin-event-pill ${pill.className}`} style={{ marginRight: '6px' }}>{pill.label}</span>
+                            <span
+                              className={`project-status-badge ${pill.className === 'success' ? 'success' : pill.className === 'warning' ? 'neutral' : pill.className === 'danger' ? 'danger' : 'info'}`}
+                              style={{ marginRight: '6px' }}
+                            >
+                              {pill.label}
+                            </span>
                             <strong>{log.action}</strong>
                           </td>
                           <td>
                             <span className="badge badge-gray">{log.entityType || 'General'}</span>
                             {log.entityId && <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>#{log.entityId}</span>}
                           </td>
-                          <td style={{ fontSize: '13px', color: 'var(--text-color)' }}>
-                            {log.detail || '-'}
+                          <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            {log.detail || '—'}
                           </td>
                         </tr>
                       );
@@ -287,35 +321,36 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                     {filteredLogs.length === 0 && (
                       <tr>
                         <td colSpan={5}>
-                          <div className="workspace-empty">{t('table.noLogs')}</div>
+                          <div className="workspace-empty">{t('table.noLogs', 'No audit logs found.')}</div>
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                      {t('table.pagination', { page: page + 1, totalPages, totalElements })}
-                    </span>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span>{t('table.prev')}</span>
-                      </button>
-                      <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span>{t('table.next')}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        )}
 
+          {/* Unified Table Pagination */}
+          <div className="project-table-pagination">
+            <span>Showing {totalElements === 0 ? 0 : page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalElements)} of {totalElements} audit events</span>
+            <div>
+              <button className="workspace-page-btn" disabled={page === 0 || loading} onClick={() => setPage(0)}>First</button>
+              <button className="workspace-page-btn" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, idx) => {
+                const pNum = totalPages <= 5 ? idx : Math.max(0, Math.min(page - 2, totalPages - 5)) + idx;
+                return (
+                  <button key={pNum} className={`workspace-page-btn ${page === pNum ? 'active' : ''}`} disabled={loading} onClick={() => setPage(pNum)}>
+                    {pNum + 1}
+                  </button>
+                );
+              })}
+              <button className="workspace-page-btn" disabled={page >= totalPages - 1 || loading} onClick={() => setPage((p) => p + 1)}>Next</button>
+              <button className="workspace-page-btn" disabled={page >= totalPages - 1 || loading} onClick={() => setPage(totalPages - 1)}>Last</button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };

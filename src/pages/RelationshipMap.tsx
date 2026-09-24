@@ -277,6 +277,7 @@ export interface GraphNode {
   id: string;
   name: string;
   industry: string;
+  industries?: string[];
   group: GroupKey;
   healthScore: number;
   riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -291,6 +292,21 @@ export interface GraphNode {
   meetings?: Array<{ title: string; date: string; notes: string }>;
   aiRecommendation?: string;
 }
+
+export const getNodeIndustries = (node?: { industries?: string[]; industry?: string } | null): string[] => {
+  if (!node) return [];
+  if (Array.isArray(node.industries) && node.industries.length > 0) {
+    const list = node.industries
+      .map((i) => (typeof i === 'string' ? i.trim() : String(i).trim()))
+      .filter((i) => i.length > 0 && i !== 'Not available' && i !== 'Unknown');
+    if (list.length > 0) return list;
+  }
+  if (node.industry && node.industry !== 'Not available' && node.industry !== 'Unknown') {
+    const trimmed = node.industry.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return [];
+};
 
 export interface GraphEdge {
   id: string;
@@ -927,10 +943,16 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             };
             const aiRec = aiRecMap[group] || "Maintain regular ecosystem monitoring and record any significant changes in corporate governance or market positioning.";
 
+            const nodeIndustries = getNodeIndustries(company);
+            const primaryIndustry = nodeIndustries.length > 0
+              ? nodeIndustries[0]
+              : (company.industry && company.industry !== 'Unknown' ? company.industry : 'Not available');
+
             return {
               id: company.companyId || `node-${index}`,
               name: company.name || 'Not available',
-              industry: company.industry || 'Not available',
+              industry: primaryIndustry,
+              industries: nodeIndustries,
               group,
               healthScore,
               riskLevel,
@@ -938,7 +960,9 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               x: 0, y: 0,
               initials: (company.name || 'NA').trim().split(/\s+/).slice(0, 2).map((word) => word ? word[0] : '').join('').toUpperCase(),
               color: RELATIONSHIP_STYLES[group]?.color || '#2563EB',
-              overview: company.industry ? `${company.name} operates in the ${company.industry} sector, serving key roles within our business network.` : 'Ecosystem node details are loaded and monitored.',
+              overview: nodeIndustries.length > 0
+                ? `${company.name} operates in the ${nodeIndustries.join(', ')} sector, serving key roles within our business network.`
+                : (company.industry ? `${company.name} operates in the ${company.industry} sector, serving key roles within our business network.` : 'Ecosystem node details are loaded and monitored.'),
               sharedProjects: [],
               contacts: [],
               meetings: [],
@@ -1698,12 +1722,22 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
     const matchedFilters = nodes.filter(n => {
       if (n.id === centerId) return true;
-      const matchSearch = !search || n.name.toLowerCase().includes(search.toLowerCase()) || n.industry.toLowerCase().includes(search.toLowerCase());
+      const nodeIndustries = getNodeIndustries(n);
+      const matchSearch =
+        !search ||
+        n.name.toLowerCase().includes(search.toLowerCase()) ||
+        n.industry.toLowerCase().includes(search.toLowerCase()) ||
+        nodeIndustries.some(i => i.toLowerCase().includes(search.toLowerCase()));
+
       const matchGroup =
         activeRelationshipGroup === 'ALL' ||
         n.group === targetGroupKey;
       const matchHealth = n.healthScore >= minHealth;
-      const matchIndustry = industryFilter === 'All' || n.industry === industryFilter;
+
+      const matchIndustry =
+        industryFilter === 'All' ||
+        nodeIndustries.some(i => i.trim().toLowerCase() === industryFilter.trim().toLowerCase());
+
       const matchRank = isNodeMatchingRankFilter(n.id);
       return matchSearch && matchGroup && matchHealth && matchIndustry && matchRank;
     });
@@ -1866,9 +1900,21 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
   }, [nodes, l1NodeIds]);
 
   const industryOptions = useMemo(() => {
-    const set = new Set(nodes.map((n) => n.industry).filter(Boolean));
+    const set = new Set<string>();
+    nodes.forEach((n) => {
+      const list = getNodeIndustries(n);
+      list.forEach((ind) => {
+        if (ind && ind.trim()) {
+          set.add(ind.trim());
+        }
+      });
+    });
     return ['All', ...Array.from(set)];
   }, [nodes]);
+
+  const selectedNodeIndustries = useMemo(() => {
+    return getNodeIndustries(selectedNode);
+  }, [selectedNode]);
 
   // Handle Node Click to select company & Expand L2 connections (Incremental Graph Expansion)
   const handleNodeClick = (node: GraphNode) => {
@@ -1894,7 +1940,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
     const header = ['Field', 'Value'];
     const rows = [
       ['Entity', selectedNode.name],
-      ['Industry', selectedNode.industry],
+      ['Industry', selectedNodeIndustries.length > 0 ? selectedNodeIndustries.join('; ') : selectedNode.industry],
       ['Relationship Group', selectedNode.group.toUpperCase()],
       ['Health Score', selectedNode.healthScore],
       ['Risk Level', selectedNode.riskLevel],
@@ -1939,7 +1985,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
     switch (selectedNode.group) {
       case 'competitor':
-        return `${selectedNode.name} is a direct competitor of your company in the ${selectedNode.industry || 'IT'} sector. However,${sharedText}`;
+        return `${selectedNode.name} is a direct competitor of your company in the ${selectedNodeIndustries.length > 0 ? selectedNodeIndustries.join(', ') : (selectedNode.industry || 'IT')} sector. However,${sharedText}`;
       case 'partner':
         return `${selectedNode.name} is a direct partner in your ecosystem. Keeping relationship alignment high secures active collaborative channels and shared projects.`;
       case 'supplier':
@@ -2112,7 +2158,31 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   {selectedNode.group}
                 </span>
               </div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>Industry: <strong>{selectedNode.industry}</strong></div>
+              <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'flex-start', gap: '6px', flexWrap: 'wrap', margin: '4px 0' }}>
+                <span style={{ flexShrink: 0 }}>Industry:</span>
+                {selectedNodeIndustries.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {selectedNodeIndustries.map((ind, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#1e293b',
+                          background: '#f1f5f9',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '4px',
+                          padding: '1px 6px',
+                        }}
+                      >
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <strong>{selectedNode.industry || '—'}</strong>
+                )}
+              </div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   Relationship Status: <strong style={{ color: '#10b981' }}>Active</strong>
@@ -2246,7 +2316,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               <h5 style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{t('drawer.assessmentRationale', 'Assessment Rationale')}</h5>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#475569' }}>
                 <div>• {t('drawer.typeDirect', 'Type: Direct relationship')}</div>
-                <div>• {t('drawer.industryCoverage', 'Industry coverage:')} {selectedNode.industry}</div>
+                <div>• {t('drawer.industryCoverage', 'Industry coverage:')} {selectedNodeIndustries.length > 0 ? selectedNodeIndustries.join(', ') : (selectedNode.industry || '—')}</div>
                 {hasOverlap ? (
                   <div>• {t('drawer.sharedEcosystemPartners', 'Shared ecosystem partners:')} {sharedNodeNamesText}</div>
                 ) : (
@@ -3406,10 +3476,31 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         </span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                        {selectedNode.industry || '—'}
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: '6px', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', flex: 1, minWidth: '120px' }}>
+                        {selectedNodeIndustries.length > 0 ? (
+                          selectedNodeIndustries.map((ind, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: '10.5px',
+                                color: '#334155',
+                                background: '#f1f5f9',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '4px',
+                                padding: '1.5px 6px',
+                                lineHeight: '14px',
+                              }}
+                            >
+                              {ind}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            {selectedNode.industry || '—'}
+                          </span>
+                        )}
+                      </div>
                       <span
                         style={{
                           fontSize: '9px',
@@ -3421,6 +3512,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                           borderRadius: '12px',
                           padding: '2px 7px',
                           whiteSpace: 'nowrap',
+                          flexShrink: 0,
                         }}
                       >
                         {getGroupLabel(selectedNode.group)}
@@ -3977,7 +4069,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setSelectedNode(null); }}
         title={selectedNode ? `${selectedNode.name}` : ''}
-        subtitle={selectedNode ? `${selectedNode.industry} • ${getGroupLabel(selectedNode.group).toUpperCase()}` : ''}
+        subtitle={selectedNode ? `${selectedNodeIndustries.length > 0 ? selectedNodeIndustries.join(', ') : selectedNode.industry} • ${getGroupLabel(selectedNode.group).toUpperCase()}` : ''}
         width={840}
       >
         {selectedNode && (

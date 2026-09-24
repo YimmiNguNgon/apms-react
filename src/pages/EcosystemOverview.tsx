@@ -12,6 +12,7 @@ export interface GraphCompany {
   companyId: string;
   name: string;
   industry: string;
+  industries?: string[];
   createdAt?: string;
   updatedAt?: string;
   relationships?: Array<{ relationshipType: string; targetCompanyId: string }>;
