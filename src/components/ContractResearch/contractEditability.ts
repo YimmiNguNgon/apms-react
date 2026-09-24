@@ -1,6 +1,21 @@
 import type { ContractEntry } from '../../types/contractResearch';
 
 /**
+ * Single source of truth helper to check if a contract requires revisions from Manager.
+ */
+export function isContractChangesRequested(
+  contract?: { reviewStatus?: string | null } | null
+): boolean {
+  if (!contract?.reviewStatus) return false;
+  const status = contract.reviewStatus.toUpperCase().trim();
+  return (
+    status === 'CHANGES_REQUESTED' ||
+    status === 'REVISION_REQUIRED' ||
+    status === 'NEEDS_REVISION'
+  );
+}
+
+/**
  * Authoritative helper to determine whether a contract entry is editable by Staff.
  *
  * Canonical editable statuses:
@@ -18,6 +33,6 @@ export function isContractEditableByStaff(
   if (!contract) return false;
   return (
     contract.reviewStatus === 'DRAFT' ||
-    contract.reviewStatus === 'CHANGES_REQUESTED'
+    isContractChangesRequested(contract)
   );
 }

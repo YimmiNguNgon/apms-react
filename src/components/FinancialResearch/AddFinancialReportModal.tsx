@@ -11,7 +11,7 @@ interface Props {
 
 export default function AddFinancialReportModal({ open, targetYear, onClose, onSubmit }: Props) {
   const [title, setTitle] = useState('');
-  const [period, setPeriod] = useState<'Q1' | 'Q2' | 'Q3' | 'FY'>('Q1');
+  const [period, setPeriod] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4' | 'FY'>('Q1');
   const [dataEntryMethod, setDataEntryMethod] = useState<'AI_EXTRACTION' | 'MANUAL'>('AI_EXTRACTION');
   const [file, setFile] = useState<File | null>(null);
   const [customYear, setCustomYear] = useState<number | ''>(targetYear || '');
@@ -223,6 +223,7 @@ export default function AddFinancialReportModal({ open, targetYear, onClose, onS
             <option value="Q1">Q1</option>
             <option value="Q2">Q2</option>
             <option value="Q3">Q3</option>
+            <option value="Q4">Q4</option>
             <option value="FY">FY (Full Year)</option>
           </select>
         </label>

@@ -19,7 +19,7 @@ import { EditArrayItemModal } from './EditArrayItemModal';
 import { EditContractModal } from './EditContractModal';
 import { ContractEvidenceDrawer } from './ContractEvidenceDrawer';
 import { ContractProgressBar } from './ContractProgressBar';
-import { isContractEditableByStaff } from './contractEditability';
+import { isContractEditableByStaff, isContractChangesRequested } from './contractEditability';
 import {
   FileText,
   FileUp,
@@ -300,12 +300,12 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           const isRevision =
             data.status === 'CHANGES_REQUESTED' ||
             data.activeSubmissionStatus === 'REVISION_REQUESTED' ||
-            (taskStatus === 'IN_PROGRESS' && data.contracts.some((c) => c.reviewStatus === 'CHANGES_REQUESTED'));
+            (taskStatus === 'IN_PROGRESS' && data.contracts.some((c) => isContractChangesRequested(c)));
 
           setSelectedContractId((prev) => {
             if (!hasInitializedRevisionSelection.current && isRevision && !isManagerMode) {
               hasInitializedRevisionSelection.current = true;
-              const firstRevision = data.contracts.find((c) => c.reviewStatus === 'CHANGES_REQUESTED');
+              const firstRevision = data.contracts.find((c) => isContractChangesRequested(c));
               if (firstRevision) return firstRevision.id;
             }
             if (prev && data.contracts.some((c) => c.id === prev)) return prev;
@@ -358,7 +358,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   }, [isAnyExtracting, fetchResearch]);
 
   const hasChangesRequestedContracts = useMemo(
-    () => contracts.some((c) => c.reviewStatus === 'CHANGES_REQUESTED'),
+    () => contracts.some((c) => isContractChangesRequested(c)),
     [contracts]
   );
   const isRevisionMode =
@@ -561,7 +561,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         (c) =>
           activeIds.includes(c.id) ||
           c.reviewStatus === 'PENDING_REVIEW' ||
-          c.reviewStatus === 'CHANGES_REQUESTED' ||
+          isContractChangesRequested(c) ||
           c.reviewStatus === 'APPROVED'
       );
     }
@@ -583,7 +583,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (isRevisionMode) {
       // During revision, only CHANGES_REQUESTED contracts can be resubmitted
       return contracts
-        .filter((c) => c.reviewStatus === 'CHANGES_REQUESTED')
+        .filter((c) => isContractChangesRequested(c))
         .map((c) => c.id);
     }
     // Normal mode: all non-APPROVED, non-PENDING_REVIEW
@@ -2123,7 +2123,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                           Approved
                         </span>
                       )}
-                      {selectedContract.reviewStatus === 'CHANGES_REQUESTED' && (
+                      {isContractChangesRequested(selectedContract) && (
                         <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                           <AlertTriangle size={14} />
                           Changes Requested
@@ -2159,11 +2159,11 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               {/* Workspace Body Scrollable Content */}
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, flex: '1 0 auto' }}>
                 {/* Changes Requested Banner */}
-                {!hasTopReviewBanner && selectedContract.reviewStatus === 'CHANGES_REQUESTED' && (
+                {!hasTopReviewBanner && isContractChangesRequested(selectedContract) && (
                 <div className={styles.managerFeedbackBanner} style={{ marginTop: 10 }}>
                   <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div className={styles.managerFeedbackContent}>
-                    <strong>Manager Feedback / Revision Request</strong>
+                    <strong>Manager Feedback</strong>
                     <p>{selectedContract.reviewComment || 'Manager requested changes to this contract.'}</p>
                     <small>
                       {selectedContract.reviewedByName || 'Manager'}
@@ -3206,9 +3206,9 @@ function ManagerContractReviewSummaryBar({
 }) {
   const isPending = (c: ContractEntry) => c.reviewStatus === 'PENDING_REVIEW' || !c.reviewStatus;
   const pendingContracts = contracts.filter(isPending);
-  const reviewedContracts = contracts.filter((c) => c.reviewStatus === 'APPROVED' || c.reviewStatus === 'CHANGES_REQUESTED');
+  const reviewedContracts = contracts.filter((c) => c.reviewStatus === 'APPROVED' || isContractChangesRequested(c));
   const isApproved = selectedContract?.reviewStatus === 'APPROVED';
-  const isChangesRequested = selectedContract?.reviewStatus === 'CHANGES_REQUESTED';
+  const isChangesRequested = isContractChangesRequested(selectedContract);
   const isReviewable = !isApproved && !isChangesRequested;
 
   return (

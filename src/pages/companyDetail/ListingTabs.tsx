@@ -19,13 +19,10 @@ interface ListingTabsProps {
 
 export const ListingTabBar: React.FC<ListingTabsProps> = ({ activeTab, onTabChange, userRole, isOwnerProfile, isDrawerMode, relationshipType, canAccessRelationshipCloseness, tabs: customTabs }) => {
   const tabs = customTabs || LISTING_TABS.filter((tab) => {
-    if (isDrawerMode && (tab.id === 'internal-news' || tab.id === 'documents' || tab.id === 'relationship-closeness')) {
+    if (isDrawerMode && (tab.id === 'documents' || tab.id === 'relationship-closeness')) {
       return false;
     }
-    if (tab.id === 'internal-news' && userRole === 'BUSINESS_DEVELOPMENT_STAFF') {
-      return false;
-    }
-    if (isOwnerProfile && (tab.id === 'internal-news' || tab.id === 'documents' || tab.id === 'relationship-closeness')) {
+    if (isOwnerProfile && (tab.id === 'documents' || tab.id === 'relationship-closeness')) {
       return false;
     }
     if (tab.id === 'relationship-closeness' && !canUseRelationshipCloseness(relationshipType, isOwnerProfile, isDrawerMode, canAccessRelationshipCloseness)) {

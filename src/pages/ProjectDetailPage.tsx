@@ -3744,6 +3744,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     },
   });
   const [managerReviewComment, setManagerReviewComment] = useState('');
+  const [isCompanyMemberRequestChangesOpen, setIsCompanyMemberRequestChangesOpen] = useState(false);
+  const [companyMemberRequestChangesReason, setCompanyMemberRequestChangesReason] = useState('');
   const [managerReviewLoading, setManagerReviewLoading] = useState(false);
   const [apiProject, setApiProject] = useState<ProjectResponse | null>(() => readSelectedProjectSnapshot());
   const [projectLoading, setProjectLoading] = useState(false);
@@ -3880,6 +3882,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const closeManagerReviewModal = () => {
     setSelectedManagerReviewTask(null);
     setSelectedReviewHistoryItem(null);
+    setIsCompanyMemberRequestChangesOpen(false);
+    setCompanyMemberRequestChangesReason('');
   };
 
   useEffect(() => {
@@ -7126,20 +7130,20 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
   };
 
-  const handleManagerReviewSubmission = async (decision: 'APPROVE' | 'REJECT') => {
-    if (!selectedManagerReviewTask) return;
+  const handleManagerReviewSubmission = async (decision: 'APPROVE' | 'REJECT', customComment?: string) => {
+    if (!selectedManagerReviewTask) return false;
     const submission = workbench?.submissions?.find((item) => item.status === 'IN_REVIEW')
       ?? workbench?.submissions?.[0];
 
     if (!submission) {
       setWorkbenchError('No submission found for this task.');
-      return;
+      return false;
     }
 
-    const comment = managerReviewComment.trim();
+    const comment = (customComment !== undefined ? customComment : managerReviewComment).trim();
     if (decision === 'REJECT' && !comment) {
       setWorkbenchError('Please add a reason before rejecting this task.');
-      return;
+      return false;
     }
 
     setManagerReviewLoading(true);
@@ -7169,8 +7173,12 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setProjectRefreshTick((current) => current + 1);
       setSelectedManagerReviewTask(null);
       setManagerReviewComment('');
+      setIsCompanyMemberRequestChangesOpen(false);
+      setCompanyMemberRequestChangesReason('');
+      return true;
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot review this submission.');
+      return false;
     } finally {
       setManagerReviewLoading(false);
     }
@@ -10762,6 +10770,31 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   statusLabel={statusLabel}
                                 />
                               )}
+
+                              {!isCompletedTask && !isApproved && selectedManagerReviewTask.status !== 'DONE' && (
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
+                                  <button
+                                    className={`${styles.button} ${styles.dangerButton}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setIsCompanyMemberRequestChangesOpen(true);
+                                      setCompanyMemberRequestChangesReason('');
+                                    }}
+                                    disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
+                                  >
+                                    Request Changes
+                                  </button>
+                                  <button
+                                    className={`${styles.button} ${styles.primaryButton}`}
+                                    type="button"
+                                    onClick={() => void handleManagerReviewSubmission('APPROVE')}
+                                    disabled={managerReviewLoading || (workbench?.submissions?.length === 0)}
+                                  >
+                                    <CheckCircle2 size={16} />
+                                    {managerReviewLoading ? 'Approving...' : 'Approve'}
+                                  </button>
+                                </div>
+                              )}
                             </section>
                           );
                         })()}
@@ -10830,7 +10863,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           </section>
                         )}
 
-                        {!isCompletedTask && !['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH', 'COMPANY_DATA_PREPARATION'].includes(selectedManagerReviewTask.taskType) && (
+                        {!isCompletedTask && !['ROLE_EVALUATION', 'COMPANY_NEWS_RESEARCH', 'COMPANY_DATA_PREPARATION', 'COMPANY_MEMBER_RESEARCH'].includes(selectedManagerReviewTask.taskType) && (
                           <section className={styles.workbenchPanel}>
                             <div className={styles.workbenchPanelHead}>
                               <div>
@@ -10925,27 +10958,28 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           </section>
                         </aside>
                       )}
-                      <aside className={styles.workbenchSidebar}>
-                        <section className={isCompletedTask ? styles.completedContentCard : styles.workbenchPanel}>
-                          <div className={isCompletedTask ? styles.completedCardHeader : undefined}>
-                            <h3>Submission history</h3>
-                          </div>
-                          <div className={styles.workbenchTimeline}>
-                            {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
-                            {workbench?.submissions?.map((submission) => (
-                              <article key={submission.id} className={isCompletedTask ? styles.completedTimelineItem : undefined}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                                  <strong style={{ color: submission.status === 'APPROVED' ? '#15803d' : '#0f172a' }}>{submission.status}</strong>
-                                  <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
-                                </div>
-                                <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
-                                {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
-                              </article>
-                            ))}
-                          </div>
-                        </section>
-
-                      </aside>
+                      {selectedManagerReviewTask.taskType !== 'COMPANY_MEMBER_RESEARCH' && (
+                        <aside className={styles.workbenchSidebar}>
+                          <section className={isCompletedTask ? styles.completedContentCard : styles.workbenchPanel}>
+                            <div className={isCompletedTask ? styles.completedCardHeader : undefined}>
+                              <h3>Submission history</h3>
+                            </div>
+                            <div className={styles.workbenchTimeline}>
+                              {(workbench?.submissions?.length ?? 0) === 0 && <div className={styles.empty}>No submission yet.</div>}
+                              {workbench?.submissions?.map((submission) => (
+                                <article key={submission.id} className={isCompletedTask ? styles.completedTimelineItem : undefined}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                    <strong style={{ color: submission.status === 'APPROVED' ? '#15803d' : '#0f172a' }}>{submission.status}</strong>
+                                    <small>{formatOptionalDate(submission.submittedAt || submission.createdAt)}</small>
+                                  </div>
+                                  <span>{submission.note || submission.targetEntityType || 'Submitted work'}</span>
+                                  {submission.reviewComment && <small>Review: {submission.reviewComment}</small>}
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        </aside>
+                      )}
                     </div>
                   </>
                 );
@@ -10954,6 +10988,90 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
           </motion.div>
         )}
       </AnimatePresence>
+      {isCompanyMemberRequestChangesOpen && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => {
+            if (managerReviewLoading) return;
+            setIsCompanyMemberRequestChangesOpen(false);
+            setCompanyMemberRequestChangesReason('');
+          }}
+        >
+          <div
+            className={styles.inviteModal}
+            style={{ maxWidth: 480, width: '100%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.inviteHead}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>Request Changes</h3>
+                <p style={{ marginTop: 6, color: '#64748b', fontSize: 13, marginBottom: 0 }}>
+                  Explain what Staff needs to revise before resubmitting.
+                </p>
+              </div>
+              <button
+                className={styles.iconButton}
+                type="button"
+                aria-label="Close"
+                onClick={() => {
+                  if (managerReviewLoading) return;
+                  setIsCompanyMemberRequestChangesOpen(false);
+                  setCompanyMemberRequestChangesReason('');
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label className={`${styles.inviteField} ${styles.fullField}`}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Reason <span style={{ color: '#ef4444' }}>*</span>
+                </span>
+                <textarea
+                  value={companyMemberRequestChangesReason}
+                  placeholder="Enter revision instructions..."
+                  rows={4}
+                  style={{ width: '100%', resize: 'vertical', minHeight: 90 }}
+                  onChange={(e) => setCompanyMemberRequestChangesReason(e.target.value)}
+                  disabled={managerReviewLoading}
+                  autoFocus
+                />
+              </label>
+            </div>
+
+            <div className={styles.modalActions} style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                className={styles.button}
+                type="button"
+                onClick={() => {
+                  setIsCompanyMemberRequestChangesOpen(false);
+                  setCompanyMemberRequestChangesReason('');
+                }}
+                disabled={managerReviewLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.button} ${styles.dangerButton}`}
+                type="button"
+                onClick={async () => {
+                  const reason = companyMemberRequestChangesReason.trim();
+                  if (!reason) return;
+                  const success = await handleManagerReviewSubmission('REJECT', reason);
+                  if (success) {
+                    setIsCompanyMemberRequestChangesOpen(false);
+                    setCompanyMemberRequestChangesReason('');
+                  }
+                }}
+                disabled={managerReviewLoading || companyMemberRequestChangesReason.trim() === ''}
+              >
+                {managerReviewLoading ? 'Sending...' : 'Send Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {reviewSubmissionError && (
         <div className={styles.modalOverlay} onClick={() => setReviewSubmissionError(null)}>
           <div className={styles.inviteModal} style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>

@@ -28,7 +28,6 @@ export const LISTING_TABS: ListingTabDef[] = [
   { id: 'financials', label: 'Financials', icon: <FileText size={14} /> },
   { id: 'documents', label: 'Contract', icon: <FileText size={14} /> },
   { id: 'news', label: 'News', icon: <Newspaper size={14} /> },
-  { id: 'internal-news', label: 'Internal News', icon: <Shield size={14} /> },
   { id: 'relationship-closeness', label: 'Relationship Closeness', icon: <Star size={14} /> },
 ];
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { AlertCircle, Building2, CheckCheck, CheckCircle2, ChevronDown, ChevronUp, Edit2, Loader2 } from 'lucide-react';
+import { AlertCircle, Building2, CheckCheck, CheckCircle2, Edit2, Loader2 } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
 import type { AiFieldResult, CandidateResponse } from '../../types/domain';
 import { CandidateQualitySummary } from './CandidateQualitySummary';
@@ -104,8 +104,10 @@ const isManagerAccepted = (field?: AiFieldResult) => normalizeManagerStatus(fiel
 
 const isReturnedByManager = (field?: AiFieldResult) => {
   const current = normalizeManagerStatus(field?.managerReviewStatus);
+  if (current === 'ACCEPTED') return false;
+  if (current === 'REJECTED' || current === 'CHANGES_REQUESTED') return true;
   const previous = normalizeManagerStatus(field?.previousManagerReviewStatus);
-  return current === 'REJECTED' || current === 'CHANGES_REQUESTED' || previous === 'REJECTED' || previous === 'CHANGES_REQUESTED';
+  return previous === 'REJECTED' || previous === 'CHANGES_REQUESTED';
 };
 
 const allCandidateFields = Object.values(TAB_FIELD_GROUPS).flat();
@@ -135,7 +137,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   const [draftNameInput, setDraftNameInput] = useState('');
   const [isRenamingDraft, setIsRenamingDraft] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [showApproved, setShowApproved] = useState(false);
   const queryClient = useQueryClient();
 
   const handleSaveDraftName = async () => {
@@ -212,7 +213,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     const isStaffRev = (role === 'STAFF' || !role) && (serverCandidate.status === 'REVISION_REQUIRED' || hasChg);
     if (isStaffRev) {
       const firstTabWithRev = TABS.find((tab) =>
-        TAB_FIELD_GROUPS[tab].some((f) => !isManagerAccepted(normResults[f.key]))
+        TAB_FIELD_GROUPS[tab].some((f) => isReturnedByManager(normResults[f.key]))
       );
       if (firstTabWithRev) {
         setActiveTab(firstTabWithRev);
@@ -240,6 +241,7 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   };
 
   const handleApproveAllInTab = () => {
+    if (isStaffRevision) return;
     const activeTabFields = TAB_FIELD_GROUPS[activeTab];
     const newPendingUpdates = { ...pendingUpdates };
     let hasChanges = false;
@@ -269,6 +271,9 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     if (Object.keys(pendingUpdates).length === 0) return;
     const reviewUpdates: Record<string, any> = {};
     for (const [dotKey, val] of Object.entries(pendingUpdates)) {
+      if (isStaffRevision && isManagerAccepted(fieldResults[dotKey])) {
+        continue;
+      }
       let staffStatus = val.reviewStatus;
       if (isManual) {
         const isValEmpty = normalizeCandidateFieldValue(val.reviewedValue) === null;
@@ -383,6 +388,11 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
   const tabRevisionCounts = tabs.reduce<Record<TabType, number>>((acc, tab) => {
     acc[tab] = TAB_FIELD_GROUPS[tab].filter((f) => !isManagerAccepted(fieldResults[f.key])).length;
+    return acc;
+  }, {} as Record<TabType, number>);
+
+  const tabWarningCounts = tabs.reduce<Record<TabType, number>>((acc, tab) => {
+    acc[tab] = TAB_FIELD_GROUPS[tab].filter((f) => isReturnedByManager(fieldResults[f.key])).length;
     return acc;
   }, {} as Record<TabType, number>);
 
@@ -530,13 +540,21 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   };
   const shouldShowField = (key: string, label: string) => {
     if (isStaffRevision) {
-      return !isManagerAccepted(fieldResults[key]);
+      return matchesFieldSearch(key, label);
     }
     return matchesReviewFilter(key) && matchesFieldSearch(key, label);
   };
-  const visibleFieldCount = isStaffRevision
-    ? activeTabRevisionFields.length
-    : activeTabFields.filter((field) => shouldShowField(field.key, field.label)).length;
+  const visibleFieldCount = activeTabFields.filter((field) => shouldShowField(field.key, field.label)).length;
+
+  const isFieldDisabled = (key: string, altKey?: string) => {
+    if (readOnly) return true;
+    const field = fieldResults[key] || (altKey ? fieldResults[altKey] : undefined);
+    if (isManagerAccepted(field)) return true;
+    if (isStaffRevision) {
+      return !isReturnedByManager(field);
+    }
+    return false;
+  };
   const tabStats = tabs.reduce<Record<TabType, { total: number; issues: number }>>((map, tab) => {
     const fields = TAB_FIELD_GROUPS[tab];
     map[tab] = {
@@ -569,17 +587,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
               {serverCandidate.draftName || (serverCandidate.draftSequence ? `Draft ${serverCandidate.draftSequence}` : 'Draft')} &middot; Round {serverCandidate.revisionNumber || 1}
             </span>
           </div>
-
-          {returnedFields.length > 0 && (
-            <div className={styles.revisionFeedbackList}>
-              {returnedFields.map(({ key, label, field }) => (
-                <div key={key} className={styles.revisionFeedbackItem}>
-                  <strong>{label}</strong>
-                  <span>"{field?.previousManagerReviewComment || field?.managerReviewComment || 'Manager requested a change.'}"</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       ) : !readOnly ? (
         <div className={styles.candidateHeader}>
@@ -742,23 +749,32 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
       <div className={styles.layoutContainer}>
         <div className={styles.mainContent}>
           <div className={styles.tabsContainer}>
-            {tabs.map(tab => (
-              <button
-                key={tab}
-                className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab}
-                {isStaffRevision ? (
-                  tabRevisionCounts[tab] > 0 && <span className={styles.tabCount}>{tabRevisionCounts[tab]}</span>
-                ) : (
-                  <>
-                    <span className={styles.tabCount}>{tabStats[tab].total}</span>
-                    {tabStats[tab].issues > 0 && <span className={styles.tabIssueDot}>{tabStats[tab].issues} issue</span>}
-                  </>
-                )}
-              </button>
-            ))}
+            {tabs.map(tab => {
+              const isWarningTab = isStaffRevision && (tabWarningCounts[tab] ?? 0) > 0;
+              const warningCount = tabWarningCounts[tab] ?? 0;
+              const totalCount = TAB_FIELD_GROUPS[tab].length;
+
+              return (
+                <button
+                  key={tab}
+                  className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''} ${
+                    isWarningTab ? (activeTab === tab ? styles.tabWarningActive : styles.tabWarning) : ''
+                  }`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                  <span className={styles.tabCount}>{totalCount}</span>
+                  {isWarningTab && (
+                    <span className={styles.tabWarningBadge}>
+                      ⚠ {warningCount}
+                    </span>
+                  )}
+                  {!isStaffRevision && tabStats[tab].issues > 0 && (
+                    <span className={styles.tabIssueDot}>{tabStats[tab].issues} issue</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {!isStaffRevision && (
@@ -795,70 +811,44 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
 
           {isStaffRevision && (
             <div className={styles.revisionSectionHeading}>
-              Fields requiring revision ({activeTabRevisionFields.length})
+              {(tabWarningCounts[activeTab] ?? 0) > 0
+                ? `${tabWarningCounts[activeTab]} field${tabWarningCounts[activeTab] !== 1 ? 's' : ''} in this tab require${tabWarningCounts[activeTab] === 1 ? 's' : ''} revision`
+                : '✓ All fields in this tab are approved'}
             </div>
           )}
 
           <div className={styles.tabContent}>
             {activeTab === 'Identity' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['identity.tradeName'])} revisionMode={isStaffRevision} isManual={isManual} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['contact.website'])} revisionMode={isStaffRevision} isManual={isManual} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.addresses', 'Addresses', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.addresses'] || fieldResults['contact.address'])} revisionMode={isStaffRevision} isManual={isManual} label="Addresses" fieldKey="contact.addresses" fieldResult={fieldResults['contact.addresses'] || fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.emails'])} revisionMode={isStaffRevision} isManual={isManual} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
-                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['contact.phones'])} revisionMode={isStaffRevision} isManual={isManual} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} />)}
+                {renderReviewField('identity.tradeName', 'Trade Name', <EditableScalarField disabled={isFieldDisabled('identity.tradeName')} revisionMode={isStaffRevision} isManual={isManual} label="Trade Name" fieldKey="identity.tradeName" fieldResult={fieldResults['identity.tradeName']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.website', 'Website', <EditableScalarField disabled={isFieldDisabled('contact.website')} revisionMode={isStaffRevision} isManual={isManual} label="Website" fieldKey="contact.website" fieldResult={fieldResults['contact.website']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.addresses', 'Addresses', <EditableListField disabled={isFieldDisabled('contact.addresses', 'contact.address')} revisionMode={isStaffRevision} isManual={isManual} label="Addresses" fieldKey="contact.addresses" fieldResult={fieldResults['contact.addresses'] || fieldResults['contact.address']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('contact.emails', 'Emails', <EditableListField disabled={isFieldDisabled('contact.emails')} revisionMode={isStaffRevision} isManual={isManual} label="Emails" fieldKey="contact.emails" fieldResult={fieldResults['contact.emails']} onChange={handleFieldChange} />)}
+                {renderReviewField('contact.phones', 'Phones', <EditableListField disabled={isFieldDisabled('contact.phones')} revisionMode={isStaffRevision} isManual={isManual} label="Phones" fieldKey="contact.phones" fieldResult={fieldResults['contact.phones']} onChange={handleFieldChange} />)}
               </div>
             )}
 
             {activeTab === 'Business' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.businessModel'])} revisionMode={isStaffRevision} isManual={isManual} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.industries', 'Industries', <EditableIndustryField disabled={readOnly || isManagerAccepted(fieldResults['business.industries'])} revisionMode={isStaffRevision} isManual={isManual} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.foundedYear', 'Founded Year', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.foundedYear'])} revisionMode={isStaffRevision} isManual={isManual} label="Founded Year" type="number" fieldKey="business.foundedYear" fieldResult={fieldResults['business.foundedYear']} onChange={handleFieldChange} />)}
-                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['companySize.employeeCount'])} revisionMode={isStaffRevision} isManual={isManual} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} />)}
-                {renderReviewField('business.companyDescription', 'Company Description', <EditableScalarField disabled={readOnly || isManagerAccepted(fieldResults['business.companyDescription'])} revisionMode={isStaffRevision} isManual={isManual} label="Company Description" fieldKey="business.companyDescription" type="textarea" fieldResult={fieldResults['business.companyDescription']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.businessModel', 'Business Model', <EditableScalarField disabled={isFieldDisabled('business.businessModel')} revisionMode={isStaffRevision} isManual={isManual} label="Business Model" fieldKey="business.businessModel" type="textarea" fieldResult={fieldResults['business.businessModel']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.industries', 'Industries', <EditableIndustryField disabled={isFieldDisabled('business.industries')} revisionMode={isStaffRevision} isManual={isManual} label="Industries" fieldKey="business.industries" fieldResult={fieldResults['business.industries']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.foundedYear', 'Founded Year', <EditableScalarField disabled={isFieldDisabled('business.foundedYear')} revisionMode={isStaffRevision} isManual={isManual} label="Founded Year" type="number" fieldKey="business.foundedYear" fieldResult={fieldResults['business.foundedYear']} onChange={handleFieldChange} />)}
+                {renderReviewField('companySize.employeeCount', 'Employee Count', <EditableScalarField disabled={isFieldDisabled('companySize.employeeCount')} revisionMode={isStaffRevision} isManual={isManual} label="Employee Count" type="number" fieldKey="companySize.employeeCount" fieldResult={fieldResults["companySize.employeeCount"]} onChange={handleFieldChange} />)}
+                {renderReviewField('business.companyDescription', 'Company Description', <EditableScalarField disabled={isFieldDisabled('business.companyDescription')} revisionMode={isStaffRevision} isManual={isManual} label="Company Description" fieldKey="business.companyDescription" type="textarea" fieldResult={fieldResults['business.companyDescription']} onChange={handleFieldChange} />, true)}
               </div>
             )}
 
             {activeTab === 'Market & Product' && (
               <div className={styles.fieldGrid}>
-                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.markets'])} revisionMode={isStaffRevision} isManual={isManual} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={readOnly || isManagerAccepted(fieldResults['business.targetCustomers'])} revisionMode={isStaffRevision} isManual={isManual} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} />, true)}
-                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={readOnly || isManagerAccepted(fieldResults['business.products'])} revisionMode={isStaffRevision} isManual={isManual} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.markets', 'Markets (Regions)', <EditableListField disabled={isFieldDisabled('business.markets')} revisionMode={isStaffRevision} isManual={isManual} label="Markets (Regions)" fieldKey="business.markets" fieldResult={fieldResults['business.markets']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.targetCustomers', 'Target Customers', <EditableListField disabled={isFieldDisabled('business.targetCustomers')} revisionMode={isStaffRevision} isManual={isManual} label="Target Customers" fieldKey="business.targetCustomers" fieldResult={fieldResults['business.targetCustomers']} onChange={handleFieldChange} />, true)}
+                {renderReviewField('business.products', 'Products & Services', <EditableProductList disabled={isFieldDisabled('business.products')} revisionMode={isStaffRevision} isManual={isManual} label="Products & Services" fieldKey="business.products" fieldResult={fieldResults['business.products']} onChange={handleFieldChange} />, true)}
               </div>
             )}
 
             {visibleFieldCount === 0 && (
               <div className={styles.emptyFilteredState}>
-                {isStaffRevision ? `All fields in ${activeTab} were approved by Manager.` : 'No fields match the current search or filter.'}
-              </div>
-            )}
-
-            {isStaffRevision && allApprovedFields.length > 0 && (
-              <div className={styles.approvedSection}>
-                <button
-                  type="button"
-                  className={styles.approvedSectionToggle}
-                  onClick={() => setShowApproved(!showApproved)}
-                >
-                  <span className={styles.approvedCheckIcon}>✓</span>
-                  <span><strong>{allApprovedFields.length}</strong> previously approved field{allApprovedFields.length !== 1 ? 's' : ''}</span>
-                  <span className={styles.approvedActionText}>
-                    {showApproved ? 'Hide approved fields' : 'View approved fields'}
-                  </span>
-                  {showApproved ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-                {showApproved && (
-                  <div className={styles.compactApprovedList}>
-                    {allApprovedFields.map(f => (
-                      <div key={f.key} className={styles.compactApprovedRow}>
-                        <span className={styles.compactApprovedLabel}>{f.label}</span>
-                        <span className={styles.compactApprovedValue}>{fieldValueToText(getFieldValue(f.key)) || '—'}</span>
-                        <span className={styles.compactApprovedBadge}>Approved</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                No fields match the current search or filter.
               </div>
             )}
           </div>

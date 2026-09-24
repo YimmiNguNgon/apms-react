@@ -486,6 +486,16 @@
   border-color: #fcd34d;
 }
 
+.fieldRowApproved {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.fieldRowReturned {
+  border-color: #fdba74;
+  border-left: 3px solid #f97316;
+}
+
 .fieldRowHeader {
   display: flex;
   justify-content: space-between;
@@ -2683,6 +2693,33 @@
   color: #b45309;
   font-size: 11px;
   font-weight: 800;
+}
+
+.tabWarning {
+  color: #c2410c;
+}
+
+.tabWarning:hover {
+  color: #9a3412;
+}
+
+.tabWarningActive {
+  color: #dc2626 !important;
+  border-bottom-color: #dc2626 !important;
+}
+
+.tabWarningBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
 }
 
 .emptyFilteredState {

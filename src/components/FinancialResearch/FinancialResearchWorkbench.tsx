@@ -52,7 +52,7 @@ import {
   FINANCIAL_STATEMENT_SECTIONS,
 } from './canonicalFinancialTaxonomy';
 import { parseFinancialValue } from './financialValidation';
-import { isManualReport, resolveReportDocumentId } from './financialDocumentUtils';
+import { isManualReport, isReportChangesRequested, resolveReportDocumentId } from './financialDocumentUtils';
 import {
   FinancialMetricsTable,
   FinancialTableHeader,
@@ -89,7 +89,6 @@ type PackageCounts = {
   extracted: number;
   selected: number;
   metrics: number;
-  needsReview: number;
   unverified: number;
 };
 
@@ -98,7 +97,7 @@ type UploadedDocumentResponse = {
   id?: string | null;
 };
 
-type MetricFilter = 'ALL' | 'NEEDS_REVIEW' | 'VERIFIED' | 'MANUAL';
+type MetricFilter = 'ALL' | 'VERIFIED' | 'MANUAL';
 
 const isReportExtracted = (report: FinancialReportEntry) =>
   report.extractionStatus === 'EXTRACTED' || report.extractionStatus === 'NEEDS_REVIEW';
@@ -121,6 +120,18 @@ const formatPeriod = (report?: FinancialReportEntry | null) => {
   if (period.periodType === 'FULL_YEAR' && period.year) return `FY ${period.year}`;
   if (period.asOfDate) return `As of ${formatDate(period.asOfDate)}`;
   return period.year ? String(period.year) : 'N/A';
+};
+
+const getFinancialPeriodRank = (periodLabel: string): number => {
+  const upper = periodLabel.toUpperCase();
+  if (upper.startsWith('Q1')) return 1;
+  if (upper.startsWith('H1')) return 2;
+  if (upper.startsWith('Q2')) return 3;
+  if (upper.startsWith('Q3')) return 4;
+  if (upper.startsWith('H2')) return 5;
+  if (upper.startsWith('Q4')) return 6;
+  if (upper.startsWith('FY') || upper.startsWith('FULL')) return 7;
+  return 0;
 };
 
 const formatMetricPeriod = (metric: FinancialMetricResponse, report?: FinancialReportEntry | null) => {
@@ -257,6 +268,7 @@ function SelectedReportSummary({
 }) {
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isFailed = report.extractionStatus === 'FAILED';
+  const isChangesRequested = isReportChangesRequested(report);
 
   return (
     <div className={styles.metricsPanel}>
@@ -287,20 +299,27 @@ function SelectedReportSummary({
                 : 'View Source PDF'}
             </button>
           )}
-          <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
-            {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
-          </span>
+          {isChangesRequested ? (
+            <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
+              <AlertTriangle size={13} />
+              Changes Requested
+            </span>
+          ) : (
+            <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
+              {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
+            </span>
+          )}
         </div>
       </div>
 
-      {!hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!hasTopReviewBanner && isChangesRequested && (
         <div className={styles.managerFeedbackBanner}>
           <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
           <div className={styles.managerFeedbackContent}>
-            <strong>Manager Feedback / Changes Requested</strong>
+            <strong>Manager Feedback</strong>
             <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>
             <small>
-              {report.reviewedByName || 'Manager'}
+              {report.reviewedByName ? `Requested by: ${report.reviewedByName}` : 'Requested by: Manager'}
               {report.reviewedAt ? ` • ${formatDate(report.reviewedAt)}` : ''}
             </small>
           </div>
@@ -419,14 +438,13 @@ function ExtractedMetricsPanel({
 }) {
   const isApproved = report.reviewStatus === 'APPROVED';
   const isPendingReview = report.reviewStatus === 'PENDING_REVIEW';
+  const isChangesRequested = isReportChangesRequested(report);
   const canEditThisReport = canEdit && !isApproved && !isPendingReview;
   const canPerformAiActions = canEditThisReport && !isManagerMode && !isApproved && !isPendingReview;
 
-  const needsReview = metrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length;
   const verified = metrics.filter(metric => metric.verificationStatus === 'VERIFIED').length;
   const manual = metrics.filter(metric => metric.inputMethod === 'MANUAL').length;
   const visibleMetrics = metrics.filter(metric => {
-    if (metricFilter === 'NEEDS_REVIEW') return metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED';
     if (metricFilter === 'VERIFIED') return metric.verificationStatus === 'VERIFIED';
     if (metricFilter === 'MANUAL') return metric.inputMethod === 'MANUAL';
     return true;
@@ -459,7 +477,6 @@ function ExtractedMetricsPanel({
 
   const filterItems: Array<{ key: MetricFilter; label: string; count: number; warning?: boolean }> = [
     { key: 'ALL', label: 'All', count: metrics.length },
-    { key: 'NEEDS_REVIEW', label: 'Needs Review', count: needsReview, warning: needsReview > 0 },
     { key: 'VERIFIED', label: 'Verified', count: verified },
     { key: 'MANUAL', label: 'Manual', count: manual },
   ];
@@ -582,8 +599,8 @@ function ExtractedMetricsPanel({
             <CheckCircle2 size={13} />
             Approved by Manager (Read Only)
           </span>
-        ) : report.reviewStatus === 'CHANGES_REQUESTED' ? (
-          <span className={`${styles.statusBadge} ${styles.statusNeedsReview}`}>
+        ) : isChangesRequested ? (
+          <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
             <AlertTriangle size={13} />
             Changes Requested
           </span>
@@ -604,14 +621,14 @@ function ExtractedMetricsPanel({
       </div>
 
       {/* 2. Manager Feedback Banner if changes requested */}
-      {!hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
+      {!hasTopReviewBanner && isChangesRequested && (
         <div className={styles.managerFeedbackBanner}>
           <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
           <div className={styles.managerFeedbackContent}>
-            <strong>Manager Feedback / Changes Requested</strong>
+            <strong>Manager Feedback</strong>
             <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>
             <small>
-              {report.reviewedByName || 'Manager'}
+              {report.reviewedByName ? `Requested by: ${report.reviewedByName}` : 'Requested by: Manager'}
               {report.reviewedAt ? ` • ${formatDate(report.reviewedAt)}` : ''}
             </small>
           </div>
@@ -1044,7 +1061,6 @@ function ExtractedMetricsPanel({
                   {group.metrics.map(metric => {
                     const value = metricValueParts(metric);
                     const isVerified = metric.verificationStatus === 'VERIFIED';
-                    const isNeedsReview = metric.qualityStatus === 'NEEDS_REVIEW' && !isVerified;
                     const showEvidence = evidenceOpen && metric.id === selectedMetricId;
                     return (
                       <React.Fragment key={metric.id}>
@@ -1064,8 +1080,8 @@ function ExtractedMetricsPanel({
                             <span className={styles.sourceTag}>{getMetricSource(metric)}</span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <span className={`${styles.statusBadge} ${isNeedsReview ? styles.statusNeedsReview : isVerified ? styles.statusApproved : styles.statusNeutral}`}>
-                              {isNeedsReview ? 'Cần kiểm tra' : isVerified ? 'Đã xác minh' : 'Sẵn sàng'}
+                            <span className={`${styles.statusBadge} ${isVerified ? styles.statusApproved : styles.statusNeutral}`}>
+                              {isVerified ? 'Đã xác minh' : 'Sẵn sàng'}
                             </span>
                           </td>
                           {canPerformAiActions && (
@@ -1336,6 +1352,19 @@ function FinancialReportsPanel({
     return groups;
   }, {} as Record<string, FinancialReportEntry[]>);
 
+  const sortedGroupEntries = useMemo(() => {
+    return Object.entries(groupedReports).sort(([groupA], [groupB]) => {
+      const yearMatchA = groupA.match(/\b(19\d\d|20\d\d)\b/);
+      const yearMatchB = groupB.match(/\b(19\d\d|20\d\d)\b/);
+      const yearA = yearMatchA ? parseInt(yearMatchA[0], 10) : 0;
+      const yearB = yearMatchB ? parseInt(yearMatchB[0], 10) : 0;
+      if (yearA !== yearB) {
+        return yearB - yearA;
+      }
+      return getFinancialPeriodRank(groupA) - getFinancialPeriodRank(groupB);
+    });
+  }, [groupedReports]);
+
   return (
     <section className={`${styles.panel} ${styles.leftPanel}`}>
       <div className={styles.panelHead}>
@@ -1397,19 +1426,17 @@ function FinancialReportsPanel({
         <FinancialReportsEmptyState />
       ) : (
         <div className={styles.reportGroups}>
-          {Object.entries(groupedReports).map(([group, groupReports]) => (
+          {sortedGroupEntries.map(([group, groupReports]) => (
             <div className={styles.reportGroup} key={group}>
               <h4 className={styles.reportGroupTitle}>{group}</h4>
               <div className={styles.reportList}>
                 {groupReports.map(report => {
                   const reportMetrics = metrics.filter(metric => metricBelongsToReport(metric, report));
-                  const reportNeedsReview = reportMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length;
                   return (
                     <FinancialReportCard
                       key={report.id}
                       report={report}
                       metricCount={reportMetrics.length}
-                      needsReviewCount={reportNeedsReview}
                       selected={report.id === selectedReportId}
                       selectedForSubmission={selectedSubmissionSet.has(report.id)}
                       isEligible={eligibleSubmissionSet.has(report.id)}
@@ -1548,9 +1575,9 @@ function ManagerReviewSummaryBar({
   }
 
   const pendingReports = reports.filter(r => r.reviewStatus === 'PENDING_REVIEW' || !r.reviewStatus);
-  const reviewedReports = reports.filter(r => r.reviewStatus === 'APPROVED' || r.reviewStatus === 'CHANGES_REQUESTED');
+  const reviewedReports = reports.filter(r => r.reviewStatus === 'APPROVED' || isReportChangesRequested(r));
   const isApproved = selectedReport?.reviewStatus === 'APPROVED';
-  const isChangesRequested = selectedReport?.reviewStatus === 'CHANGES_REQUESTED';
+  const isChangesRequested = isReportChangesRequested(selectedReport);
   const isReviewable = !isApproved && !isChangesRequested;
 
   return (
@@ -1727,7 +1754,7 @@ export default function FinancialResearchWorkbench({
     const filtered = allReports.filter(
       report =>
         report.reviewStatus === 'PENDING_REVIEW' ||
-        report.reviewStatus === 'CHANGES_REQUESTED' ||
+        isReportChangesRequested(report) ||
         report.reviewStatus === 'APPROVED'
     );
     return filtered.length > 0 ? filtered : allReports;
@@ -1775,7 +1802,6 @@ export default function FinancialResearchWorkbench({
     extracted: reports.filter(r => r.dataEntryMethod === 'MANUAL' ? metrics.some(m => metricBelongsToReport(m, r)) : isReportExtracted(r)).length,
     selected: selectedReportIdsForSubmission.length,
     metrics: selectedSubmissionMetrics.length,
-    needsReview: selectedSubmissionMetrics.filter(metric => metric.qualityStatus === 'NEEDS_REVIEW' && metric.verificationStatus !== 'VERIFIED').length,
     unverified: selectedSubmissionMetrics.filter(metric => metric.inputMethod !== 'MANUAL' && metric.verificationStatus !== 'VERIFIED').length,
   }), [metrics, reports, selectedReportIdsForSubmission.length, selectedSubmissionMetrics]);
 
@@ -2077,7 +2103,6 @@ export default function FinancialResearchWorkbench({
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setIsAddMetricModalOpen(false);
       setToast({ message: 'Đã thêm chỉ số tài chính thủ công thành công.', type: 'success' });
-      setMetricFilter(prev => prev === 'NEEDS_REVIEW' ? 'ALL' : prev);
     },
     onError: (err: any) => {
       setToast({ message: err?.response?.data?.message || 'Không thể thêm chỉ số tài chính.', type: 'error' });
@@ -2093,7 +2118,6 @@ export default function FinancialResearchWorkbench({
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setToast({ message: 'Đã lưu các chỉ số tài chính thành công.', type: 'success' });
-      setMetricFilter(prev => prev === 'NEEDS_REVIEW' ? 'ALL' : prev);
     },
     onError: (err: any) => {
       setToast({ message: err?.response?.data?.message || 'Không thể lưu các chỉ số tài chính.', type: 'error' });
@@ -2169,7 +2193,7 @@ export default function FinancialResearchWorkbench({
       isSubmitted &&
       research?.status === 'SUBMITTED' &&
       reports.filter(r => (research?.submittedReportIds && research.submittedReportIds.length > 0 ? research.submittedReportIds.includes(r.id) : true))
-             .every(r => r.reviewStatus !== 'APPROVED' && r.reviewStatus !== 'CHANGES_REQUESTED')
+             .every(r => r.reviewStatus !== 'APPROVED' && !isReportChangesRequested(r))
     )
   );
 

@@ -5,7 +5,7 @@ import { AlertTriangle, Check, CheckCircle, XCircle, Clock, Send, X as XIcon, Lo
 import { candidateApi } from '../../API/candidateApi';
 import { taskApi } from '../../API/taskApi';
 import type { AiFieldResult, CandidateFieldEvidence, CandidateResponse, FieldApprovalRecord, FieldReviewDecision, ProjectTaskSubmissionResponse, ManagerReviewHistoryItem } from '../../types/domain';
-import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, isCandidateFieldEdited, isManualCandidate, normalizeCandidateFieldValue, type CandidateCategoryTab } from './candidateFieldDefinitions';
+import { CANDIDATE_FIELD_GROUPS, CANDIDATE_TABS, areCandidateFieldValuesEqual, isCandidateFieldEdited, isManualCandidate, normalizeCandidateFieldValue, type CandidateCategoryTab } from './candidateFieldDefinitions';
 import { ManagerReviewFieldCard } from './ManagerReviewFieldCard';
 import { parseEvidenceCitations } from './EvidenceSection';
 import styles from './CandidateReview.module.css';
@@ -75,6 +75,17 @@ const tabForFieldKey = (fieldKey: string): TabType | undefined => (
 const labelForFieldKey = (fieldKey: string): string => (
   Object.values(FIELD_DEFS).flat().find(field => field.key === fieldKey)?.label || fieldKey
 );
+
+const FULL_WIDTH_FIELD_KEYS = new Set([
+  'contact.addresses',
+  'contact.address',
+  'business.businessModel',
+  'business.industries',
+  'business.companyDescription',
+  'business.markets',
+  'business.targetCustomers',
+  'business.products',
+]);
 
 /* ── Date Formatter ── */
 function formatReviewDate(dateStr?: string | null): string {
@@ -270,10 +281,25 @@ const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, k
   // Previous decision resolution: strictly earlier rounds only (< currentRound). Round 1 is strictly null!
   let previousDecision: FieldReviewDecision | null = null;
   if (currentRound > 1) {
+    let resolvedPrevSubmittedValue = approval?.previousSubmittedValue
+      ?? field?.previousSubmittedValue
+      ?? (field?.previousDecision?.submittedValue !== undefined ? field?.previousDecision?.submittedValue : undefined);
+
+    // Safeguard: if previous submitted value matches current round effectiveValue, but raw AI field value differs,
+    // recover the true initial Round 1 submitted value
+    if (
+      (resolvedPrevSubmittedValue === undefined || areCandidateFieldValuesEqual(resolvedPrevSubmittedValue, effectiveValue)) &&
+      rawFieldValue !== undefined &&
+      !areCandidateFieldValuesEqual(rawFieldValue, effectiveValue)
+    ) {
+      resolvedPrevSubmittedValue = rawFieldValue;
+    }
+
     if (field?.previousDecision && field.previousDecision.roundNumber < currentRound) {
       previousDecision = {
         ...field.previousDecision,
         status: normalizeManagerStatus(field.previousDecision.status),
+        submittedValue: resolvedPrevSubmittedValue !== undefined ? resolvedPrevSubmittedValue : field.previousDecision.submittedValue,
       };
     } else {
       const rawPrevStatus = approval?.previousStatus
@@ -287,7 +313,7 @@ const effectiveFieldForKey = (candidate: CandidateResponse | null | undefined, k
             roundNumber: prevRound,
             status: rawPrevStatus,
             comment: approval?.previousComment ?? field?.previousManagerReviewComment ?? null,
-            submittedValue: field?.previousSubmittedValue ?? approval?.pendingValue,
+            submittedValue: resolvedPrevSubmittedValue,
             reviewedAt: (field as any)?.previousManagerReviewedAt ?? null,
             reviewedByUserId: null,
           };
@@ -406,59 +432,12 @@ const numberField = (item: EvidenceItem, keys: string[]): number | undefined => 
   return undefined;
 };
 
-const evidenceForField = (candidate: CandidateResponse | null | undefined, key: string): EvidenceItem[] => {
+const evidenceForField = (candidate: CandidateResponse | null | undefined, key: string): EvidenceItem[] | undefined => {
   const field = effectiveFieldForKey(candidate, key);
-  const fieldEvidence = evidenceMapForKey(candidate, key);
-  const sourceIds = Array.isArray(field?.sourceDocumentIds) ? field.sourceDocumentIds : [];
-  const baseEvidence: EvidenceItem[] = fieldEvidence.length > 0
-    ? fieldEvidence
-    : sourceIds.map(rawDocumentId => ({ rawDocumentId }));
-
-  const evidenceText = typeof field?.evidenceText === 'string' ? field.evidenceText.trim() : '';
-  const fieldEvidenceItems = Array.isArray(field?.evidence) ? field.evidence.filter(Boolean) as EvidenceItem[] : [];
-  const merged = [
-    ...baseEvidence.map(item => ({
-      ...item,
-      evidenceText: evidenceTextOf(item) || evidenceText || undefined,
-      pageNumber: numberField(item, ['pageNumber', 'page']) ?? field?.pageNumber,
-      confidence: numberField(item, ['confidence']) ?? field?.confidence,
-    })),
-    ...fieldEvidenceItems,
-  ];
-
-  if (merged.length === 0 && evidenceText) {
-    const citations = parseEvidenceCitations(evidenceText, undefined, field?.pageNumber);
-    if (citations.length > 0) {
-      for (const cit of citations) {
-        const pageNum = cit.page ? parseInt(cit.page.replace(/\D+/g, ''), 10) || undefined : field?.pageNumber;
-        merged.push({
-          fileName: cit.fileName !== 'Source Document' ? cit.fileName : undefined,
-          rawDocumentId: cit.docId,
-          pageNumber: pageNum,
-          evidenceText: cit.quote,
-          confidence: field?.confidence,
-        });
-      }
-    } else {
-      merged.push({
-        evidenceText,
-        pageNumber: field?.pageNumber,
-        confidence: field?.confidence,
-      });
-    }
+  if (Array.isArray(field?.evidence) && field.evidence.length > 0) {
+    return field.evidence as EvidenceItem[];
   }
-
-  const seen = new Set<string>();
-  return merged.filter(item => {
-    const fingerprint = [
-      stringField(item, ['rawDocumentId', 'documentId', 'sourceDocumentId', 'fileName', 'documentName']) || '',
-      numberField(item, ['pageNumber', 'page']) ?? '',
-      evidenceTextOf(item),
-    ].join('|');
-    if (!fingerprint.trim() || seen.has(fingerprint)) return false;
-    seen.add(fingerprint);
-    return true;
-  });
+  return undefined;
 };
 
 const hasReviewedValue = (field: any): boolean => (
@@ -877,16 +856,25 @@ export const ManagerCandidateReviewWorkspace: React.FC<ManagerCandidateReviewWor
       );
     }
 
+    const sourceDocNames = (sourceDocuments || []).map(d => d.fileName).filter(Boolean);
+    const defaultDocName = sourceDocNames.length > 0 ? sourceDocNames[0] : (serverCandidate?.detectedCompanyName ? `${serverCandidate.detectedCompanyName}.pdf` : undefined);
+
     const cards = fields.map(f => {
-      const evidenceItems = evidenceForField(serverCandidate, f.key);
+      const isFull = FULL_WIDTH_FIELD_KEYS.has(f.key);
+      const field = effectiveFieldForKey(serverCandidate, f.key);
       return (
-        <div key={f.key} id={`field-${f.key}`} className={styles.managerFieldGridItem}>
+        <div
+          key={f.key}
+          id={`field-${f.key}`}
+          className={`${styles.managerFieldGridItem} ${isFull ? styles.fullWidthGridItem : ''}`}
+        >
           <ManagerReviewFieldCard
             label={f.label}
             fieldKey={f.key}
-            fieldResult={effectiveFieldForKey(serverCandidate, f.key)}
+            fieldResult={field}
             currentRevisionNumber={serverCandidate?.currentReviewRound ?? serverCandidate?.revisionNumber ?? 1}
-            evidenceItems={evidenceItems}
+            evidenceItems={field?.evidence}
+            defaultFileName={defaultDocName}
             onDecision={async (decision, comment) => {
               await handleFieldDecision(f.key, decision, comment, f.label);
             }}

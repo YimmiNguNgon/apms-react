@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Edit3, FileText, Loader2, Play, RefreshCw, Trash2, XCircle } from 'lucide-react';
 import type { FinancialReportEntry } from '../../types/domain';
-import { isManualReport, resolveReportDocumentId } from './financialDocumentUtils';
+import { isManualReport, isReportChangesRequested, resolveReportDocumentId } from './financialDocumentUtils';
 import styles from './FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -12,7 +12,6 @@ interface Props {
   onViewPdf: (documentId: string) => void;
   isOpeningPdf?: boolean;
   metricCount: number;
-  needsReviewCount: number;
   selected?: boolean;
   selectedForSubmission?: boolean;
   isEligible?: boolean;
@@ -59,7 +58,6 @@ export default function FinancialReportCard({
   onViewPdf,
   isOpeningPdf = false,
   metricCount,
-  needsReviewCount,
   selected = false,
   selectedForSubmission = false,
   isEligible = false,
@@ -87,11 +85,20 @@ export default function FinancialReportCard({
   };
 
   const isApproved = report.reviewStatus === 'APPROVED';
+  const requiresRevision = isReportChangesRequested(report);
   const canEditCard = canEdit && !isApproved;
 
   return (
     <article
-      className={`${styles.reportCard} ${selected ? styles.reportCardSelected : ''}`}
+      className={`${styles.reportCard} ${
+        requiresRevision
+          ? selected
+            ? styles.reportCardChangesRequestedSelected
+            : styles.reportCardChangesRequested
+          : selected
+          ? styles.reportCardSelected
+          : ''
+      }`}
       onClick={() => onSelect?.(report.id)}
       aria-current={selected ? 'true' : undefined}
     >
@@ -104,7 +111,7 @@ export default function FinancialReportCard({
               <CheckCircle2 size={12} />
               Approved
             </span>
-          ) : report.reviewStatus === 'CHANGES_REQUESTED' ? (
+          ) : requiresRevision ? (
             <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
               <AlertTriangle size={12} />
               Changes Requested
@@ -121,20 +128,28 @@ export default function FinancialReportCard({
             Approved
           </span>
         ) : (
-          <label
-            className={styles.cardSelectLabel}
-            onClick={stop}
-            title={!isEligible ? (isManual ? 'Enter at least one metric before adding to submission.' : 'Extract this report before adding it to the submission.') : 'Select this report for manager submission.'}
-          >
-            <input
-              type="checkbox"
-              checked={selectedForSubmission}
-              disabled={!canEditCard || !isEligible}
-              onChange={handleSelectionChange}
-              aria-label={`Select ${report.title} for submission`}
-            />
-            <span>Submit</span>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {requiresRevision && (
+              <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
+                <AlertTriangle size={12} />
+                Changes Requested
+              </span>
+            )}
+            <label
+              className={styles.cardSelectLabel}
+              onClick={stop}
+              title={!isEligible ? (isManual ? 'Enter at least one metric before adding to submission.' : 'Extract this report before adding it to the submission.') : 'Select this report for manager submission.'}
+            >
+              <input
+                type="checkbox"
+                checked={selectedForSubmission}
+                disabled={!canEditCard || !isEligible}
+                onChange={handleSelectionChange}
+                aria-label={`Select ${report.title} for submission`}
+              />
+              <span>Submit</span>
+            </label>
+          </div>
         )}
 
         {canEditCard && (
@@ -192,14 +207,10 @@ export default function FinancialReportCard({
 
       <h4 className={styles.cardTitle}>{report.title}</h4>
 
-      {!isManagerMode && !hasTopReviewBanner && report.reviewStatus === 'CHANGES_REQUESTED' && (
-        <div className={styles.cardFeedbackBox}>
-          <strong>Manager Feedback</strong>
-          <p>{report.reviewComment || 'Manager requested changes to this report.'}</p>
-          <small>
-            {report.reviewedByName || 'Manager'}
-            {report.reviewedAt ? ` • ${formatDate(report.reviewedAt)}` : ''}
-          </small>
+      {requiresRevision && (
+        <div className={styles.cardRevisionNotice}>
+          <AlertTriangle size={12} />
+          <span>Manager requested revisions</span>
         </div>
       )}
 
@@ -250,7 +261,7 @@ export default function FinancialReportCard({
             ) : isExtracted ? (
               <>
                 <CheckCircle2 size={14} />
-                <span>{metricCount} metrics {needsReviewCount > 0 && `(${needsReviewCount} review)`}</span>
+                <span>{metricCount} {metricCount === 1 ? 'metric' : 'metrics'}</span>
               </>
             ) : isFailed ? (
               <>

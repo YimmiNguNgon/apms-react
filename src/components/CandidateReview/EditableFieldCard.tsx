@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Edit3, Check, X, Undo2, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import type { AiFieldResult } from '../../types/domain';
-import { isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
+import { areCandidateFieldValuesEqual, isCandidateFieldEdited, normalizeCandidateFieldValue } from './candidateFieldDefinitions';
 import { EvidenceSection } from './EvidenceSection';
 import styles from './CandidateReview.module.css';
 
@@ -73,7 +73,15 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
     || previousManagerStatus === 'CHANGES_REQUESTED'
     || previousManagerStatus === 'NEEDS_REVIEW';
   const managerFeedback = fieldResult?.previousManagerReviewComment || fieldResult?.managerReviewComment;
-  const previousSubmittedValue = fieldResult?.previousSubmittedValue;
+  let previousSubmittedValue = fieldResult?.previousSubmittedValue
+    ?? fieldResult?.previousDecision?.submittedValue;
+  if (
+    (previousSubmittedValue === undefined || areCandidateFieldValuesEqual(previousSubmittedValue, currentValue)) &&
+    aiOriginal !== undefined &&
+    !areCandidateFieldValuesEqual(aiOriginal, currentValue)
+  ) {
+    previousSubmittedValue = aiOriginal;
+  }
 
   const handleEditClick = () => {
     setIsEditing(true);
@@ -86,47 +94,19 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
     setIsEditing(false);
   };
 
-  if (revisionMode) {
-    return (
-      <div className={`${styles.fieldRow} ${styles.revisionFieldCard} ${isValidationFail ? styles.fieldRowIssue : ''}`}>
-        <div className={styles.fieldRowHeader}>
-          <span className={styles.fieldLabel}>{label.toUpperCase()}</span>
-          <div className={styles.fieldBadges}>
-            <span className={`${styles.reviewBadge} ${styles.reviewReturned}`}>
-              Changes requested
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.fieldBody} style={{ marginTop: '8px' }}>
-          {managerFeedback && (
-            <div className={styles.revisionFieldFeedback}>
-              <span className={styles.feedbackLabel}>Manager feedback:</span>
-              <span className={styles.feedbackText}>"{managerFeedback}"</span>
-            </div>
-          )}
-
-          <div className={styles.fieldValue}>
-            {children}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`${styles.fieldRow} ${dirty ? styles.fieldRowDirty : ''} ${isValidationFail ? styles.fieldRowIssue : ''} ${confidence > 0 && confidence < 0.6 ? styles.fieldRowLowConfidence : ''}`}>
+    <div className={`${styles.fieldRow} ${dirty ? styles.fieldRowDirty : ''} ${isValidationFail ? styles.fieldRowIssue : ''} ${confidence > 0 && confidence < 0.6 ? styles.fieldRowLowConfidence : ''} ${isManagerApproved ? styles.fieldRowApproved : ''} ${isReturned && !isManagerApproved ? styles.fieldRowReturned : ''}`}>
       <div className={styles.fieldRowHeader}>
         <span className={styles.fieldLabel}>{label}</span>
         <div className={styles.fieldBadges}>
           {isManagerApproved && (
             <span className={`${styles.reviewBadge} ${styles.reviewConfirmed}`}>
-              Approved by Manager
+              ✓ Approved
             </span>
           )}
           {isReturned && !isManagerApproved && (
             <span className={`${styles.reviewBadge} ${styles.reviewReturned}`}>
-              Changes Requested
+              ⚠ Changes Requested
             </span>
           )}
           {!isManual && confidence > 0 && (
@@ -138,6 +118,24 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
       </div>
 
       <div className={styles.fieldBody}>
+        {isReturned && !isManagerApproved && managerFeedback && (
+          <div className={styles.managerFeedbackInline} style={{ marginBottom: '10px' }}>
+            {previousSubmittedValue !== undefined && previousSubmittedValue !== null && previousSubmittedValue !== '' && (
+              <div>
+                <span>Previous submitted value</span>
+                <strong>{typeof previousSubmittedValue === 'string' ? previousSubmittedValue : JSON.stringify(previousSubmittedValue)}</strong>
+              </div>
+            )}
+            <div>
+              <span>Manager feedback</span>
+              <strong>"{managerFeedback}"</strong>
+            </div>
+            {fieldResult?.previousManagerReviewStatus && (
+              <small>{fieldResult.previousManagerReviewStatus} in Round {fieldResult.previousReviewedRevision || 1}</small>
+            )}
+          </div>
+        )}
+
         <div className={styles.fieldValue}>
           {isEditing ? (
             <div className={styles.editInline}>
@@ -165,11 +163,7 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
             {(isManagerApproved || isValidationFail) && (
               <div className={styles.evidenceLine}>
                 {isManagerApproved && (
-                  <>
-                    <span>Approved in Round {fieldResult?.previousReviewedRevision || fieldResult?.changedInRevision || ''}</span>
-                    <span>&middot;</span>
-                    <span>Locked</span>
-                  </>
+                  <span>Approved in Round {fieldResult?.previousReviewedRevision || fieldResult?.changedInRevision || 1} &middot; Locked</span>
                 )}
                 {isValidationFail && (
                   <span className={`${styles.validationBadge} ${styles.validFail}`}>
@@ -188,59 +182,47 @@ export const EditableFieldCard: React.FC<EditableFieldCardProps> = ({
                 onToggle={() => setExpandedEvidence(!expandedEvidence)}
               />
             )}
-
-            {isReturned && (
-              <div className={styles.managerFeedbackInline}>
-                {previousSubmittedValue !== undefined && (
-                  <div>
-                    <span>Previous submitted value</span>
-                    <strong>{typeof previousSubmittedValue === 'string' ? previousSubmittedValue : JSON.stringify(previousSubmittedValue)}</strong>
-                  </div>
-                )}
-                <div>
-                  <span>Manager feedback</span>
-                  <strong>{managerFeedback || 'Manager requested a change.'}</strong>
-                </div>
-                {fieldResult?.previousManagerReviewStatus && (
-                  <small>{fieldResult.previousManagerReviewStatus} in Round {fieldResult.previousReviewedRevision || 1}</small>
-                )}
-              </div>
-            )}
           </div>
         )}
               
-              {!isEditing && (
-                <div className={styles.fieldFooter} style={{ marginTop: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
-                  <div className={styles.fieldFooterLeft}>
-                    {isEdited ? (
-                      <span className={`${styles.reviewBadge} ${styles.reviewEdited}`}>
-                        {isAdded ? 'Added' : isRemoved ? 'Removed' : 'Edited'}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className={styles.fieldFooterRight}>
-                    {disabled ? (
-                      <span className={styles.textConfirmed} style={{ color: '#6b7280', fontSize: '12px' }}>🔒 Locked</span>
-                    ) : (
-                      <>
-                        <button className={styles.btnCompact} onClick={handleEditClick} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600 }}>
-                          <Edit3 size={14}/> Edit
-                        </button>
-                        {!isManual && !isConfirmed && (
-                          <button className={`${styles.btnCompact} ${styles.btnConfirm}`} onClick={onConfirm} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontWeight: 600 }}>
-                            <Check size={14}/> Confirm
-                          </button>
-                        )}
-                        {!isManual && isConfirmed && (
-                          <span className={styles.reviewConfirmed} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontWeight: 600 }}>
-                            <Check size={14} /> Confirmed
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
+        {!isEditing && (
+          <div className={styles.fieldFooter} style={{ marginTop: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '12px' }}>
+            <div className={styles.fieldFooterLeft}>
+              {isEdited ? (
+                <span className={`${styles.reviewBadge} ${styles.reviewEdited}`}>
+                  {isAdded ? 'Added' : isRemoved ? 'Removed' : 'Edited'}
+                </span>
+              ) : null}
+            </div>
+            <div className={styles.fieldFooterRight}>
+              {isManagerApproved ? (
+                <span className={styles.textConfirmed} style={{ color: '#16a34a', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                  ✓ Approved &middot; Locked
+                </span>
+              ) : disabled ? (
+                <span className={styles.textConfirmed} style={{ color: '#6b7280', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  🔒 Locked
+                </span>
+              ) : (
+                <>
+                  <button className={styles.btnCompact} onClick={handleEditClick} style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600 }}>
+                    <Edit3 size={14}/> Edit
+                  </button>
+                  {!isManual && !isConfirmed && (
+                    <button className={`${styles.btnCompact} ${styles.btnConfirm}`} onClick={onConfirm} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontWeight: 600 }}>
+                      <Check size={14}/> Confirm
+                    </button>
+                  )}
+                  {!isManual && isConfirmed && (
+                    <span className={styles.reviewConfirmed} style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontWeight: 600 }}>
+                      <Check size={14} /> Confirmed
+                    </span>
+                  )}
+                </>
               )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
