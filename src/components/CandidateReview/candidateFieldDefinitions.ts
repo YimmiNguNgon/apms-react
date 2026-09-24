@@ -9,10 +9,8 @@ export interface CandidateFieldDefinition {
 }
 
 export const CANONICAL_FIELD_DEFINITIONS: CandidateFieldDefinition[] = [
-  // Identity (Legal Name and Tax Code are project-target controlled, not staff/manager research fields)
-  { key: 'identity.legalName', label: 'Legal Name', section: 'Identity', staffEditable: false, managerReviewable: false },
+  // Identity (5 reviewable fields)
   { key: 'identity.tradeName', label: 'Trade Name', section: 'Identity', staffEditable: true, managerReviewable: true },
-  { key: 'identity.taxCode', label: 'Tax Code', section: 'Identity', staffEditable: false, managerReviewable: false },
   { key: 'contact.website', label: 'Website', section: 'Identity', staffEditable: true, managerReviewable: true },
   { key: 'contact.addresses', label: 'Addresses', section: 'Identity', staffEditable: true, managerReviewable: true },
   { key: 'contact.emails', label: 'Emails', section: 'Identity', staffEditable: true, managerReviewable: true },

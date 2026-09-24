@@ -1,7 +1,7 @@
 import React from 'react';
-import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles, Trash2, Edit3 } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles, Trash2, Edit3, AlertTriangle } from 'lucide-react';
 import type { ContractEntry } from '../../types/contractResearch';
-import { isContractEditableByStaff } from './contractEditability';
+import { isContractEditableByStaff, isContractChangesRequested } from './contractEditability';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 
 interface Props {
@@ -69,6 +69,7 @@ export const ContractCard: React.FC<Props> = ({
   const isExtracted = contract.extractionStatus === 'COMPLETED';
   const isFailed = contract.extractionStatus === 'FAILED';
   const isApproved = contract.reviewStatus === 'APPROVED';
+  const requiresRevision = isContractChangesRequested(contract);
   const canEditCard = Boolean(canEdit && !isManagerMode && isContractEditableByStaff(contract));
 
   const stop = (event: React.MouseEvent) => event.stopPropagation();
@@ -84,7 +85,15 @@ export const ContractCard: React.FC<Props> = ({
 
   return (
     <article
-      className={`${styles.reportCard} ${selected ? styles.reportCardSelected : ''}`}
+      className={`${styles.reportCard} ${
+        requiresRevision
+          ? selected
+            ? styles.reportCardChangesRequestedSelected
+            : styles.reportCardChangesRequested
+          : selected
+          ? styles.reportCardSelected
+          : ''
+      }`}
       onClick={() => {
         if (isOtherExtracting) return;
         onSelect(contract.id);
@@ -107,9 +116,10 @@ export const ContractCard: React.FC<Props> = ({
             ● Pending Review
           </span>
         ) : isManagerMode ? (
-          contract.reviewStatus === 'CHANGES_REQUESTED' ? (
+          requiresRevision ? (
             <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
-              ● Changes Requested
+              <AlertTriangle size={12} />
+              Changes Requested
             </span>
           ) : (
             <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
@@ -138,12 +148,13 @@ export const ContractCard: React.FC<Props> = ({
               <span>Submit</span>
             </label>
 
-            {contract.reviewStatus === 'CHANGES_REQUESTED' ? (
-              <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`} style={{ padding: '2px 7px', fontSize: 10.5 }}>
-                ● Changes Requested
+            {requiresRevision ? (
+              <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
+                <AlertTriangle size={12} />
+                Changes Requested
               </span>
             ) : contract.reviewStatus === 'PENDING_REVIEW' ? (
-              <span className={`${styles.statusBadge} ${styles.statusPendingReview}`} style={{ padding: '2px 7px', fontSize: 10.5 }}>
+              <span className={`${styles.statusBadge} ${styles.statusPendingReview}`}>
                 ● Pending Review
               </span>
             ) : null}
@@ -208,15 +219,10 @@ export const ContractCard: React.FC<Props> = ({
         </p>
       ) : null}
 
-      {/* Changes Requested Feedback */}
-      {!isManagerMode && !hasTopReviewBanner && contract.reviewStatus === 'CHANGES_REQUESTED' && (
-        <div className={styles.cardFeedbackBox}>
-          <strong>Manager Review Feedback</strong>
-          <p>{contract.reviewComment || 'Manager requested revisions for this contract.'}</p>
-          <small>
-            {contract.reviewedByName || 'Manager'}
-            {contract.reviewedAt ? ` • ${formatDate(contract.reviewedAt)}` : ''}
-          </small>
+      {requiresRevision && (
+        <div className={styles.cardRevisionNotice}>
+          <AlertTriangle size={12} />
+          <span>Manager requested revisions</span>
         </div>
       )}
 

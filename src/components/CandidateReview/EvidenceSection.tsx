@@ -38,10 +38,53 @@ export function parseEvidenceCitations(
   fallbackPage?: string | number,
   evidenceItems?: CandidateFieldEvidence[]
 ): EvidenceCitation[] {
-  // 1. If structured evidence items are provided and contain text, use them directly
+  const embeddedTagRegex = /\[([^|\]\n]+?)\s*(?:\|\s*([^|\]\n]+?))?(?:\s*\|\s*([^\]\n]+?))?\]/;
+
+  // 1. If structured evidence items are provided and contain text
   if (evidenceItems && evidenceItems.length > 0) {
     const validItems = evidenceItems.filter(item => Boolean(item.evidenceText || item.text || item.snippet || item.extractedText));
     if (validItems.length > 0) {
+      // Check if any item contains embedded tags like [Page X] or [Doc|Page]
+      const hasEmbeddedTags = validItems.some(item => {
+        const txt = item.evidenceText || item.text || item.snippet || item.extractedText || '';
+        return embeddedTagRegex.test(txt);
+      });
+
+      if (hasEmbeddedTags) {
+        const expanded: EvidenceCitation[] = [];
+        validItems.forEach((item, idx) => {
+          const itemText = item.evidenceText || item.text || item.snippet || item.extractedText || '';
+          if (embeddedTagRegex.test(itemText)) {
+            const sub = parseEvidenceCitations(
+              itemText,
+              item.fileName || item.documentName || fallbackFileName,
+              item.pageNumber ?? item.page ?? fallbackPage
+            );
+            sub.forEach((cit, sIdx) => {
+              expanded.push({
+                ...cit,
+                id: `struct-${idx}-${sIdx}`,
+                docId: cit.docId || item.rawDocumentId || item.documentId || item.sourceDocumentId,
+              });
+            });
+          } else {
+            const itemPage = item.pageNumber ?? item.page;
+            expanded.push({
+              id: `struct-${idx}`,
+              fileName: item.fileName || item.documentName || fallbackFileName || 'Source Document',
+              docId: item.rawDocumentId || item.documentId || item.sourceDocumentId,
+              page: itemPage !== undefined && itemPage !== null
+                ? formatPageLabel(itemPage)
+                : (fallbackPage !== undefined && fallbackPage !== null ? formatPageLabel(fallbackPage) : undefined),
+              quote: cleanQuoteText(itemText),
+            });
+          }
+        });
+        if (expanded.length > 0) {
+          return expanded;
+        }
+      }
+
       return validItems.map((item, idx) => {
         const itemPage = item.pageNumber ?? item.page;
         return {

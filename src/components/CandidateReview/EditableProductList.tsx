@@ -93,26 +93,17 @@ export const EditableProductList: React.FC<EditableProductListProps> = ({
     setDraftProducts(newList);
     setDraft({});
     setAdding(false);
-    if (revisionMode) {
-      onChange(fieldKey, newList, 'EDITED');
-    }
   };
 
   const deleteProduct = (index: number) => {
     const newList = draftProducts.filter((_, i) => i !== index);
     setDraftProducts(newList);
-    if (revisionMode) {
-      onChange(fieldKey, newList, 'EDITED');
-    }
   };
 
   const updateProduct = (index: number, field: keyof Product, val: string) => {
     const newList = [...draftProducts];
     newList[index] = { ...newList[index], [field]: val };
     setDraftProducts(newList);
-    if (revisionMode) {
-      onChange(fieldKey, newList, 'EDITED');
-    }
   };
 
   const displayList = (

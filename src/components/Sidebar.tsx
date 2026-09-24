@@ -169,7 +169,7 @@ const OWNER_MENU: MenuSection[] = [
     title: 'menu.ecosystemProjects',
     items: [
       { id: 'news',                    label: 'menu.newsIntelligence' },
-      { id: 'owner-internal-news',     label: 'Internal News' },
+      // { id: 'owner-internal-news',     label: 'Internal News' },
       { id: 'ai-assistant',            label: 'AI Assistant' },
     ],
   },

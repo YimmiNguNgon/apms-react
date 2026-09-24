@@ -335,8 +335,9 @@ export default function EditFinancialReportModal({
               <option value="Q1">Q1</option>
               <option value="Q2">Q2</option>
               <option value="Q3">Q3</option>
+              <option value="Q4">Q4</option>
               <option value="FY">FY (Full Year)</option>
-              {period && !['Q1', 'Q2', 'Q3', 'FY'].includes(period) && (
+              {period && !['Q1', 'Q2', 'Q3', 'Q4', 'FY'].includes(period) && (
                 <option value={period}>{period}</option>
               )}
             </select>

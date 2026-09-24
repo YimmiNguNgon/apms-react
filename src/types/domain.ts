@@ -626,6 +626,7 @@ export interface FieldApprovalRecord {
   previousStatus?: FieldApprovalStatus;
   previousComment?: string;
   previousReviewedRevision?: number;
+  previousSubmittedValue?: unknown;
   changedInRevision?: number;
   staleReason?: string;
   pendingValue?: unknown;

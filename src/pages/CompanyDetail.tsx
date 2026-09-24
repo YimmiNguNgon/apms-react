@@ -28,7 +28,6 @@ import BoardMembersTab from './companyDetail/BoardMembersTab';
 import FinancialsTab, { type FinancialsTabHandle } from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab, { type ContractTabHandle } from './companyDetail/DocumentsTab';
-import ConfidentialNewsTab from './companyDetail/ConfidentialNewsTab';
 import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
 import { AccessDeniedPage } from '../components/AccessDeniedPage';
@@ -383,6 +382,9 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
       projectIdParam = params.get('projectId');
       companyIdParam = params.get('companyId') || params.get('profileId');
       tabParam = (params.get('tab') as ListingTabId) || null;
+      if (tabParam === 'internal-news') {
+        tabParam = 'news';
+      }
     }
   }
 
@@ -718,6 +720,10 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   // automatically fallback to overview without mounting RelationshipClosenessTab or calling APIs.
   useEffect(() => {
     if (!profile) return;
+    if (activeTab === 'internal-news') {
+      setActiveTab('news');
+      return;
+    }
     const isEligible = canUseRelationshipCloseness(profile.relationshipType, isOwnerProfile, isDrawerMode, profile.canAccessRelationshipCloseness);
     if (!isEligible && activeTab === 'relationship-closeness') {
       setActiveTab('overview');
@@ -2243,13 +2249,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         return (
           <div style={{ padding: '4px 0' }}>
             <NewsTab companyId={resolvedId} />
-          </div>
-        );
-      case 'internal-news':
-        if (currentUser?.role === ROLES.STAFF) return null;
-        return (
-          <div style={{ padding: '4px 0' }}>
-            <ConfidentialNewsTab companyId={resolvedId} userRole={currentUser?.role} currentUserId={currentUser?.id} />
           </div>
         );
       case 'documents':

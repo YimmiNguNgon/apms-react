@@ -40,10 +40,6 @@ export const EditableScalarField: React.FC<EditableScalarFieldProps> = ({
     const rawVal = e.target.value;
     const val = type === 'number' ? (rawVal === '' ? '' : Number(rawVal)) : rawVal;
     setDraftValue(val);
-    if (revisionMode) {
-      const finalVal = val === '' ? null : val;
-      onChange(fieldKey, finalVal, 'EDITED');
-    }
   };
 
   const handleSave = () => {

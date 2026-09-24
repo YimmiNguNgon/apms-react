@@ -57,6 +57,21 @@ const formatDate = (dateStr?: string | null) => {
   }
 };
 
+export const normalizePeriod = (period?: string | null): string => {
+  if (!period) return '';
+  const trimmed = period.trim().toUpperCase();
+  if (trimmed === 'FULL_YEAR' || trimmed === 'FULL YEAR' || trimmed === 'FULLYEAR' || trimmed === 'FY') {
+    return 'FY';
+  }
+  if (trimmed === 'H1' || trimmed === '6M') {
+    return 'Q2';
+  }
+  if (trimmed === 'H2') {
+    return 'Q4';
+  }
+  return trimmed;
+};
+
 const getPeriodRank = (periodLabel: string): number => {
   const upper = periodLabel.toUpperCase();
   if (upper.startsWith('FY') || upper.startsWith('FULL')) return 7;
@@ -200,7 +215,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
       if (parseNumeric(draft.value) !== parseNumeric(base.value)) return true;
       if (formatFinancialUnit(draft.unit) !== formatFinancialUnit(base.unit)) return true;
       if (Number(draft.year) !== Number(base.year)) return true;
-      if ((draft.quarter || '').trim().toUpperCase() !== (base.quarter || '').trim().toUpperCase()) return true;
+      if (normalizePeriod(draft.quarter) !== normalizePeriod(base.quarter)) return true;
       if (draft.sourcePage !== base.sourcePage) return true;
     }
 
@@ -234,6 +249,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
         .map(r => {
           const numVal = parseNumeric(r.value);
           const pageVal = r.sourcePage != null ? Number(r.sourcePage) : null;
+          const normalizedQuarter = normalizePeriod(r.quarter) || r.quarter.trim().toUpperCase();
           if (r.id.startsWith('temp-')) {
             return {
               ...r,
@@ -241,7 +257,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
               value: numVal,
               metricName: r.metricName.trim(),
               unit: r.unit.trim(),
-              quarter: r.quarter.trim().toUpperCase(),
+              quarter: normalizedQuarter,
               sourcePage: pageVal,
             };
           }
@@ -250,7 +266,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
             value: numVal,
             metricName: r.metricName.trim(),
             unit: r.unit.trim(),
-            quarter: r.quarter.trim().toUpperCase(),
+            quarter: normalizedQuarter,
             sourcePage: pageVal,
           };
         });
@@ -302,23 +318,17 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     }
   }, [availableYears, selectedYear]);
 
-  // Available quarter tabs
+  // Available period tabs: All | Q1 | Q2 | Q3 | Q4 | FY
   const availableQuarters = useMemo<string[]>(() => {
-    const base = ['ALL', 'Q1', 'Q2', 'Q3', 'Q4'];
-    if (!selectedYear) return base;
+    return ['ALL', 'Q1', 'Q2', 'Q3', 'Q4', 'FY'];
+  }, []);
 
-    const rowsInYear = allAvailableRows.filter(r => r.year === selectedYear);
-    const hasH1 = rowsInYear.some(r => r.quarter === 'H1');
-    const hasH2 = rowsInYear.some(r => r.quarter === 'H2');
-    const hasFY = rowsInYear.some(r => r.quarter === 'FY');
-
-    const tabs = ['ALL', 'Q1', 'Q2'];
-    if (hasH1) tabs.push('H1');
-    tabs.push('Q3', 'Q4');
-    if (hasH2) tabs.push('H2');
-    if (hasFY) tabs.push('FY');
-    return tabs;
-  }, [allAvailableRows, selectedYear]);
+  // Ensure selectedQuarter remains valid within availableQuarters
+  useEffect(() => {
+    if (selectedQuarter !== 'ALL' && !availableQuarters.includes(selectedQuarter)) {
+      setSelectedQuarter('ALL');
+    }
+  }, [availableQuarters, selectedQuarter]);
 
   // Filter active rows by Year & Quarter
   const filteredRows = useMemo(() => {
@@ -327,7 +337,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     return activeRows.filter(r => {
       if (r.year !== selectedYear) return false;
       if (selectedQuarter === 'ALL') return true;
-      return (r.quarter || '').toUpperCase() === selectedQuarter.toUpperCase();
+      return normalizePeriod(r.quarter) === normalizePeriod(selectedQuarter);
     });
   }, [activeRows, selectedYear, selectedQuarter]);
 
@@ -337,13 +347,14 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     const periodMap = new Map<string, Map<string, ReportGroup>>();
 
     filteredRows.forEach(row => {
-      const periodLabel = `${row.quarter || 'FY'} ${row.year || ''}`.trim();
+      const normQuarter = normalizePeriod(row.quarter) || 'FY';
+      const periodLabel = `${normQuarter} ${row.year || ''}`.trim();
       if (!periodMap.has(periodLabel)) {
         periodMap.set(periodLabel, new Map());
       }
       const reportsInPeriod = periodMap.get(periodLabel)!;
 
-      const reportKey = row.sourceReportId || (row.sourceReportTitle ? `${row.sourceReportTitle}_${row.year}_${row.quarter}` : undefined);
+      const reportKey = row.sourceReportId || (row.sourceReportTitle ? `${row.sourceReportTitle}_${row.year}_${normQuarter}` : undefined);
       const hasReport = Boolean(reportKey);
       const groupKey = hasReport ? reportKey! : '__DEFAULT_REPORT__';
 
@@ -516,7 +527,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   const handleAddRow = (targetReport: ReportGroup) => {
     // Inherit year and quarter directly from the targetReport rows (or selectedYear)
     const reportYear = targetReport.rows[0]?.year || selectedYear || (availableYears.length > 0 ? availableYears[0] : new Date().getFullYear());
-    const reportQuarter = targetReport.rows[0]?.quarter || (selectedQuarter !== 'ALL' ? selectedQuarter : 'Q1');
+    const reportQuarter = normalizePeriod(targetReport.rows[0]?.quarter) || (selectedQuarter !== 'ALL' ? selectedQuarter : 'Q1');
 
     // Append deterministically: max displayOrder + 1 (Part F)
     const maxOrder = draftRows.reduce((max, r) => Math.max(max, r.displayOrder ?? 0), -1);
@@ -650,7 +661,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           <div className={styles.divider} />
 
           <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Quarter</span>
+            <span className={styles.filterLabel}>Period</span>
             <div className={styles.quarterTabs}>
               {availableQuarters.map(q => (
                 <button
@@ -690,7 +701,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
               type="button"
               onClick={() => setSelectedQuarter('ALL')}
             >
-              Show All Quarters
+              Show All
             </button>
           )}
         </div>
@@ -749,7 +760,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                             {formatDate(reportGroup.publicationDate)}
                           </span>
                           <span className={styles.metaYearBadge}>{selectedYear}</span>
-                          <span className={styles.metaPeriodBadge}>{reportGroup.rows[0]?.quarter || '—'}</span>
+                          <span className={styles.metaPeriodBadge}>{normalizePeriod(reportGroup.rows[0]?.quarter) || '—'}</span>
                         </div>
 
                         <span className={styles.metaDot}>•</span>
@@ -866,7 +877,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                                         </td>
                                         <td className={styles.periodCell}>
                                           <span className={styles.periodPill}>
-                                            {row.quarter} {row.year}
+                                            {normalizePeriod(row.quarter) || 'FY'} {row.year}
                                           </span>
                                         </td>
                                         <td>
@@ -932,7 +943,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                                       </td>
                                       <td className={styles.periodCell}>
                                         <span className={styles.periodPill}>
-                                          {row.quarter} {row.year}
+                                          {normalizePeriod(row.quarter) || 'FY'} {row.year}
                                         </span>
                                       </td>
                                       <td>

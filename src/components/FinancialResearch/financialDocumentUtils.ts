@@ -65,3 +65,18 @@ export const hasReportDocument = (
 ): boolean => {
   return Boolean(resolveReportDocumentId(report));
 };
+
+/**
+ * Single source of truth helper to check if a financial report requires revisions.
+ */
+export const isReportChangesRequested = (
+  report?: { reviewStatus?: string | null } | null,
+): boolean => {
+  if (!report?.reviewStatus) return false;
+  const status = report.reviewStatus.toUpperCase().trim();
+  return (
+    status === 'CHANGES_REQUESTED' ||
+    status === 'REVISION_REQUIRED' ||
+    status === 'NEEDS_REVISION'
+  );
+};

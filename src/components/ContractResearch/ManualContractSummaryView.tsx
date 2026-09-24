@@ -164,20 +164,6 @@ export const ManualContractSummaryView: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Changes Requested Banner */}
-      {contract.reviewStatus === 'CHANGES_REQUESTED' && (
-        <div className={styles.managerFeedbackBanner}>
-          <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
-          <div className={styles.managerFeedbackContent}>
-            <strong>Manager Feedback / Revision Request</strong>
-            <p>{contract.reviewComment || 'Manager requested changes to this contract.'}</p>
-            <small>
-              {contract.reviewedByName || 'Manager'}
-              {contract.reviewedAt ? ` • ${formatDate(contract.reviewedAt)}` : ''}
-            </small>
-          </div>
-        </div>
-      )}
 
       {/* Section 1: General Information & Legal Terms (8 KPI Cards) */}
       <div className={contractStyles.sectionBox}>
