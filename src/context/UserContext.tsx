@@ -40,6 +40,10 @@ export interface User {
   avatar: string;
   avatarColor: string;
   allowedPages: string[];
+  phone?: string | null;
+  department?: string | null;
+  bio?: string | null;
+  address?: string | null;
 }
 
 const ROLE_COLORS: Record<Role, string> = {
@@ -114,6 +118,7 @@ interface UserContextType {
   applyLoginPayload: (payload: LoginPayload) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
+  updateCurrentUser: (updates: Partial<User>) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -129,6 +134,22 @@ interface LoginPayload {
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const updateCurrentUser = (updates: Partial<User>) => {
+    setCurrentUser((prev) => {
+      if (!prev) return null;
+      const newName = updates.name !== undefined ? updates.name : prev.name;
+      const newAvatar = updates.avatar || (updates.name ? toAvatar(newName) : prev.avatar);
+      const updated: User = {
+        ...prev,
+        ...updates,
+        name: newName,
+        avatar: newAvatar,
+      };
+      localStorage.setItem('apms-user', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     const token =
@@ -193,7 +214,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <UserContext.Provider value={{ currentUser, login, applyLoginPayload, logout, loading }}>
+    <UserContext.Provider value={{ currentUser, login, applyLoginPayload, logout, loading, updateCurrentUser }}>
       {children}
     </UserContext.Provider>
   );

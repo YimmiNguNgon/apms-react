@@ -31,6 +31,7 @@ import DocumentsTab, { type ContractTabHandle } from './companyDetail/DocumentsT
 import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
 import { AccessDeniedPage } from '../components/AccessDeniedPage';
+import { validateWebsite, validateEmail, validatePhone } from '../utils/companyProfileValidation';
 
 interface CompanyDetailProps {
   companyId?: string;
@@ -189,8 +190,9 @@ const areMembersEqual = (
       position: normalizeString(m.position),
       imageUrl: normalizeString(m.imageUrl),
       sourceUrl: normalizeString(m.sourceUrl),
+      hasPendingFile: Boolean(m.pendingImageFile),
     }))
-    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl);
+    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl || m.hasPendingFile);
 
   const normB = (b || [])
     .map((m) => ({
@@ -198,8 +200,9 @@ const areMembersEqual = (
       position: normalizeString(m.position),
       imageUrl: normalizeString(m.imageUrl),
       sourceUrl: normalizeString(m.sourceUrl),
+      hasPendingFile: Boolean(m.pendingImageFile),
     }))
-    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl);
+    .filter((m) => m.fullName || m.position || m.imageUrl || m.sourceUrl || m.hasPendingFile);
 
   if (normA.length !== normB.length) return false;
   for (let i = 0; i < normA.length; i++) {
@@ -207,7 +210,8 @@ const areMembersEqual = (
       normA[i].fullName !== normB[i].fullName ||
       normA[i].position !== normB[i].position ||
       normA[i].imageUrl !== normB[i].imageUrl ||
-      normA[i].sourceUrl !== normB[i].sourceUrl
+      normA[i].sourceUrl !== normB[i].sourceUrl ||
+      normA[i].hasPendingFile !== normB[i].hasPendingFile
     ) {
       return false;
     }
@@ -385,6 +389,9 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
       if (tabParam === 'internal-news') {
         tabParam = 'news';
       }
+      if ((tabParam as string) === 'contract') {
+        tabParam = 'documents';
+      }
     }
   }
 
@@ -433,7 +440,13 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [exchangeDraft, setExchangeDraft] = useState('NONE');
   const [listingSaving, setListingSaving] = useState(false);
   const [listingMsg, setListingMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<ListingTabId>(() => parseNavContext(companyId).tab || 'overview');
+  const [activeTab, setActiveTab] = useState<ListingTabId>(() => {
+    const parsed = parseNavContext(companyId).tab || 'overview';
+    if (isOwnerProfile && (parsed === 'financials' || parsed === 'documents' || parsed === 'relationship-closeness' || (parsed as string) === 'contract')) {
+      return 'overview';
+    }
+    return parsed;
+  });
   const [intelligence, setIntelligence] = useState<OwnerCompanyIntelligenceResponse | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
 
@@ -475,6 +488,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [editBaseline, setEditBaseline] = useState<FullProfileBaseline | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [saveProfileError, setSaveProfileError] = useState<string | null>(null);
+  const [contactFieldErrors, setContactFieldErrors] = useState<{ website?: string; email?: string; phone?: string }>({});
 
   const handleAddProduct = () => {
     setDraftProducts((prev) => [...prev, { name: '', category: '', description: '' }]);
@@ -496,17 +510,43 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setDraftMembers((prev) => [...prev, { fullName: '', position: '', imageUrl: '', sourceUrl: '' }]);
   };
 
-  const handleUpdateMember = (index: number, field: keyof CompanyProfileMember, value: string) => {
+  const handleUpdateMember = (
+    index: number,
+    fieldOrPartial: keyof CompanyProfileMember | Partial<CompanyProfileMember>,
+    value?: any
+  ) => {
     setDraftMembers((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      if (typeof fieldOrPartial === 'string') {
+        copy[index] = { ...copy[index], [fieldOrPartial]: value };
+      } else {
+        copy[index] = { ...copy[index], ...fieldOrPartial };
+      }
       return copy;
     });
   };
 
   const handleDeleteMember = (index: number) => {
-    setDraftMembers((prev) => prev.filter((_, i) => i !== index));
+    setDraftMembers((prev) => {
+      const member = prev[index];
+      if (member?.previewUrl && member.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(member.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
+
+  const draftMembersRef = useRef(draftMembers);
+  draftMembersRef.current = draftMembers;
+  useEffect(() => {
+    return () => {
+      draftMembersRef.current.forEach((m) => {
+        if (m.previewUrl && m.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(m.previewUrl);
+        }
+      });
+    };
+  }, []);
 
   const [navContext, setNavContext] = useState<NavContext>(() => {
     if (typeof window !== 'undefined') {
@@ -718,10 +758,67 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   // Defensive Route / Tab Guard:
   // If company is not eligible for Relationship Closeness and current tab is relationship-closeness,
   // automatically fallback to overview without mounting RelationshipClosenessTab or calling APIs.
+  // Also, for BUSINESS_DEVELOPMENT_MANAGER, if manager has no project access to this company,
+  // forbid financials and documents (contract) tabs and fall back to overview.
   useEffect(() => {
+    if (isOwnerProfile && (activeTab === 'financials' || activeTab === 'documents' || activeTab === 'relationship-closeness')) {
+      setActiveTab('overview');
+      if (typeof window !== 'undefined') {
+        try {
+          const hash = window.location.hash;
+          if (hash.includes('tab=financials') || hash.includes('tab=documents') || hash.includes('tab=relationship-closeness') || hash.includes('tab=contract')) {
+            const qIndex = hash.indexOf('?');
+            const searchStr = qIndex !== -1 ? hash.slice(qIndex) : window.location.search;
+            const params = new URLSearchParams(searchStr || '');
+            params.set('tab', 'overview');
+            const base = hash.startsWith('#') ? (qIndex !== -1 ? hash.slice(0, qIndex) : hash) : (pageContext === 'admin-my-enterprise' ? '#admin-my-enterprise' : '#owner-profile');
+            window.location.hash = `${base}?${params.toString()}`;
+          }
+          const url = new URL(window.location.href);
+          const currentTab = url.searchParams.get('tab');
+          if (currentTab === 'financials' || currentTab === 'documents' || currentTab === 'contract' || currentTab === 'relationship-closeness') {
+            url.searchParams.set('tab', 'overview');
+            window.history.replaceState({}, '', url.toString());
+          }
+        } catch {
+          // ignore URL rewrite error
+        }
+      }
+      return;
+    }
+
     if (!profile) return;
     if (activeTab === 'internal-news') {
       setActiveTab('news');
+      return;
+    }
+    const isManager = currentUser?.role === ROLES.MANAGER || (currentUser?.role as string) === 'BUSINESS_DEVELOPMENT_MANAGER';
+    if (isManager && !profile.canViewSensitiveResearch && (activeTab === 'financials' || activeTab === 'documents' || activeTab === 'relationship-closeness')) {
+      setActiveTab('overview');
+      if (typeof window !== 'undefined') {
+        try {
+          const url = new URL(window.location.href);
+          const currentTab = url.searchParams.get('tab');
+          if (currentTab === 'financials' || currentTab === 'documents' || currentTab === 'contract' || currentTab === 'relationship-closeness') {
+            url.searchParams.set('tab', 'overview');
+            window.history.replaceState({}, '', url.toString());
+          }
+          if (window.location.hash.includes('tab=financials')) {
+            window.location.hash = window.location.hash.replace('tab=financials', 'tab=overview');
+          }
+          if (window.location.hash.includes('tab=documents')) {
+            window.location.hash = window.location.hash.replace('tab=documents', 'tab=overview');
+          }
+          if (window.location.hash.includes('tab=contract')) {
+            window.location.hash = window.location.hash.replace('tab=contract', 'tab=overview');
+          }
+          if (window.location.hash.includes('tab=relationship-closeness')) {
+            window.location.hash = window.location.hash.replace('tab=relationship-closeness', 'tab=overview');
+          }
+        } catch {
+          // ignore URL rewrite error
+        }
+      }
       return;
     }
     const isEligible = canUseRelationshipCloseness(profile.relationshipType, isOwnerProfile, isDrawerMode, profile.canAccessRelationshipCloseness);
@@ -742,7 +839,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         }
       }
     }
-  }, [profile, activeTab, isOwnerProfile, isDrawerMode]);
+  }, [profile, activeTab, isOwnerProfile, isDrawerMode, currentUser, pageContext]);
 
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
@@ -920,6 +1017,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     });
 
     setSaveProfileError(null);
+    setContactFieldErrors({});
     setIsInlineEditing(true);
   };
 
@@ -933,6 +1031,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   };
 
   const handleCancelEdit = () => {
+    draftMembers.forEach((m) => {
+      if (m.previewUrl && m.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(m.previewUrl);
+      }
+    });
     financialsTabRef.current?.cancel();
     contractTabRef.current?.cancel();
     setIsFinancialsDirty(false);
@@ -940,6 +1043,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     setIsInlineEditing(false);
     setEditBaseline(null);
     setSaveProfileError(null);
+    setContactFieldErrors({});
   };
 
   const hasSemanticChanges = useMemo(() => {
@@ -1012,10 +1116,25 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const handleSaveProfile = async () => {
     if (!profile) return;
     if (!hasSemanticChanges) return;
+
+    const websiteErr = validateWebsite(draftWebsite);
+    const emailErr = validateEmail(draftEmail);
+    const phoneErr = validatePhone(draftPhone);
+
+    if (websiteErr || emailErr || phoneErr) {
+      setContactFieldErrors({
+        website: websiteErr || undefined,
+        email: emailErr || undefined,
+        phone: phoneErr || undefined,
+      });
+      return;
+    }
+
     setIsSavingProfile(true);
     setSaveProfileError(null);
 
     const parsedCount = normalizeNumber(draftEmployeeCount);
+    const parsedFoundedYear = normalizeNumber(draftFoundedYear);
 
     const hasProfileChanges = editBaseline ? (
       normalizeString(draftTradeName) !== normalizeString(editBaseline.tradeName) ||
@@ -1061,6 +1180,8 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             headOfficeAddress: resolvePayloadString(draftAddress, editBaseline.address),
             employeeCount: parsedCount !== null ? parsedCount : undefined,
             employeeTier: resolvePayloadString(draftEmployeeTier, editBaseline.employeeTier),
+            foundedYear: parsedFoundedYear !== null ? parsedFoundedYear : undefined,
+            companyDescription: resolvePayloadString(draftCompanyDescription, editBaseline.companyDescription),
             businessModel: resolvePayloadString(draftBusinessModel, editBaseline.businessModel),
             expectedMajorVersion: editBaseline.majorVersion,
             expectedRevision: editBaseline.revision,
@@ -1083,18 +1204,33 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           };
           updated = await companyProfileApi.updateAdminEnterpriseBusinessFields(businessPayload);
         } else if (activeTab === 'board') {
-          const validMembers: AdminEnterpriseLeadershipMemberRequest[] = draftMembers
-            .map(m => ({
-              fullName: normalizeString(m.fullName),
-              position: normalizeString(m.position),
-              imageUrl: normalizeString(m.imageUrl) || null,
-              sourceUrl: normalizeString(m.sourceUrl) || null,
-              notes: normalizeString(m.notes) || null,
-            }))
-            .filter(m => m.fullName);
+          const processedMembers: AdminEnterpriseLeadershipMemberRequest[] = [];
+          for (const m of draftMembers) {
+            let finalImageUrl = normalizeString(m.imageUrl) || null;
+            if (m.pendingImageFile) {
+              try {
+                const uploadRes = await companyProfileApi.uploadLeadershipImage(m.pendingImageFile);
+                finalImageUrl = uploadRes.imageUrl;
+              } catch (uploadErr: any) {
+                console.error('Failed to upload leadership image for:', m.fullName, uploadErr);
+                throw new Error(uploadErr?.message || `Failed to upload photo for ${m.fullName || 'member'}. Please try again.`);
+              }
+            } else if (finalImageUrl && finalImageUrl.startsWith('blob:')) {
+              finalImageUrl = null;
+            }
+            if (normalizeString(m.fullName)) {
+              processedMembers.push({
+                fullName: normalizeString(m.fullName),
+                position: normalizeString(m.position),
+                imageUrl: finalImageUrl,
+                sourceUrl: normalizeString(m.sourceUrl) || null,
+                notes: normalizeString(m.notes) || null,
+              });
+            }
+          }
 
           const leadershipPayload: AdminUpdateEnterpriseLeadershipRequest = {
-            members: validMembers,
+            members: processedMembers,
             expectedMajorVersion: editBaseline.majorVersion,
             expectedRevision: editBaseline.revision,
           };
@@ -1104,6 +1240,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         if (updated) {
           setProfile(updated);
         }
+        draftMembers.forEach((m) => {
+          if (m.previewUrl && m.previewUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(m.previewUrl);
+          }
+        });
         setReloadTrigger(prev => prev + 1);
         setIsInlineEditing(false);
         setEditBaseline(null);
@@ -1128,14 +1269,29 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       }))
       .filter(p => p.name);
 
-      const validMembers: CompanyProfileMember[] = draftMembers
-        .map(m => ({
-          fullName: normalizeString(m.fullName),
-          position: normalizeString(m.position) || undefined,
-          imageUrl: normalizeString(m.imageUrl) || undefined,
-          sourceUrl: normalizeString(m.sourceUrl) || undefined,
-        }))
-        .filter(m => m.fullName);
+      const processedGeneralMembers: CompanyProfileMember[] = [];
+      for (const m of draftMembers) {
+        let finalImageUrl = normalizeString(m.imageUrl) || undefined;
+        if (m.pendingImageFile && currentUser?.role === ROLES.ADMIN) {
+          try {
+            const uploadRes = await companyProfileApi.uploadLeadershipImage(m.pendingImageFile);
+            finalImageUrl = uploadRes.imageUrl;
+          } catch (uploadErr) {
+            console.error('Failed to upload leadership image for:', m.fullName, uploadErr);
+          }
+        } else if (finalImageUrl && finalImageUrl.startsWith('blob:')) {
+          finalImageUrl = undefined;
+        }
+        if (normalizeString(m.fullName)) {
+          processedGeneralMembers.push({
+            fullName: normalizeString(m.fullName),
+            position: normalizeString(m.position) || undefined,
+            imageUrl: finalImageUrl,
+            sourceUrl: normalizeString(m.sourceUrl) || undefined,
+          });
+        }
+      }
+      const validMembers: CompanyProfileMember[] = processedGeneralMembers;
 
       const isDirty = (draft: string, baseline?: string | null) =>
         normalizeString(draft) !== normalizeString(baseline);
@@ -1221,6 +1377,11 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         const updated = await companyProfileApi.updateCompanyProfile(targetId, payload);
         if (updated) {
           setProfile(updated);
+          draftMembers.forEach((m) => {
+            if (m.previewUrl && m.previewUrl.startsWith('blob:')) {
+              URL.revokeObjectURL(m.previewUrl);
+            }
+          });
         }
         profileSavedSuccessfully = true;
       } catch (err: any) {
@@ -1267,6 +1428,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
       setReloadTrigger(prev => prev + 1);
       setIsInlineEditing(false);
       setEditBaseline(null);
+      setContactFieldErrors({});
     }
 
     setIsSavingProfile(false);
@@ -1554,14 +1716,30 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Website</span>
                 {isOverviewEditing ? (
-                  <input
-                    type="text"
-                    style={inlineInputStyle}
-                    value={draftWebsite}
-                    onChange={(e) => setDraftWebsite(e.target.value)}
-                    placeholder="Website"
-                    disabled={isSavingProfile}
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      style={{
+                        ...inlineInputStyle,
+                        borderColor: contactFieldErrors.website ? '#ef4444' : '#CBD5E1',
+                      }}
+                      value={draftWebsite}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftWebsite(val);
+                        if (contactFieldErrors.website && !validateWebsite(val)) {
+                          setContactFieldErrors(prev => ({ ...prev, website: undefined }));
+                        }
+                      }}
+                      placeholder="Website"
+                      disabled={isSavingProfile}
+                    />
+                    {contactFieldErrors.website && (
+                      <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>⚠</span> {contactFieldErrors.website}
+                      </div>
+                    )}
+                  </div>
                 ) : rawWebsite ? (
                   <a href={rawWebsite.startsWith('http') ? rawWebsite : `https://${rawWebsite}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none' }}>
                     {rawWebsite}
@@ -1573,14 +1751,30 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Contact Email</span>
                 {isOverviewEditing ? (
-                  <input
-                    type="email"
-                    style={inlineInputStyle}
-                    value={draftEmail}
-                    onChange={(e) => setDraftEmail(e.target.value)}
-                    placeholder="Contact Email"
-                    disabled={isSavingProfile}
-                  />
+                  <div>
+                    <input
+                      type="email"
+                      style={{
+                        ...inlineInputStyle,
+                        borderColor: contactFieldErrors.email ? '#ef4444' : '#CBD5E1',
+                      }}
+                      value={draftEmail}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftEmail(val);
+                        if (contactFieldErrors.email && !validateEmail(val)) {
+                          setContactFieldErrors(prev => ({ ...prev, email: undefined }));
+                        }
+                      }}
+                      placeholder="Contact Email"
+                      disabled={isSavingProfile}
+                    />
+                    {contactFieldErrors.email && (
+                      <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>⚠</span> {contactFieldErrors.email}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <strong style={rawEmail ? C.value : C.muted}>{rawEmail || 'N/A'}</strong>
                 )}
@@ -1588,14 +1782,30 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               <div style={C.fieldCell}>
                 <span style={C.fieldLabel}>Phone</span>
                 {isOverviewEditing ? (
-                  <input
-                    type="text"
-                    style={inlineInputStyle}
-                    value={draftPhone}
-                    onChange={(e) => setDraftPhone(e.target.value)}
-                    placeholder="Phone"
-                    disabled={isSavingProfile}
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      style={{
+                        ...inlineInputStyle,
+                        borderColor: contactFieldErrors.phone ? '#ef4444' : '#CBD5E1',
+                      }}
+                      value={draftPhone}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDraftPhone(val);
+                        if (contactFieldErrors.phone && !validatePhone(val)) {
+                          setContactFieldErrors(prev => ({ ...prev, phone: undefined }));
+                        }
+                      }}
+                      placeholder="Phone"
+                      disabled={isSavingProfile}
+                    />
+                    {contactFieldErrors.phone && (
+                      <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>⚠</span> {contactFieldErrors.phone}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <strong style={rawPhone ? C.value : C.muted}>{rawPhone || 'N/A'}</strong>
                 )}
@@ -2234,6 +2444,12 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
           </div>
         );
       case 'financials':
+        if (isOwnerProfile) {
+          return null;
+        }
+        if ((currentUser?.role === ROLES.MANAGER || (currentUser?.role as string) === 'BUSINESS_DEVELOPMENT_MANAGER') && (!profile || !profile.canViewSensitiveResearch)) {
+          return null;
+        }
         return (
           <div style={{ padding: '4px 0' }}>
             <FinancialsTab
@@ -2242,16 +2458,20 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               projectId={contextProjectId}
               editable={isInlineEditing}
               onDirtyChange={setIsFinancialsDirty}
+              isAdminMyEnterprise={isAdminMyEnterprise}
             />
           </div>
         );
       case 'news':
         return (
           <div style={{ padding: '4px 0' }}>
-            <NewsTab companyId={resolvedId} />
+            <NewsTab companyId={resolvedId} isOwnerProfile={Boolean(isOwnerProfile)} />
           </div>
         );
       case 'documents':
+        if ((currentUser?.role === ROLES.MANAGER || (currentUser?.role as string) === 'BUSINESS_DEVELOPMENT_MANAGER') && (!profile || !profile.canViewSensitiveResearch)) {
+          return null;
+        }
         return (
             <DocumentsTab
               ref={contractTabRef}
@@ -2264,6 +2484,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             />
         );
       case 'relationship-closeness':
+        if ((currentUser?.role === ROLES.MANAGER || (currentUser?.role as string) === 'BUSINESS_DEVELOPMENT_MANAGER') && (!profile || !profile.canViewSensitiveResearch)) {
+          return null;
+        }
         if (!canUseRelationshipCloseness(profile?.relationshipType, isOwnerProfile, isDrawerMode, profile?.canAccessRelationshipCloseness)) return null;
         return (
           <div style={{ padding: '4px 0' }}>
@@ -2272,6 +2495,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
               currentUserRole={currentUser?.role}
               companyName={displayName}
               setActivePage={setActivePage}
+              isCurrentResponsibleManager={profile?.isCurrentResponsibleManager}
             />
           </div>
         );
@@ -2811,6 +3035,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         isDrawerMode={isDrawerMode}
         relationshipType={profile?.relationshipType}
         canAccessRelationshipCloseness={profile?.canAccessRelationshipCloseness}
+        canViewSensitiveResearch={profile?.canViewSensitiveResearch}
       />
 
         {renderTabContent()}

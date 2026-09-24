@@ -17,6 +17,7 @@ import {
   type SwotPayload,
 } from './companyDetail/CompanyProfileTabs';
 import { companyMonitoringApi } from '../API/companyMonitoringApi';
+import { validateWebsite, validateEmail, validatePhone } from '../utils/companyProfileValidation';
 
 const ADMIN_TABS: ListingTabDef[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutGrid size={14} /> },
@@ -202,6 +203,64 @@ const buildProposalPayload = (
   return payload;
 };
 
+const mergeProposalIntoProfile = (
+  baseProfile: ProfileResponse,
+  proposal: CompanyProfileUpdateProposalResponse
+): ProfileResponse => {
+  const merged: ProfileResponse = JSON.parse(JSON.stringify(baseProfile));
+
+  if (proposal.proposedIdentity && typeof proposal.proposedIdentity === 'object') {
+    merged.identity = {
+      ...merged.identity,
+      ...(proposal.proposedIdentity as any),
+    };
+    if ((proposal.proposedIdentity as any).stockTicker !== undefined) {
+      merged.stockTicker = (proposal.proposedIdentity as any).stockTicker;
+    }
+    if ((proposal.proposedIdentity as any).stockExchange !== undefined) {
+      merged.stockExchange = (proposal.proposedIdentity as any).stockExchange;
+    }
+  }
+
+  if (proposal.proposedContact && typeof proposal.proposedContact === 'object') {
+    const pc = proposal.proposedContact as any;
+    merged.contact = {
+      ...merged.contact,
+      ...(pc.website !== undefined ? { website: pc.website } : {}),
+      ...(pc.emails !== undefined ? { emails: pc.emails } : {}),
+      ...(pc.phones !== undefined ? { phones: pc.phones } : {}),
+      ...(pc.addresses !== undefined ? { addresses: pc.addresses } : {}),
+    };
+  }
+
+  if (proposal.proposedCompanySize && typeof proposal.proposedCompanySize === 'object') {
+    merged.companySize = {
+      ...merged.companySize,
+      ...(proposal.proposedCompanySize as any),
+    };
+  }
+
+  if (proposal.proposedBusiness && typeof proposal.proposedBusiness === 'object') {
+    merged.business = {
+      ...merged.business,
+      ...(proposal.proposedBusiness as any),
+    };
+  }
+
+  if (proposal.proposedInsights && typeof proposal.proposedInsights === 'object') {
+    merged.insights = {
+      ...merged.insights,
+      ...(proposal.proposedInsights as any),
+    };
+  }
+
+  if (proposal.proposedCompanyMembers && Array.isArray(proposal.proposedCompanyMembers)) {
+    merged.companyMembers = proposal.proposedCompanyMembers as any;
+  }
+
+  return merged;
+};
+
 export const StaffMonitoringReviewPage: React.FC<{
   assignmentId: number;
   companyProfileId: string;
@@ -218,6 +277,7 @@ export const StaffMonitoringReviewPage: React.FC<{
   const [evidenceMap, setEvidenceMap] = useState<Record<string, FieldEvidence>>({});
   const [imageUploadErrors, setImageUploadErrors] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<ListingTabId>('overview');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [pendingProposal, setPendingProposal] = useState<CompanyProfileUpdateProposalResponse | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -226,23 +286,50 @@ export const StaffMonitoringReviewPage: React.FC<{
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get<ProfileResponse>('/company-profiles/' + companyProfileId);
-      if (res?.data) {
-        setOriginalProfile(res.data);
-        setLocalProfile(JSON.parse(JSON.stringify(res.data)));
+      if (!res?.data) {
+        setLoadError('Không thể tải thông tin hồ sơ doanh nghiệp.');
+        return;
       }
+      const official = res.data;
+      setOriginalProfile(official);
+      let effectiveProfile: ProfileResponse = JSON.parse(JSON.stringify(official));
+
       try {
         const pendingRes = await companyMonitoringApi.getPendingProfileUpdateProposals(companyProfileId);
-        const active = (pendingRes || []).find(
+        const monitoringProposals = (pendingRes || []).filter(
+          p => p.origin === 'MONITORING'
+        );
+        const submitted = monitoringProposals.find(
           p => p.status === 'SUBMITTED' || p.status === 'IN_REVIEW' || p.status === 'PENDING'
         );
-        setPendingProposal(active || null);
+        const draft = monitoringProposals.find(
+          p => p.status === 'DRAFT'
+        );
+
+        setPendingProposal(submitted || null);
+
+        const activeProposal = submitted || draft;
+        if (activeProposal) {
+          effectiveProfile = mergeProposalIntoProfile(official, activeProposal);
+          if (activeProposal.fieldEvidence && Array.isArray(activeProposal.fieldEvidence)) {
+            const evMap: Record<string, FieldEvidence> = {};
+            activeProposal.fieldEvidence.forEach(ev => {
+              if (ev.fieldPath) evMap[ev.fieldPath] = ev;
+            });
+            setEvidenceMap(evMap);
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch pending proposals', err);
       }
-    } catch (err) {
+
+      setLocalProfile(effectiveProfile);
+    } catch (err: any) {
       console.error(err);
+      setLoadError(err?.response?.data?.message || 'Không thể tải thông tin hồ sơ doanh nghiệp.');
     } finally {
       setLoading(false);
     }
@@ -252,31 +339,113 @@ export const StaffMonitoringReviewPage: React.FC<{
     void loadProfile();
   }, [loadProfile]);
 
+  const persistDraftProposal = async (nextProfile: ProfileResponse) => {
+    if (!originalProfile) return;
+    const currentChangedFields = changedFieldsFor(originalProfile, nextProfile);
+    if (currentChangedFields.length > 0) {
+      const payload = buildProposalPayload(
+        companyProfileId,
+        originalProfile,
+        nextProfile,
+        currentChangedFields,
+        evidenceMap
+      );
+      await companyMonitoringApi.createMonitoringProposal(
+        payload.companyProfileId,
+        payload.changeSummary,
+        payload.changedFieldPaths,
+        payload.fieldEvidence,
+        payload.proposedIdentity,
+        payload.proposedContact,
+        payload.proposedBusiness,
+        payload.proposedCompanySize,
+        payload.proposedInsights,
+        payload.proposedCompanyMembers,
+        payload.originalValues
+      );
+    } else {
+      const payload = buildProposalPayload(
+        companyProfileId,
+        originalProfile,
+        nextProfile,
+        [],
+        {}
+      );
+      await companyMonitoringApi.createMonitoringProposal(
+        payload.companyProfileId,
+        'No changes proposed',
+        [],
+        [],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {}
+      );
+    }
+    setLocalProfile(nextProfile);
+  };
+
   const handleSaveOverview = async (payload: OverviewPayload) => {
     if (!localProfile) return;
-    const np = { ...localProfile };
-    np.identity = { ...np.identity, legalName: payload.legalName, tradeName: payload.tradeName, taxCode: payload.taxCode, registrationNumber: payload.registrationNumber, stockTicker: payload.stockTicker, stockExchange: payload.stockExchange };
-    np.contact = { ...np.contact, website: payload.website, emails: [payload.email], phones: [payload.phone], addresses: [{ fullAddress: payload.address, type: '', city: '', country: '' }] };
-    np.companySize = { ...np.companySize, employeeTier: payload.employeeTier, employeeCount: payload.employeeCount };
-    np.business = { ...np.business, businessModel: payload.businessModel, industries: payload.industries, foundedYear: payload.foundedYear, companyDescription: payload.companyDescription };
-    setLocalProfile(np);
+    const np: ProfileResponse = JSON.parse(JSON.stringify(localProfile));
+    np.identity = {
+      ...np.identity,
+      legalName: payload.legalName,
+      tradeName: payload.tradeName,
+      taxCode: payload.taxCode,
+      registrationNumber: payload.registrationNumber,
+      stockTicker: payload.stockTicker,
+      stockExchange: payload.stockExchange,
+    };
+    np.contact = {
+      ...np.contact,
+      website: payload.website,
+      emails: payload.email ? [payload.email] : [],
+      phones: payload.phone ? [payload.phone] : [],
+      addresses: [{ fullAddress: payload.address, type: '', city: '', country: '' }],
+    };
+    np.companySize = {
+      ...np.companySize,
+      employeeTier: payload.employeeTier,
+      employeeCount: payload.employeeCount,
+    };
+    np.business = {
+      ...np.business,
+      businessModel: payload.businessModel,
+      industries: payload.industries,
+      foundedYear: payload.foundedYear,
+      companyDescription: payload.companyDescription,
+    };
+    await persistDraftProposal(np);
   };
 
   const handleSaveSwot = async (payload: SwotPayload) => {
     if (!localProfile) return;
-    setLocalProfile({ ...localProfile, insights: payload.insights });
+    const np: ProfileResponse = { ...localProfile, insights: payload.insights };
+    await persistDraftProposal(np);
   };
 
   const handleSaveBusinessFields = async (payload: BusinessFieldsPayload) => {
     if (!localProfile) return;
-    const np = { ...localProfile };
-    np.business = { ...np.business, products: payload.products, markets: payload.markets, targetCustomers: payload.targetCustomers };
-    setLocalProfile(np);
+    const np: ProfileResponse = {
+      ...localProfile,
+      business: {
+        ...localProfile.business,
+        products: payload.products,
+        markets: payload.markets,
+        targetCustomers: payload.targetCustomers,
+      },
+    };
+    await persistDraftProposal(np);
   };
 
   const handleSaveBoard = async (payload: BoardPayload) => {
     if (!localProfile) return;
-    setLocalProfile({ ...localProfile, companyMembers: payload.companyMembers });
+    const np: ProfileResponse = { ...localProfile, companyMembers: payload.companyMembers as any };
+    await persistDraftProposal(np);
   };
 
   const handleCompleteReview = async () => {
@@ -305,6 +474,17 @@ export const StaffMonitoringReviewPage: React.FC<{
       return;
     }
     if (submitting) return;
+
+    if (localProfile.contact) {
+      const changedPaths = new Set(currentChangedFields.map(f => f.path));
+      const websiteErr = changedPaths.has('contact.website') ? validateWebsite(localProfile.contact.website) : null;
+      const emailErr = changedPaths.has('contact.emails') ? validateEmail(localProfile.contact.emails) : null;
+      const phoneErr = changedPaths.has('contact.phones') ? validatePhone(localProfile.contact.phones) : null;
+      if (websiteErr || emailErr || phoneErr) {
+        setSubmitError(websiteErr || emailErr || phoneErr || 'Invalid contact information');
+        return;
+      }
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -364,8 +544,33 @@ export const StaffMonitoringReviewPage: React.FC<{
   const actionLabel = hasChanges ? 'Submit Proposal to Manager' : 'Complete Review';
   const loadingLabel = hasChanges ? 'Submitting...' : 'Completing...';
 
-  if (loading || !localProfile) {
-    return <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>;
+  if (loading) {
+    return <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b' }}>Loading...</div>;
+  }
+
+  if (loadError || !localProfile) {
+    return (
+      <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+        <p style={{ color: '#ef4444', marginBottom: '16px', fontWeight: 500 }}>
+          {loadError || 'Không thể tải thông tin hồ sơ doanh nghiệp.'}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            padding: '8px 16px',
+            background: '#fff',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 600,
+            color: '#475569',
+          }}
+        >
+          Quay lại
+        </button>
+      </div>
+    );
   }
 
   const displayName = formatCompanyName(localProfile.identity?.tradeName || localProfile.identity?.legalName);

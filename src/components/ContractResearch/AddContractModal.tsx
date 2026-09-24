@@ -3,6 +3,7 @@ import { contractResearchApi } from '../../API/contractResearchApi';
 import type { ContractResearchResponse } from '../../types/contractResearch';
 import { FileUp, Loader2, X, FileText, Sparkles, Edit3 } from 'lucide-react';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 
 interface Props {
   open: boolean;
@@ -54,18 +55,20 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
       return;
     }
 
-    if (dataEntryMethod === 'AI_EXTRACTION' && file
-        && (!file.name.toLowerCase().endsWith('.pdf') || file.size === 0 || file.size > 50 * 1024 * 1024)) {
-      setErrorMessage('Select a non-empty PDF of at most 50MB.');
-      return;
+    if (file) {
+      const err = validatePdfUpload(file);
+      if (err) {
+        setErrorMessage(err);
+        return;
+      }
     }
 
     submissionInFlight.current = true;
     setIsSubmitting(true);
     try {
       let finalDocId: string | null = null;
-      if (dataEntryMethod === 'AI_EXTRACTION' && file) {
-        setSubmitStage('Uploading source PDF...');
+      if (file) {
+        setSubmitStage(dataEntryMethod === 'MANUAL' ? 'Uploading reference PDF...' : 'Uploading source PDF...');
         if (uploadedSource.current?.file !== file) {
           uploadedSource.current = { file, id: await contractResearchApi.uploadSource(projectId, taskId, file) };
         }
@@ -101,13 +104,15 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === 'application/pdf' || droppedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(droppedFile);
-        if (!title) {
-          setTitle(droppedFile.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '));
-        }
-      } else {
-        setErrorMessage('Only PDF files are supported for contract extraction.');
+      const err = validatePdfUpload(droppedFile);
+      if (err) {
+        setErrorMessage(err);
+        return;
+      }
+      setFile(droppedFile);
+      setErrorMessage(null);
+      if (!title) {
+        setTitle(droppedFile.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '));
       }
     }
   };
@@ -241,12 +246,12 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
           </div>
 
           {/* 3. Upload Box */}
-          <div style={{ display: dataEntryMethod === 'MANUAL' ? 'none' : undefined }}>
+          <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block' }}>
                 {dataEntryMethod === 'AI_EXTRACTION' ? 'Source Contract PDF *' : 'Reference Contract PDF (Optional)'}
               </label>
-              {file && dataEntryMethod === 'MANUAL' && (
+              {file && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -288,12 +293,19 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
               <input
                 id="contract-file-input"
                 type="file"
-                accept=".pdf,application/pdf"
+                accept={PDF_ACCEPT_ATTRIBUTE}
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
                     const f = e.target.files[0];
+                    const err = validatePdfUpload(f);
+                    if (err) {
+                      setErrorMessage(err);
+                      e.target.value = '';
+                      return;
+                    }
                     setFile(f);
+                    setErrorMessage(null);
                     if (!title) {
                       setTitle(f.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '));
                     }
@@ -313,12 +325,12 @@ export default function AddContractModal({ open, projectId, taskId, onClose, onS
                   <strong style={{ fontSize: 13, color: '#334155' }}>
                     {dataEntryMethod === 'AI_EXTRACTION'
                       ? 'Click to browse or drag & drop contract PDF *'
-                      : 'Click to attach reference PDF (Optional)'}
+                      : 'Click to browse or drag & drop contract PDF'}
                   </strong>
                   <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
                     {dataEntryMethod === 'AI_EXTRACTION'
-                      ? 'Required for AI Extraction • PDF up to 50MB'
-                      : 'Không có tài liệu tham khảo? Bạn có thể tiếp tục tạo hợp đồng thủ công.'}
+                      ? 'Required for AI Extraction • PDF only up to 50MB'
+                      : 'Optional reference document • PDF only up to 50MB'}
                   </div>
                 </div>
               )}

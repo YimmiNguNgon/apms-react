@@ -10,6 +10,7 @@ const PAGE_SIZE = 8;
 
 interface NewsTabProps {
   companyId: string;
+  isOwnerProfile?: boolean;
 }
 
 const repairMojibake = (value?: string | null): string => {
@@ -24,7 +25,7 @@ const repairMojibake = (value?: string | null): string => {
   }
 };
 
-const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
+const NewsTab: React.FC<NewsTabProps> = ({ companyId, isOwnerProfile = false }) => {
   const { loading, error, data, reload } = useListingTabData<CompanyNews[]>(
     `news:${companyId}`,
     companyId,
@@ -33,7 +34,7 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [crawling, setCrawling] = useState(false);
   const [crawlMsg, setCrawlMsg] = useState<string | null>(null);
-  const showManualCrawler = companyId !== '6a31a0000000000000000001';
+  const showManualCrawler = !isOwnerProfile;
 
   // Reset pagination when companyId changes
   useEffect(() => {

@@ -88,6 +88,7 @@ import FinancialResearchWorkbench from '../components/FinancialResearch/Financia
 import ManagerFinancialResearchReviewWorkspace from '../components/FinancialResearch/ManagerFinancialResearchReviewWorkspace';
 import { ContractResearchWorkbench } from '../components/ContractResearch/ContractResearchWorkbench';
 import { ManagerContractResearchReviewWorkspace } from '../components/ContractResearch/ManagerContractResearchReviewWorkspace';
+import { isPdfFileName, validatePdfUpload, PDF_ACCEPT_ATTRIBUTE, PDF_ERROR_NOT_PDF } from '../utils/pdfValidation';
 import type {
   AiExtractionJobResponse,
   CompanyMemberResearchDraftResponse,
@@ -3603,7 +3604,85 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [showTransferLeaveModal, setShowTransferLeaveModal] = useState(false);
   const [leaveProjectLoading, setLeaveProjectLoading] = useState(false);
   const [transferLeaveCandidateId, setTransferLeaveCandidateId] = useState<number | "">("");
-  const [openMemberMenuId, setOpenMemberMenuId] = useState<number | null>(null);
+  const [activeMemberMenu, setActiveMemberMenu] = useState<{
+    member: ProjectMemberResponse;
+    coords: { top: number; left: number };
+    placement: 'top' | 'bottom';
+  } | null>(null);
+  const memberMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const handleToggleMemberMenu = (e: React.MouseEvent<HTMLButtonElement>, member: ProjectMemberResponse) => {
+    e.stopPropagation();
+    if (activeMemberMenu?.member.accountId === member.accountId) {
+      setActiveMemberMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 190;
+    const estimatedMenuHeight = 160;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const shouldFlip = spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+
+    let top: number;
+    if (shouldFlip) {
+      top = rect.top - 4;
+    } else {
+      top = rect.bottom + 4;
+    }
+
+    let left = rect.right - menuWidth;
+    if (left < 10) left = 10;
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+
+    setActiveMemberMenu({
+      member,
+      coords: { top, left },
+      placement: shouldFlip ? 'top' : 'bottom',
+    });
+  };
+
+  useEffect(() => {
+    if (!activeMemberMenu) return;
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (memberMenuRef.current && !memberMenuRef.current.contains(e.target as Node)) {
+        setActiveMemberMenu(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveMemberMenu(null);
+      }
+    };
+
+    const handleScrollOrResize = (e: Event) => {
+      if (memberMenuRef.current && memberMenuRef.current.contains(e.target as Node)) return;
+      setActiveMemberMenu(null);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [activeMemberMenu]);
+
+  useEffect(() => {
+    setActiveMemberMenu(null);
+  }, [activeTab]);
   const [companyMembersProfile, setCompanyMembersProfile] = useState<ProfileResponse | null>(null);
   const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
   const [companyMembersError, setCompanyMembersError] = useState<string | null>(null);
@@ -3611,9 +3690,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [documentSort, setDocumentSort] = useState<'newest' | 'oldest' | 'name' | 'type' | 'size'>('newest');
   const [selectedTaskDocumentIds, setSelectedTaskDocumentIds] = useState<number[]>([]);
   const validSelectedTaskDocumentIds = useMemo(() => {
-    const taskDocIds = new Set(taskDocuments.map((doc) => doc.id));
-    return selectedTaskDocumentIds.filter((id) => taskDocIds.has(id));
+    const taskDocIds = new Set(
+      taskDocuments.filter((doc) => isPdfFileName(doc.fileName)).map((doc) => doc.id)
+    );
+    const valid = selectedTaskDocumentIds.filter((id) => taskDocIds.has(id));
+    return valid.slice(0, 1);
   }, [selectedTaskDocumentIds, taskDocuments]);
+
+  useEffect(() => {
+    if (selectedTaskDocumentIds.length > 0) {
+      const validDoc = taskDocuments.find(
+        (doc) => selectedTaskDocumentIds.includes(doc.id) && isPdfFileName(doc.fileName)
+      );
+      if (!validDoc) {
+        setSelectedTaskDocumentIds([]);
+      } else if (selectedTaskDocumentIds.length !== 1 || selectedTaskDocumentIds[0] !== validDoc.id) {
+        setSelectedTaskDocumentIds([validDoc.id]);
+      }
+    }
+  }, [taskDocuments, selectedTaskDocumentIds]);
   const [extractingSelectedDocuments, setExtractingSelectedDocuments] = useState(false);
   const [isCancellingExtraction, setIsCancellingExtraction] = useState(false);
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
@@ -4209,35 +4304,47 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [currentProjectId, taskRefreshTick, projectRefreshTick]);
 
   useEffect(() => {
-    if (!showInviteModal) return;
-    const email = inviteEmail.trim();
-    if (!email) {
-      setAccounts([]);
+    if (!showInviteModal) {
+      setInviteEmail('');
       setSelectedAccount(null);
+      setInviteError(null);
+      setInviteMessage(null);
+      setAccounts([]);
+      setAccountsLoading(false);
+      return;
+    }
+
+    const term = inviteEmail.trim();
+    if (term.length < 2) {
+      setAccounts([]);
       setAccountsLoading(false);
       return;
     }
 
     let cancelled = false;
+    setAccounts([]);
     setAccountsLoading(true);
     setInviteError(null);
 
-    accountApi.searchAccountsByEmail(email)
-      .then((payload) => {
-        if (!cancelled) setAccounts(unwrapList<UserSearchResponse>(payload));
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setAccounts([]);
-          setInviteError(error instanceof Error ? error.message : 'Cannot load account list.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAccountsLoading(false);
-      });
+    const timer = setTimeout(() => {
+      accountApi.searchAccountsByEmail(term, 'BUSINESS_DEVELOPMENT_STAFF')
+        .then((payload) => {
+          if (!cancelled) setAccounts(unwrapList<UserSearchResponse>(payload));
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setAccounts([]);
+            setInviteError(error instanceof Error ? error.message : 'Cannot load account list.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setAccountsLoading(false);
+        });
+    }, 250);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [inviteEmail, showInviteModal]);
 
@@ -4317,8 +4424,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const documents = unwrapList<WorkbenchDocumentResponse>(documentsPayload);
       setTaskDocuments(documents);
       setSelectedTaskDocumentIds((prev) => {
-        const validDocIds = new Set(documents.map((d) => d.id));
-        return prev.filter((id) => validDocIds.has(id));
+        const validDocIds = new Set(documents.filter((d) => isPdfFileName(d.fileName)).map((d) => d.id));
+        const filtered = prev.filter((id) => validDocIds.has(id));
+        return filtered.slice(0, 1);
       });
       return documents;
     } catch (error) {
@@ -4595,6 +4703,25 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const isCurrentLeader = currentUserProjectRole === 'LEADER';
   const isCurrentDeputy = currentUserProjectRole === 'DEPUTY';
   const canManageMembers = (isCurrentLeader || isCurrentDeputy) && !isTerminalProject;
+
+  const hasMemberActions = useCallback(
+    (member: ProjectMemberResponse) => {
+      const isLeader = member.projectRole === 'LEADER';
+      const isDeputy = member.projectRole === 'DEPUTY';
+      const isSelf = member.accountId === currentUser?.id;
+
+      const canMakeDeputy = canManageMembers && isCurrentLeader && member.projectRole === 'MEMBER';
+      const canRemoveDeputy = canManageMembers && isCurrentLeader && isDeputy;
+      const canRemove =
+        canManageMembers &&
+        (isCurrentLeader ? !isLeader : isCurrentDeputy && !isLeader && !isDeputy) &&
+        !isSelf;
+      const canLeave = isSelf && !isLeader;
+
+      return canMakeDeputy || canRemoveDeputy || canRemove || canLeave;
+    },
+    [canManageMembers, isCurrentLeader, isCurrentDeputy, currentUser]
+  );
 
   const candidateStats = useMemo(() => {
     const reviewCandidates = candidates.filter((candidate) => visibleCandidateStatuses.has(candidate.status));
@@ -5206,19 +5333,36 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const suggestedAccounts = useMemo(() => {
     const term = inviteEmail.trim().toLowerCase();
-    if (!term) return accounts.slice(0, 6);
+    const existingMemberAccountIds = new Set(projectMembers.map((m) => m.accountId));
+    const existingMemberEmails = new Set(projectMembers.map((m) => (m.email || '').toLowerCase()).filter(Boolean));
 
-    return accounts
+    const eligibleStaff = accounts.filter((account) => {
+      const roles = account.roles ?? [];
+      const isStaffRole =
+        roles.includes('BUSINESS_DEVELOPMENT_STAFF') &&
+        !roles.includes('SYSTEM_ADMIN') &&
+        !roles.includes('BUSINESS_OWNER') &&
+        !roles.includes('BUSINESS_DEVELOPMENT_MANAGER');
+      const isActive = account.enabled !== false;
+      const isNotAlreadyMember =
+        !existingMemberAccountIds.has(account.id) &&
+        !existingMemberEmails.has(account.email.toLowerCase());
+
+      return isStaffRole && isActive && isNotAlreadyMember;
+    });
+
+    if (term.length < 2) return [];
+
+    return eligibleStaff
       .filter((account) => {
         const haystack = [
           account.email,
           account.fullName,
-          ...(account.roles ?? []),
         ].join(' ').toLowerCase();
         return haystack.includes(term);
       })
       .slice(0, 8);
-  }, [accounts, inviteEmail]);
+  }, [accounts, inviteEmail, projectMembers]);
 
   const selectSuggestedAccount = (account: UserSearchResponse) => {
     setSelectedAccount(account);
@@ -5372,6 +5516,26 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const matchedAccount = selectedAccount ?? accounts.find((account) => account.email.toLowerCase() === email.toLowerCase());
     if (!email) {
       setInviteError('Please enter a member email.');
+      return;
+    }
+
+    if (matchedAccount) {
+      const roles = matchedAccount.roles ?? [];
+      const isStaff =
+        roles.includes('BUSINESS_DEVELOPMENT_STAFF') &&
+        !roles.includes('SYSTEM_ADMIN') &&
+        !roles.includes('BUSINESS_OWNER') &&
+        !roles.includes('BUSINESS_DEVELOPMENT_MANAGER');
+      if (!isStaff) {
+        setInviteError('Only accounts with role BUSINESS_DEVELOPMENT_STAFF can be added to the project.');
+        return;
+      }
+      if (projectMembers.some((m) => m.accountId === matchedAccount.id || (m.email && m.email.toLowerCase() === email.toLowerCase()))) {
+        setInviteError('This account is already a member of this project.');
+        return;
+      }
+    } else if (projectMembers.some((m) => m.email && m.email.toLowerCase() === email.toLowerCase())) {
+      setInviteError('This account is already a member of this project.');
       return;
     }
 
@@ -6317,6 +6481,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please start this task before using staff workbench actions.');
       return;
     }
+    const validationError = validatePdfUpload(file);
+    if (validationError) {
+      setWorkbenchError(validationError);
+      return;
+    }
     setUploadingEvidence(true);
     setWorkbenchError(null);
     setWorkbenchMessage(null);
@@ -6563,10 +6732,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       setWorkbenchError('Please start this task before selecting documents.');
       return;
     }
+    const doc = taskDocuments.find((d) => d.id === documentId);
+    if (!doc || !isPdfFileName(doc.fileName)) {
+      setWorkbenchError(PDF_ERROR_NOT_PDF);
+      return;
+    }
     setSelectedTaskDocumentIds((current) => (
-      current.includes(documentId)
-        ? current.filter((id) => id !== documentId)
-        : [...current, documentId]
+      current.includes(documentId) ? [] : [documentId]
     ));
   };
 
@@ -6578,7 +6750,13 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     }
 
     if (selectedDocuments.length === 0) {
-      setWorkbenchError('Please select at least one document to extract.');
+      setWorkbenchError('Please select a PDF document to extract.');
+      return;
+    }
+
+    const targetDoc = selectedDocuments[0];
+    if (!isPdfFileName(targetDoc.fileName)) {
+      setWorkbenchError(PDF_ERROR_NOT_PDF);
       return;
     }
 
@@ -6587,21 +6765,17 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setWorkbenchMessage(null);
 
     try {
-      // Async Multi-Document Extraction
-      const rawDocumentIds = selectedDocuments.map((doc) => doc.rawDocumentId).filter((id): id is string => Boolean(id));
-      if (rawDocumentIds.length === 0) {
-        setWorkbenchError('The selected documents are unavailable for AI extraction (Missing Raw Document ID).');
+      const rawDocumentId = targetDoc.rawDocumentId;
+      if (!rawDocumentId) {
+        setWorkbenchError('The selected document is unavailable for AI extraction (Missing Raw Document ID).');
         setExtractingSelectedDocuments(false);
         return;
       }
 
-      if (selectedDocuments.length === 1) {
-        setExtractingImportJobId(selectedDocuments[0].id);
-      }
-
+      setExtractingImportJobId(targetDoc.id);
       setExtractionJob(null);
       completedExtractionJob.current = null;
-      const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, rawDocumentIds);
+      const res = await projectApi.extractMultiDocuments(Number(currentProjectId), selectedStaffTask.id, [rawDocumentId]);
       if (res.success && res.data && res.data.jobId) {
         setExtractionJobId(res.data.jobId);
       }
@@ -6824,7 +6998,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
   const handleExtractSelectedTaskDocuments = async () => {
     const docsToExtract = taskDocuments.filter((document) => validSelectedTaskDocumentIds.includes(document.id));
-    await extractTaskDocumentsForReview(docsToExtract);
+    if (docsToExtract.length > 0) {
+      await extractTaskDocumentsForReview([docsToExtract[0]]);
+    }
   };
 
   const handleCreateManualCandidate = async () => {
@@ -7405,6 +7581,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   <button
                     className={`${styles.button} ${isDraftProject ? styles.outlineButton : styles.primaryButton}`}
                     type="button"
+                    title="Add Staff"
+                    aria-label="Add Staff"
                     onClick={() => {
                       if (ensureProjectIsActive('adding staff')) setShowInviteModal(true);
                     }}
@@ -8410,74 +8588,15 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <td>{formatMemberDate(member.joinedAt)}</td>
                           <td>
                             <div className={styles.actionMenuWrapper}>
-                              {(canManageMembers || member.accountId === currentUser?.id) && (
+                              {hasMemberActions(member) && (
                                 <button
-                                  className={styles.actionMenuButton}
-                                  onClick={() => setOpenMemberMenuId(openMemberMenuId === member.accountId ? null : member.accountId)}
+                                  className={`${styles.actionMenuButton} ${activeMemberMenu?.member.accountId === member.accountId ? styles.actionMenuButtonActive : ''}`}
+                                  onClick={(e) => handleToggleMemberMenu(e, member)}
                                   aria-label="Actions"
+                                  aria-expanded={activeMemberMenu?.member.accountId === member.accountId}
                                 >
                                   <MoreVertical size={16} />
                                 </button>
-                              )}
-
-                              {openMemberMenuId === member.accountId && (
-                                <>
-                                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5 }} onClick={() => setOpenMemberMenuId(null)} />
-                                  <div className={styles.actionMenuDropdown}>
-                                    {canManageMembers && isCurrentLeader && member.projectRole === 'MEMBER' && (
-                                      <button
-                                        className={styles.actionMenuItem}
-                                        onClick={() => { setOpenMemberMenuId(null); handleUpdateMemberRole(member, 'DEPUTY'); }}
-                                      >
-                                        Make Deputy
-                                      </button>
-                                    )}
-                                    {canManageMembers && isCurrentLeader && isDeputy && (
-                                      <button
-                                        className={styles.actionMenuItem}
-                                        onClick={() => { setOpenMemberMenuId(null); handleUpdateMemberRole(member, 'MEMBER'); }}
-                                      >
-                                        Remove Deputy Role
-                                      </button>
-                                    )}
-                                    {canManageMembers && isCurrentLeader && !isLeader && (
-                                      <button
-                                        className={styles.actionMenuItem}
-                                        onClick={() => { setOpenMemberMenuId(null); handleTransferLeadership(member); }}
-                                      >
-                                        Transfer Leadership
-                                      </button>
-                                    )}
-                                    {canManageMembers && (isCurrentLeader ? !isLeader : (isCurrentDeputy && !isLeader && !isDeputy)) && member.accountId !== currentUser?.id && (
-                                      <button
-                                        className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
-                                        onClick={() => { setOpenMemberMenuId(null); setMemberToRemove(member); }}
-                                      >
-                                        Remove from Project
-                                      </button>
-                                    )}
-                                    {member.accountId === currentUser?.id && (
-                                      <button
-                                        className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
-                                        onClick={() => {
-                                          setOpenMemberMenuId(null);
-                                          if (isLeader) {
-                                            const candidates = projectMembers.filter(m => m.accountId !== currentUser?.id);
-                                            if (candidates.length === 0) {
-                                              window.alert("You must invite another member before leaving the project.");
-                                              return;
-                                            }
-                                            setShowTransferLeaveModal(true);
-                                          } else {
-                                            setShowLeaveConfirmModal(true);
-                                          }
-                                        }}
-                                      >
-                                        Leave Project
-                                      </button>
-                                    )}
-                                  </div>
-                                </>
                               )}
                             </div>
                           </td>
@@ -8487,6 +8606,80 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                   </tbody>
                 </table>
               </div>
+
+              {activeMemberMenu &&
+                createPortal(
+                  <div
+                    ref={memberMenuRef}
+                    className={styles.actionMenuFloatingDropdown}
+                    style={{
+                      position: 'fixed',
+                      top: `${activeMemberMenu.coords.top}px`,
+                      left: `${activeMemberMenu.coords.left}px`,
+                      transform: activeMemberMenu.placement === 'top' ? 'translateY(-100%)' : 'none',
+                      zIndex: 10000,
+                    }}
+                    role="menu"
+                    aria-orientation="vertical"
+                  >
+                    {/* {canManageMembers && isCurrentLeader && activeMemberMenu.member.projectRole === 'MEMBER' && (
+                      <button
+                        className={styles.actionMenuItem}
+                        onClick={() => {
+                          const m = activeMemberMenu.member;
+                          setActiveMemberMenu(null);
+                          handleUpdateMemberRole(m, 'DEPUTY');
+                        }}
+                      >
+                        <ShieldCheck size={15} />
+                        <span>Make Deputy</span>
+                      </button>
+                    )} */}
+                    {canManageMembers && isCurrentLeader && activeMemberMenu.member.projectRole === 'DEPUTY' && (
+                      <button
+                        className={styles.actionMenuItem}
+                        onClick={() => {
+                          const m = activeMemberMenu.member;
+                          setActiveMemberMenu(null);
+                          handleUpdateMemberRole(m, 'MEMBER');
+                        }}
+                      >
+                        <UserX size={15} />
+                        <span>Remove Deputy Role</span>
+                      </button>
+                    )}
+                    {canManageMembers &&
+                      (isCurrentLeader
+                        ? activeMemberMenu.member.projectRole !== 'LEADER'
+                        : (isCurrentDeputy && activeMemberMenu.member.projectRole !== 'LEADER' && activeMemberMenu.member.projectRole !== 'DEPUTY')) &&
+                      activeMemberMenu.member.accountId !== currentUser?.id && (
+                        <button
+                          className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
+                          onClick={() => {
+                            const m = activeMemberMenu.member;
+                            setActiveMemberMenu(null);
+                            setMemberToRemove(m);
+                          }}
+                        >
+                          <Trash2 size={15} />
+                          <span>Remove from Project</span>
+                        </button>
+                      )}
+                    {activeMemberMenu.member.accountId === currentUser?.id && activeMemberMenu.member.projectRole !== 'LEADER' && (
+                      <button
+                        className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
+                        onClick={() => {
+                          setActiveMemberMenu(null);
+                          setShowLeaveConfirmModal(true);
+                        }}
+                      >
+                        <UserX size={15} />
+                        <span>Leave Project</span>
+                      </button>
+                    )}
+                  </div>,
+                  document.body
+                )}
             </motion.section>
           ) : null}
         </main>
@@ -8520,11 +8713,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               {inviteMessage && <div className={styles.inlineSuccess}>{inviteMessage}</div>}
 
               <label className={styles.inviteField}>
-                <span>Email</span>
+                <span>Email / Name</span>
                 <input
-                  type="email"
+                  type="text"
                   value={inviteEmail}
-                  placeholder="Type user email..."
+                  placeholder="Type user email or name..."
                   onChange={(event) => {
                     setInviteEmail(event.target.value);
                     setSelectedAccount(null);
@@ -8533,36 +8726,39 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                 />
               </label>
 
-              <div className={styles.suggestionPanel}>
-                <div className={styles.suggestionHead}>
-                  <span>Suggestions</span>
-                  {accountsLoading && <small>Loading...</small>}
+              {inviteEmail.trim().length < 2 ? (
+                <div style={{ fontSize: '13px', color: '#64748b', padding: '6px 2px' }}>
+                  Start typing a name or email to search for staff.
                 </div>
-                {!inviteEmail.trim() && (
-                  <div className={styles.suggestionEmpty}>Type the first email character to search members.</div>
-                )}
-                {inviteEmail.trim() && !accountsLoading && suggestedAccounts.length === 0 && (
-                  <div className={styles.suggestionEmpty}>No account found for this email.</div>
-                )}
-                {suggestedAccounts.map((account) => (
-                  <button
-                    key={account.id}
-                    type="button"
-                    className={`${styles.suggestionItem} ${selectedAccount?.id === account.id ? styles.suggestionActive : ''}`}
-                    onClick={() => selectSuggestedAccount(account)}
-                  >
-                    <span className={styles.suggestionAvatar}>{accountName(account).slice(0, 2).toUpperCase()}</span>
-                    <span>
-                      <strong>{accountName(account)}</strong>
-                      <small>{account.email} - {roleName(account)}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
+              ) : (
+                <div className={styles.suggestionPanel}>
+                  <div className={styles.suggestionHead}>
+                    <span>Suggestions</span>
+                    {accountsLoading && <small>Searching...</small>}
+                  </div>
+                  {!accountsLoading && suggestedAccounts.length === 0 && (
+                    <div className={styles.suggestionEmpty}>No eligible staff found.</div>
+                  )}
+                  {suggestedAccounts.map((account) => (
+                    <button
+                      key={account.id}
+                      type="button"
+                      className={`${styles.suggestionItem} ${selectedAccount?.id === account.id ? styles.suggestionActive : ''}`}
+                      onClick={() => selectSuggestedAccount(account)}
+                    >
+                      <span className={styles.suggestionAvatar}>{accountName(account).slice(0, 2).toUpperCase()}</span>
+                      <span>
+                        <strong>{accountName(account)}</strong>
+                        <small>{account.email} - {roleName(account)}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className={styles.modalActions}>
                 <button className={styles.button} type="button" onClick={() => setShowInviteModal(false)}>Cancel</button>
-                <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleInviteMember()} disabled={inviteLoading || !inviteEmail.trim()}>
+                <button className={`${styles.button} ${styles.primaryButton}`} type="button" onClick={() => void handleInviteMember()} disabled={inviteLoading || !selectedAccount}>
                   {inviteLoading ? 'Inviting...' : 'Add member'}
                 </button>
               </div>
@@ -9152,6 +9348,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             <label className={styles.workbenchUploadBox} style={{ marginTop: '16px', marginBottom: '16px' }}>
                               <input
                                 type="file"
+                                accept={PDF_ACCEPT_ATTRIBUTE}
                                 onChange={(event) => {
                                   void handleUploadEvidence(event.target.files?.[0] ?? null);
                                   event.currentTarget.value = '';
@@ -9160,7 +9357,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               />
                               <FileText size={24} />
                               <strong>{uploadingEvidence ? 'Uploading document...' : 'Upload document'}</strong>
-                              <span>Upload a new file to this task.</span>
+                              <span>Upload a PDF document to this task. Maximum size: 50 MB.</span>
                             </label>
 
                             <div className={styles.documentSelectionSummary}>
@@ -9194,15 +9391,24 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                 <div className={styles.empty}>No documents found for this task. Upload a document to get started.</div>
                               )}
                               {taskDocuments.map((document) => {
-                                const selected = selectedTaskDocumentIds.includes(document.id);
+                                const isPdf = isPdfFileName(document.fileName);
+                                const selected = isPdf && validSelectedTaskDocumentIds.includes(document.id);
                                 return (
                                   <article className={`${styles.documentItem} ${selected ? styles.documentItemSelected : ''}`} key={document.id}>
-                                    <label className={styles.documentCheckbox}>
+                                    <label className={styles.documentCheckbox} style={{ cursor: isPdf ? 'pointer' : 'not-allowed' }}>
                                       <input
-                                        type="checkbox"
+                                        type="radio"
+                                        name="basicCompanyDocumentSelection"
                                         checked={selected}
                                         onChange={() => toggleTaskDocumentSelection(document.id)}
-                                        disabled={!canUseStaffWorkbench || extractingSelectedDocuments}
+                                        onClick={() => {
+                                          if (selected) {
+                                            setSelectedTaskDocumentIds([]);
+                                          }
+                                        }}
+                                        disabled={!canUseStaffWorkbench || extractingSelectedDocuments || !isPdf}
+                                        title={!isPdf ? 'Only PDF files can be extracted by AI' : undefined}
+                                        style={{ cursor: isPdf ? 'pointer' : 'not-allowed' }}
                                       />
                                     </label>
                                     <div className={styles.documentIcon}><FileText size={18} /></div>

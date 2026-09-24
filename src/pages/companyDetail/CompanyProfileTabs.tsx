@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { CompanyProfileInsights, CompanyProfileMember, OwnerCompanyIntelligenceResponse, ProfileResponse } from '../../types/domain';
 import type { ListingTabId } from './utils';
 import { C, GHOST_BUTTON, INPUT_STYLE, PRIMARY_BUTTON } from './tokens';
+import { validateWebsite, validateEmail, validatePhone, validateCompanyProfileField } from '../../utils/companyProfileValidation';
 
 export interface OverviewPayload {
   legalName: string;
@@ -313,6 +314,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const [boardDraft, setBoardDraft] = useState<BoardDraftMember[] | null>(null);
   const [editingMember, setEditingMember] = useState<number | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showAllProducts, setShowAllProducts] = useState(false);
 
   const cancelAll = () => {
@@ -324,11 +326,13 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     setBfDraft(null);
     setBoardDraft(null);
     setEditingMember(null);
+    setFieldErrors({});
   };
 
   const startEditing = (tab: EditableListingTab) => {
     setMsg(null);
     setEditingMember(null);
+    setFieldErrors({});
     if (tab.startsWith('overview')) {
       setOverviewDraft({
         legalName: profile.identity?.legalName ?? '',
@@ -382,7 +386,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     setEditing(tab);
   };
 
-  const runSave = async (action: () => Promise<unknown> | void) => {
+  const runSave = async (action: () => Promise<unknown> | void): Promise<boolean> => {
     setSaving(true);
     setMsg(null);
     try {
@@ -394,8 +398,11 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
       setBfDraft(null);
       setBoardDraft(null);
       setEditingMember(null);
-    } catch (err) {
-      setMsg({ ok: false, text: err instanceof Error ? err.message : 'Lưu thay đổi thất bại.' });
+      return true;
+    } catch (err: any) {
+      const errorText = err?.response?.data?.message || (err instanceof Error ? err.message : 'Lưu thay đổi thất bại.');
+      setMsg({ ok: false, text: errorText });
+      return false;
     } finally {
       setSaving(false);
     }
@@ -403,8 +410,23 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
 
   const saveOverview = () => {
     if (!overviewDraft) return;
-    void runSave(() =>
-      onSaveOverview?.({
+
+    const websiteErr = validateWebsite(overviewDraft.website);
+    const emailErr = validateEmail(overviewDraft.email);
+    const phoneErr = validatePhone(overviewDraft.phone);
+
+    if (websiteErr || emailErr || phoneErr) {
+      setFieldErrors(prev => ({
+        ...prev,
+        ...(websiteErr ? { website: websiteErr } : {}),
+        ...(emailErr ? { email: emailErr } : {}),
+        ...(phoneErr ? { phone: phoneErr } : {}),
+      }));
+      return;
+    }
+
+    void runSave(async () => {
+      await onSaveOverview?.({
         legalName: overviewDraft.legalName.trim(),
         tradeName: overviewDraft.tradeName.trim(),
         taxCode: overviewDraft.taxCode.trim(),
@@ -424,40 +446,42 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           : [],
         businessModel: overviewDraft.businessModel.trim(),
         industries: splitCsv(overviewDraft.industries),
-      }),
-    );
+      });
+    });
   };
 
   const saveSwot = () => {
     if (!swotDraft) return;
-    void runSave(() => onSaveSwot?.({ insights: swotDraft }));
+    void runSave(async () => {
+      await onSaveSwot?.({ insights: swotDraft });
+    });
   };
 
   const saveBusinessFields = () => {
     if (!bfDraft) return;
-    void runSave(() =>
-      onSaveBusinessFields?.({
+    void runSave(async () => {
+      await onSaveBusinessFields?.({
         products: bfDraft.products
           .map((p) => ({ name: p.name.trim() }))
           .filter((p) => p.name.length > 0),
         markets: bfDraft.markets,
         targetCustomers: bfDraft.targetCustomers,
-      }),
-    );
+      });
+    });
   };
 
   const saveBoard = () => {
     if (!boardDraft) return;
-    void runSave(() =>
-      onSaveBoard?.({
+    void runSave(async () => {
+      await onSaveBoard?.({
         companyMembers: boardDraft.map((m) => ({
           fullName: m.fullName.trim(),
           position: m.position.trim(),
           imageUrl: m.imageUrl.trim() || undefined,
           notes: m.notes.trim() || undefined,
         })),
-      }),
-    );
+      });
+    });
   };
 
   /* ── Overview ─────────────────────────────────────────────────── */
@@ -468,16 +492,60 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const startFieldEdit = (key: string) => {
     startEditing('overview');
     setEditingField(key);
+    setFieldErrors({});
   };
 
   const cancelFieldEdit = () => {
     setEditingField(null);
+    setFieldErrors({});
     cancelAll();
   };
 
-  const saveFieldEdit = () => {
-    saveOverview();
-    setEditingField(null);
+  const saveFieldEdit = async () => {
+    if (!overviewDraft) return;
+
+    let err: string | null = null;
+    if (editingField === 'website') {
+      err = validateWebsite(overviewDraft.website);
+    } else if (editingField === 'email') {
+      err = validateEmail(overviewDraft.email);
+    } else if (editingField === 'phone') {
+      err = validatePhone(overviewDraft.phone);
+    }
+
+    if (err) {
+      setFieldErrors(prev => ({ ...prev, [editingField!]: err! }));
+      return;
+    }
+
+    const ok = await runSave(async () => {
+      await onSaveOverview?.({
+        legalName: overviewDraft.legalName.trim(),
+        tradeName: overviewDraft.tradeName.trim(),
+        taxCode: overviewDraft.taxCode.trim(),
+        registrationNumber: overviewDraft.registrationNumber.trim(),
+        stockTicker: overviewDraft.stockTicker.trim().toUpperCase(),
+        stockExchange: overviewDraft.stockExchange,
+        website: overviewDraft.website.trim(),
+        email: overviewDraft.email.trim(),
+        phone: overviewDraft.phone.trim(),
+        employeeTier: overviewDraft.employeeTier?.trim() || undefined,
+        employeeCount: overviewDraft.employeeCount.trim() ? Number(overviewDraft.employeeCount.trim()) : undefined,
+        foundedYear: overviewDraft.foundedYear.trim() ? Number(overviewDraft.foundedYear.trim()) : null,
+        companyDescription: overviewDraft.companyDescription.trim(),
+        address: overviewDraft.address.trim(),
+        addresses: overviewDraft.address.trim()
+          ? overviewDraft.address.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+          : [],
+        businessModel: overviewDraft.businessModel.trim(),
+        industries: splitCsv(overviewDraft.industries),
+      });
+    });
+
+    if (ok) {
+      setEditingField(null);
+      setFieldErrors({});
+    }
   };
 
   const renderOverview = () => {
@@ -497,7 +565,18 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     const address = effectiveAddresses[0]?.trim() || intelligence?.company?.headquarters?.trim() || '';
 
     const setField = (key: keyof OverviewDraft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-      setOverviewDraft((prev) => (prev ? { ...prev, [key]: event.target.value } : prev));
+      const val = event.target.value;
+      setOverviewDraft((prev) => (prev ? { ...prev, [key]: val } : prev));
+      if (fieldErrors[key]) {
+        const err = validateCompanyProfileField(key, val);
+        if (!err) {
+          setFieldErrors((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }
+      }
     };
 
     const renderEditableField = (
@@ -505,10 +584,11 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
       label: string,
       currentValue: React.ReactNode,
       hasValue: boolean,
-      renderInput: () => React.ReactNode,
+      renderInput: (hasError?: boolean) => React.ReactNode,
       isFullWidth: boolean = false
     ) => {
       const isEditingThis = editingField === key && overviewDraft;
+      const fieldError = fieldErrors[key];
       return (
         <div style={{ ...C.fieldCell, position: 'relative', gridColumn: isFullWidth ? '1 / -1' : 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -524,7 +604,12 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           </div>
           {isEditingThis ? (
             <div style={{ marginTop: '4px' }}>
-              {renderInput()}
+              {renderInput(!!fieldError)}
+              {fieldError && (
+                <div style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>⚠</span> {fieldError}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={cancelFieldEdit} style={{ ...GHOST_BUTTON, padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: '28px' }}>Hủy</button>
                 <button type="button" onClick={saveFieldEdit} disabled={saving} style={{ ...PRIMARY_BUTTON, padding: '4px 12px', fontSize: '0.75rem', height: 'auto', minHeight: '28px' }}>
@@ -566,14 +651,14 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           <section style={C.card}>
             <div style={C.cardHeader}><h2 style={C.h2}>Contact & Size Information</h2></div>
             <div style={C.fieldGrid}>
-              {renderEditableField('website', 'Website', website ? <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>N/A</strong>, !!website, () => (
-                <input value={overviewDraft!.website} onChange={setField('website')} placeholder="https://..." style={INPUT_STYLE} />
+              {renderEditableField('website', 'Website', website ? <a href={website.startsWith('http') ? website : `https://${website}`} target="_blank" rel="noreferrer" style={{ color: '#2563EB', textDecoration: 'none', fontWeight: 600 }}>{website}</a> : <strong style={C.muted}>N/A</strong>, !!website, (hasErr) => (
+                <input value={overviewDraft!.website} onChange={setField('website')} placeholder="https://..." style={{ ...INPUT_STYLE, borderColor: hasErr ? '#ef4444' : '#CBD5E1' }} />
               ))}
-              {renderEditableField('email', 'Contact Email', email || 'N/A', !!email, () => (
-                <input type="email" value={overviewDraft!.email} onChange={setField('email')} style={INPUT_STYLE} />
+              {renderEditableField('email', 'Contact Email', email || 'N/A', !!email, (hasErr) => (
+                <input type="email" value={overviewDraft!.email} onChange={setField('email')} style={{ ...INPUT_STYLE, borderColor: hasErr ? '#ef4444' : '#CBD5E1' }} />
               ))}
-              {renderEditableField('phone', 'Phone', phone || 'N/A', !!phone, () => (
-                <input value={overviewDraft!.phone} onChange={setField('phone')} style={INPUT_STYLE} />
+              {renderEditableField('phone', 'Phone', phone || 'N/A', !!phone, (hasErr) => (
+                <input value={overviewDraft!.phone} onChange={setField('phone')} style={{ ...INPUT_STYLE, borderColor: hasErr ? '#ef4444' : '#CBD5E1' }} />
               ))}
               {renderEditableField('employeeCount', 'Employee Count', empCount ? `${empCount} employees` : 'N/A', !!empCount, () => (
                 <input type="number" min={1} value={overviewDraft!.employeeCount} onChange={setField('employeeCount')} style={INPUT_STYLE} placeholder="Count (e.g. 150)" />

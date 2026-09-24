@@ -13,11 +13,21 @@ import {
   Search,
   Trash2,
   CheckCircle2,
+  Edit3,
+  Sparkles,
+  AlertCircle,
+  X,
+  Play,
+  XCircle,
 } from 'lucide-react';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { API_BASE_URL } from '../../services/api';
-import type { CompanyProfileFinancialRow } from '../../types/domain';
+import type { CompanyProfileFinancialRow, CreateFinancialReportRequest, FinancialReportEntry } from '../../types/domain';
 import { formatFinancialUnit, CANONICAL_FINANCIAL_UNITS } from '../../components/FinancialResearch/canonicalFinancialTaxonomy';
+import AddFinancialReportModal from '../../components/FinancialResearch/AddFinancialReportModal';
+import EditFinancialReportModal from '../../components/FinancialResearch/EditFinancialReportModal';
+import AiExtractionProgressBar from '../../components/Shared/AiExtractionProgressBar';
+import { ConfirmModal } from '../../components/Shared/ConfirmModal';
 import styles from './FinancialsTab.module.css';
 
 export interface FinancialsTabHandle {
@@ -31,6 +41,7 @@ interface FinancialsTabProps {
   projectId?: number | null;
   editable?: boolean;
   onDirtyChange?: (isDirty: boolean) => void;
+  isAdminMyEnterprise?: boolean;
 }
 
 interface ReportGroup {
@@ -113,6 +124,7 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   projectId,
   editable = false,
   onDirtyChange,
+  isAdminMyEnterprise = false,
 }, ref) => {
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedQuarter, setSelectedQuarter] = useState<string>('ALL');
@@ -123,6 +135,21 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
   const [draftRows, setDraftRows] = useState<CompanyProfileFinancialRow[]>([]);
   const [deletedRowIds, setDeletedRowIds] = useState<string[]>([]);
   const [hasAttemptedBackfill, setHasAttemptedBackfill] = useState(false);
+
+  // Admin My Enterprise States
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingReportGroup, setEditingReportGroup] = useState<ReportGroup | null>(null);
+  const [editingReportEntry, setEditingReportEntry] = useState<FinancialReportEntry | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractingReportId, setExtractingReportId] = useState<string | null>(null);
+  const [extractingReportTitle, setExtractingReportTitle] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+  const extractionAbortRef = React.useRef<AbortController | null>(null);
+  const [editingMetricsReportId, setEditingMetricsReportId] = useState<string | null>(null);
+  const [isSavingMetrics, setIsSavingMetrics] = useState(false);
+  const [reportPendingDelete, setReportPendingDelete] = useState<ReportGroup | null>(null);
+  const [isDeletingReport, setIsDeletingReport] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   // Read-only query for canonical company profile financials
   const {
@@ -176,10 +203,18 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     }
   }, [canonicalRows, draftRows.length]);
 
+  // Auto-dismiss feedback message
+  useEffect(() => {
+    if (feedback) {
+      const timer = setTimeout(() => setFeedback(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [feedback]);
+
   // Determine active rows based on mode
   const activeRows = useMemo(() => {
-    return editable ? draftRows : (canonicalRows || []);
-  }, [editable, draftRows, canonicalRows]);
+    return (editable || Boolean(editingMetricsReportId)) ? draftRows : (canonicalRows || []);
+  }, [editable, editingMetricsReportId, draftRows, canonicalRows]);
 
   // Helper for numeric conversion
   const parseNumeric = (val: any): number => {
@@ -364,12 +399,16 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           reportTitle: row.sourceReportTitle || 'Financial Report',
           documentId: row.sourceDocumentId,
           publicationDate: row.publicationDate,
-          isManual: false,
+          isManual: row.sourceType === 'MANUAL',
           rows: [],
         });
       }
 
-      reportsInPeriod.get(groupKey)!.rows.push(row);
+      const existingGroup = reportsInPeriod.get(groupKey)!;
+      if (row.sourceType && row.sourceType !== 'MANUAL') {
+        existingGroup.isManual = false;
+      }
+      existingGroup.rows.push(row);
     });
 
     // Sort periods descending
@@ -555,6 +594,300 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     setExpandedReportIds(prev => new Set(prev).add(targetReport.reportId));
   };
 
+  // Admin My Enterprise Handlers
+  const handleCreateReport = async (data: CreateFinancialReportRequest, file?: File | null) => {
+    try {
+      const res = await financialResearchApi.createAdminMyEnterpriseFinancialReport({
+        title: data.title,
+        year: data.reportingPeriod?.year ?? (selectedYear || new Date().getFullYear()),
+        period: data.reportingPeriod?.period || 'Q1',
+        dataEntryMethod: data.dataEntryMethod || 'MANUAL',
+        file: file || null,
+      });
+
+      // Close modal immediately upon successful creation
+      setIsAddModalOpen(false);
+
+      await refetch();
+      if (data.reportingPeriod?.year) {
+        setSelectedYear(data.reportingPeriod.year);
+      }
+      if (data.reportingPeriod?.period) {
+        setSelectedQuarter(data.reportingPeriod.period);
+      }
+      if (res.data && res.data.length > 0) {
+        const newReportId = res.data[0].sourceReportId;
+        if (newReportId) {
+          setExpandedReportIds(prev => new Set(prev).add(newReportId));
+        }
+      }
+      const isAi = data.dataEntryMethod === 'AI_EXTRACTION';
+      setFeedback({
+        type: 'success',
+        message: isAi
+          ? `Financial report "${data.title}" created. Click "Extract AI" to extract metrics.`
+          : `Financial report "${data.title}" created successfully.`,
+      });
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to create financial report.';
+      setFeedback({
+        type: 'error',
+        message: errorMsg,
+      });
+      throw err;
+    }
+  };
+
+  const handleOpenEditModal = (group: ReportGroup) => {
+    const firstRow = group.rows[0];
+    const repYear = firstRow?.year ?? selectedYear ?? new Date().getFullYear();
+    const repQuarter = normalizePeriod(firstRow?.quarter) || (selectedQuarter !== 'ALL' ? selectedQuarter : 'Q1');
+
+    const entry: FinancialReportEntry = {
+      id: group.reportId,
+      title: group.reportTitle,
+      documentId: group.documentId || '',
+      fileName: group.documentId ? 'Financial Report Document.pdf' : null,
+      reportType: 'FINANCIAL_STATEMENT',
+      statementScope: 'UNKNOWN',
+      dataEntryMethod: group.isManual ? 'MANUAL' : 'AI_EXTRACTION',
+      reportingPeriod: {
+        year: repYear,
+        periodType: repQuarter === 'FY' ? 'FULL_YEAR' : 'QUARTER',
+        period: repQuarter,
+      },
+      reportingYear: repYear,
+      publicationDate: group.publicationDate || null,
+      extractionStatus: group.isManual ? 'NOT_APPLICABLE' : 'EXTRACTED',
+      reviewStatus: null,
+      reviewComment: null,
+    };
+
+    setEditingReportGroup(group);
+    setEditingReportEntry(entry);
+  };
+
+  const handleCustomSaveReport = async (data: {
+    title: string;
+    period: string;
+    year?: number;
+    file: File | null;
+    report: FinancialReportEntry;
+  }) => {
+    try {
+      await financialResearchApi.updateAdminMyEnterpriseFinancialReport(data.report.id, {
+        title: data.title,
+        period: data.period,
+        year: data.year,
+        file: data.file,
+      });
+
+      // Close modal immediately
+      setEditingReportGroup(null);
+      setEditingReportEntry(null);
+
+      await refetch();
+      if (data.year) setSelectedYear(data.year);
+      if (data.period) setSelectedQuarter(data.period);
+      setExpandedReportIds(prev => new Set(prev).add(data.report.id));
+      const isAi = data.report.dataEntryMethod === 'AI_EXTRACTION';
+      setFeedback({
+        type: 'success',
+        message: data.file && isAi
+          ? `Document replaced for "${data.title}". Report is ready for AI extraction.`
+          : `Financial report "${data.title}" updated successfully.`,
+      });
+    } catch (err: any) {
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to update financial report.';
+      setFeedback({
+        type: 'error',
+        message: errorMsg,
+      });
+      throw err;
+    }
+  };
+
+  const handleStartExtract = async (group: ReportGroup, isReExtract = false) => {
+    if (isExtracting) return;
+
+    if (isReExtract) {
+      if (!window.confirm(`Re-extract financial metrics for "${group.reportTitle}" from source document using AI? This will re-analyze the document and update extracted metrics.`)) {
+        return;
+      }
+    }
+
+    const controller = new AbortController();
+    extractionAbortRef.current = controller;
+    setIsExtracting(true);
+    setExtractingReportId(group.reportId);
+    setExtractingReportTitle(group.reportTitle);
+    setIsCancelling(false);
+    setFeedback(null);
+    setExpandedReportIds(prev => new Set(prev).add(group.reportId));
+
+    try {
+      if (isReExtract) {
+        await financialResearchApi.reExtractAdminMyEnterpriseFinancialReport(group.reportId, controller.signal);
+      } else {
+        await financialResearchApi.extractAdminMyEnterpriseFinancialReport(group.reportId, controller.signal);
+      }
+      await refetch();
+      setExpandedReportIds(prev => new Set(prev).add(group.reportId));
+      setFeedback({
+        type: 'success',
+        message: isReExtract
+          ? `Metrics re-extracted successfully for "${group.reportTitle}".`
+          : `Metrics extracted successfully for "${group.reportTitle}".`,
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message === 'Request was aborted.' || err?.status === 408 || controller.signal.aborted) {
+        setFeedback({
+          type: 'info',
+          message: `AI extraction for "${group.reportTitle}" was cancelled. PDF is preserved and ready for extraction.`,
+        });
+      } else {
+        const errorMsg = err?.response?.data?.message || err?.message || 'Failed to extract financial metrics.';
+        setFeedback({
+          type: 'error',
+          message: errorMsg,
+        });
+      }
+    } finally {
+      setIsExtracting(false);
+      setExtractingReportId(null);
+      setExtractingReportTitle('');
+      setIsCancelling(false);
+      extractionAbortRef.current = null;
+    }
+  };
+
+  const handleCancelExtract = async () => {
+    if (!isExtracting) return;
+    setIsCancelling(true);
+    const repId = extractingReportId;
+    if (extractionAbortRef.current) {
+      extractionAbortRef.current.abort();
+    }
+    if (repId) {
+      try {
+        await financialResearchApi.cancelAdminMyEnterpriseFinancialReport(repId);
+      } catch (err) {
+        console.warn('Backend cancel extraction notification error:', err);
+      }
+    }
+    setIsExtracting(false);
+    setExtractingReportId(null);
+    setExtractingReportTitle('');
+    setIsCancelling(false);
+    extractionAbortRef.current = null;
+    await refetch();
+  };
+
+  const handleConfirmDeleteReport = async () => {
+    if (!reportPendingDelete || isDeletingReport) return;
+
+    const targetReport = reportPendingDelete;
+    setIsDeletingReport(true);
+    setFeedback(null);
+
+    try {
+      await financialResearchApi.deleteAdminMyEnterpriseFinancialReport(targetReport.reportId);
+      await refetch();
+      setReportPendingDelete(null);
+      setFeedback({
+        type: 'success',
+        message: 'Financial report deleted successfully.',
+      });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to delete financial report. Please try again.';
+      setFeedback({
+        type: 'error',
+        message: errorMsg,
+      });
+    } finally {
+      setIsDeletingReport(false);
+    }
+  };
+
+  const handleStartEditMetrics = (group: ReportGroup) => {
+    setDraftRows(canonicalRows || []);
+    setDeletedRowIds([]);
+    setEditingMetricsReportId(group.reportId);
+  };
+
+  const handleCancelEditMetrics = () => {
+    setDraftRows(canonicalRows || []);
+    setDeletedRowIds([]);
+    setEditingMetricsReportId(null);
+  };
+
+  const handleSaveMetrics = async (reportId: string) => {
+    setIsSavingMetrics(true);
+    try {
+      for (const r of draftRows) {
+        if (r.sourceReportId === reportId && r.id.startsWith('temp-')) {
+          if (!r.metricName.trim()) {
+            throw new Error('Metric name cannot be empty.');
+          }
+          if (r.sourcePage != null) {
+            const p = Number(r.sourcePage);
+            if (Number.isNaN(p) || p < 1 || !Number.isInteger(p)) {
+              throw new Error(`Evidence page must be an integer >= 1 for "${r.metricName}".`);
+            }
+          }
+        }
+      }
+
+      const rowsToSave = draftRows
+        .filter(r => r.metricName.trim() !== '')
+        .map(r => {
+          const numVal = parseNumeric(r.value);
+          const pageVal = r.sourcePage != null ? Number(r.sourcePage) : null;
+          const normalizedQuarter = normalizePeriod(r.quarter) || r.quarter.trim().toUpperCase();
+          if (r.id.startsWith('temp-')) {
+            return {
+              ...r,
+              id: '',
+              value: numVal,
+              metricName: r.metricName.trim(),
+              unit: r.unit.trim(),
+              quarter: normalizedQuarter,
+              sourcePage: pageVal,
+            };
+          }
+          return {
+            ...r,
+            value: numVal,
+            metricName: r.metricName.trim(),
+            unit: r.unit.trim(),
+            quarter: normalizedQuarter,
+            sourcePage: pageVal,
+          };
+        });
+
+      await financialResearchApi.updateCanonicalFinancials(companyId, {
+        rows: rowsToSave,
+        deletedIds: deletedRowIds,
+      });
+
+      const updated = await refetch();
+      setDraftRows(updated.data || []);
+      setDeletedRowIds([]);
+      setEditingMetricsReportId(null);
+      setFeedback({
+        type: 'success',
+        message: 'Financial metrics updated successfully.',
+      });
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to save financial metrics.');
+    } finally {
+      setIsSavingMetrics(false);
+    }
+  };
+
   // Loading State
   if (isLoading) {
     return (
@@ -593,6 +926,36 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
 
   // Global Empty State
   if (activeRows.length === 0 && !editable) {
+    if (isAdminMyEnterprise) {
+      return (
+        <div className={styles.container}>
+          <div className={styles.stateContainer}>
+            <div className={styles.stateIcon}>
+              <FileText size={26} />
+            </div>
+            <h3 className={styles.stateTitle}>No financial reports yet.</h3>
+            <p className={styles.stateSubtitle}>
+              Add an official financial report for this enterprise to support analysis, dashboard, and AI Assistant.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus size={14} />
+              <span>Add Financial Report</span>
+            </button>
+          </div>
+          <AddFinancialReportModal
+            open={isAddModalOpen}
+            targetYear={selectedYear || new Date().getFullYear()}
+            onClose={() => setIsAddModalOpen(false)}
+            onSubmit={handleCreateReport}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={styles.container}>
         <div className={styles.stateContainer}>
@@ -677,10 +1040,69 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           </div>
         </div>
 
-        {isFetching && (
-          <Loader2 size={16} className={styles.spin} style={{ color: '#94a3b8' }} />
-        )}
+        <div className={styles.filtersRight}>
+          {isFetching && (
+            <Loader2 size={16} className={styles.spin} style={{ color: '#94a3b8' }} />
+          )}
+          {isAdminMyEnterprise && (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus size={14} />
+              <span>Add Financial Report</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Extraction In-Progress Bar */}
+      {isExtracting && !expandedReportIds.has(extractingReportId || '') && (
+        <AiExtractionProgressBar
+          status="EXTRACTING"
+          stage="EXTRACTING_METRICS"
+          progress={65}
+          title={extractingReportTitle ? `AI Extraction: ${extractingReportTitle}` : 'Financial AI Extraction'}
+          subtext={
+            extractingReportTitle
+              ? `Analyzing document for "${extractingReportTitle}"... Gemini AI is extracting financial statement metrics.`
+              : 'Analyzing financial document... Gemini AI is extracting financial statement metrics.'
+          }
+          onCancel={handleCancelExtract}
+          isCancelling={isCancelling}
+        />
+      )}
+
+      {/* Feedback Banner */}
+      {feedback && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: '8px',
+            backgroundColor: feedback.type === 'success' ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${feedback.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+            color: feedback.type === 'success' ? '#166534' : '#dc2626',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {feedback.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedback(null)}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: '2px' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* Filter Empty State */}
       {filteredRows.length === 0 ? (
@@ -695,15 +1117,27 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           <p className={styles.stateSubtitle}>
             There are no canonical financial rows matching the selected filter.
           </p>
-          {selectedQuarter !== 'ALL' && (
-            <button
-              className={styles.primaryButton}
-              type="button"
-              onClick={() => setSelectedQuarter('ALL')}
-            >
-              Show All
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {selectedQuarter !== 'ALL' && (
+              <button
+                className={styles.primaryButton}
+                type="button"
+                onClick={() => setSelectedQuarter('ALL')}
+              >
+                Show All
+              </button>
+            )}
+            {isAdminMyEnterprise && (
+              <button
+                className={styles.actionSecondaryBtn}
+                type="button"
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                <Plus size={13} />
+                <span>Add Report for {selectedYear}</span>
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         /* REPORT LIST: UNIFIED STRUCTURE FOR BOTH VIEW AND EDIT MODES (PART G & PART H) */
@@ -718,6 +1152,10 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
               {reports.map((reportGroup) => {
                 const isExpanded = expandedReportIds.has(reportGroup.reportId);
                 const hasDoc = Boolean(reportGroup.documentId);
+                const isCurrentExtracting = isExtracting && extractingReportId === reportGroup.reportId;
+                const isReportExtracted = !reportGroup.isManual && reportGroup.rows.some(
+                  r => (r.sourcePage != null && r.sourcePage > 0) || (r.sourceMetricId != null && r.sourceMetricId !== 'NOT_EXTRACTED' && r.sourceMetricId !== 'READY')
+                );
 
                 return (
                   <div
@@ -761,6 +1199,18 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                           </span>
                           <span className={styles.metaYearBadge}>{selectedYear}</span>
                           <span className={styles.metaPeriodBadge}>{normalizePeriod(reportGroup.rows[0]?.quarter) || '—'}</span>
+                          {reportGroup.isManual ? (
+                            <span className={styles.methodBadgeManual}>Manual Entry</span>
+                          ) : isCurrentExtracting ? (
+                            <span className={styles.methodBadgeExtracting}>
+                              <Loader2 size={11} className={styles.spin} />
+                              Extracting...
+                            </span>
+                          ) : isReportExtracted ? (
+                            <span className={styles.methodBadgeAi}>AI Extracted</span>
+                          ) : (
+                            <span className={styles.methodBadgeReady}>Ready for Extraction</span>
+                          )}
                         </div>
 
                         <span className={styles.metaDot}>•</span>
@@ -770,16 +1220,13 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                         </div>
                       </div>
 
-                      <div className={styles.reportRowRight}>
+                      <div className={styles.reportRowRight} onClick={e => e.stopPropagation()}>
                         {hasDoc && (
                           <button
                             type="button"
                             className={styles.viewReportBtn}
                             disabled={openingDocId === reportGroup.documentId}
-                            onClick={e => {
-                              e.stopPropagation();
-                              handleViewPdf(reportGroup.documentId);
-                            }}
+                            onClick={() => handleViewPdf(reportGroup.documentId)}
                           >
                             {openingDocId === reportGroup.documentId ? (
                               <Loader2 size={13} className={styles.spin} />
@@ -790,203 +1237,410 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                             <ExternalLink size={11} />
                           </button>
                         )}
+
+                        {isAdminMyEnterprise && (
+                          <>
+                            {!reportGroup.isManual && hasDoc && (
+                              <>
+                                {isCurrentExtracting ? (
+                                  <button
+                                    type="button"
+                                    className={styles.actionCancelExtractBtn}
+                                    disabled={isCancelling}
+                                    onClick={() => handleCancelExtract()}
+                                    title="Cancel AI extraction"
+                                  >
+                                    {isCancelling ? (
+                                      <Loader2 size={13} className={styles.spin} />
+                                    ) : (
+                                      <XCircle size={13} />
+                                    )}
+                                    <span>{isCancelling ? 'Cancelling...' : 'Cancel'}</span>
+                                  </button>
+                                ) : isReportExtracted ? (
+                                  <button
+                                    type="button"
+                                    className={styles.actionSecondaryBtn}
+                                    disabled={isExtracting}
+                                    onClick={() => handleStartExtract(reportGroup, true)}
+                                    title="Re-extract financial metrics with AI"
+                                  >
+                                    <Sparkles size={13} />
+                                    <span>Re-extract</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={styles.actionExtractBtn}
+                                    disabled={isExtracting}
+                                    onClick={() => handleStartExtract(reportGroup, false)}
+                                    title="Extract financial metrics from document using AI"
+                                  >
+                                    <Play size={13} />
+                                    <span>Extract AI</span>
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            <button
+                              type="button"
+                              className={styles.actionSecondaryBtn}
+                              disabled={isCurrentExtracting}
+                              onClick={() => handleOpenEditModal(reportGroup)}
+                              title="Edit report title, period, year, or replace PDF"
+                            >
+                              <Edit3 size={13} />
+                              <span>Edit Report</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className={styles.actionDangerBtn}
+                              disabled={isCurrentExtracting}
+                              onClick={() => setReportPendingDelete(reportGroup)}
+                              title="Delete financial report"
+                            >
+                              <Trash2 size={13} />
+                              <span>Delete</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
                     {/* Expanded Section with Metrics Table */}
-                    {isExpanded && (
-                      <div className={styles.expandedSection}>
-                        <div className={styles.expandedHead}>
-                          <div className={styles.expandedHeadLeft}>
-                            <h6 className={styles.expandedTitle}>
-                              {reportGroup.isManual ? 'Manual Financial Entries' : 'Extracted Financial Information'}
-                            </h6>
-                            <span className={styles.metricsCountBadge}>
-                              {reportGroup.rows.length} metric{reportGroup.rows.length !== 1 ? 's' : ''}
-                            </span>
+                    {isExpanded && (() => {
+                      // Case 1: AI report currently extracting -> show only progress UI + Cancel
+                      if (isCurrentExtracting) {
+                        return (
+                          <div className={styles.expandedSection}>
+                            <AiExtractionProgressBar
+                              status="EXTRACTING"
+                              stage="EXTRACTING_METRICS"
+                              progress={65}
+                              title={reportGroup.reportTitle ? `AI Extraction: ${reportGroup.reportTitle}` : 'Financial AI Extraction'}
+                              subtext="Extracting financial statement metrics with AI..."
+                              onCancel={handleCancelExtract}
+                              isCancelling={isCancelling}
+                            />
                           </div>
-                        </div>
+                        );
+                      }
 
-                        {reportGroup.rows.length === 0 ? (
-                          <div className={styles.noMetricsText}>
-                            No financial metrics recorded for this report.
+                      // Case 2: AI report ready for extraction -> show minimal ready panel (no metrics table, no count, no Edit Metrics)
+                      if (!reportGroup.isManual && !isReportExtracted) {
+                        return (
+                          <div className={styles.expandedSection}>
+                            <div
+                              style={{
+                                padding: '24px 20px',
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '16px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div
+                                  style={{
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '8px',
+                                    background: '#eff6ff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#2563eb',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <Sparkles size={18} />
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>
+                                    Ready for AI extraction
+                                  </div>
+                                  <div style={{ color: '#64748b', fontSize: '12.5px', marginTop: '2px' }}>
+                                    The source PDF is attached. Click &quot;Extract AI&quot; to generate financial metrics.
+                                  </div>
+                                </div>
+                              </div>
+                              {isAdminMyEnterprise && (
+                                <button
+                                  type="button"
+                                  className={styles.actionExtractBtn}
+                                  disabled={isExtracting}
+                                  onClick={() => handleStartExtract(reportGroup, false)}
+                                  title="Extract financial metrics from document using AI"
+                                >
+                                  <Play size={13} />
+                                  <span>Extract AI</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <div className={styles.tableWrapper}>
-                            <table className={styles.metricsTable}>
-                              <thead>
-                                <tr>
-                                  {editable ? (
-                                    <>
-                                      <th style={{ width: '34%' }}>Metric Name</th>
-                                      <th style={{ width: '22%', textAlign: 'right' }}>Value</th>
-                                      <th style={{ width: '12%' }}>Unit</th>
-                                      <th style={{ width: '12%' }}>Period</th>
-                                      <th style={{ width: '14%' }}>Source</th>
-                                      <th style={{ width: '6%', textAlign: 'center' }}>Action</th>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <th style={{ width: '42%' }}>Metric</th>
-                                      <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
-                                      <th style={{ width: '18%' }}>Period</th>
-                                      <th style={{ width: '12%' }}>Source</th>
-                                    </>
-                                  )}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {reportGroup.rows.map((row) => {
-                                  const isImportant = isImportantMetric(row.metricName);
-                                  const hasPage = Boolean(row.sourcePage);
+                        );
+                      }
 
-                                  if (editable) {
+                      // Case 3: Manual Entry report OR Completed/Extracted AI report -> show full metrics table
+                      const isRowEditable = editable || (isAdminMyEnterprise && editingMetricsReportId === reportGroup.reportId);
+                      return (
+                        <div className={styles.expandedSection}>
+                          <div className={styles.expandedHead}>
+                            <div className={styles.expandedHeadLeft}>
+                              <h6 className={styles.expandedTitle}>
+                                {reportGroup.isManual
+                                  ? 'Manual Financial Entries'
+                                  : 'Extracted Financial Information'}
+                              </h6>
+                              <span className={styles.metricsCountBadge}>
+                                {reportGroup.rows.length} metric{reportGroup.rows.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+
+                            {isAdminMyEnterprise && !editable && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {editingMetricsReportId === reportGroup.reportId ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={styles.actionSaveBtn}
+                                      disabled={isSavingMetrics}
+                                      onClick={() => handleSaveMetrics(reportGroup.reportId)}
+                                    >
+                                      {isSavingMetrics ? <Loader2 size={13} className={styles.spin} /> : <CheckCircle2 size={13} />}
+                                      <span>Save Metrics</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.actionCancelBtn}
+                                      disabled={isSavingMetrics}
+                                      onClick={handleCancelEditMetrics}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={styles.actionSecondaryBtn}
+                                    onClick={() => handleStartEditMetrics(reportGroup)}
+                                  >
+                                    <Edit3 size={13} />
+                                    <span>Edit Metrics</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {reportGroup.rows.length === 0 ? (
+                            <div className={styles.noMetricsText}>
+                              No financial metrics recorded for this report.
+                            </div>
+                          ) : (
+                            <div className={styles.tableWrapper}>
+                              <table className={styles.metricsTable}>
+                                <thead>
+                                  <tr>
+                                    {isRowEditable ? (
+                                      reportGroup.isManual ? (
+                                        <>
+                                          <th style={{ width: '46%' }}>Metric Name</th>
+                                          <th style={{ width: '24%', textAlign: 'right' }}>Value</th>
+                                          <th style={{ width: '12%' }}>Unit</th>
+                                          <th style={{ width: '12%' }}>Period</th>
+                                          <th style={{ width: '6%', textAlign: 'center' }}>Action</th>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <th style={{ width: '34%' }}>Metric Name</th>
+                                          <th style={{ width: '22%', textAlign: 'right' }}>Value</th>
+                                          <th style={{ width: '12%' }}>Unit</th>
+                                          <th style={{ width: '12%' }}>Period</th>
+                                          <th style={{ width: '14%' }}>Source</th>
+                                          <th style={{ width: '6%', textAlign: 'center' }}>Action</th>
+                                        </>
+                                      )
+                                    ) : (
+                                      reportGroup.isManual ? (
+                                        <>
+                                          <th style={{ width: '54%' }}>Metric</th>
+                                          <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
+                                          <th style={{ width: '18%' }}>Period</th>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <th style={{ width: '42%' }}>Metric</th>
+                                          <th style={{ width: '28%', textAlign: 'right' }}>Value</th>
+                                          <th style={{ width: '18%' }}>Period</th>
+                                          <th style={{ width: '12%' }}>Source</th>
+                                        </>
+                                      )
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {reportGroup.rows.map((row) => {
+                                    const isImportant = isImportantMetric(row.metricName);
+                                    const hasPage = Boolean(row.sourcePage);
+
+                                    if (isRowEditable) {
+                                      return (
+                                        <tr key={row.id}>
+                                          <td>
+                                            <input
+                                              type="text"
+                                              className={styles.editInput}
+                                              value={row.metricName || ''}
+                                              placeholder="e.g. Doanh thu thuần"
+                                              onChange={e => handleUpdateRowField(row.id, 'metricName', e.target.value)}
+                                            />
+                                          </td>
+                                          <td style={{ textAlign: 'right' }}>
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              className={`${styles.editInput} ${styles.editInputNumber}`}
+                                              value={row.value !== undefined && row.value !== null ? row.value : ''}
+                                              placeholder="0"
+                                              onChange={e => handleUpdateRowField(row.id, 'value', e.target.value === '' ? '' : Number(e.target.value))}
+                                            />
+                                          </td>
+                                          <td>
+                                            <select
+                                              className={styles.editSelect}
+                                              value={formatFinancialUnit(row.unit) || 'Triệu VNĐ'}
+                                              onChange={e => handleUpdateRowField(row.id, 'unit', e.target.value)}
+                                            >
+                                              {CANONICAL_FINANCIAL_UNITS.map(u => (
+                                                <option key={u} value={u}>
+                                                  {u}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </td>
+                                          <td className={styles.periodCell}>
+                                            <span className={styles.periodPill}>
+                                              {normalizePeriod(row.quarter) || 'FY'} {row.year}
+                                            </span>
+                                          </td>
+                                          {!reportGroup.isManual && (
+                                            <td>
+                                              {row.id.startsWith('temp-') ? (
+                                                <div className={styles.pageInputWrapper} title="Enter evidence page number (>= 1)">
+                                                  <span className={styles.pageInputPrefix}>Page</span>
+                                                  <input
+                                                    type="number"
+                                                    min={1}
+                                                    step={1}
+                                                    className={styles.pageInput}
+                                                    placeholder="12"
+                                                    value={row.sourcePage !== undefined && row.sourcePage !== null ? row.sourcePage : ''}
+                                                    onChange={e => {
+                                                      const val = e.target.value;
+                                                      handleUpdateRowField(row.id, 'sourcePage', val === '' ? null : Math.max(1, parseInt(val, 10) || 1));
+                                                    }}
+                                                  />
+                                                </div>
+                                              ) : hasPage ? (
+                                                <button
+                                                  type="button"
+                                                  className={styles.sourceLink}
+                                                  onClick={e => {
+                                                    e.stopPropagation();
+                                                    handleViewPdf(row.sourceDocumentId);
+                                                  }}
+                                                  title="Open source document"
+                                                >
+                                                  <FileText size={11} />
+                                                  <span>Page {row.sourcePage}</span>
+                                                </button>
+                                              ) : (
+                                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                  —
+                                                </span>
+                                              )}
+                                            </td>
+                                          )}
+                                          <td style={{ textAlign: 'center' }}>
+                                            <button
+                                              type="button"
+                                              className={styles.deleteRowBtn}
+                                              title="Delete financial row"
+                                              onClick={() => handleDeleteRow(row.id)}
+                                            >
+                                              <Trash2 size={13} />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+
                                     return (
                                       <tr key={row.id}>
-                                        <td>
-                                          <input
-                                            type="text"
-                                            className={styles.editInput}
-                                            value={row.metricName || ''}
-                                            placeholder="e.g. Doanh thu thuần"
-                                            onChange={e => handleUpdateRowField(row.id, 'metricName', e.target.value)}
-                                          />
+                                        <td className={`${styles.metricName} ${isImportant ? styles.metricNameImportant : ''}`}>
+                                          {row.metricName}
                                         </td>
-                                        <td style={{ textAlign: 'right' }}>
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            className={`${styles.editInput} ${styles.editInputNumber}`}
-                                            value={row.value !== undefined && row.value !== null ? row.value : ''}
-                                            placeholder="0"
-                                            onChange={e => handleUpdateRowField(row.id, 'value', e.target.value === '' ? '' : Number(e.target.value))}
-                                          />
-                                        </td>
-                                        <td>
-                                          <select
-                                            className={styles.editSelect}
-                                            value={formatFinancialUnit(row.unit) || 'Triệu VNĐ'}
-                                            onChange={e => handleUpdateRowField(row.id, 'unit', e.target.value)}
-                                          >
-                                            {CANONICAL_FINANCIAL_UNITS.map(u => (
-                                              <option key={u} value={u}>
-                                                {u}
-                                              </option>
-                                            ))}
-                                          </select>
+                                        <td className={styles.metricValueCell}>
+                                          <span>{formatMetricNumber(row.value)}</span>
+                                          {row.unit && (
+                                            <span className={styles.metricUnit}>{formatFinancialUnit(row.unit)}</span>
+                                          )}
                                         </td>
                                         <td className={styles.periodCell}>
                                           <span className={styles.periodPill}>
                                             {normalizePeriod(row.quarter) || 'FY'} {row.year}
                                           </span>
                                         </td>
-                                        <td>
-                                          {row.id.startsWith('temp-') ? (
-                                            <div className={styles.pageInputWrapper} title="Enter evidence page number (>= 1)">
-                                              <span className={styles.pageInputPrefix}>Page</span>
-                                              <input
-                                                type="number"
-                                                min={1}
-                                                step={1}
-                                                className={styles.pageInput}
-                                                placeholder="12"
-                                                value={row.sourcePage !== undefined && row.sourcePage !== null ? row.sourcePage : ''}
-                                                onChange={e => {
-                                                  const val = e.target.value;
-                                                  handleUpdateRowField(row.id, 'sourcePage', val === '' ? null : Math.max(1, parseInt(val, 10) || 1));
+                                        {!reportGroup.isManual && (
+                                          <td>
+                                            {hasPage ? (
+                                              <button
+                                                type="button"
+                                                className={styles.sourceLink}
+                                                onClick={e => {
+                                                  e.stopPropagation();
+                                                  handleViewPdf(row.sourceDocumentId);
                                                 }}
-                                              />
-                                            </div>
-                                          ) : hasPage ? (
-                                            <button
-                                              type="button"
-                                              className={styles.sourceLink}
-                                              onClick={e => {
-                                                e.stopPropagation();
-                                                handleViewPdf(row.sourceDocumentId);
-                                              }}
-                                              title="Open source document"
-                                            >
-                                              <FileText size={11} />
-                                              <span>Page {row.sourcePage}</span>
-                                            </button>
-                                          ) : (
-                                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                              —
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                          <button
-                                            type="button"
-                                            className={styles.deleteRowBtn}
-                                            title="Delete financial row"
-                                            onClick={() => handleDeleteRow(row.id)}
-                                          >
-                                            <Trash2 size={13} />
-                                          </button>
-                                        </td>
+                                                title="Open source document"
+                                              >
+                                                <FileText size={11} />
+                                                <span>Page {row.sourcePage}</span>
+                                              </button>
+                                            ) : (
+                                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                                —
+                                              </span>
+                                            )}
+                                          </td>
+                                        )}
                                       </tr>
                                     );
-                                  }
-
-                                  return (
-                                    <tr key={row.id}>
-                                      <td className={`${styles.metricName} ${isImportant ? styles.metricNameImportant : ''}`}>
-                                        {row.metricName}
-                                      </td>
-                                      <td className={styles.metricValueCell}>
-                                        <span>{formatMetricNumber(row.value)}</span>
-                                        {row.unit && (
-                                          <span className={styles.metricUnit}>{formatFinancialUnit(row.unit)}</span>
-                                        )}
-                                      </td>
-                                      <td className={styles.periodCell}>
-                                        <span className={styles.periodPill}>
-                                          {normalizePeriod(row.quarter) || 'FY'} {row.year}
-                                        </span>
-                                      </td>
-                                      <td>
-                                        {hasPage ? (
-                                          <button
-                                            type="button"
-                                            className={styles.sourceLink}
-                                            onClick={e => {
-                                              e.stopPropagation();
-                                              handleViewPdf(row.sourceDocumentId);
-                                            }}
-                                            title="Open source document"
-                                          >
-                                            <FileText size={11} />
-                                            <span>Page {row.sourcePage}</span>
-                                          </button>
-                                        ) : (
-                                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                            —
-                                          </span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                            {editable && (
-                              <div className={styles.reportTableFooter}>
-                                <button
-                                  type="button"
-                                  className={styles.addMetricBtn}
-                                  onClick={() => handleAddRow(reportGroup)}
-                                >
-                                  <Plus size={13} />
-                                  Add Metric to {reportGroup.reportTitle}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                                  })}
+                                </tbody>
+                              </table>
+                              {isRowEditable && (
+                                <div className={styles.reportTableFooter}>
+                                  <button
+                                    type="button"
+                                    className={styles.addMetricBtn}
+                                    onClick={() => handleAddRow(reportGroup)}
+                                  >
+                                    <Plus size={13} />
+                                    Add Metric to {reportGroup.reportTitle}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -994,6 +1648,68 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
           ))}
         </div>
       )}
+
+      {/* Add Report Modal */}
+      {isAdminMyEnterprise && (
+        <AddFinancialReportModal
+          open={isAddModalOpen}
+          targetYear={selectedYear || new Date().getFullYear()}
+          onClose={() => setIsAddModalOpen(false)}
+          onSubmit={handleCreateReport}
+        />
+      )}
+
+      {/* Edit Report Modal */}
+      {isAdminMyEnterprise && Boolean(editingReportGroup) && Boolean(editingReportEntry) && (
+        <EditFinancialReportModal
+          open={Boolean(editingReportGroup)}
+          report={editingReportEntry}
+          hasMetrics={Boolean(editingReportGroup && editingReportGroup.rows.length > 0)}
+          onClose={() => {
+            setEditingReportGroup(null);
+            setEditingReportEntry(null);
+          }}
+          onCustomSave={handleCustomSaveReport}
+        />
+      )}
+
+      {/* Delete Financial Report Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(reportPendingDelete)}
+        title="Delete Financial Report"
+        message={
+          <div>
+            <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#1e293b' }}>
+              Are you sure you want to delete &quot;{reportPendingDelete?.reportTitle}&quot;?
+            </p>
+            <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b', lineHeight: 1.5 }}>
+              All financial metrics associated with this report will also be deleted. This action cannot be undone.
+            </p>
+          </div>
+        }
+        cancelText="Cancel"
+        confirmText={
+          isDeletingReport ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Loader2 size={13} className={styles.spin} />
+              Deleting...
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Trash2 size={13} />
+              Delete Report
+            </span>
+          )
+        }
+        confirmDisabled={isDeletingReport}
+        isDestructive={true}
+        onCancel={() => {
+          if (!isDeletingReport) {
+            setReportPendingDelete(null);
+          }
+        }}
+        onConfirm={handleConfirmDeleteReport}
+      />
     </div>
   );
 });

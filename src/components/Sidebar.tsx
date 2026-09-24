@@ -154,7 +154,6 @@ const STAFF_MENU: MenuSection[] = [
       { id: "staff-monitoring", label: "Monitoring" },
       { id: "system-chat", label: "Chat" },
       { id: "ai-assistant", label: "AI Assistant" },
-      { id: 'owner-profile', label: 'My Enterprise' },
     ],
   },
 ];

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CreateFinancialReportRequest } from '../../types/domain';
 import { Bot, FileText, FileUp, Loader2, Sparkles, X } from 'lucide-react';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 
 interface Props {
   open: boolean;
@@ -34,8 +35,11 @@ export default function AddFinancialReportModal({ open, targetYear, onClose, onS
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
     if (selectedFile) {
-      if (!selectedFile.name.toLowerCase().endsWith('.pdf') && selectedFile.type !== 'application/pdf') {
-        setErrorMessage('Only PDF documents are supported for financial reports.');
+      const err = validatePdfUpload(selectedFile);
+      if (err) {
+        setErrorMessage(err);
+        e.target.value = '';
+        setFile(null);
         return;
       }
       setErrorMessage(null);
@@ -57,6 +61,14 @@ export default function AddFinancialReportModal({ open, targetYear, onClose, onS
     if (dataEntryMethod === 'AI_EXTRACTION' && !file) {
       setErrorMessage('Source document (PDF) is required for AI Extraction.');
       return;
+    }
+
+    if (file) {
+      const err = validatePdfUpload(file);
+      if (err) {
+        setErrorMessage(err);
+        return;
+      }
     }
 
     const finalYear = targetYear || (customYear ? Number(customYear) : undefined);
@@ -326,7 +338,7 @@ export default function AddFinancialReportModal({ open, targetYear, onClose, onS
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <input 
               type="file" 
-              accept="application/pdf" 
+              accept={PDF_ACCEPT_ATTRIBUTE} 
               required={dataEntryMethod === 'AI_EXTRACTION'}
               disabled={isSubmitting}
               style={{ ...inputStyle, paddingLeft: '38px', cursor: 'pointer' }} 
@@ -334,11 +346,11 @@ export default function AddFinancialReportModal({ open, targetYear, onClose, onS
             />
             <FileUp size={18} color="#64748b" style={{ position: 'absolute', left: '12px' }} />
           </div>
-          {dataEntryMethod === 'MANUAL' && (
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>
-              Optional reference document for viewing alongside metrics. Will not trigger AI extraction.
-            </span>
-          )}
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>
+            {dataEntryMethod === 'AI_EXTRACTION'
+              ? 'PDF only, maximum 50 MB. Metrics will be extracted using AI.'
+              : 'Optional reference document (PDF only, maximum 50 MB) for viewing alongside metrics. Will not trigger AI extraction.'}
+          </span>
         </label>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>

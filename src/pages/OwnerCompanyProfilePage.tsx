@@ -6,8 +6,6 @@ import { formatCompanyName } from './companyDetail/tokens';
 import { CompanyProfileHeader, PageShell } from './companyDetail/CompanyProfileHeader';
 import { ListingTabBar, type ListingTabId } from './companyDetail/ListingTabs';
 import type { ListingTabDef } from './companyDetail/utils';
-import FinancialsTab from './companyDetail/FinancialsTab';
-import { OWNER_COMPANY_ID } from '../API/listingDataApi';
 import {
   CompanyProfileTabs,
   type BoardPayload,
@@ -21,7 +19,6 @@ const ADMIN_TABS: ListingTabDef[] = [
   { id: 'swot', label: 'SWOT', icon: <TrendingUp size={14} /> },
   { id: 'business-fields', label: 'Business Fields', icon: <Building2 size={14} /> },
   { id: 'board', label: 'Ban lãnh đạo', icon: <Shield size={14} /> },
-  { id: 'financials', label: 'Tài chính', icon: <FileText size={14} /> },
 ];
 
 /**
@@ -35,7 +32,36 @@ export const OwnerCompanyProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isPatching, setIsPatching] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ListingTabId>('overview');
+  const [activeTab, setActiveTab] = useState<ListingTabId>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      const qIndex = hash.indexOf('?');
+      const searchStr = qIndex !== -1 ? hash.slice(qIndex) : window.location.search;
+      if (searchStr) {
+        const params = new URLSearchParams(searchStr);
+        const tab = params.get('tab');
+        if (tab && tab !== 'financials' && ADMIN_TABS.some((t) => t.id === tab)) {
+          return tab as ListingTabId;
+        }
+      }
+    }
+    return 'overview';
+  });
+
+  useEffect(() => {
+    if (activeTab === 'financials') {
+      setActiveTab('overview');
+      if (typeof window !== 'undefined') {
+        try {
+          if (window.location.hash.includes('tab=financials')) {
+            window.location.hash = window.location.hash.replace('tab=financials', 'tab=overview');
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [activeTab]);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -179,19 +205,15 @@ export const OwnerCompanyProfilePage: React.FC = () => {
 
         <ListingTabBar activeTab={activeTab} onTabChange={setActiveTab} companyId="" tabs={ADMIN_TABS} />
 
-        {activeTab === 'financials' ? (
-          <FinancialsTab companyId={OWNER_COMPANY_ID} editable />
-        ) : (
-          <CompanyProfileTabs
-            profile={profile}
-            activeTab={activeTab}
-            editable
-            onSaveOverview={handleSaveOverview}
-            onSaveSwot={handleSaveSwot}
-            onSaveBusinessFields={handleSaveBusinessFields}
-            onSaveBoard={handleSaveBoard}
-          />
-        )}
+        <CompanyProfileTabs
+          profile={profile}
+          activeTab={activeTab}
+          editable
+          onSaveOverview={handleSaveOverview}
+          onSaveSwot={handleSaveSwot}
+          onSaveBusinessFields={handleSaveBusinessFields}
+          onSaveBoard={handleSaveBoard}
+        />
       </PageShell>
     </section>
   );

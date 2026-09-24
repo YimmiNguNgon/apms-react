@@ -7,6 +7,7 @@ export interface RelationshipClosenessTabProps {
   companyName?: string;
   currentUserRole?: Role;
   setActivePage?: (page: string) => void;
+  isCurrentResponsibleManager?: boolean;
 }
 
 export const RelationshipClosenessTab: React.FC<RelationshipClosenessTabProps> = ({
@@ -14,6 +15,7 @@ export const RelationshipClosenessTab: React.FC<RelationshipClosenessTabProps> =
   companyName,
   currentUserRole,
   setActivePage,
+  isCurrentResponsibleManager,
 }) => {
   return (
     <RelationshipClosenessDashboard
@@ -21,6 +23,7 @@ export const RelationshipClosenessTab: React.FC<RelationshipClosenessTabProps> =
       companyName={companyName}
       currentUserRole={currentUserRole}
       setActivePage={setActivePage}
+      isCurrentResponsibleManager={isCurrentResponsibleManager}
     />
   );
 };

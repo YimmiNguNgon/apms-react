@@ -282,6 +282,7 @@ export interface GraphNode {
   healthScore: number;
   riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   connections: number;
+  isOwner?: boolean;
   x: number;
   y: number;
   initials: string;
@@ -891,6 +892,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             const detail = details[index];
             return detail?.status === 'fulfilled' && detail.value.data ? { ...company, ...detail.value.data } : company;
           });
+          const ownerFromGraph = companies.find((c) => c.isOwner);
+          if (ownerFromGraph) {
+            if (ownerFromGraph.companyId) setOwnerCompanyId(ownerFromGraph.companyId);
+            if (ownerFromGraph.name) setOwnerName(ownerFromGraph.name);
+          }
+          const effectiveOwnerId = ownerFromGraph?.companyId || ownerCompanyId;
           const canonicalCompanyIds = new Set(
             companies.map((company) => company.companyId).filter((companyId): companyId is string => Boolean(companyId)),
           );
@@ -924,15 +931,27 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               color: style.color, 
               dashed: Boolean(style.dashed) 
             });
-            if (!groupByNode.has(from)) groupByNode.set(from, group);
-            if (!groupByNode.has(to)) groupByNode.set(to, group);
+            if (effectiveOwnerId) {
+              if (to !== effectiveOwnerId && !groupByNode.has(to)) {
+                groupByNode.set(to, group);
+              }
+              if (from !== effectiveOwnerId && !groupByNode.has(from)) {
+                groupByNode.set(from, group);
+              }
+            } else {
+              if (!groupByNode.has(to)) groupByNode.set(to, group);
+              if (!groupByNode.has(from)) groupByNode.set(from, group);
+            }
           }));
 
           const hydratedNodes: GraphNode[] = companies.map((company, index) => {
             const hash = (company.companyId || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             const healthScore = (hash % 21) + 75; // 75 - 95
             const riskLevel = (['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const)[hash % 4];
-            const group = groupByNode.get(company.companyId) || toGroupKey(company.relationshipType);
+            const isNodeOwner = Boolean(company.isOwner) || (Boolean(effectiveOwnerId) && company.companyId === effectiveOwnerId);
+            const group = isNodeOwner
+              ? 'partner'
+              : (groupByNode.get(company.companyId) || toGroupKey(company.relationshipType));
 
             const aiRecMap: Record<string, string> = {
               partner: "Strengthen active joint product integration. Coordinate marketing activities and co-selling opportunities in secondary markets.",
@@ -957,6 +976,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               healthScore,
               riskLevel,
               connections: 0,
+              isOwner: isNodeOwner,
               x: 0, y: 0,
               initials: (company.name || 'NA').trim().split(/\s+/).slice(0, 2).map((word) => word ? word[0] : '').join('').toUpperCase(),
               color: RELATIONSHIP_STYLES[group]?.color || '#2563EB',
@@ -1014,10 +1034,38 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
   // ── Layout calculations ──────────────────────────────────────────
   const centerId = useMemo(() => {
-    if (ownerCompanyId) return ownerCompanyId;
-    const found = nodes.find(n => n.name.toLowerCase() === ownerName.toLowerCase());
-    return found?.id || nodes[0]?.id || '';
-  }, [ownerCompanyId, ownerName, nodes]);
+    if (ownerCompanyId) {
+      const match = nodes.find(n => n.id === ownerCompanyId);
+      if (match) return match.id;
+    }
+    const ownerNode = nodes.find(n => n.isOwner);
+    if (ownerNode) return ownerNode.id;
+
+    if (ownerName && ownerName.toLowerCase() !== 'our company') {
+      const found = nodes.find(n => n.name.toLowerCase() === ownerName.toLowerCase());
+      if (found) return found.id;
+    }
+
+    if (nodes.length > 0 && edges.length > 0) {
+      const outgoingCounts = new Map<string, number>();
+      edges.forEach(e => {
+        outgoingCounts.set(e.from, (outgoingCounts.get(e.from) || 0) + 1);
+      });
+      let maxNodeId = '';
+      let maxCount = 0;
+      outgoingCounts.forEach((count, id) => {
+        if (count > maxCount) {
+          maxCount = count;
+          maxNodeId = id;
+        }
+      });
+      if (maxNodeId && nodes.some(n => n.id === maxNodeId)) {
+        return maxNodeId;
+      }
+    }
+
+    return nodes[0]?.id || '';
+  }, [ownerCompanyId, ownerName, nodes, edges]);
 
   // ── Real Relationship Closeness Fetching (Single Batch Endpoint: Zero N+1) ──
   useEffect(() => {
@@ -2760,7 +2808,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div><AlertCircle size={36} style={{ color: '#dc2626', marginBottom: '12px' }} /><strong style={{ display: 'block', fontSize: '14px', color: '#991b1b' }}>Không thể tải dữ liệu mạng lưới quan hệ.</strong><span style={{ fontSize: '12px', color: '#64748b' }}>{loadError}</span></div>
               </div>
-            ) : edges.length === 0 ? (
+            ) : nodes.length === 0 ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div>
                   <Building size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />

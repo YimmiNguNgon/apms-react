@@ -43,6 +43,7 @@ import ManualFinancialEntryTemplate from './ManualFinancialEntryTemplate';
 import ManualFinancialSummaryTable from './ManualFinancialSummaryTable';
 import EditFinancialMetricModal from './EditFinancialMetricModal';
 import ExtractionProgressBar from './ExtractionProgressBar';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 import FinancialReportCard from './FinancialReportCard';
 import {
   CANONICAL_FINANCIAL_TAXONOMY,
@@ -865,11 +866,17 @@ function ExtractedMetricsPanel({
                 >
                   <input
                     type="file"
-                    accept="application/pdf,.pdf"
+                    accept={PDF_ACCEPT_ATTRIBUTE}
                     style={{ display: 'none' }}
                     disabled={isReplacingFile}
                     onChange={(e) => {
                       if (e.target.files?.[0]) {
+                        const err = validatePdfUpload(e.target.files[0]);
+                        if (err) {
+                          alert(err);
+                          e.target.value = '';
+                          return;
+                        }
                         onReplaceFile(e.target.files[0]);
                         e.target.value = '';
                       }
@@ -889,11 +896,17 @@ function ExtractedMetricsPanel({
               >
                 <input
                   type="file"
-                  accept="application/pdf,.pdf"
+                  accept={PDF_ACCEPT_ATTRIBUTE}
                   style={{ display: 'none' }}
                   disabled={isReplacingFile}
                   onChange={(e) => {
                     if (e.target.files?.[0]) {
+                      const err = validatePdfUpload(e.target.files[0]);
+                      if (err) {
+                        alert(err);
+                        e.target.value = '';
+                        return;
+                      }
                       onReplaceFile(e.target.files[0]);
                       e.target.value = '';
                     }
@@ -2494,7 +2507,14 @@ export default function FinancialResearchWorkbench({
                   });
                 }}
                 isSavingBatch={saveManualMetricsBatchMutation.isPending}
-                onReplaceFile={(file) => replaceReportFileMutation.mutate({ reportId: selectedReport.id, file })}
+                onReplaceFile={(file) => {
+                  const err = validatePdfUpload(file);
+                  if (err) {
+                    setToast({ message: err, type: 'error' });
+                    return;
+                  }
+                  replaceReportFileMutation.mutate({ reportId: selectedReport.id, file });
+                }}
                 isReplacingFile={replaceReportFileMutation.isPending}
                 isManagerMode={isManagerMode}
               />

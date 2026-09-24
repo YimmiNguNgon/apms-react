@@ -6,8 +6,8 @@ export interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
   message: React.ReactNode;
-  confirmText?: string;
-  cancelText?: string;
+  confirmText?: React.ReactNode;
+  cancelText?: React.ReactNode;
   confirmDisabled?: boolean;
   isDestructive?: boolean;
   onConfirm: () => void;

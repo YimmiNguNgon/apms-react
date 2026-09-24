@@ -2,15 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { FinancialReportEntry, FinancialResearchResponse, UpdateFinancialReportRequest } from '../../types/domain';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { AlertTriangle, Edit3, FileText, FileUp, Loader2, X } from 'lucide-react';
+import { validatePdfUpload, PDF_ACCEPT_ATTRIBUTE } from '../../utils/pdfValidation';
 
 interface Props {
   open: boolean;
   report: FinancialReportEntry | null;
   hasMetrics?: boolean;
-  projectId: number;
-  taskId: number;
+  projectId?: number;
+  taskId?: number;
   onClose: () => void;
-  onSuccess: (updatedResearch: FinancialResearchResponse, toastMessage: string) => void;
+  onSuccess?: (updatedResearch: FinancialResearchResponse, toastMessage: string) => void;
+  onCustomSave?: (data: { title: string; period: string; year?: number; file: File | null; report: FinancialReportEntry }) => Promise<void>;
 }
 
 export default function EditFinancialReportModal({
@@ -21,9 +23,11 @@ export default function EditFinancialReportModal({
   taskId,
   onClose,
   onSuccess,
+  onCustomSave,
 }: Props) {
   const [title, setTitle] = useState('');
   const [period, setPeriod] = useState('Q1');
+  const [year, setYear] = useState<number | ''>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,6 +39,7 @@ export default function EditFinancialReportModal({
     if (report && open) {
       setTitle(report.title || '');
       setPeriod(report.reportingPeriod?.period || 'Q1');
+      setYear(report.reportingPeriod?.year ?? report.reportingYear ?? '');
       setSelectedFile(null);
       setErrorMessage(null);
       setShowConfirmReplace(false);
@@ -59,8 +64,13 @@ export default function EditFinancialReportModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     if (file) {
-      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-        setErrorMessage('Only PDF files are supported for financial reports.');
+      const err = validatePdfUpload(file);
+      if (err) {
+        setErrorMessage(err);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setSelectedFile(null);
         return;
       }
       setSelectedFile(file);
@@ -82,6 +92,14 @@ export default function EditFinancialReportModal({
     if (!title.trim()) {
       setErrorMessage('Please enter the report title.');
       return;
+    }
+
+    if (selectedFile) {
+      const err = validatePdfUpload(selectedFile);
+      if (err) {
+        setErrorMessage(err);
+        return;
+      }
     }
 
     // If replacement file is chosen and existing extraction data exists, require confirmation first
@@ -106,6 +124,26 @@ export default function EditFinancialReportModal({
 
     const fileChanged = Boolean(selectedFile);
 
+    if (onCustomSave) {
+      try {
+        await onCustomSave({
+          title: title.trim(),
+          period,
+          year: year ? Number(year) : undefined,
+          file: selectedFile,
+          report,
+        });
+        onClose();
+      } catch (err: any) {
+        setErrorMessage(
+          err?.response?.data?.message || err?.message || 'An error occurred while updating the report.'
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!metadataChanged && !fileChanged) {
       onClose();
       setIsSubmitting(false);
@@ -118,7 +156,7 @@ export default function EditFinancialReportModal({
       reportType: report.reportType || 'FINANCIAL_STATEMENT',
       statementScope: report.statementScope || 'UNKNOWN',
       reportingPeriod: {
-        year: report.reportingPeriod?.year ?? undefined,
+        year: year ? Number(year) : (report.reportingPeriod?.year ?? undefined),
         periodType: period === 'FY' ? 'FULL_YEAR' : 'QUARTER',
         period,
       },
@@ -129,25 +167,25 @@ export default function EditFinancialReportModal({
       let toastMessage = '';
 
       if (metadataChanged && fileChanged) {
-        await financialResearchApi.updateReport(projectId, taskId, report.id, metadataPayload);
-        const res = await financialResearchApi.replaceReportFile(projectId, taskId, report.id, selectedFile!);
+        await financialResearchApi.updateReport(projectId!, taskId!, report.id, metadataPayload);
+        const res = await financialResearchApi.replaceReportFile(projectId!, taskId!, report.id, selectedFile!);
         latestResearch = res.data;
         toastMessage = isManual
           ? 'Financial report and reference document updated successfully.'
           : 'Financial report updated successfully. Extraction data was reset because the source document was replaced.';
       } else if (fileChanged) {
-        const res = await financialResearchApi.replaceReportFile(projectId, taskId, report.id, selectedFile!);
+        const res = await financialResearchApi.replaceReportFile(projectId!, taskId!, report.id, selectedFile!);
         latestResearch = res.data;
         toastMessage = isManual
           ? 'Reference document updated successfully.'
           : 'Financial report document replaced successfully. Run extraction again to analyze the new document.';
       } else if (metadataChanged) {
-        const res = await financialResearchApi.updateReport(projectId, taskId, report.id, metadataPayload);
+        const res = await financialResearchApi.updateReport(projectId!, taskId!, report.id, metadataPayload);
         latestResearch = res.data;
         toastMessage = 'Financial report updated successfully.';
       }
 
-      if (latestResearch) {
+      if (latestResearch && onSuccess) {
         onSuccess(latestResearch, toastMessage);
         onClose();
       }
@@ -325,6 +363,19 @@ export default function EditFinancialReportModal({
           </label>
 
           <label style={labelStyle}>
+            Financial Year *
+            <input
+              type="number"
+              required
+              style={inputStyle}
+              value={year}
+              onChange={(e) => setYear(e.target.value ? parseInt(e.target.value, 10) : '')}
+              placeholder="e.g. 2026"
+              disabled={isSubmitting}
+            />
+          </label>
+
+          <label style={labelStyle}>
             Reporting Period *
             <select
               style={inputStyle}
@@ -410,14 +461,14 @@ export default function EditFinancialReportModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,application/pdf"
+            accept={PDF_ACCEPT_ATTRIBUTE}
             style={{ display: 'none' }}
             onChange={handleFileChange}
             disabled={isSubmitting}
           />
 
           <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-            Optional. Leave empty to keep the current document.
+            Optional. PDF only, maximum 50 MB. Leave empty to keep the current document.
           </span>
 
           {/* Selected Replacement File Display */}
