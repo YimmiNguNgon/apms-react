@@ -64,6 +64,7 @@ import { UserManagement }    from './pages/UserManagement';
 import { ActivityAudit }     from './pages/ActivityAudit';
 import { OwnerCompanyProfilePage } from './pages/OwnerCompanyProfilePage';
 import { AdminMyEnterprisePage } from './pages/AdminMyEnterprisePage';
+import { AiApiKeyManagement }    from './pages/AiApiKeyManagement';
 
 // ── Owner pages ──
 import { EcosystemOverview } from './pages/EcosystemOverview';
@@ -339,6 +340,7 @@ const MainApp: React.FC = () => {
 
       case 'owner-company-profile': return <OwnerCompanyProfilePage />;
       case 'admin-my-enterprise':   return <AdminMyEnterprisePage setActivePage={navigateToPage} />;
+      case 'admin-ai-api-keys':     return <AiApiKeyManagement />;
 
       // ── Director & Owner pages ──
       case 'partner-ecosystem':        return currentUser.role === ROLES.OWNER ? <PartnerEcosystemView setActivePage={navigateToPage} /> : <PartnerEcosystem />;

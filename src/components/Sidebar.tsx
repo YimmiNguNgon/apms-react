@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useUser, ROLES } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
 import { LogoutModal } from './LogoutModal';
-import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity, ChevronLeft, ChevronRight, LogOut, Sparkles, Eye } from 'lucide-react';
+import { LayoutDashboard, Users, Shield, Clock, FileText, Settings, AlertTriangle, Building, Briefcase, Target, PieChart, Newspaper, FolderKanban, MessageSquare, Landmark, Database, Bell, Activity, ChevronLeft, ChevronRight, LogOut, Sparkles, Eye, Key } from 'lucide-react';
 
 interface SidebarProps {
   activePage: string;
@@ -73,6 +73,7 @@ const ADMIN_MENU: MenuSection[] = [
     items: [
       // { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
       { id: 'ai-assistant',          label: 'AI Assistant' },
+      { id: 'admin-ai-api-keys',     label: 'AI API Keys' },
       { id: 'admin-my-enterprise',   label: 'menu.myEnterprise' },
     ],
   },
@@ -301,6 +302,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, col
       case 'ai-agent':
       case 'personal-ai-agent':
         return <Sparkles size={18} />;
+      case 'admin-ai-api-keys':
+        return <Key size={18} />;
       default: return <FileText size={18} />;
     }
   };
