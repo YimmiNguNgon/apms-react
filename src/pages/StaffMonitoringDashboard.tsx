@@ -497,7 +497,7 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                           <th style={{ width: '130px' }}>Review Cycle</th>
                           <th style={{ width: '130px' }}>Last Reviewed</th>
                           <th style={{ width: '130px' }}>Next Review</th>
-                          <th style={{ width: '180px' }}>Actions</th>
+                          <th style={{ width: '110px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -515,13 +515,6 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                             <td><strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(assignment.nextReviewAt)}</strong></td>
                             <td>
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                <button 
-                                  type="button"
-                                  className="project-detail-btn"
-                                  onClick={() => navigateToCompany(assignment.companyProfileId, assignment.id)}
-                                >
-                                  View Profile
-                                </button>
                                 <button 
                                   type="button"
                                   className="project-detail-btn primary"
