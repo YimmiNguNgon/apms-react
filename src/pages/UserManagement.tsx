@@ -13,6 +13,13 @@ interface UserRow extends AccountAdminResponse {
   status?: string;
   enabled?: boolean;
   emailVerified?: boolean;
+  authenticatorConfigured?: boolean;
+}
+
+interface ResetMfaConfirm {
+  id: number;
+  userName: string;
+  userEmail: string;
 }
 
 interface CreateFormErrors {
@@ -181,6 +188,7 @@ const UsersTab: React.FC<{
   const [passwordReset, setPasswordReset] = useState<PasswordResetForm | null>(null);
   const [roleUser, setRoleUser] = useState<RoleUserForm | null>(null);
   const [statusConfirm, setStatusConfirm] = useState<StatusConfirm | null>(null);
+  const [resetMfaConfirm, setResetMfaConfirm] = useState<ResetMfaConfirm | null>(null);
 
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -431,6 +439,22 @@ const UsersTab: React.FC<{
     }
   };
 
+  const handleResetAuthenticator = async () => {
+    if (!resetMfaConfirm) return;
+    setError('');
+    setActionLoading(true);
+    try {
+      await api.post(`/users/${resetMfaConfirm.id}/reset-authenticator`);
+      setResetMfaConfirm(null);
+      showNotice('Authenticator reset successfully. The user must set up Authenticator again on the next sign-in.');
+      fetchUsers();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Could not reset Authenticator.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     return users.filter((u) => {
       const name = String(u.name || u.fullName || u.email || '').toLowerCase();
@@ -521,13 +545,25 @@ const UsersTab: React.FC<{
                     const roleRaw = user.role || user.roleName || (user.roles && user.roles[0]) || 'BUSINESS_DEVELOPMENT_STAFF';
                     const roleKey = String(roleRaw).replace('ROLE_', '');
                     const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
+                    const hasMfa = user.authenticatorConfigured === true;
+                    const targetName = user.name || user.fullName || user.username || user.email || `User #${user.id}`;
 
                     return (
                       <tr key={user.id || user.email}>
                         <td className="admin-mono" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>#{user.id ?? '-'}</td>
                         <td>
                           <strong>{user.name || user.fullName || user.username || 'Unnamed'}{isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(you)</span>}</strong>
-                          <small>{user.username || ''}</small>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
+                            {user.username && <small>{user.username}</small>}
+                            {user.authenticatorConfigured !== undefined && (
+                              <span
+                                className={`project-status-badge ${user.authenticatorConfigured ? 'success' : 'neutral'}`}
+                                style={{ fontSize: '10px', padding: '1px 6px' }}
+                              >
+                                {user.authenticatorConfigured ? 'Authenticator Configured' : 'Authenticator Setup required'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td>{user.email || '-'}</td>
                         <td>
@@ -565,6 +601,36 @@ const UsersTab: React.FC<{
                               setError('');
                               setRoleUser({ id: user.id, name: user.name || user.email, currentRole: roleKey, selectedRole: roleKey });
                             }}>Role</button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              disabled={!!isSelf || !hasMfa || actionLoading}
+                              title={
+                                isSelf
+                                  ? 'You cannot reset your own Authenticator from Account Management.'
+                                  : !hasMfa
+                                  ? 'Authenticator is not configured'
+                                  : 'Reset Authenticator'
+                              }
+                              style={
+                                isSelf || !hasMfa
+                                  ? { opacity: 0.5, cursor: 'not-allowed' }
+                                  : { color: '#B45309', borderColor: 'rgba(217,119,6,0.3)' }
+                              }
+                              onClick={() => {
+                                if (isSelf) {
+                                  showError('You cannot reset your own Authenticator from Account Management.');
+                                  return;
+                                }
+                                setError('');
+                                setResetMfaConfirm({
+                                  id: user.id,
+                                  userName: targetName,
+                                  userEmail: user.email || '',
+                                });
+                              }}
+                            >
+                              Reset Authenticator
+                            </button>
                             <button className={`btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'}`} disabled={!!isSelf || actionLoading}
                               title={isSelf ? 'Không thể vô hiệu hóa tài khoản của chính mình' : isActive ? 'Vô hiệu hóa tài khoản' : 'Kích hoạt tài khoản'}
                               style={isActive ? { background: 'rgba(239,68,68,0.08)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.25)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
@@ -940,6 +1006,56 @@ const UsersTab: React.FC<{
                 onClick={handleConfirmStatus}
               >
                 {actionLoading ? 'Đang xử lý...' : statusConfirm.activate ? 'Kích hoạt' : 'Vô hiệu hóa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET AUTHENTICATOR MODAL */}
+      {resetMfaConfirm && (
+        <div className="admin-modal-backdrop" onClick={() => { if (!actionLoading) setResetMfaConfirm(null); }}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="workspace-section-head">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Reset Authenticator
+                </h3>
+              </div>
+            </div>
+            <div style={{ margin: '16px 0 20px' }}>
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '14px',
+                }}
+              >
+                <strong style={{ color: '#EF4444', display: 'block', marginBottom: '4px' }}>
+                  Reset Authenticator for {resetMfaConfirm.userName}?
+                </strong>
+                <p style={{ margin: 0, fontSize: '13px', color: '#4B5563', lineHeight: '1.5' }}>
+                  The current Authenticator configuration will be invalidated. The user will need to sign in with their password and scan a new QR code before accessing APMS.
+                </p>
+              </div>
+            </div>
+            <div className="admin-modal-actions">
+              <button
+                className="btn btn-outline"
+                disabled={actionLoading}
+                onClick={() => setResetMfaConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ background: '#DC2626', borderColor: '#DC2626', color: '#ffffff' }}
+                disabled={actionLoading}
+                onClick={handleResetAuthenticator}
+              >
+                {actionLoading ? 'Resetting...' : 'Reset Authenticator'}
               </button>
             </div>
           </div>
