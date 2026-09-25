@@ -144,7 +144,17 @@ const NewsTab: React.FC<NewsTabProps> = ({ companyId, isOwnerProfile = false }) 
   };
 
   return (
-    <ListingTabShell loading={loading} error={error} hasData={news.length > 0} crawledAt={data?.crawledAt} onRetry={reload} emptyHint="No news has been collected by the AI crawler for this company yet. Please click 'Run AI Crawler'.">
+    <ListingTabShell
+      loading={loading}
+      error={error}
+      hasData={news.length > 0}
+      crawledAt={data?.crawledAt}
+      onRetry={reload}
+      emptyTitle="No news available yet"
+      emptyDescription="Company news will appear here when relevant articles are available."
+      emptyIcon={<Newspaper size={22} />}
+      errorTitle="Unable to load news"
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {/* Header Bar */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>

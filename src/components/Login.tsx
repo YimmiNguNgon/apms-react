@@ -231,7 +231,6 @@ export const Login: React.FC = () => {
                 style={{ fontSize: 'var(--text-caption)', color: '#60A5FA', cursor: 'pointer', fontWeight: 500 }}
                 onClick={() => { window.location.href = '/forgot-password'; }}
               >
-                {t('forgotPassword')}
               </span>
             </div>
 

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Users } from 'lucide-react';
 import type { CompanyProfileInsights, CompanyProfileMember, OwnerCompanyIntelligenceResponse, ProfileResponse } from '../../types/domain';
 import type { ListingTabId } from './utils';
 import { C, GHOST_BUTTON, INPUT_STYLE, PRIMARY_BUTTON } from './tokens';
 import { validateWebsite, validateEmail, validatePhone, validateCompanyProfileField } from '../../utils/companyProfileValidation';
+import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
 
 export interface OverviewPayload {
   legalName: string;
@@ -1059,9 +1061,11 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {members.length === 0 ? (
-          <div style={{ padding: '32px', textAlign: 'center', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>Backend chưa có dữ liệu cho mục này.</p>
-          </div>
+          <CompanyDetailEmptyState
+            icon={<Users size={22} />}
+            title="No leadership data yet"
+            description="Leadership and key management information will appear here once it is available for this company."
+          />
         ) : (
           members.map((member, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '8px 12px' }}>

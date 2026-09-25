@@ -62,14 +62,31 @@ export const mergeChatMessage = (
   });
 };
 
+export interface ProjectUpdateEvent {
+  type: string;
+  projectId: number;
+  taskId?: number | null;
+  actorId?: number | null;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 type MessageCallback = (message: ChatMessageResponse) => void;
+type UpdateCallback = (event: ProjectUpdateEvent) => void;
 
 class ProjectChatSocketService {
   private client: Client | null = null;
-  private currentProjectId: number | null = null;
-  private currentSubscription: StompSubscription | null = null;
-  private currentCallback: MessageCallback | null = null;
   private isConnecting = false;
+
+  // Chat subscription state
+  private currentChatProjectId: number | null = null;
+  private currentChatSubscription: StompSubscription | null = null;
+  private currentChatCallback: MessageCallback | null = null;
+
+  // Project workflow update subscription state
+  private currentUpdateProjectId: number | null = null;
+  private currentUpdateSubscription: StompSubscription | null = null;
+  private currentUpdateCallback: UpdateCallback | null = null;
 
   private initClient(): Client {
     if (this.client) {
@@ -95,19 +112,23 @@ class ProjectChatSocketService {
       },
       onConnect: () => {
         this.isConnecting = false;
-        // Restore project subscription upon connection / reconnection
-        if (this.currentProjectId !== null && this.currentCallback) {
-          this.resubscribe();
+        // Restore project subscriptions upon connection / reconnection
+        if (this.currentChatProjectId !== null && this.currentChatCallback) {
+          this.resubscribeChat();
+        }
+        if (this.currentUpdateProjectId !== null && this.currentUpdateCallback) {
+          this.resubscribeUpdates();
         }
       },
       onStompError: (frame) => {
-        console.warn('ProjectChat STOMP error:', frame.headers['message'] || 'Broker reported error');
+        console.warn('Project STOMP error:', frame.headers['message'] || 'Broker reported error');
       },
       onWebSocketError: () => {
-        console.warn('ProjectChat WebSocket connection error');
+        console.warn('Project WebSocket connection error');
       },
       onWebSocketClose: () => {
-        this.currentSubscription = null;
+        this.currentChatSubscription = null;
+        this.currentUpdateSubscription = null;
       },
     });
 
@@ -126,17 +147,28 @@ class ProjectChatSocketService {
   }
 
   public disconnect(): void {
-    if (this.currentSubscription) {
+    if (this.currentChatSubscription) {
       try {
-        this.currentSubscription.unsubscribe();
+        this.currentChatSubscription.unsubscribe();
       } catch {
         // Safe unsubscribe
       }
-      this.currentSubscription = null;
+      this.currentChatSubscription = null;
     }
 
-    this.currentProjectId = null;
-    this.currentCallback = null;
+    if (this.currentUpdateSubscription) {
+      try {
+        this.currentUpdateSubscription.unsubscribe();
+      } catch {
+        // Safe unsubscribe
+      }
+      this.currentUpdateSubscription = null;
+    }
+
+    this.currentChatProjectId = null;
+    this.currentChatCallback = null;
+    this.currentUpdateProjectId = null;
+    this.currentUpdateCallback = null;
     this.isConnecting = false;
 
     if (this.client) {
@@ -149,50 +181,79 @@ class ProjectChatSocketService {
     projectId: number,
     onMessage: MessageCallback
   ): () => void {
-    this.currentProjectId = projectId;
-    this.currentCallback = onMessage;
+    this.currentChatProjectId = projectId;
+    this.currentChatCallback = onMessage;
 
     this.connect();
 
     if (this.client?.connected) {
-      this.resubscribe();
+      this.resubscribeChat();
     }
 
     return () => {
-      if (this.currentProjectId === projectId) {
-        if (this.currentSubscription) {
+      if (this.currentChatProjectId === projectId) {
+        if (this.currentChatSubscription) {
           try {
-            this.currentSubscription.unsubscribe();
+            this.currentChatSubscription.unsubscribe();
           } catch {
             // Safe cleanup
           }
-          this.currentSubscription = null;
+          this.currentChatSubscription = null;
         }
-        this.currentProjectId = null;
-        this.currentCallback = null;
+        this.currentChatProjectId = null;
+        this.currentChatCallback = null;
       }
     };
   }
 
-  private resubscribe(): void {
-    if (!this.client?.connected || this.currentProjectId === null || !this.currentCallback) {
+  public subscribeToProjectUpdates(
+    projectId: number,
+    onUpdate: UpdateCallback
+  ): () => void {
+    this.currentUpdateProjectId = projectId;
+    this.currentUpdateCallback = onUpdate;
+
+    this.connect();
+
+    if (this.client?.connected) {
+      this.resubscribeUpdates();
+    }
+
+    return () => {
+      if (this.currentUpdateProjectId === projectId) {
+        if (this.currentUpdateSubscription) {
+          try {
+            this.currentUpdateSubscription.unsubscribe();
+          } catch {
+            // Safe cleanup
+          }
+          this.currentUpdateSubscription = null;
+        }
+        this.currentUpdateProjectId = null;
+        this.currentUpdateCallback = null;
+      }
+    };
+  }
+
+  private resubscribeChat(): void {
+    if (!this.client?.connected || this.currentChatProjectId === null || !this.currentChatCallback) {
       return;
     }
 
-    if (this.currentSubscription) {
+    if (this.currentChatSubscription) {
       try {
-        this.currentSubscription.unsubscribe();
+        this.currentChatSubscription.unsubscribe();
       } catch {
         // Safe reset
       }
-      this.currentSubscription = null;
+      this.currentChatSubscription = null;
     }
 
-    const destination = `/topic/projects/${this.currentProjectId}`;
-    const callback = this.currentCallback;
+    const destination = `/topic/projects/${this.currentChatProjectId}`;
+    const callback = this.currentChatCallback;
 
     try {
-      this.currentSubscription = this.client.subscribe(destination, (stompMessage) => {
+      this.currentChatSubscription = this.client.subscribe(destination, (stompMessage) => {
         try {
           const data = JSON.parse(stompMessage.body) as ChatMessageResponse;
           if (data && data.id) {
@@ -203,7 +264,40 @@ class ProjectChatSocketService {
         }
       });
     } catch {
-      console.warn('Failed to subscribe to destination:', destination);
+      console.warn('Failed to subscribe to chat destination:', destination);
+    }
+  }
+
+  private resubscribeUpdates(): void {
+    if (!this.client?.connected || this.currentUpdateProjectId === null || !this.currentUpdateCallback) {
+      return;
+    }
+
+    if (this.currentUpdateSubscription) {
+      try {
+        this.currentUpdateSubscription.unsubscribe();
+      } catch {
+        // Safe reset
+      }
+      this.currentUpdateSubscription = null;
+    }
+
+    const destination = `/topic/projects/${this.currentUpdateProjectId}/updates`;
+    const callback = this.currentUpdateCallback;
+
+    try {
+      this.currentUpdateSubscription = this.client.subscribe(destination, (stompMessage) => {
+        try {
+          const data = JSON.parse(stompMessage.body) as ProjectUpdateEvent;
+          if (data && data.projectId) {
+            callback(data);
+          }
+        } catch {
+          console.warn('Failed to parse incoming WebSocket project update');
+        }
+      });
+    } catch {
+      console.warn('Failed to subscribe to update destination:', destination);
     }
   }
 
@@ -213,6 +307,10 @@ class ProjectChatSocketService {
 }
 
 export const projectChatSocket = new ProjectChatSocketService();
+export const subscribeToProjectUpdates = (
+  projectId: number,
+  onUpdate: UpdateCallback
+) => projectChatSocket.subscribeToProjectUpdates(projectId, onUpdate);
 
 // Clean up socket if auth storage is cleared in another tab or context
 if (typeof window !== 'undefined') {

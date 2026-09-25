@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ExternalLink, Plus, Trash2, Upload, Camera } from 'lucide-react';
+import { ExternalLink, Plus, Trash2, Upload, Camera, Users } from 'lucide-react';
 import { listingDataApi } from '../../API/listingDataApi';
 import { API_BASE_URL } from '../../services/api';
 import type { CompanyBoardMember } from '../../types/listingData';
 import type { CompanyProfileMember } from '../../types/domain';
 import { initialsOf, useListingTabData } from './utils';
+import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
 
 export interface BoardMembersTabProps {
   companyId: string;
@@ -386,9 +387,16 @@ const BoardMembersTab: React.FC<BoardMembersTabProps> = ({
 
       {/* Main Content: Edit Mode vs View Mode */}
       {isInlineEditing ? (
-        /* Edit Mode: Compact Grid of editable Member Cards */
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-          {(propMembers || []).map((member, idx) => (
+        (propMembers || []).length === 0 ? (
+          <CompanyDetailEmptyState
+            icon={<Users size={22} />}
+            title="No leadership data yet"
+            description="Leadership and key management information will appear here once it is available for this company."
+          />
+        ) : (
+          /* Edit Mode: Compact Grid of editable Member Cards */
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+            {(propMembers || []).map((member, idx) => (
             <div
               key={idx}
               style={{
@@ -484,6 +492,13 @@ const BoardMembersTab: React.FC<BoardMembersTabProps> = ({
             </div>
           ))}
         </div>
+        )
+      ) : effectiveMembers.length === 0 ? (
+        <CompanyDetailEmptyState
+          icon={<Users size={22} />}
+          title="No leadership data yet"
+          description="Leadership and key management information will appear here once it is available for this company."
+        />
       ) : (
         /* View Mode: Clean flat member list, strictly preserving persisted order, no role grouping */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>

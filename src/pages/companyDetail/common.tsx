@@ -1,5 +1,7 @@
 import React from 'react';
+import { RefreshCw, AlertCircle, Newspaper } from 'lucide-react';
 import { formatDateTime } from './utils';
+import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
 import styles from '../CompanyDetail.module.css';
 
 interface ListingTabShellProps {
@@ -9,6 +11,11 @@ interface ListingTabShellProps {
   crawledAt?: string | null;
   onRetry: () => void;
   emptyHint?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyIcon?: React.ReactNode;
+  emptyAction?: React.ReactNode;
+  errorTitle?: string;
   children?: React.ReactNode;
 }
 
@@ -19,32 +26,54 @@ export const ListingTabShell: React.FC<ListingTabShellProps> = ({
   crawledAt,
   onRetry,
   emptyHint,
+  emptyTitle = 'No news available yet',
+  emptyDescription = 'Company news will appear here when relevant articles are available.',
+  emptyIcon = <Newspaper size={22} />,
+  emptyAction,
+  errorTitle = 'Unable to load news',
   children,
 }) => {
   if (loading) {
     return (
-      <div className={styles.stateBox}>
-        <div className={styles.spinnerRow}><div className="spinner" /><span>Dang tai du lieu...</span></div>
+      <div className={styles.stateBox} style={{ minHeight: '210px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div className={styles.spinnerRow}><div className="spinner" /><span>Loading data...</span></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className={styles.stateBox}>
-        <h3 className={styles.stateTitle}>Failed to load data</h3>
-        <p className={styles.stateText}>{error}</p>
-        <button type="button" className={styles.retryButton} onClick={onRetry}>Retry</button>
-      </div>
+      <CompanyDetailEmptyState
+        icon={<AlertCircle size={22} color="#DC2626" />}
+        title={errorTitle}
+        description={error}
+        action={
+          <button type="button" className={styles.retryButton} onClick={onRetry} style={{ marginTop: 0 }}>
+            <RefreshCw size={13} /> Retry
+          </button>
+        }
+      />
     );
   }
 
   if (!hasData) {
     return (
-      <div className={styles.stateBox}>
-        <h3 className={styles.stateTitle}>No Data Available</h3>
-        <button type="button" className={styles.retryButton} onClick={onRetry}>Refresh</button>
-      </div>
+      <CompanyDetailEmptyState
+        icon={emptyIcon}
+        title={emptyTitle}
+        description={emptyDescription || emptyHint}
+        action={
+          emptyAction !== undefined
+            ? emptyAction
+            : onRetry
+              ? (
+                <button type="button" className={styles.retryButton} onClick={onRetry} style={{ marginTop: 0 }}>
+                  <RefreshCw size={13} /> Refresh
+                </button>
+              )
+              : undefined
+        }
+      />
     );
   }
 

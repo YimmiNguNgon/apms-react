@@ -19,6 +19,7 @@ import {
   X,
   Play,
   XCircle,
+  TrendingUp,
 } from 'lucide-react';
 import { financialResearchApi } from '../../API/financialResearchApi';
 import { API_BASE_URL } from '../../services/api';
@@ -28,6 +29,7 @@ import AddFinancialReportModal from '../../components/FinancialResearch/AddFinan
 import EditFinancialReportModal from '../../components/FinancialResearch/EditFinancialReportModal';
 import AiExtractionProgressBar from '../../components/Shared/AiExtractionProgressBar';
 import { ConfirmModal } from '../../components/Shared/ConfirmModal';
+import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
 import styles from './FinancialsTab.module.css';
 
 export interface FinancialsTabHandle {
@@ -929,23 +931,21 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
     if (isAdminMyEnterprise) {
       return (
         <div className={styles.container}>
-          <div className={styles.stateContainer}>
-            <div className={styles.stateIcon}>
-              <FileText size={26} />
-            </div>
-            <h3 className={styles.stateTitle}>No financial reports yet.</h3>
-            <p className={styles.stateSubtitle}>
-              Add an official financial report for this enterprise to support analysis, dashboard, and AI Assistant.
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => setIsAddModalOpen(true)}
-            >
-              <Plus size={14} />
-              <span>Add Financial Report</span>
-            </button>
-          </div>
+          <CompanyDetailEmptyState
+            icon={<TrendingUp size={22} />}
+            title="No financial reports yet"
+            description="Add an official financial report for this enterprise to support analysis, dashboard, and AI Assistant."
+            action={
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                <Plus size={14} />
+                <span>Add Financial Report</span>
+              </button>
+            }
+          />
           <AddFinancialReportModal
             open={isAddModalOpen}
             targetYear={selectedYear || new Date().getFullYear()}
@@ -958,11 +958,11 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
 
     return (
       <div className={styles.container}>
-        <div className={styles.stateContainer}>
-          <p className={styles.stateSubtitle}>
-            No official canonical financial rows exist for this company profile yet.
-          </p>
-        </div>
+        <CompanyDetailEmptyState
+          icon={<TrendingUp size={22} />}
+          title="No financial data yet"
+          description="Approved financial information will appear here once it is available for this company."
+        />
       </div>
     );
   }

@@ -16,7 +16,6 @@
   "emailLabel": "Email or username",
   "emailPlaceholder": "owner@apms.com or manager",
   "passwordLabel": "Password",
-  "forgotPassword": "Forgot password?",
   "authenticating": "Authenticating...",
   "errorEmptyEmail": "Please enter your email or username.",
   "errorEmptyPassword": "Please enter your password.",

@@ -72,7 +72,7 @@ const messageTime = (message?: ChatMessageResponse | null) =>
 
 const isProjectNearBottom = (element: HTMLDivElement | null) => {
   if (!element) return true;
-  return element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 120;
 };
 
 const readLastReadMap = (): LastReadMap => {
@@ -268,13 +268,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
         </div>
 
         <ProjectSearch value={query} onChange={onQueryChange} />
-        <div className={`${styles.unreadSummary} ${totalUnread > 0 ? styles.unreadSummaryActive : ''}`}>
-          {totalUnread > 0 ? (
-            <span>● {formatBadgeCount(totalUnread)} unread message{totalUnread > 1 ? 's' : ''}</span>
-          ) : (
-            <span>✓ All caught up · No unread messages</span>
-          )}
-        </div>
         {/* <ProjectFilter value={filter} onChange={onFilterChange} /> */}
       </div>
 
@@ -801,6 +794,7 @@ export const SystemChat: React.FC = () => {
   const lastSoundAtRef = useRef(0);
   const shouldScrollToLatestRef = useRef(false);
   const originalTitleRef = useRef<string>(document.title);
+  const activeProjectIdRef = useRef<number | null>(null);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(() => {
     const stored = localStorage.getItem('apms-chat-project-id') || localStorage.getItem('apms-active-project');
@@ -810,7 +804,7 @@ export const SystemChat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessageResponse[]>([]);
   const [filter, setFilter] = useState<ChatFilter>('all');
   const [query, setQuery] = useState('');
-  const [draft, setDraft] = useState('');
+  const [draftsByProjectId, setDraftsByProjectId] = useState<Record<number, string>>({});
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ChatMessageResponse | null>(null);
@@ -831,18 +825,48 @@ export const SystemChat: React.FC = () => {
     () => projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null,
     [projects, selectedProjectId]
   );
+  activeProjectIdRef.current = activeProject?.id ?? null;
 
-  const totalUnread = useMemo(
-    () => Object.values(conversationMeta).reduce((sum, item) => sum + Math.max(0, item.unreadCount || 0), 0),
-    [conversationMeta]
-  );
+  const activeDraft = activeProject ? (draftsByProjectId[activeProject.id] ?? '') : '';
+
+  const handleDraftChange = (value: string) => {
+    if (!activeProject) return;
+    setDraftsByProjectId((prev) => ({
+      ...prev,
+      [activeProject.id]: value,
+    }));
+  };
 
   const effectiveConversationMeta = useMemo(
     () => ({ ...globalConversationMeta, ...conversationMeta }),
     [conversationMeta, globalConversationMeta]
   );
 
-  const effectiveTotalUnread = totalUnread || globalTotalUnread;
+  const effectiveTotalUnread = useMemo(
+    () => Object.values(effectiveConversationMeta).reduce((sum, item) => sum + Math.max(0, item.unreadCount || 0), 0),
+    [effectiveConversationMeta]
+  );
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const doScroll = () => {
+      if (viewportRef.current) {
+        if (behavior === 'smooth') {
+          viewportRef.current.scrollTo({
+            top: viewportRef.current.scrollHeight,
+            behavior: 'smooth',
+          });
+        } else {
+          viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+        }
+      }
+      endRef.current?.scrollIntoView({ behavior, block: 'end' });
+    };
+
+    window.requestAnimationFrame(() => {
+      doScroll();
+      window.setTimeout(doScroll, 50);
+    });
+  };
 
   const playNotificationSound = () => {
     if (!soundEnabled) return;
@@ -997,6 +1021,8 @@ export const SystemChat: React.FC = () => {
 
     try {
       const payload = await chatApi.getHistory(projectId, 0, 100);
+      if (activeProjectIdRef.current !== projectId) return;
+
       const rows = [...(payload.data?.content ?? [])].sort((a, b) => {
         const left = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const right = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -1007,10 +1033,17 @@ export const SystemChat: React.FC = () => {
       if (project) {
         updateConversationMetaFromRows(project, rows, { active: activeProject?.id === projectId, notify: false });
       }
+      scrollToBottom('auto');
+      if (document.visibilityState === 'visible') {
+        markProjectRead(projectId, rows);
+      }
     } catch (err) {
+      if (activeProjectIdRef.current !== projectId) return;
       if (!options.quiet) setError(err instanceof Error ? err.message : 'Cannot load chat history.');
     } finally {
-      if (!options.quiet) setLoadingMessages(false);
+      if (activeProjectIdRef.current === projectId && !options.quiet) {
+        setLoadingMessages(false);
+      }
     }
   };
 
@@ -1049,6 +1082,7 @@ export const SystemChat: React.FC = () => {
     }
     localStorage.setItem('apms-chat-project-id', String(activeProject.id));
     shouldScrollToLatestRef.current = true;
+    setNewMessagesInActive(0);
     void loadMessages(activeProject.id);
   }, [activeProject?.id]);
 
@@ -1071,13 +1105,14 @@ export const SystemChat: React.FC = () => {
       });
 
       // Scroll to bottom if user is near bottom or if current user sent it
-      if (isProjectNearBottom(viewportRef.current) || isMine(incomingMessage, currentUser?.id, currentUser?.email)) {
-        window.requestAnimationFrame(() => {
-          endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          if (document.visibilityState === 'visible') {
-            markProjectRead(projectId, [incomingMessage]);
-          }
-        });
+      const nearBottom = isProjectNearBottom(viewportRef.current);
+      const mine = isMine(incomingMessage, currentUser?.id, currentUser?.email);
+
+      if (nearBottom || mine) {
+        scrollToBottom('smooth');
+        if (document.visibilityState === 'visible') {
+          markProjectRead(projectId, [incomingMessage]);
+        }
       } else {
         setNewMessagesInActive((current) => current + 1);
       }
@@ -1091,25 +1126,23 @@ export const SystemChat: React.FC = () => {
   }, [activeProject?.id, currentUser?.id, currentUser?.email]);
 
   useEffect(() => {
-    if (!activeProject || messages.length === 0) return;
+    if (!activeProject || loadingMessages || messages.length === 0) return;
     if (shouldScrollToLatestRef.current) {
       shouldScrollToLatestRef.current = false;
-      window.requestAnimationFrame(() => {
-        endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-        if (document.visibilityState === 'visible') {
-          markProjectRead(activeProject.id, messages);
-        }
-      });
+      scrollToBottom('auto');
+      if (document.visibilityState === 'visible') {
+        markProjectRead(activeProject.id, messages);
+      }
       return;
     }
 
     if (isProjectNearBottom(viewportRef.current)) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      scrollToBottom('smooth');
       if (document.visibilityState === 'visible') {
         markProjectRead(activeProject.id, messages);
       }
     }
-  }, [messages.length, activeProject?.id]);
+  }, [loadingMessages, messages.length, activeProject?.id]);
 
   useEffect(() => {
     const label = effectiveTotalUnread > 99 ? '99+' : effectiveTotalUnread;
@@ -1131,12 +1164,14 @@ export const SystemChat: React.FC = () => {
   const selectProject = (projectId: number) => {
     shouldScrollToLatestRef.current = true;
     setSelectedProjectId(projectId);
+    setNewMessagesInActive(0);
     setMobileConversationOpen(true);
     localStorage.setItem('apms-chat-project-id', String(projectId));
   };
 
   const jumpToLatest = () => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    setNewMessagesInActive(0);
+    scrollToBottom('smooth');
     if (activeProject) {
       window.setTimeout(() => markProjectRead(activeProject.id, messages), 180);
     }
@@ -1145,6 +1180,7 @@ export const SystemChat: React.FC = () => {
   const handleMessageScroll = () => {
     if (!activeProject || document.visibilityState !== 'visible') return;
     if (isProjectNearBottom(viewportRef.current)) {
+      setNewMessagesInActive(0);
       markProjectRead(activeProject.id, messages);
     }
   };
@@ -1164,16 +1200,21 @@ export const SystemChat: React.FC = () => {
   };
 
   const sendMessage = async () => {
-    const content = draft.trim();
-    if (!activeProject || !content || sending) return;
+    if (!activeProject || sending) return;
+    const content = (draftsByProjectId[activeProject.id] ?? '').trim();
+    if (!content) return;
 
     setSending(true);
     setError(null);
     try {
       const payload = await chatApi.sendMessage(activeProject.id, { content });
       setMessages((current) => mergeChatMessage(current, payload.data));
-      setDraft('');
+      setDraftsByProjectId((prev) => ({
+        ...prev,
+        [activeProject.id]: '',
+      }));
       void refreshChatNotifications();
+      scrollToBottom('smooth');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cannot send message.');
     } finally {
@@ -1277,9 +1318,9 @@ export const SystemChat: React.FC = () => {
           />
           <MessageComposer
             project={activeProject}
-            value={draft}
+            value={activeDraft}
             sending={sending}
-            onChange={setDraft}
+            onChange={handleDraftChange}
             onSend={() => void sendMessage()}
           />
         </main>

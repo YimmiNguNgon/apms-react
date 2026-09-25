@@ -6,8 +6,6 @@ import { useTheme } from './hooks/useTheme';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
-import { ForgotPassword } from './components/ForgotPassword';
-import { ResetPassword } from './components/ResetPassword';
 // import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
 import { resetUrlToCleanLogin } from './utils/authNavigation';
 
@@ -246,8 +244,6 @@ const MainApp: React.FC = () => {
 
   if (!currentUser) {
     const path = window.location.pathname;
-    if (path === '/forgot-password') return <ForgotPassword onBackToLogin={() => window.location.href = '/'} />;
-    if (path === '/reset-password') return <ResetPassword onBackToLogin={() => window.location.href = '/'} />;
     return <Login />;
   }
 

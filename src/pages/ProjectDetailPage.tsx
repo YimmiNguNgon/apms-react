@@ -73,6 +73,7 @@ import {
 } from '../utils/deliverableUtils';
 import { ROLES, useUser } from '../context/UserContext';
 import { API_BASE_URL, api } from '../services/api';
+import { subscribeToProjectUpdates, type ProjectUpdateEvent } from '../services/projectChatSocket';
 import type {
   AiExtractionResult,
   CandidateResponse,
@@ -1611,7 +1612,22 @@ const TaskCard: React.FC<{
           ))}
         </div>
         <div className={styles.taskFooter}>
-          <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+            <Avatar small name={task.assignee.name} initials={task.assignee.avatar} color={task.assignee.color} />
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text-secondary, #64748b)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={task.assignee.name}
+            >
+              {task.assignee.name}
+            </span>
+          </div>
           <div className={styles.taskStats}>
             <span title="Due date"><CalendarDays size={14} />{formatDate(task.dueDate)}</span>
             {task.attachments.length > 0 && (
@@ -1705,14 +1721,19 @@ const TaskDetailModal: React.FC<{
     };
   }, [task]);
 
-  useEffect(() => {
+  const fetchActivity = useCallback(() => {
     if (task && task.projectId) {
       setActivityLoading(true);
       setActivityError(false);
       taskApi.getTaskActivity(task.projectId, task.backendId ?? task.id.replace('APMS-', ''))
         .then(res => {
           if (Array.isArray(res.data)) {
-            setActivityLogs(res.data);
+            const sorted = [...res.data].sort((a, b) => {
+              const timeA = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+              const timeB = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+              return timeB - timeA;
+            });
+            setActivityLogs(sorted);
           } else {
             console.error("Unexpected activity response shape:", res);
             setActivityError(true);
@@ -1731,6 +1752,10 @@ const TaskDetailModal: React.FC<{
       setActivityLoading(false);
     }
   }, [task]);
+
+  useEffect(() => {
+    fetchActivity();
+  }, [fetchActivity]);
 
   const formatDateWithTime = (dateString: string) => {
     if (dateString.includes('ago') || dateString.includes('Today') || dateString.includes('Yesterday')) {
@@ -1762,94 +1787,101 @@ const TaskDetailModal: React.FC<{
     }
   };
 
+  const isUnassigned = !task || task.status === 'AVAILABLE' || !task.assignee?.name || task.assignee.name === 'Unassigned';
+
   return typeof document !== 'undefined'
     ? createPortal(
       <AnimatePresence>
         {task && (
           <motion.div className={`${styles.overlay} ${styles.taskDetailOverlay}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
             <motion.aside
-              className={styles.drawer}
-              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              className={styles.taskDetailModal}
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.97 }}
-              transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 32 }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div className={styles.drawerHeader}>
-                <div>
-                  <span className={styles.taskKey}>{task.id}</span>
-                  <h2>{task.title}</h2>
+              <div className={styles.taskDetailHeader}>
+                <div className={styles.taskDetailTitleGroup}>
+                  <span className={styles.taskDetailKey}>{task.id}</span>
+                  <h2 className={styles.taskDetailTitle}>{task.title}</h2>
                 </div>
-                <button className={styles.iconButton} type="button" aria-label="Close task detail modal" onClick={onClose}>
+                <button className={styles.taskDetailCloseBtn} type="button" aria-label="Close task detail modal" onClick={onClose}>
                   <X size={18} />
                 </button>
               </div>
 
-              <section className={styles.drawerSection}>
-                <h3><FileText size={16} /> Basic Information</h3>
-                <p className={styles.description}>{task.description}</p>
-                <div className={styles.infoGrid}>
-                  <div><span>Status</span><strong>
-                    {task.status === 'AVAILABLE' ? 'Available' :
-                      task.status === 'IN_PROGRESS' ? 'In Progress' :
-                        task.status === 'IN_REVIEW' ? 'In Review' :
-                          task.status === 'DONE' ? 'Done' :
-                            task.status === 'CANCELLED' ? 'Cancelled' :
-                              task.status === 'TODO' || task.status === 'todo' ? 'To Do' :
-                                task.status === 'progress' ? 'In Progress' :
-                                  task.status === 'review' ? 'In Review' :
-                                    task.status === 'done' ? 'Done' :
-                                      task.status}
-                  </strong></div>
-                  {task.keyResult ? (
-                    <>
-                      <div><span>Deliverable</span><strong>{task.keyResult.name}</strong></div>
-                      <div><span>Progress Weight</span><strong>{task.keyResult.weight != null ? `${task.keyResult.weight} %` : ''}</strong></div>
-                    </>
-                  ) : null}
-                  {!task.keyResult && (
-                    <div><span>Priority</span><strong>{task.priority}</strong></div>
-                  )}
-                  <div><span>Assignee</span><strong>{task.status === 'AVAILABLE' ? 'Unassigned' : (task.assignee.name || 'Unassigned')}</strong></div>
-                  {!task.keyResult && (
-                    <div><span>Reporter</span><strong>{task.reporter.name}</strong></div>
-                  )}
-                  <div><span>Due date</span><strong>{formatDate(task.dueDate)}</strong></div>
-                  {!task.keyResult && (
-                    <div><span>Labels</span><strong>{task.labels.join(', ')}</strong></div>
-                  )}
-                </div>
-              </section>
+              {/* Assigned To Section */}
+              <div className={styles.taskDetailSection}>
+                <div className={styles.taskDetailSectionHeader}>Assigned To</div>
+                {isUnassigned ? (
+                  <div className={styles.taskDetailUnassigned}>Unassigned</div>
+                ) : (
+                  <div className={styles.taskDetailAssigneeCard}>
+                    <span
+                      className={styles.taskDetailAssigneeAvatar}
+                      style={{ background: task.assignee.color || '#2563EB' }}
+                    >
+                      {task.assignee.avatar || (task.assignee.name ? task.assignee.name.slice(0, 2).toUpperCase() : 'UN')}
+                    </span>
+                    <div className={styles.taskDetailAssigneeInfo}>
+                      <span className={styles.taskDetailAssigneeName}>{task.assignee.name}</span>
+                      {task.assignee.role && (
+                        <span className={styles.taskDetailAssigneeRole}>{task.assignee.role}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-              <section className={styles.drawerSection}>
-                <h3><Activity size={16} /> Activity History</h3>
-                {activityLoading ? (
-                  <p className={styles.description}>Loading activity...</p>
-                ) : activityError ? (
-                  <p className={styles.description}>Unable to load activity.</p>
-                ) : activityLogs.length > 0 ? (
-                  <div className={styles.timeline}>
-                    {activityLogs.map((item) => (
-                      <div key={item.id} className={styles.timelineItem}>
-                        <div className={styles.timelineDot} />
-                        <div className={styles.timelineContent}>
-                          <div className={styles.timelineHeader}>
-                            <strong>{item.actorName}</strong>
-                          </div>
-                          <div className={styles.timelineAction}>
-                            {getActionText(item.action, item.detail)}
-                          </div>
-                          <div className={styles.timelineTime}>
-                            {formatDateWithTime(item.occurredAt)}
+              {/* Activity History Section */}
+              <div className={styles.taskDetailSection} style={{ flex: 1, minHeight: 0 }}>
+                <div className={styles.taskDetailSectionHeader}>Activity History</div>
+                <div className={styles.taskDetailActivityContainer}>
+                  {activityLoading ? (
+                    <div className={styles.taskDetailActivityLoading}>
+                      <div className={styles.miniSpinner} />
+                      <span>Loading activity history...</span>
+                    </div>
+                  ) : activityError ? (
+                    <div className={styles.taskDetailActivityError}>
+                      <span>Unable to load activity history.</span>
+                      <button
+                        type="button"
+                        className={styles.taskDetailRetryBtn}
+                        onClick={fetchActivity}
+                      >
+                        <RefreshCw size={12} />
+                        <span>Retry</span>
+                      </button>
+                    </div>
+                  ) : activityLogs.length > 0 ? (
+                    <div className={styles.taskDetailTimeline}>
+                      {activityLogs.map((item) => (
+                        <div key={item.id} className={styles.taskDetailTimelineItem}>
+                          <div className={styles.taskDetailTimelineDot} />
+                          <div className={styles.taskDetailTimelineContent}>
+                            <div className={styles.taskDetailTimelineHeader}>
+                              <strong className={styles.taskDetailActorName}>{item.actorName}</strong>
+                            </div>
+                            <div className={styles.taskDetailTimelineAction}>
+                              {getActionText(item.action, item.detail)}
+                            </div>
+                            <div className={styles.taskDetailTimelineTime}>
+                              {formatDateWithTime(item.occurredAt)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={styles.description}>No activity yet.</p>
-                )}
-              </section>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={styles.taskDetailActivityEmpty}>
+                      No activity recorded yet.
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.aside>
           </motion.div>
         )}
@@ -4177,13 +4209,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setTasksLoading(true);
     setTaskError(null);
 
-    taskApi.getProjectTasks(currentProjectId, isStaffView && staffAccountId ? { assignedToUserId: staffAccountId } : undefined)
+    taskApi.getProjectTasks(currentProjectId)
       .then((payload) => {
         if (cancelled) return;
-        const rows = unwrapList<ProjectTaskResponse>(payload).filter((task) => (
-          !isStaffView ||
-          (staffAccountId ? task.assignedToUserId === staffAccountId : task.assignedToName?.toLowerCase() === currentUser?.email?.toLowerCase())
-        ));
+        const rows = unwrapList<ProjectTaskResponse>(payload);
         setApiTasks(rows);
         setSelectedStaffTask((current) => current ? rows.find((task) => task.id === current.id) ?? current : current);
         setSelectedManagerReviewTask((current) => current ? rows.find((task) => task.id === current.id) ?? current : current);
@@ -4200,7 +4229,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     return () => {
       cancelled = true;
     };
-  }, [currentProjectId, currentUser?.email, isStaffView, staffAccountId, taskRefreshTick]);
+  }, [currentProjectId, taskRefreshTick]);
 
   useEffect(() => {
     if (!isManager || !Number.isFinite(currentProjectId) || currentProjectId <= 0) return;
@@ -4303,6 +4332,71 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     };
   }, [currentProjectId, taskRefreshTick, projectRefreshTick]);
 
+  // Realtime synchronization for Project Detail workflow / Kanban / Deliverables / Members / Reviews
+  useEffect(() => {
+    if (!Number.isFinite(currentProjectId) || currentProjectId <= 0) {
+      return;
+    }
+
+    const unsubscribe = subscribeToProjectUpdates(currentProjectId, (event: ProjectUpdateEvent) => {
+      // Guard against events for other projects
+      if (Number(event.projectId) !== Number(currentProjectId)) {
+        return;
+      }
+
+      const eventType = event.type;
+
+      // Invalidate authoritative React Query caches and tick state based on workflow event type
+      if (
+        eventType === 'PROJECT_MEMBER_ADDED' ||
+        eventType === 'PROJECT_MEMBER_REMOVED' ||
+        eventType === 'PROJECT_MEMBER_ROLE_CHANGED'
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ['projectMembers', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+        setProjectRefreshTick((prev) => prev + 1);
+      } else if (eventType === 'TASK_CLAIMED' || eventType === 'TASK_RELEASED') {
+        void queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+        setTaskRefreshTick((prev) => prev + 1);
+        setProjectRefreshTick((prev) => prev + 1);
+      } else if (eventType === 'TASK_SUBMITTED' || eventType === 'TASK_SUBMISSION_CANCELLED') {
+        void queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+        void queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
+        setTaskRefreshTick((prev) => prev + 1);
+        setProjectRefreshTick((prev) => prev + 1);
+      } else if (eventType === 'TASK_APPROVED' || eventType === 'TASK_CHANGES_REQUESTED') {
+        void queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['submissions'] });
+        void queryClient.invalidateQueries({ queryKey: ['managerReviewQueue'] });
+        void queryClient.invalidateQueries({ queryKey: ['candidates'] });
+        setTaskRefreshTick((prev) => prev + 1);
+        setProjectRefreshTick((prev) => prev + 1);
+      } else {
+        // Generic project / task / deliverable updates
+        void queryClient.invalidateQueries({ queryKey: ['projectDetails', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['projectTasks'] });
+        void queryClient.invalidateQueries({ queryKey: ['tasks', currentProjectId] });
+        void queryClient.invalidateQueries({ queryKey: ['candidates'] });
+        setTaskRefreshTick((prev) => prev + 1);
+        setProjectRefreshTick((prev) => prev + 1);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentProjectId, queryClient]);
+
   useEffect(() => {
     if (!showInviteModal) {
       setInviteEmail('');
@@ -4402,14 +4496,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [apiProject]);
 
   useEffect(() => {
-    let mergedTasks = apiTasks;
-    if (isStaffView) {
-      const apiTaskIds = new Set(apiTasks.map((t) => t.id));
-      const uniqueAvailable = availableTasks.filter((t) => !apiTaskIds.has(t.id));
-      mergedTasks = [...uniqueAvailable, ...apiTasks];
-    }
+    const apiTaskIds = new Set(apiTasks.map((t) => t.id));
+    const uniqueAvailable = availableTasks.filter((t) => !apiTaskIds.has(t.id));
+    const mergedTasks = [...uniqueAvailable, ...apiTasks];
     setTasks(mergedTasks.map((task) => mapApiTaskToCard(task, projectMembers)));
-  }, [apiTasks, availableTasks, projectMembers, isStaffView]);
+  }, [apiTasks, availableTasks, projectMembers]);
 
   const loadTaskDocuments = useCallback(async (projectId: number, taskId: number) => {
     setTaskDocumentsLoading(true);
@@ -6333,6 +6424,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return;
     }
 
+    const isAssignedToMe = Boolean(
+      staffAccountId
+        ? apiTask.assignedToUserId === staffAccountId
+        : apiTask.assignedToName?.toLowerCase() === currentUser?.email?.toLowerCase()
+    );
+
+    // If task is assigned to another staff member, open read-only TaskDetailModal
+    if (!isAssignedToMe) {
+      setSelectedTask(task);
+      return;
+    }
+
     if (['IN_PROGRESS', 'IN_REVIEW', 'DONE'].includes(apiTask.status)) {
       setSelectedStaffTask(apiTask);
       resetStaffWorkbenchForms();
@@ -6391,11 +6494,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     const apiTask = apiTasks.find((item) => item.id === taskId);
     if (!apiTask) return;
 
+    const isAssignedToMe = Boolean(
+      staffAccountId
+        ? apiTask.assignedToUserId === staffAccountId
+        : apiTask.assignedToName?.toLowerCase() === currentUser?.email?.toLowerCase()
+    );
+    if (!isAssignedToMe) {
+      sessionStorage.removeItem('apms-open-task-id');
+      return;
+    }
+
     sessionStorage.removeItem('apms-open-task-id');
     setSelectedStaffTask(apiTask);
     resetStaffWorkbenchForms();
     void loadStaffWorkbench(apiTask);
-  }, [apiTasks, isStaffView, selectedStaffTask]);
+  }, [apiTasks, isStaffView, selectedStaffTask, staffAccountId, currentUser?.email]);
 
   const handleStartStaffTask = async () => {
     if (!selectedStaffTask) return;

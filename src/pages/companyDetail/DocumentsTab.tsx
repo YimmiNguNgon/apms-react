@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { companyProfileContractApi } from '../../API/companyProfileContractApi';
 import { API_BASE_URL } from '../../services/api';
+import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
 import type {
   CompanyProfileContractDto,
   UpdateCompanyProfileContractRequest,
@@ -445,17 +446,11 @@ export const DocumentsTab = forwardRef<ContractTabHandle, DocumentsTabProps>(
     if (!hasAccess) {
       return (
         <div className={styles.container}>
-          <div className={styles.headerSection}>
-            <div className={styles.titleRow}>
-              <h2 className={styles.title}>Hợp đồng đối tác</h2>
-            </div>
-            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
-          </div>
-          <div className={styles.emptyStateContainer}>
-            <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
-            <p className={styles.emptyTitle}>Không có quyền truy cập</p>
-            <p className={styles.emptyDesc}>Bạn không có quyền truy cập hợp đồng của doanh nghiệp này.</p>
-          </div>
+          <CompanyDetailEmptyState
+            icon={<AlertCircle size={22} color="#DC2626" />}
+            title="Access Denied"
+            description="You do not have permission to view contracts for this company."
+          />
         </div>
       );
     }
@@ -464,16 +459,10 @@ export const DocumentsTab = forwardRef<ContractTabHandle, DocumentsTabProps>(
     if (isLoading) {
       return (
         <div className={styles.container}>
-          <div className={styles.headerSection}>
-            <div className={styles.titleRow}>
-              <h2 className={styles.title}>Hợp đồng đối tác</h2>
-            </div>
-            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
-          </div>
-          <div className={styles.emptyStateContainer}>
+          <div className={styles.emptyStateContainer} style={{ minHeight: '210px', justifyContent: 'center' }}>
             <div className={styles.spinner} />
-            <p className={styles.emptyTitle} style={{ marginTop: 10 }}>Đang tải hợp đồng đối tác...</p>
-            <p className={styles.emptyDesc}>Đang truy xuất các hợp đồng chính thức từ cơ sở dữ liệu doanh nghiệp.</p>
+            <p className={styles.emptyTitle} style={{ marginTop: 10 }}>Loading contracts...</p>
+            <p className={styles.emptyDesc}>Retrieving official contracts from enterprise database.</p>
           </div>
         </div>
       );
@@ -483,25 +472,21 @@ export const DocumentsTab = forwardRef<ContractTabHandle, DocumentsTabProps>(
     if (isError) {
       return (
         <div className={styles.container}>
-          <div className={styles.headerSection}>
-            <div className={styles.titleRow}>
-              <h2 className={styles.title}>Hợp đồng đối tác</h2>
-            </div>
-            <p className={styles.subtitle}>Danh mục hợp đồng chính thức đã được thẩm định & lưu trữ chuẩn hóa.</p>
-          </div>
-          <div className={styles.emptyStateContainer}>
-            <AlertCircle size={32} color="#DC2626" style={{ marginBottom: 6 }} />
-            <p className={styles.emptyTitle}>Không thể tải danh sách hợp đồng</p>
-            <p className={styles.emptyDesc}>Đã xảy ra lỗi khi tải dữ liệu hợp đồng. Vui lòng thử lại.</p>
-            <button
-              type="button"
-              className={styles.paginationBtn}
-              onClick={() => void refetch()}
-              style={{ marginTop: 12, padding: '6px 14px' }}
-            >
-              <RefreshCw size={13} /> Thử lại
-            </button>
-          </div>
+          <CompanyDetailEmptyState
+            icon={<AlertCircle size={22} color="#DC2626" />}
+            title="Unable to load contracts"
+            description="An error occurred while loading contract data. Please try again."
+            action={
+              <button
+                type="button"
+                className={styles.paginationBtn}
+                onClick={() => void refetch()}
+                style={{ marginTop: 4, padding: '6px 14px' }}
+              >
+                <RefreshCw size={13} /> Retry
+              </button>
+            }
+          />
         </div>
       );
     }
@@ -510,10 +495,11 @@ export const DocumentsTab = forwardRef<ContractTabHandle, DocumentsTabProps>(
     if (displayContracts.length === 0) {
       return (
         <div className={styles.container}>
-          <div className={styles.emptyStateContainer}>
-            <p className={styles.emptyTitle}>Chưa có hợp đồng được phê duyệt</p>
-            <p className={styles.emptyDesc}>Hợp đồng sau khi được Quản lý duyệt từ nghiên cứu tài liệu sẽ hiển thị tại đây.</p>
-          </div>
+          <CompanyDetailEmptyState
+            icon={<FileText size={22} />}
+            title="No approved contracts yet"
+            description="Approved contract information will appear here after contract research has been reviewed and approved."
+          />
         </div>
       );
     }
