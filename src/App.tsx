@@ -9,6 +9,7 @@ import { Login } from './components/Login';
 import { ForgotPassword } from './components/ForgotPassword';
 import { ResetPassword } from './components/ResetPassword';
 import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
+import { resetUrlToCleanLogin } from './utils/authNavigation';
 
 // ── Role dashboards ──
 import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
@@ -124,9 +125,14 @@ const MainApp: React.FC = () => {
   const { currentUser, loading } = useUser();
   useTheme();
 
-  const [activePage, setActivePage] = useState<string>(() =>
-    readActivePageFromLocation() || localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || ''
-  );
+  const [activePage, setActivePage] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const token =
+      localStorage.getItem('apms-token') ||
+      localStorage.getItem('accessToken');
+    if (!token) return '';
+    return readActivePageFromLocation() || localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY) || '';
+  });
   const [notificationToast, setNotificationToast] = useState<{ title: string; body: string } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -162,6 +168,7 @@ const MainApp: React.FC = () => {
     if (!currentUser) {
       localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
       setActivePage('');
+      resetUrlToCleanLogin();
       return;
     }
 
@@ -182,13 +189,22 @@ const MainApp: React.FC = () => {
   }, [activePage, currentUser]);
 
   useEffect(() => {
-    const syncFromHash = () => {
+    const handleLocationChange = () => {
+      if (!currentUser) {
+        resetUrlToCleanLogin();
+        setActivePage('');
+        return;
+      }
       const page = readActivePageFromLocation();
       if (page) setActivePage(page);
     };
-    window.addEventListener('hashchange', syncFromHash);
-    return () => window.removeEventListener('hashchange', syncFromHash);
-  }, []);
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) return;

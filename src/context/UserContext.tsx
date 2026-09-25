@@ -4,6 +4,7 @@ import type { PageResponse } from '../services/api';
 import { loginApi, type VerificationPayload } from '../API/loginApi';
 import { queryClient } from '../main';
 import { ownerSecureAccess } from '../utils/ownerSecureAccess';
+import { resetUrlToCleanLogin, AUTH_EXPIRED_EVENT } from '../utils/authNavigation';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLES = {
@@ -157,29 +158,49 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.getItem(STORAGE_KEYS.legacyAccessToken);
     const stored = localStorage.getItem('apms-user');
 
-    if (!token) {
+    if (!token || !stored) {
       clearAuthSession();
+      localStorage.removeItem('apms-active-page');
+      localStorage.removeItem('apms-active-project');
       setCurrentUser(null);
       setLoading(false);
+      resetUrlToCleanLogin();
       return;
     }
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as User;
-        const normalized = {
-          ...parsed,
-          id: Number(parsed.id ?? 0),
-          allowedPages: [...(ROLE_PAGES[parsed.role] ?? [])],
-        };
-        setCurrentUser(normalized);
-        localStorage.setItem('apms-user', JSON.stringify(normalized));
-      } catch {
-        clearAuthSession();
-        setCurrentUser(null);
-      }
+    try {
+      const parsed = JSON.parse(stored) as User;
+      const normalized = {
+        ...parsed,
+        id: Number(parsed.id ?? 0),
+        allowedPages: [...(ROLE_PAGES[parsed.role] ?? [])],
+      };
+      setCurrentUser(normalized);
+      localStorage.setItem('apms-user', JSON.stringify(normalized));
+    } catch {
+      clearAuthSession();
+      localStorage.removeItem('apms-active-page');
+      localStorage.removeItem('apms-active-project');
+      setCurrentUser(null);
+      resetUrlToCleanLogin();
     }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setCurrentUser(null);
+      clearAuthSession();
+      localStorage.removeItem('apms-active-page');
+      localStorage.removeItem('apms-active-project');
+      sessionStorage.clear();
+      ownerSecureAccess.clearAll();
+      queryClient.clear();
+      resetUrlToCleanLogin();
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   }, []);
 
   const applyLoginPayload = async (payload: LoginPayload): Promise<boolean> => {
@@ -208,9 +229,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     api.post('/auth/logout').catch(() => {});
     setCurrentUser(null);
     clearAuthSession();
+    localStorage.removeItem('apms-active-page');
+    localStorage.removeItem('apms-active-project');
     sessionStorage.clear();
     ownerSecureAccess.clearAll();
     queryClient.clear();
+    resetUrlToCleanLogin();
   };
 
   return (
