@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { adminAiKeyApi, type AiApiKeyDto, type AiApiKeyStatus } from '../API/adminAiKeyApi';
 import { ConfirmModal } from '../components/Shared/ConfirmModal';
-import { Eye, EyeOff, Key, Plus, RefreshCw, Trash2, Power, PlayCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Key, Plus, RefreshCw, Trash2, Power, PlayCircle, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
 
 interface ToastNotice {
   type: 'success' | 'error' | 'info';
@@ -32,12 +32,19 @@ export const AiApiKeyManagement: React.FC = () => {
   // Row-level action state
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [togglingKeyId, setTogglingKeyId] = useState<string | null>(null);
+  const [revealingKeyId, setRevealingKeyId] = useState<string | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
+  const revealTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const fetchKeys = async (isBackground = false) => {
     if (!isBackground) {
       setLoading(true);
       setError('');
     }
+    // Reset revealed keys in-memory on list fetch / refresh
+    Object.values(revealTimers.current).forEach(clearTimeout);
+    revealTimers.current = {};
+    setRevealedKeys({});
     try {
       const response = await adminAiKeyApi.getAiApiKeys();
       if (response && response.data) {
@@ -57,6 +64,9 @@ export const AiApiKeyManagement: React.FC = () => {
 
   useEffect(() => {
     fetchKeys();
+    return () => {
+      Object.values(revealTimers.current).forEach(clearTimeout);
+    };
   }, []);
 
   const totalCount = keys.length;
@@ -73,6 +83,10 @@ export const AiApiKeyManagement: React.FC = () => {
 
   const handleReload = async () => {
     setReloading(true);
+    // Reset revealed keys on explicit reload
+    Object.values(revealTimers.current).forEach(clearTimeout);
+    revealTimers.current = {};
+    setRevealedKeys({});
     try {
       const res = await adminAiKeyApi.reloadAiApiKeys();
       const count = res?.data?.activeCount ?? 0;
@@ -133,8 +147,21 @@ export const AiApiKeyManagement: React.FC = () => {
     setTogglingKeyId(key.id);
     const willEnable = key.status === 'DISABLED';
     try {
-      await adminAiKeyApi.setAiApiKeyEnabled(key.id, willEnable);
-      showToast('success', `API key ${key.maskedKey} is now ${willEnable ? 'ACTIVE' : 'DISABLED'}.`);
+      const res = await adminAiKeyApi.setAiApiKeyEnabled(key.id, willEnable);
+      const updated = res.data;
+      if (willEnable) {
+        if (updated.status === 'ACTIVE') {
+          showToast('success', 'API key enabled and verified successfully.');
+        } else if (updated.status === 'EXHAUSTED') {
+          showToast('error', 'API key was enabled but its Gemini quota is currently exhausted.');
+        } else if (updated.status === 'INVALID') {
+          showToast('error', 'API key could not be activated because the credential is invalid or unauthorized.');
+        } else {
+          showToast('info', 'API key could not be activated due to temporary service unavailability. Preserved safe status.');
+        }
+      } else {
+        showToast('success', `API key ${key.maskedKey} is now DISABLED.`);
+      }
       await fetchKeys(true);
     } catch (err: unknown) {
       showToast('error', `Unable to ${willEnable ? 'enable' : 'disable'} API key.`);
@@ -163,6 +190,64 @@ export const AiApiKeyManagement: React.FC = () => {
       await fetchKeys(true);
     } finally {
       setTestingKeyId(null);
+    }
+  };
+
+  const handleToggleReveal = async (key: AiApiKeyDto) => {
+    // If already revealed, toggle back to masked
+    if (revealedKeys[key.id]) {
+      if (revealTimers.current[key.id]) {
+        clearTimeout(revealTimers.current[key.id]);
+        delete revealTimers.current[key.id];
+      }
+      setRevealedKeys((prev) => {
+        const next = { ...prev };
+        delete next[key.id];
+        return next;
+      });
+      return;
+    }
+
+    // Fetch decrypted key from secure admin-only reveal endpoint
+    setRevealingKeyId(key.id);
+    try {
+      const res = await adminAiKeyApi.revealAiApiKey(key.id);
+      const fullKey = res?.data?.fullApiKey;
+      if (fullKey) {
+        setRevealedKeys((prev) => ({
+          ...prev,
+          [key.id]: fullKey,
+        }));
+
+        // Auto-hide after 30 seconds for security
+        if (revealTimers.current[key.id]) {
+          clearTimeout(revealTimers.current[key.id]);
+        }
+        revealTimers.current[key.id] = setTimeout(() => {
+          setRevealedKeys((prev) => {
+            const next = { ...prev };
+            delete next[key.id];
+            return next;
+          });
+          delete revealTimers.current[key.id];
+        }, 30000);
+      } else {
+        showToast('error', 'Failed to retrieve full API key.');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unable to reveal API key.';
+      showToast('error', message);
+    } finally {
+      setRevealingKeyId(null);
+    }
+  };
+
+  const handleCopyKey = async (fullKey: string) => {
+    try {
+      await navigator.clipboard.writeText(fullKey);
+      showToast('success', 'API key copied to clipboard.');
+    } catch {
+      showToast('error', 'Failed to copy API key to clipboard.');
     }
   };
 
@@ -382,23 +467,26 @@ export const AiApiKeyManagement: React.FC = () => {
                 <table className="admin-table">
                   <thead>
                     <tr>
+                      <th style={{ width: '50px', textAlign: 'center' }}>#</th>
                       <th style={{ width: '100px' }}>Provider</th>
-                      <th style={{ width: '220px' }}>API Key</th>
+                      <th style={{ width: '280px' }}>API Key</th>
                       <th style={{ width: '120px' }}>Status</th>
-                      <th style={{ width: '150px' }}>Last Used</th>
+                      <th style={{ width: '140px' }}>Last Used</th>
                       <th>Last Error</th>
-                      <th style={{ width: '150px' }}>Created At</th>
+                      <th style={{ width: '140px' }}>Created At</th>
                       <th style={{ width: '220px', textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {keys.map((k) => {
+                    {keys.map((k, index) => {
                       const isTesting = testingKeyId === k.id;
                       const isToggling = togglingKeyId === k.id;
+                      const isRevealing = revealingKeyId === k.id;
+                      const isRevealed = Boolean(revealedKeys[k.id]);
                       const isDisabled = k.status === 'DISABLED';
 
                       let errorSnippet = '—';
-                      if (k.lastError || k.lastErrorCode) {
+                      if (k.status !== 'ACTIVE' && (k.lastError || k.lastErrorCode)) {
                         const parts = [];
                         if (k.lastErrorCode) parts.push(String(k.lastErrorCode));
                         if (k.lastError) parts.push(k.lastError);
@@ -407,24 +495,88 @@ export const AiApiKeyManagement: React.FC = () => {
 
                       return (
                         <tr key={k.id}>
+                          <td
+                            style={{
+                              textAlign: 'center',
+                              color: 'var(--text-muted)',
+                              fontSize: '13px',
+                              fontWeight: 500,
+                            }}
+                            className="admin-mono"
+                          >
+                            {index + 1}
+                          </td>
                           <td>
                             <strong>{k.provider || 'GEMINI'}</strong>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span
-                                className="admin-mono"
-                                style={{
-                                  fontWeight: 600,
-                                  fontSize: '13px',
-                                  letterSpacing: '0.04em',
-                                  color: 'var(--text-primary)',
-                                }}
-                              >
-                                {k.maskedKey}
-                              </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span
+                                  className="admin-mono"
+                                  style={{
+                                    fontWeight: 600,
+                                    fontSize: '13px',
+                                    letterSpacing: '0.04em',
+                                    color: 'var(--text-primary)',
+                                    wordBreak: 'break-all',
+                                  }}
+                                >
+                                  {isRevealed ? revealedKeys[k.id] : k.maskedKey}
+                                </span>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline"
+                                    title={isRevealed ? 'Hide full API key' : 'Show full API key'}
+                                    disabled={isRevealing}
+                                    onClick={() => handleToggleReveal(k)}
+                                    style={{
+                                      padding: '2px 6px',
+                                      fontSize: '11px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {isRevealing ? (
+                                      <RefreshCw size={12} className="spin" />
+                                    ) : isRevealed ? (
+                                      <>
+                                        <EyeOff size={12} />
+                                        <span>Hide</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye size={12} />
+                                        <span>Show</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  {isRevealed && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline"
+                                      title="Copy full API key"
+                                      onClick={() => handleCopyKey(revealedKeys[k.id])}
+                                      style={{
+                                        padding: '2px 6px',
+                                        fontSize: '11px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <Copy size={12} />
+                                      <span>Copy</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                               {k.label && (
-                                <small style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '2px' }}>
+                                <small style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
                                   {k.label}
                                 </small>
                               )}
@@ -498,7 +650,7 @@ export const AiApiKeyManagement: React.FC = () => {
                                 }}
                               >
                                 <Power size={13} />
-                                <span>{isToggling ? '...' : isDisabled ? 'Enable' : 'Disable'}</span>
+                                <span>{isToggling ? (isDisabled ? 'Enabling...' : 'Disabling...') : (isDisabled ? 'Enable' : 'Disable')}</span>
                               </button>
 
                               <button

@@ -32,6 +32,11 @@ export interface TestAiApiKeyResponse {
   message: string;
 }
 
+export interface RevealAiApiKeyResponse {
+  id: string;
+  fullApiKey: string;
+}
+
 export const adminAiKeyApi = {
   getAiApiKeys: async () => {
     return api.get<AiApiKeyDto[]>('/admin/ai-keys');
@@ -46,7 +51,7 @@ export const adminAiKeyApi = {
   },
 
   reloadAiApiKeys: async () => {
-    return api.post<{ activeCount: number; message: string }>('/admin/ai-keys/reload');
+    return api.post<{ activeCount: number; keys: AiApiKeyDto[] }>('/admin/ai-keys/reload');
   },
 
   setAiApiKeyEnabled: async (id: string, enabled: boolean) => {
@@ -55,5 +60,9 @@ export const adminAiKeyApi = {
 
   testAiApiKey: async (id: string) => {
     return api.post<TestAiApiKeyResponse>(`/admin/ai-keys/${id}/test`);
+  },
+
+  revealAiApiKey: async (id: string) => {
+    return api.get<RevealAiApiKeyResponse>(`/admin/ai-keys/${id}/reveal`);
   },
 };
