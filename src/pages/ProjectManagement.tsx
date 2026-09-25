@@ -15,6 +15,8 @@ import {
   findCompanyProfile,
   isDeliverableMandatory,
   getDeliverableMandatoryReason,
+  getLocalTodayDateString,
+  validateProjectDueDate,
 } from '../utils/deliverableUtils';
 import type {
   CreateProjectRequest,
@@ -193,6 +195,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [taxCodeCheck, setTaxCodeCheck] = useState<DuplicateTaxCodeState>(null);
+  const [taxCodeError, setTaxCodeError] = useState<string | null>(null);
   const [openProjectConflict, setOpenProjectConflict] = useState<OpenProjectConflictState>(null);
 
   useEffect(() => {
@@ -627,6 +630,19 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
       return;
     }
 
+    if (projectForm.projectType === 'RESEARCH_NEW_COMPANY' && projectForm.targetCompanyTaxCode) {
+      if (!/^\d+$/.test(projectForm.targetCompanyTaxCode.trim())) {
+        setTaxCodeError('Tax Code must contain numbers only.');
+        setFeedback({ kind: 'error', message: 'Tax Code must contain numbers only.' });
+        return;
+      }
+    }
+
+    if (taxCodeError) {
+      setFeedback({ kind: 'error', message: 'Tax Code must contain numbers only.' });
+      return;
+    }
+
     if (projectForm.projectType === 'RESEARCH_NEW_COMPANY' && taxCodeCheck?.checked && taxCodeCheck.exists) {
       if (taxCodeCheck.existingOfficialCompany || taxCodeCheck.matchType === 'COMPANY_PROFILE') {
         setFeedback({ kind: 'error', message: 'An official company already exists with this tax code. Please select the "Update existing company" project type.' });
@@ -640,6 +656,12 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
 
     if (!projectForm.plannedEndDate) {
       setFeedback({ kind: 'error', message: 'Planned end date is required.' });
+      return;
+    }
+
+    const dueDateErr = validateProjectDueDate(projectForm.plannedEndDate);
+    if (dueDateErr) {
+      setFeedback({ kind: 'error', message: dueDateErr });
       return;
     }
 
@@ -952,6 +974,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 setFeedback(null);
                 setTaxCodeCheck(null);
                 setOpenProjectConflict(null);
+                setTaxCodeError(null);
                 setShowCreateForm(true);
               }}>{t('create.submit') || 'Create project'}</button>
             )}
@@ -960,7 +983,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
         {projectsError && <div className="workspace-inline-error">{projectsError}</div>}
 
         {showCreateForm && (
-          <div className="modal-overlay project-modal-overlay" onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); }}>
+          <div className="modal-overlay project-modal-overlay" onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); setTaxCodeError(null); }}>
           <div className="modal project-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" onClick={(event) => event.stopPropagation()} style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="project-modal-head" style={{ flexShrink: 0 }}>
               <div>
@@ -968,7 +991,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                 <h3 id="create-project-title">Create new project</h3>
                 <p>Define the project goal, target company, and deliverables.</p>
               </div>
-              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); }}>&times;</button>
+              <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); setTaxCodeError(null); }}>&times;</button>
             </div>
             
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
@@ -1078,12 +1101,35 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     ) : (
                       <div>
                         <input
+                          type="text"
+                          inputMode="numeric"
                           className="search-input"
                           placeholder="Enter company tax code"
                           value={projectForm.targetCompanyTaxCode}
-                          onChange={(event) => setProjectForm((current) => ({ ...current, targetCompanyTaxCode: event.target.value }))}
-                          onBlur={(event) => void handleTaxCodeCheck(event.target.value)}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            const digitsOnly = raw.replace(/\D/g, '');
+                            setProjectForm((current) => ({ ...current, targetCompanyTaxCode: digitsOnly }));
+                            if (raw && raw !== digitsOnly) {
+                              setTaxCodeError('Tax Code must contain numbers only.');
+                            } else {
+                              setTaxCodeError(null);
+                            }
+                          }}
+                          onBlur={(event) => {
+                            const raw = event.target.value;
+                            const digitsOnly = raw.replace(/\D/g, '');
+                            if (raw && raw !== digitsOnly) {
+                              setTaxCodeError('Tax Code must contain numbers only.');
+                            }
+                            void handleTaxCodeCheck(digitsOnly);
+                          }}
                         />
+                        {taxCodeError && (
+                          <div className="workspace-inline-error" style={{ marginTop: '4px', fontSize: '0.82rem' }}>
+                            {taxCodeError}
+                          </div>
+                        )}
                         {taxCodeCheck?.loading && <span style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px', display: 'block' }}>Checking tax code...</span>}
                         {taxCodeCheck?.checked && taxCodeCheck.exists && (taxCodeCheck.existingOfficialCompany || taxCodeCheck.matchType === 'COMPANY_PROFILE') && (
                           taxCodeCheck.hasOpenProject ? (
@@ -1224,7 +1270,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                       className="search-input"
                       type="date"
                       value={projectForm.plannedEndDate}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={getLocalTodayDateString()}
                       onChange={(event) => setProjectForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
                     />
                   </label>

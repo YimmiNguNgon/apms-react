@@ -16,6 +16,7 @@ import type {
   RelationshipTypeOption,
 } from '../types/domain';
 import { ProjectInspectionDrawer } from '../components/ProjectInspectionDrawer';
+import { getLocalTodayDateString, validateProjectDueDate } from '../utils/deliverableUtils';
 
 interface PageResponse<T> {
   content: T[];
@@ -273,6 +274,11 @@ export const ProjectsOverview: React.FC = () => {
     }
     if (!createForm.plannedEndDate) {
       setCreateError(t('errors.dateRequired'));
+      return;
+    }
+    const dueDateErr = validateProjectDueDate(createForm.plannedEndDate);
+    if (dueDateErr) {
+      setCreateError(dueDateErr);
       return;
     }
 
@@ -578,7 +584,7 @@ export const ProjectsOverview: React.FC = () => {
                   className="search-input"
                   type="date"
                   value={createForm.plannedEndDate}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getLocalTodayDateString()}
                   onChange={(event) => setCreateForm((current) => ({ ...current, plannedEndDate: event.target.value }))}
                 />
               </label>

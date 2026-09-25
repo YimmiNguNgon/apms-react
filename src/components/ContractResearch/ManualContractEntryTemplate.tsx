@@ -22,7 +22,7 @@ import {
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
 import contractStyles from './ContractResearchWorkbench.module.css';
 import { ConfirmModal } from '../Shared/ConfirmModal';
-import { validateContractDates } from './contractValidation';
+import { validateContractDates, validatePartiesTaxCodes } from './contractValidation';
 
 interface Props {
   projectId: number;
@@ -96,18 +96,26 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   // Field refs for date validation autofocus/scroll
+  const signingDateInputRef = useRef<HTMLInputElement>(null);
   const effectiveDateInputRef = useRef<HTMLInputElement>(null);
   const expiryDateInputRef = useRef<HTMLInputElement>(null);
 
   // Live date relationships validation
   const dateErrors = useMemo(() => {
     return validateContractDates({
+      documentDate,
       signingDate,
       effectiveDate,
       expiryDate,
     });
-  }, [signingDate, effectiveDate, expiryDate]);
-  const hasDateErrors = Boolean(dateErrors.effectiveDate || dateErrors.expiryDate);
+  }, [documentDate, signingDate, effectiveDate, expiryDate]);
+  const hasDateErrors = Boolean(dateErrors.signingDate || dateErrors.effectiveDate || dateErrors.expiryDate);
+
+  // Live contracting parties Tax Code validation (digits only, unique among parties)
+  const partyTaxCodeErrors = useMemo(() => {
+    return validatePartiesTaxCodes(parties);
+  }, [parties]);
+  const hasPartyTaxCodeErrors = Object.keys(partyTaxCodeErrors).length > 0;
 
   // Sync if contract changes
   useEffect(() => {
@@ -288,6 +296,13 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
       return;
     }
 
+    if (dateErrors.signingDate) {
+      setErrorMessage(dateErrors.signingDate);
+      signingDateInputRef.current?.focus();
+      signingDateInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     if (dateErrors.effectiveDate) {
       setErrorMessage(dateErrors.effectiveDate);
       effectiveDateInputRef.current?.focus();
@@ -299,6 +314,13 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
       setErrorMessage(dateErrors.expiryDate);
       expiryDateInputRef.current?.focus();
       expiryDateInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    if (hasPartyTaxCodeErrors) {
+      const firstErrorIndex = Number(Object.keys(partyTaxCodeErrors)[0]);
+      const firstError = partyTaxCodeErrors[firstErrorIndex];
+      setErrorMessage(firstError || 'Mã số thuế của các bên tham gia không hợp lệ.');
       return;
     }
 
@@ -546,18 +568,25 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
                 Ngày ký (Signing Date)
               </label>
               <input
+                ref={signingDateInputRef}
                 type="date"
                 value={signingDate}
                 onChange={(e) => setSigningDate(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  border: '1px solid #cbd5e1',
+                  border: dateErrors.signingDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                   borderRadius: 6,
                   fontSize: 13,
                   boxSizing: 'border-box',
                 }}
               />
+              {dateErrors.signingDate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 12, color: '#dc2626' }}>
+                  <AlertTriangle size={13} color="#dc2626" />
+                  <span>{dateErrors.signingDate}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -847,18 +876,28 @@ export const ManualContractEntryTemplate: React.FC<Props> = ({
                     </label>
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={party.taxCode || ''}
-                      onChange={(e) => handlePartyChange(idx, 'taxCode', e.target.value)}
+                      onChange={(e) => {
+                        const sanitized = e.target.value.replace(/\D/g, '');
+                        handlePartyChange(idx, 'taxCode', sanitized);
+                      }}
                       placeholder="e.g., 0101234567"
                       style={{
                         width: '100%',
                         padding: '7px 10px',
-                        border: '1px solid #cbd5e1',
+                        border: partyTaxCodeErrors[idx] ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                         borderRadius: 6,
                         fontSize: 12.5,
                         boxSizing: 'border-box',
                       }}
                     />
+                    {partyTaxCodeErrors[idx] && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 11.5, color: '#dc2626' }}>
+                        <AlertTriangle size={12} color="#dc2626" />
+                        <span>{partyTaxCodeErrors[idx]}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div>

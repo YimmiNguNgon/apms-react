@@ -15,6 +15,8 @@ import {
   filterAndRebalanceDeliverables,
   isDeliverableMandatory,
   getDeliverableMandatoryReason,
+  getLocalTodayDateString,
+  validateProjectDueDate,
 } from '../utils/deliverableUtils';
 import type {
   ProjectResponse,
@@ -184,11 +186,15 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
   const is100 = totalWeight === 100;
   const isOver = totalWeight > 100;
 
+  const minDate = getLocalTodayDateString();
+  const dueDateError = validateProjectDueDate(projectForm.plannedEndDate);
+
   const isFormValid =
     (!isDraftProject || totalWeight === 100) &&
     projectForm.projectName.trim() !== '' &&
     projectForm.targetCompanyName.trim() !== '' &&
     projectForm.targetRelationshipType !== '' &&
+    !dueDateError &&
     (!isDraftProject || (
       projectForm.keyResults.length > 0 &&
       projectForm.keyResults.every(kr => kr.weight > 0) &&
@@ -229,7 +235,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
   };
 
   const handleSubmit = async () => {
-    if (!isFormValid) return;
+    if (!isFormValid || dueDateError) return;
     try {
       setLoading(true);
       setError(null);
@@ -420,7 +426,28 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
 
               <label>
                 <span>Due Date</span>
-                <input className="search-input" type="date" value={projectForm.plannedEndDate} onChange={e => setProjectForm(prev => ({ ...prev, plannedEndDate: e.target.value }))} />
+                <input
+                  className="search-input"
+                  type="date"
+                  min={minDate}
+                  value={projectForm.plannedEndDate}
+                  style={dueDateError ? { borderColor: '#ef4444' } : undefined}
+                  onChange={e => setProjectForm(prev => ({ ...prev, plannedEndDate: e.target.value }))}
+                />
+                {dueDateError && (
+                  <div
+                    className="workspace-inline-error"
+                    style={{
+                      marginTop: '4px',
+                      fontSize: '0.82rem',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      marginBottom: 0,
+                    }}
+                  >
+                    {dueDateError}
+                  </div>
+                )}
               </label>
             </div>
           </div>

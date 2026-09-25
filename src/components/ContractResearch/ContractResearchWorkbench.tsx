@@ -306,7 +306,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           setSelectedContractId((prev) => {
             if (!hasInitializedRevisionSelection.current && isRevision && !isManagerMode) {
               hasInitializedRevisionSelection.current = true;
-              const firstRevision = data.contracts.find((c) => isContractChangesRequested(c));
+              const firstRevision = data.contracts.find((c) => isContractChangesRequested(c) || (c.reviewHistory && c.reviewHistory.some((e) => e.decision === 'CHANGES_REQUESTED')));
               if (firstRevision) return firstRevision.id;
             }
             if (prev && data.contracts.some((c) => c.id === prev)) return prev;
@@ -386,6 +386,29 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
   const selectedContractEditable = Boolean(
     staffCanMutateResearch && isContractEditableByStaff(selectedContract)
   );
+
+  const selectedContractFeedback = useMemo(() => {
+    if (!selectedContract) return null;
+    if (selectedContract.reviewComment) {
+      return {
+        comment: selectedContract.reviewComment,
+        reviewedByName: selectedContract.reviewedByName || 'Manager',
+        reviewedAt: selectedContract.reviewedAt,
+      };
+    }
+    const history = selectedContract.reviewHistory || [];
+    const lastChangesEvent = [...history]
+      .reverse()
+      .find((e) => e.decision === 'CHANGES_REQUESTED' && e.reason);
+    if (lastChangesEvent) {
+      return {
+        comment: lastChangesEvent.reason,
+        reviewedByName: lastChangesEvent.reviewedByName || 'Manager',
+        reviewedAt: lastChangesEvent.reviewedAt,
+      };
+    }
+    return null;
+  }, [selectedContract]);
 
   const [manualViewModes, setManualViewModes] = useState<Record<string, 'EDIT' | 'SUMMARY'>>({});
   const [manualContractDirty, setManualContractDirty] = useState<boolean>(false);
@@ -579,19 +602,20 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     }
   }, [isManagerMode, contractsToDisplay, selectedContractId]);
 
-  // Eligible contracts for submission
+  // Eligible contracts for submission (both in revision and initial mode: non-APPROVED, non-PENDING_REVIEW)
   const eligibleContractIds = useMemo(() => {
-    if (isRevisionMode) {
-      // During revision, only CHANGES_REQUESTED contracts can be resubmitted
-      return contracts
-        .filter((c) => isContractChangesRequested(c))
-        .map((c) => c.id);
-    }
-    // Normal mode: all non-APPROVED, non-PENDING_REVIEW
     return contracts
       .filter((c) => c.reviewStatus !== 'APPROVED' && c.reviewStatus !== 'PENDING_REVIEW')
       .map((c) => c.id);
-  }, [contracts, isRevisionMode]);
+  }, [contracts]);
+
+  const requestedChangesCount = useMemo(() => {
+    return contracts.filter(
+      (c) =>
+        isContractChangesRequested(c) ||
+        (c.reviewHistory && c.reviewHistory.some((e) => e.decision === 'CHANGES_REQUESTED'))
+    ).length;
+  }, [contracts]);
 
   const [submissionSelectionTouched, setSubmissionSelectionTouched] = useState(false);
 
@@ -836,16 +860,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     // Validate date relationships for all selected contracts
     for (const c of selectedContractsForSubmission) {
       const dates = {
-        signingDate: c.commonData?.signingDate?.value
-          ? String(c.commonData.signingDate.value)
-          : (c.documentDate ? String(c.documentDate) : null),
+        documentDate: c.documentDate ? String(c.documentDate) : null,
+        signingDate: c.commonData?.signingDate?.value ? String(c.commonData.signingDate.value) : null,
         effectiveDate: c.commonData?.effectiveDate?.value ? String(c.commonData.effectiveDate.value) : null,
         expiryDate: c.commonData?.expiryDate?.value ? String(c.commonData.expiryDate.value) : null,
       };
       const dateErrors = validateContractDates(dates);
-      if (dateErrors.effectiveDate || dateErrors.expiryDate) {
+      if (dateErrors.signingDate || dateErrors.effectiveDate || dateErrors.expiryDate) {
         setSelectedContractId(c.id);
-        const errorDetail = dateErrors.effectiveDate || dateErrors.expiryDate;
+        const errorDetail = dateErrors.signingDate || dateErrors.effectiveDate || dateErrors.expiryDate;
         setToast({
           message: `Hợp đồng "${c.title}" có ngày không hợp lệ: ${errorDetail}`,
           type: 'error',
@@ -2161,15 +2184,15 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               {/* Workspace Body Scrollable Content */}
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, flex: '1 0 auto' }}>
                 {/* Changes Requested Banner */}
-                {!hasTopReviewBanner && isContractChangesRequested(selectedContract) && (
+                {!hasTopReviewBanner && (isContractChangesRequested(selectedContract) || (isRevisionMode && Boolean(selectedContractFeedback))) && (
                 <div className={styles.managerFeedbackBanner} style={{ marginTop: 10 }}>
                   <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div className={styles.managerFeedbackContent}>
                     <strong>Manager Feedback</strong>
-                    <p>{selectedContract.reviewComment || 'Manager requested changes to this contract.'}</p>
+                    <p>{selectedContractFeedback?.comment || selectedContract?.reviewComment || 'Manager requested changes to this contract.'}</p>
                     <small>
-                      {selectedContract.reviewedByName || 'Manager'}
-                      {selectedContract.reviewedAt ? ` • ${formatDate(selectedContract.reviewedAt)}` : ''}
+                      {selectedContractFeedback?.reviewedByName || selectedContract?.reviewedByName || 'Manager'}
+                      {(selectedContractFeedback?.reviewedAt || selectedContract?.reviewedAt) ? ` • ${formatDate(selectedContractFeedback?.reviewedAt || selectedContract?.reviewedAt)}` : ''}
                     </small>
                   </div>
                 </div>
@@ -2792,7 +2815,13 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ea580c', fontSize: 13, fontWeight: 500 }}>
                 <AlertTriangle size={15} />
                 <span>
-                  Manager has requested changes on <strong>{eligibleCount}</strong> contract(s). Review feedback and resubmit.
+                  {requestedChangesCount > 0 ? (
+                    <>
+                      Manager has requested changes on <strong>{requestedChangesCount}</strong> contract(s). Review feedback and resubmit.
+                    </>
+                  ) : (
+                    'Manager requested changes. Review feedback and resubmit.'
+                  )}
                 </span>
                 {manualContractDirty && (
                   <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
