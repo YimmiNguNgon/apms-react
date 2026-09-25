@@ -230,3 +230,46 @@ export function balanceDeliverableWeights<T extends { type: string; weight: numb
   });
 }
 
+/**
+ * Returns today's local date formatted as YYYY-MM-DD (avoiding UTC shift).
+ */
+export const getLocalTodayDateString = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Normalizes date string (ISO YYYY-MM-DD or DD/MM/YYYY) to YYYY-MM-DD.
+ */
+export const normalizeToIsoDate = (value?: string | null): string => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (trimmed.includes('/')) {
+    const parts = trimmed.split('/');
+    if (parts.length === 3) {
+      // DD/MM/YYYY -> YYYY-MM-DD
+      const [d, m, y] = parts;
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  return trimmed.substring(0, 10);
+};
+
+/**
+ * Validates whether a project due date is today or in the future.
+ * Returns null if valid (or empty), or an error message if earlier than today.
+ */
+export const validateProjectDueDate = (dueDate?: string | null): string | null => {
+  if (!dueDate || !dueDate.trim()) return null;
+  const isoDate = normalizeToIsoDate(dueDate);
+  const todayStr = getLocalTodayDateString();
+  if (isoDate && isoDate < todayStr) {
+    return 'Due Date cannot be earlier than today.';
+  }
+  return null;
+};
+
+

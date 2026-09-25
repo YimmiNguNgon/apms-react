@@ -113,9 +113,10 @@ export const EditArrayItemModal: React.FC<Props> = ({
                     </label>
                     <input
                       type="text"
+                      inputMode="numeric"
                       className={styles.inputField}
                       value={payload.taxCode || ''}
-                      onChange={(e) => handleChange('taxCode', e.target.value)}
+                      onChange={(e) => handleChange('taxCode', e.target.value.replace(/\D/g, ''))}
                       placeholder="0101248141"
                       disabled={isSubmitting}
                     />

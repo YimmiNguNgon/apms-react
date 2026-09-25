@@ -1,7 +1,7 @@
 export const MAX_PDF_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 export const PDF_ACCEPT_ATTRIBUTE = 'application/pdf,.pdf';
 export const PDF_ERROR_NOT_PDF = 'Only PDF files are allowed.';
-export const PDF_ERROR_TOO_LARGE = 'File size exceeds 50 MB limit.';
+export const PDF_ERROR_TOO_LARGE = 'PDF file must not exceed 50 MB.';
 export const PDF_ERROR_EMPTY = 'Uploaded file cannot be empty.';
 
 export const isPdfFileName = (fileName?: string | null): boolean => {

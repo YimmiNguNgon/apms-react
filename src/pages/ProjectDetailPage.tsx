@@ -10271,24 +10271,24 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                     className={`${styles.draftItem} ${styles.draftItemWithActions}`}
                                     key={draft.candidateId}
                                   >
-                                    <button
-                                      className={styles.draftItemMain}
-                                      type="button"
-                                      onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                      disabled={!canUseStaffWorkbench || isDeleting}
-                                    >
-                                      <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
-                                        <span>{candidateStatusLabel[draft.status] || 'Draft'}</span>
-                                        {draft.createdAt && (
-                                          <>
-                                            <span>•</span>
-                                            <span>{formatOptionalDate(draft.createdAt)}</span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </button>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div className={styles.draftCardHeader}>
+                                      <button
+                                        type="button"
+                                        className={styles.draftCardTitle}
+                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                        disabled={!canUseStaffWorkbench || isDeleting}
+                                        title={draftLabel}
+                                      >
+                                        {draftLabel}
+                                      </button>
+                                      <span className={styles.draftStatusBadge}>
+                                        {draft.status === 'DRAFT' ? 'DRAFT' : (candidateStatusLabel[draft.status] || 'Draft')}
+                                      </span>
+                                    </div>
+                                    <div className={styles.draftCardMeta}>
+                                      {draft.createdAt ? `Created: ${formatOptionalDate(draft.createdAt)}` : 'Created: —'}
+                                    </div>
+                                    <div className={styles.draftCardActions}>
                                       <button
                                         className={styles.draftActionButton}
                                         type="button"
@@ -10306,8 +10306,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                         aria-label={`Delete ${draftLabel}`}
                                         title="Delete draft"
                                       >
-                                        <Trash2 size={15} />
-                                        {isDeleting ? 'Deleting...' : 'Delete'}
+                                        <Trash2 size={14} />
+                                        <span>{isDeleting ? 'Deleting...' : 'Delete'}</span>
                                       </button>
                                     </div>
                                   </article>
@@ -10334,32 +10334,34 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                       className={`${styles.draftItem} ${styles.draftItemWithActions}`}
                                       key={draft.candidateId}
                                     >
-                                      <button
-                                        className={styles.draftItemMain}
-                                        type="button"
-                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                        disabled={!canUseStaffWorkbench}
-                                      >
-                                        <strong style={{ margin: 0, color: '#1e293b' }}>{draftLabel}</strong>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
-                                          <span className={`${styles.draftStatusBadge} ${candidateStatusClass[draft.status]}`}>Changes requested</span>
-                                          {draft.createdAt && (
-                                            <>
-                                              <span>•</span>
-                                              <span>{formatOptionalDate(draft.createdAt)}</span>
-                                            </>
-                                          )}
-                                        </div>
-                                      </button>
-                                      <button
-                                        className={styles.draftRevisionActionButton}
-                                        type="button"
-                                        onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
-                                        disabled={!canUseStaffWorkbench}
-                                        title="Continue revising candidate"
-                                      >
-                                        Continue Revision
-                                      </button>
+                                      <div className={styles.draftCardHeader}>
+                                        <button
+                                          type="button"
+                                          className={styles.draftCardTitle}
+                                          onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                          disabled={!canUseStaffWorkbench}
+                                          title={draftLabel}
+                                        >
+                                          {draftLabel}
+                                        </button>
+                                        <span className={styles.draftStatusBadgeRevision}>
+                                          Changes requested
+                                        </span>
+                                      </div>
+                                      <div className={styles.draftCardMeta}>
+                                        {draft.createdAt ? `Created: ${formatOptionalDate(draft.createdAt)}` : 'Created: —'}
+                                      </div>
+                                      <div className={styles.draftCardActions}>
+                                        <button
+                                          className={styles.draftRevisionActionButton}
+                                          type="button"
+                                          onClick={() => void handleOpenStaffCandidate(draft.candidateId)}
+                                          disabled={!canUseStaffWorkbench}
+                                          title="Continue revising candidate"
+                                        >
+                                          Continue Revision
+                                        </button>
+                                      </div>
                                     </article>
                                   );
                                 })}
