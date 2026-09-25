@@ -8,7 +8,7 @@ import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
 import { ForgotPassword } from './components/ForgotPassword';
 import { ResetPassword } from './components/ResetPassword';
-import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
+// import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
 import { resetUrlToCleanLogin } from './utils/authNavigation';
 
 // ── Role dashboards ──
@@ -207,28 +207,7 @@ const MainApp: React.FC = () => {
     };
   }, [currentUser]);
 
-  useEffect(() => {
-    if (!currentUser) return;
 
-    setupFirebaseNotifications().catch((error) => {
-      console.warn('Firebase notification setup skipped:', error);
-    });
-
-    const handleMessage = (event: Event) => {
-      const detail = (event as CustomEvent<{ title?: string; body?: string }>).detail;
-      setNotificationToast({
-        title: detail?.title || 'APMS notification',
-        body: detail?.body || '',
-      });
-    };
-
-    window.addEventListener('apms-fcm-message', handleMessage);
-
-    return () => {
-      window.removeEventListener('apms-fcm-message', handleMessage);
-      unregisterFirebaseNotifications().catch(() => undefined);
-    };
-  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!notificationToast) return;
