@@ -89,6 +89,7 @@ export interface GraphCompanyDto {
   companyId: string;
   name: string;
   industry?: string;
+  industries?: string[];
   relationshipType?: string;
   isOwner?: boolean;
   relationships?: GraphRelationship[];
@@ -1416,6 +1417,7 @@ export interface AccountAdminResponse {
   roleName: string;
   roles: string[];
   active: boolean;
+  authenticatorConfigured?: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -1436,6 +1438,7 @@ export interface UserProfileResponse {
   roles: string[];
   enabled: boolean;
   emailVerified?: boolean;
+  authenticatorConfigured?: boolean;
   createdAt: string | null;
   phone?: string | null;
   department?: string | null;

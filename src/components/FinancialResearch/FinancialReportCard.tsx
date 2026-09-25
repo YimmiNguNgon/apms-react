@@ -51,6 +51,8 @@ const formatPeriod = (report: FinancialReportEntry) => {
 export default function FinancialReportCard({
   report,
   onExtract,
+  onCancelExtract,
+  isCancellingExtract = false,
   onDelete,
   onEdit,
   onViewPdf,
@@ -270,6 +272,19 @@ export default function FinancialReportCard({
               <span>Ready</span>
             )}
           </div>
+        )}
+
+        {canEditCard && !isManual && isExtracting && onCancelExtract && (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={(event) => { stop(event); onCancelExtract(report.id); }}
+            disabled={isCancellingExtract}
+            style={{ padding: '4px 10px', fontSize: '11px' }}
+          >
+            <XCircle size={12} />
+            {isCancellingExtract ? 'Cancelling...' : 'Cancel'}
+          </button>
         )}
 
         {canEditCard && !isManual && !isExtracting && (

@@ -13,6 +13,13 @@ interface UserRow extends AccountAdminResponse {
   status?: string;
   enabled?: boolean;
   emailVerified?: boolean;
+  authenticatorConfigured?: boolean;
+}
+
+interface ResetMfaConfirm {
+  id: number;
+  userName: string;
+  userEmail: string;
 }
 
 interface CreateFormErrors {
@@ -181,6 +188,7 @@ const UsersTab: React.FC<{
   const [passwordReset, setPasswordReset] = useState<PasswordResetForm | null>(null);
   const [roleUser, setRoleUser] = useState<RoleUserForm | null>(null);
   const [statusConfirm, setStatusConfirm] = useState<StatusConfirm | null>(null);
+  const [resetMfaConfirm, setResetMfaConfirm] = useState<ResetMfaConfirm | null>(null);
 
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -431,6 +439,22 @@ const UsersTab: React.FC<{
     }
   };
 
+  const handleResetAuthenticator = async () => {
+    if (!resetMfaConfirm) return;
+    setError('');
+    setActionLoading(true);
+    try {
+      await api.post(`/users/${resetMfaConfirm.id}/reset-authenticator`);
+      setResetMfaConfirm(null);
+      showNotice('Authenticator reset successfully. The user must set up Authenticator again on the next sign-in.');
+      fetchUsers();
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Could not reset Authenticator.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     return users.filter((u) => {
       const name = String(u.name || u.fullName || u.email || '').toLowerCase();
@@ -461,38 +485,52 @@ const UsersTab: React.FC<{
 
   return (
     <div className="admin-users-view">
-      <div className="admin-users-header">
-
-        <button className="btn btn-primary" onClick={openCreateForm}>
-          {t('users.createAccount')}
-        </button>
+      {/* Page Header Band */}
+      <div className="workspace-page-head">
+        <div>
+          <h1>{t('users.title', 'Users')}</h1>
+          <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {t('users.subtitle', 'Manage user accounts, roles, access status, and security permissions')}
+          </p>
+        </div>
+        <div className="workspace-head-actions">
+          <button className="btn btn-primary" type="button" onClick={openCreateForm}>
+            + {t('users.createAccount', 'Create account')}
+          </button>
+        </div>
       </div>
 
-      <div className="admin-users-layout">
-        <aside className="admin-directory-rail">
-          <label>
-            <span>{t('users.searchLabel')}</span>
-            <input className="admin-input" placeholder={t('users.searchPlaceholder')} value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
-          </label>
-          <label>
-            <span>{t('users.statusFilter')}</span>
-            <select className="admin-select" value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0); }}>
-              <option value="all">{t('users.allStatuses')}</option>
-              <option value="active">{t('users.active')}</option>
-              <option value="inactive">{t('users.disabled')}</option>
-            </select>
-          </label>
+      {notice && <div className="workspace-inline-note" style={{ marginBottom: '12px' }}>✅ {notice}</div>}
+      {error && <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>❌ {error}</div>}
 
-        </aside>
+      <div className="manager-project-container">
+        {/* Unified Top Filter Toolbar */}
+        <div className="company-profiles-filters" style={{ gridTemplateColumns: 'minmax(0, 1fr) 220px' }}>
+          <input
+            className="search-input"
+            placeholder={t('users.searchPlaceholder', 'Search directory...')}
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          />
+          <select
+            className="search-input"
+            value={filter}
+            onChange={(e) => { setFilter(e.target.value); setPage(0); }}
+          >
+            <option value="all">{t('users.allStatuses', 'All statuses')}</option>
+            <option value="active">{t('users.active', 'Active')}</option>
+            <option value="inactive">{t('users.disabled', 'Disabled')}</option>
+          </select>
+        </div>
 
-        <div className="admin-directory-main">
-          {notice && <div className="workspace-inline-note" style={{ marginBottom: '12px' }}>✅ {notice}</div>}
-          {error && <div className="workspace-inline-error" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px' }}>❌ {error}</div>}
-          {loading ? (
-            <div className="admin-skeleton">Loading account directory...</div>
-          ) : (
-            <div className="admin-table-card user-directory-table">
+        {/* Scrollable Table Area */}
+        <div className="manager-project-table-scroll">
+          <div className="manager-project-table-inner" style={{ minWidth: '760px' }}>
+            {loading ? (
+              <div className="project-table-empty">
+                <p className="project-table-empty-title">Loading account directory...</p>
+              </div>
+            ) : (
               <table className="admin-table">
                 <thead>
                   <tr>
@@ -507,13 +545,25 @@ const UsersTab: React.FC<{
                     const roleRaw = user.role || user.roleName || (user.roles && user.roles[0]) || 'BUSINESS_DEVELOPMENT_STAFF';
                     const roleKey = String(roleRaw).replace('ROLE_', '');
                     const isSelf = currentUser && (currentUser.id === user.id || currentUser.email === user.email);
+                    const hasMfa = user.authenticatorConfigured === true;
+                    const targetName = user.name || user.fullName || user.username || user.email || `User #${user.id}`;
 
                     return (
                       <tr key={user.id || user.email}>
-                        <td className="admin-mono">#{user.id ?? '-'}</td>
+                        <td className="admin-mono" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>#{user.id ?? '-'}</td>
                         <td>
                           <strong>{user.name || user.fullName || user.username || 'Unnamed'}{isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(you)</span>}</strong>
-                          <small>{user.username || ''}</small>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
+                            {user.username && <small>{user.username}</small>}
+                            {user.authenticatorConfigured !== undefined && (
+                              <span
+                                className={`project-status-badge ${user.authenticatorConfigured ? 'success' : 'neutral'}`}
+                                style={{ fontSize: '10px', padding: '1px 6px' }}
+                              >
+                                {user.authenticatorConfigured ? 'Authenticator Configured' : 'Authenticator Setup required'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td>{user.email || '-'}</td>
                         <td>
@@ -522,18 +572,18 @@ const UsersTab: React.FC<{
                           </span>
                         </td>
                         <td>
-                          <span className={`admin-status ${isActive ? 'active' : ''}`}>
-                            {isActive ? t('users.active') : t('users.disabled')}
+                          <span className={`project-status-badge ${isActive ? 'success' : 'neutral'}`}>
+                            {isActive ? t('users.active', 'Active') : t('users.disabled', 'Disabled')}
                           </span>
                         </td>
                         {showEmailStatus && (
                           <td>
                             {user.emailVerified === undefined ? (
-                              <span className="admin-status">{t('users.table.emailUnknown')}</span>
+                              <span className="project-status-badge neutral">{t('users.table.emailUnknown', 'Unknown')}</span>
                             ) : user.emailVerified ? (
-                              <span className="admin-status active">✓ {t('users.table.emailVerified')}</span>
+                              <span className="project-status-badge success">✓ {t('users.table.emailVerified', 'Verified')}</span>
                             ) : (
-                              <span className="admin-status" style={{ background: 'rgba(245,158,11,0.14)', color: '#B45309' }}>⚠ {t('users.table.emailUnverified')}</span>
+                              <span className="project-status-badge danger">⚠ {t('users.table.emailUnverified', 'Unverified')}</span>
                             )}
                           </td>
                         )}
@@ -551,9 +601,39 @@ const UsersTab: React.FC<{
                               setError('');
                               setRoleUser({ id: user.id, name: user.name || user.email, currentRole: roleKey, selectedRole: roleKey });
                             }}>Role</button>
-                            <button className={`btn btn-sm ${isActive ? '' : 'btn-outline'}`} disabled={!!isSelf || actionLoading}
+                            <button
+                              className="btn btn-sm btn-outline"
+                              disabled={!!isSelf || !hasMfa || actionLoading}
+                              title={
+                                isSelf
+                                  ? 'You cannot reset your own Authenticator from Account Management.'
+                                  : !hasMfa
+                                  ? 'Authenticator is not configured'
+                                  : 'Reset Authenticator'
+                              }
+                              style={
+                                isSelf || !hasMfa
+                                  ? { opacity: 0.5, cursor: 'not-allowed' }
+                                  : { color: '#B45309', borderColor: 'rgba(217,119,6,0.3)' }
+                              }
+                              onClick={() => {
+                                if (isSelf) {
+                                  showError('You cannot reset your own Authenticator from Account Management.');
+                                  return;
+                                }
+                                setError('');
+                                setResetMfaConfirm({
+                                  id: user.id,
+                                  userName: targetName,
+                                  userEmail: user.email || '',
+                                });
+                              }}
+                            >
+                              Reset Authenticator
+                            </button>
+                            <button className={`btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'}`} disabled={!!isSelf || actionLoading}
                               title={isSelf ? 'Không thể vô hiệu hóa tài khoản của chính mình' : isActive ? 'Vô hiệu hóa tài khoản' : 'Kích hoạt tài khoản'}
-                              style={isActive ? { background: 'rgba(239,68,68,0.12)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                              style={isActive ? { background: 'rgba(239,68,68,0.08)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.25)' } : isSelf ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                               onClick={() => { setError(''); setStatusConfirm({ id: user.id, email: user.email || '', activate: !isActive }); }}>
                               {isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
                             </button>
@@ -567,18 +647,22 @@ const UsersTab: React.FC<{
                   )}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
 
-              {totalPages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Page {page + 1} of {totalPages} ({filtered.length} total)</span>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-sm btn-outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
-                    <button className="btn btn-sm btn-outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Unified Table Pagination */}
+        <div className="project-table-pagination">
+          <span>Showing {filtered.length === 0 ? 0 : page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length} accounts</span>
+          <div>
+            <button className="workspace-page-btn" disabled={page === 0} onClick={() => setPage(0)}>First</button>
+            <button className="workspace-page-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</button>
+            {Array.from({ length: totalPages }, (_, idx) => (
+              <button key={idx} className={`workspace-page-btn ${page === idx ? 'active' : ''}`} onClick={() => setPage(idx)}>{idx + 1}</button>
+            ))}
+            <button className="workspace-page-btn" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next</button>
+            <button className="workspace-page-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</button>
+          </div>
         </div>
       </div>
 
@@ -922,6 +1006,56 @@ const UsersTab: React.FC<{
                 onClick={handleConfirmStatus}
               >
                 {actionLoading ? 'Đang xử lý...' : statusConfirm.activate ? 'Kích hoạt' : 'Vô hiệu hóa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESET AUTHENTICATOR MODAL */}
+      {resetMfaConfirm && (
+        <div className="admin-modal-backdrop" onClick={() => { if (!actionLoading) setResetMfaConfirm(null); }}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="workspace-section-head">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Reset Authenticator
+                </h3>
+              </div>
+            </div>
+            <div style={{ margin: '16px 0 20px' }}>
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '14px',
+                }}
+              >
+                <strong style={{ color: '#EF4444', display: 'block', marginBottom: '4px' }}>
+                  Reset Authenticator for {resetMfaConfirm.userName}?
+                </strong>
+                <p style={{ margin: 0, fontSize: '13px', color: '#4B5563', lineHeight: '1.5' }}>
+                  The current Authenticator configuration will be invalidated. The user will need to sign in with their password and scan a new QR code before accessing APMS.
+                </p>
+              </div>
+            </div>
+            <div className="admin-modal-actions">
+              <button
+                className="btn btn-outline"
+                disabled={actionLoading}
+                onClick={() => setResetMfaConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{ background: '#DC2626', borderColor: '#DC2626', color: '#ffffff' }}
+                disabled={actionLoading}
+                onClick={handleResetAuthenticator}
+              >
+                {actionLoading ? 'Resetting...' : 'Reset Authenticator'}
               </button>
             </div>
           </div>
@@ -1448,14 +1582,12 @@ export const UserManagement: React.FC<{ defaultTab?: Tab; openCreate?: boolean }
   const current = pageMeta[tab] || { skin: 'users' };
 
   return (
-    <section className={`page active admin-console-page admin-user-management-page ${current.skin} role-dashboard role-dashboard-admin`}>
-
-
-      {tab === 'users' && (
-        <div className="workspace-panel admin-console-panel users-panel">
+    <section className="workspace-page role-dashboard role-dashboard-manager manager-page project-page admin-page admin-user-management-page" id="page-user-management">
+      <div className="workspace-main-full">
+        {tab === 'users' && (
           <UsersTab openCreate={openCreate} onStats={(next) => setStats((prev) => ({ ...prev, ...next }))} />
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 };

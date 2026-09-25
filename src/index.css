@@ -5181,7 +5181,8 @@ body {
 .monitoring-page .workspace-focus-card,
 .profile-visibility-page .workspace-focus-card,
 .manager-dashboard-page .workspace-focus-card,
-.staff-dashboard-page .workspace-focus-card {
+.staff-dashboard-page .workspace-focus-card,
+.admin-page .workspace-focus-card {
   grid-template-columns: 1fr;
   min-height: auto;
   margin-bottom: 12px;
@@ -5195,7 +5196,8 @@ body {
 .project-page .workspace-focus-metrics,
 .monitoring-page .workspace-focus-metrics,
 .profile-visibility-page .workspace-focus-metrics,
-.manager-dashboard-page .workspace-focus-metrics {
+.manager-dashboard-page .workspace-focus-metrics,
+.admin-page .workspace-focus-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
@@ -5215,7 +5217,8 @@ body {
 .profile-visibility-page .workspace-focus-metrics article,
 .company-profiles-page .workspace-focus-metrics article,
 .manager-dashboard-page .workspace-focus-metrics article,
-.staff-dashboard-page .workspace-focus-metrics article {
+.staff-dashboard-page .workspace-focus-metrics article,
+.admin-page .workspace-focus-metrics article {
   min-height: auto;
   padding: 10px 14px;
   border-radius: 10px;
@@ -5232,7 +5235,8 @@ body {
 .profile-visibility-page .workspace-focus-metrics strong,
 .company-profiles-page .workspace-focus-metrics strong,
 .manager-dashboard-page .workspace-focus-metrics strong,
-.staff-dashboard-page .workspace-focus-metrics strong {
+.staff-dashboard-page .workspace-focus-metrics strong,
+.admin-page .workspace-focus-metrics strong {
   font-size: 22px;
   line-height: 1.1;
   font-weight: 700;
@@ -5244,7 +5248,8 @@ body {
 .profile-visibility-page .workspace-focus-metrics span,
 .company-profiles-page .workspace-focus-metrics span,
 .manager-dashboard-page .workspace-focus-metrics span,
-.staff-dashboard-page .workspace-focus-metrics span {
+.staff-dashboard-page .workspace-focus-metrics span,
+.admin-page .workspace-focus-metrics span {
   max-width: none;
   margin-top: 2px;
   font-size: 12px;
@@ -11434,13 +11439,13 @@ body {
   .admin-console-page .admin-role-card .admin-role-scope { grid-column: 1 / -1; }
 }
 
-#page-activity-history {
+#page-activity-history:not(.workspace-page) {
   max-width: var(--workspace-shell-max);
   padding: 24px 28px 48px;
   gap: 18px;
   background: var(--bg-base);
 }
-#page-activity-history > section:first-child {
+#page-activity-history:not(.workspace-page) > section:first-child {
   padding: 0 0 20px;
   margin: 0;
   color: var(--text-primary);
@@ -11450,12 +11455,12 @@ body {
   background: transparent;
   box-shadow: none;
 }
-#page-activity-history > section:first-child h1 { color: var(--text-primary) !important; font-size: clamp(1.6rem,2vw,2rem) !important; }
-#page-activity-history > section:first-child p { color: var(--text-muted); }
-#page-activity-history > section:first-child [class*="heroMeter"] { display: none; }
-#page-activity-history > section:nth-child(2) { gap: 12px; }
-#page-activity-history > section:nth-child(2) > * { border-radius: 12px; box-shadow: 0 2px 8px rgba(15,23,42,.035); }
-@media (max-width: 900px) { #page-activity-history { padding: 18px 16px 36px; } }
+#page-activity-history:not(.workspace-page) > section:first-child h1 { color: var(--text-primary) !important; font-size: clamp(1.6rem,2vw,2rem) !important; }
+#page-activity-history:not(.workspace-page) > section:first-child p { color: var(--text-muted); }
+#page-activity-history:not(.workspace-page) > section:first-child [class*="heroMeter"] { display: none; }
+#page-activity-history:not(.workspace-page) > section:nth-child(2) { gap: 12px; }
+#page-activity-history:not(.workspace-page) > section:nth-child(2) > * { border-radius: 12px; box-shadow: 0 2px 8px rgba(15,23,42,.035); }
+@media (max-width: 900px) { #page-activity-history:not(.workspace-page) { padding: 18px 16px 36px; } }
 
 /* Admin operational console */
 .admin-console-page {
