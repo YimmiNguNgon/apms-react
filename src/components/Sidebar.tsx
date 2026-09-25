@@ -72,7 +72,7 @@ const ADMIN_MENU: MenuSection[] = [
     title: 'menu.system',
     items: [
       // { id: 'owner-company-profile', label: 'menu.ownerCompanyProfile' },
-      { id: 'ai-assistant',          label: 'AI Assistant' },
+      // { id: 'ai-assistant',          label: 'AI Assistant' },
       { id: 'admin-my-enterprise',   label: 'menu.myEnterprise' },
     ],
   },
