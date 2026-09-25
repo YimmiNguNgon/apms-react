@@ -8,6 +8,8 @@ import { Topbar } from './components/Topbar';
 import { Login } from './components/Login';
 // import { setupFirebaseNotifications, unregisterFirebaseNotifications } from './services/firebaseNotifications';
 import { resetUrlToCleanLogin } from './utils/authNavigation';
+import { BackendUnavailablePage } from './components/BackendUnavailablePage';
+import { checkBackendAvailability } from './services/healthCheck';
 
 // ── Role dashboards ──
 import { AdminDashboard }     from './pages/dashboards/AdminDashboard';
@@ -397,7 +399,69 @@ const MainApp: React.FC = () => {
 // ─────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────
+type BackendStatus = 'CHECKING' | 'AVAILABLE' | 'UNAVAILABLE';
+
 export default function App() {
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('CHECKING');
+
+  const verifyBackend = useCallback(async () => {
+    try {
+      const isAvailable = await checkBackendAvailability();
+      setBackendStatus(isAvailable ? 'AVAILABLE' : 'UNAVAILABLE');
+    } catch {
+      setBackendStatus('UNAVAILABLE');
+    }
+  }, []);
+
+  useEffect(() => {
+    verifyBackend();
+  }, [verifyBackend]);
+
+  // When backend is unavailable, check periodically every 4 seconds to auto-recover
+  // seamlessly as soon as the backend comes back up.
+  useEffect(() => {
+    if (backendStatus !== 'UNAVAILABLE') return;
+    const timer = setInterval(async () => {
+      const isAvailable = await checkBackendAvailability();
+      if (isAvailable) {
+        setBackendStatus('AVAILABLE');
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [backendStatus]);
+
+  if (backendStatus === 'CHECKING') {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: '#0F172A', flexDirection: 'column', gap: 16,
+      }}>
+        <div style={{
+          width: 48, height: 48,
+          background: 'linear-gradient(135deg, #2563EB, #0EA5E9)',
+          borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 0 30px rgba(37,99,235,0.5)',
+          animation: 'pulse 1.5s ease infinite',
+        }}>
+          <svg viewBox="0 0 24 24" fill="none" width="24" height="24">
+            <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="1.5" />
+            <circle cx="12" cy="12" r="3.5" fill="white" />
+            <line x1="12" y1="3" x2="12" y2="8.5" stroke="white" strokeWidth="1.5" />
+            <line x1="12" y1="15.5" x2="12" y2="21" stroke="white" strokeWidth="1.5" />
+            <line x1="3" y1="12" x2="8.5" y2="12" stroke="white" strokeWidth="1.5" />
+            <line x1="15.5" y1="12" x2="21" y2="12" stroke="white" strokeWidth="1.5" />
+          </svg>
+        </div>
+        <div style={{ color: '#94A3B8', fontSize: 'var(--text-body, 14px)' }}>Loading...</div>
+        <style>{`@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }`}</style>
+      </div>
+    );
+  }
+
+  if (backendStatus === 'UNAVAILABLE') {
+    return <BackendUnavailablePage />;
+  }
+
   return (
     <UserProvider>
       <MainApp />
