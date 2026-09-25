@@ -1,4 +1,5 @@
 import { API_BASE_URL, clearAuthSession, storeAuthSession } from '../services/api';
+import { resetUrlToCleanLogin } from '../utils/authNavigation';
 
 const BASE_URL = `${API_BASE_URL}/auth`;
 
@@ -159,6 +160,11 @@ export const logoutApi = {
 
       const payload = await response.json();
       clearAuthSession();
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('apms-active-page');
+        localStorage.removeItem('apms-active-project');
+      }
+      resetUrlToCleanLogin();
       return payload;
     } catch (error) {
       console.error('Error logging out:', error);

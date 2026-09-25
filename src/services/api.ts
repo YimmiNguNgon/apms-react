@@ -1,3 +1,5 @@
+import { resetUrlToCleanLogin, dispatchAuthExpired } from '../utils/authNavigation';
+
 export const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080/api/v1';
 
@@ -228,9 +230,12 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     }
 
     clearAuthSession();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-      window.location.href = '/';
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('apms-active-page');
+      localStorage.removeItem('apms-active-project');
     }
+    resetUrlToCleanLogin();
+    dispatchAuthExpired();
     throw new ApiError('Session expired. Please sign in again.', 401);
   }
 
