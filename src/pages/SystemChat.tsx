@@ -25,6 +25,7 @@ import { chatApi, type ChatMessageResponse } from '../API/chatApi';
 import { api, type PageResponse } from '../services/api';
 import { useUser } from '../context/UserContext';
 import { useChatNotifications } from '../context/ChatNotificationContext';
+import { projectChatSocket, mergeChatMessage } from '../services/projectChatSocket';
 import type { ProjectMemberResponse, ProjectResponse } from '../types/domain';
 import styles from './SystemChat.module.css';
 
@@ -1051,12 +1052,43 @@ export const SystemChat: React.FC = () => {
     void loadMessages(activeProject.id);
   }, [activeProject?.id]);
 
+  // Realtime STOMP WebSocket subscription for the active project
   useEffect(() => {
-    if (projects.length === 0) return;
-    // Disabled 5s auto-refresh interval based on user request
-    // const interval = window.setInterval(() => void refreshConversationSummaries({ notify: true }), 5000);
-    // return () => window.clearInterval(interval);
-  }, [projects, activeProject?.id, lastReadMap, currentUser?.id, currentUser?.email]);
+    if (!activeProject?.id) return;
+
+    const projectId = activeProject.id;
+    const unsubscribe = projectChatSocket.subscribeToProject(projectId, (incomingMessage) => {
+      // Validate that broadcast matches currently open project
+      if (incomingMessage.projectId !== projectId) return;
+
+      // Merge message into list (deduplicates by ID, updates edited/deleted, appends new)
+      setMessages((current) => mergeChatMessage(current, incomingMessage));
+
+      // Update sidebar / preview / unread metadata
+      updateConversationMetaFromRows(activeProject, [incomingMessage], {
+        active: true,
+        notify: false,
+      });
+
+      // Scroll to bottom if user is near bottom or if current user sent it
+      if (isProjectNearBottom(viewportRef.current) || isMine(incomingMessage, currentUser?.id, currentUser?.email)) {
+        window.requestAnimationFrame(() => {
+          endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          if (document.visibilityState === 'visible') {
+            markProjectRead(projectId, [incomingMessage]);
+          }
+        });
+      } else {
+        setNewMessagesInActive((current) => current + 1);
+      }
+
+      void refreshChatNotifications();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeProject?.id, currentUser?.id, currentUser?.email]);
 
   useEffect(() => {
     if (!activeProject || messages.length === 0) return;
@@ -1139,14 +1171,7 @@ export const SystemChat: React.FC = () => {
     setError(null);
     try {
       const payload = await chatApi.sendMessage(activeProject.id, { content });
-      setMessages((current) => {
-        const withoutDuplicate = current.filter((item) => item.id !== payload.data.id);
-        return [...withoutDuplicate, payload.data].sort((a, b) => {
-          const left = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const right = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return left - right;
-        });
-      });
+      setMessages((current) => mergeChatMessage(current, payload.data));
       setDraft('');
       void refreshChatNotifications();
     } catch (err) {
@@ -1169,7 +1194,7 @@ export const SystemChat: React.FC = () => {
     setError(null);
     try {
       const payload = await chatApi.editMessage(activeProject.id, editingMessageId, { content });
-      setMessages((current) => current.map((item) => item.id === editingMessageId ? payload.data : item));
+      setMessages((current) => mergeChatMessage(current, payload.data));
       setEditingMessageId(null);
       setEditingContent('');
     } catch (err) {
@@ -1184,12 +1209,12 @@ export const SystemChat: React.FC = () => {
 
     try {
       await chatApi.deleteMessage(activeProject.id, deleteTarget.id);
-      setMessages((current) => current.map((item) => item.id === deleteTarget.id ? {
-        ...item,
+      setMessages((current) => mergeChatMessage(current, {
+        ...deleteTarget,
         content: '[Deleted]',
         isDeleted: true,
         updatedAt: new Date().toISOString(),
-      } : item));
+      }));
       setDeleteTarget(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cannot delete message.');

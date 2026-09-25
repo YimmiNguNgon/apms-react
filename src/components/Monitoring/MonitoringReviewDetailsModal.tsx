@@ -12,7 +12,7 @@ import {
   ValueDisplay,
   type ChangeRow,
   type ProposalBundle
-} from '../../pages/CompanyMonitoringPage';
+} from './monitoringShared';
 
 export interface MonitoringReviewDetailsModalProps {
   review: CompanyMonitoringReviewResponse;

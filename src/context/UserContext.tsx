@@ -2,9 +2,10 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api, clearAuthSession, STORAGE_KEYS, storeAuthSession } from '../services/api';
 import type { PageResponse } from '../services/api';
 import { loginApi, type VerificationPayload } from '../API/loginApi';
-import { queryClient } from '../main';
+import { queryClient } from '../queryClient';
 import { ownerSecureAccess } from '../utils/ownerSecureAccess';
 import { resetUrlToCleanLogin, AUTH_EXPIRED_EVENT } from '../utils/authNavigation';
+import { projectChatSocket } from '../services/projectChatSocket';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const ROLES = {
@@ -189,6 +190,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const handleAuthExpired = () => {
+      projectChatSocket.disconnect();
       setCurrentUser(null);
       clearAuthSession();
       localStorage.removeItem('apms-active-page');
@@ -226,6 +228,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    projectChatSocket.disconnect();
     api.post('/auth/logout').catch(() => {});
     setCurrentUser(null);
     clearAuthSession();
