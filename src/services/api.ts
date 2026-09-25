@@ -62,9 +62,11 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
   }
 };
 
-const getToken = () =>
+export const getAuthToken = () =>
   localStorage.getItem(STORAGE_KEYS.accessToken) ||
   localStorage.getItem(STORAGE_KEYS.legacyAccessToken);
+
+const getToken = getAuthToken;
 
 const getRefreshToken = () => localStorage.getItem(STORAGE_KEYS.refreshToken);
 
