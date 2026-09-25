@@ -117,7 +117,23 @@ export const Login: React.FC = () => {
         rawMessage.includes('dbo.') ||
         rawMessage.includes('SQL') ||
         rawMessage.includes('DataAccessException');
-      setMfaError(isDbError ? 'Unable to complete sign in. Please try again.' : rawMessage);
+      const displayMessage = isDbError ? 'Unable to complete sign in. Please try again.' : rawMessage;
+
+      const isTerminalChallenge =
+        rawMessage.includes('expired') ||
+        rawMessage.includes('Too many incorrect') ||
+        rawMessage.includes('no longer valid') ||
+        rawMessage.includes('Please sign in again');
+
+      if (isTerminalChallenge) {
+        setStep('CREDENTIALS');
+        setMfaChallenge(null);
+        setTotpCode('');
+        setMfaError('');
+        setError(displayMessage);
+      } else {
+        setMfaError(displayMessage);
+      }
     } finally {
       setLoading(false);
     }
