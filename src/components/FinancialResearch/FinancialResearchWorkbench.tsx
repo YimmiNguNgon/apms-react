@@ -7,7 +7,6 @@ import {
   Check,
   CheckCheck,
   CheckCircle2,
-  Clock,
   Edit2,
   Edit3,
   Eye,
@@ -32,6 +31,7 @@ import type {
   CreateFinancialReportRequest,
   FinancialMetricResponse,
   FinancialReportEntry,
+  FinancialResearchResponse,
   ProjectTaskSubmissionResponse,
   TaskStatus,
   UpdateFinancialMetricRequest,
@@ -83,6 +83,8 @@ type FinancialResearchWorkbenchProps = {
   onRefreshWorkbench?: () => void;
   onRecallSuccess?: () => void;
   onSubmitSuccess?: () => void;
+  initialResearch?: FinancialResearchResponse | null;
+  onClearWorkbenchError?: () => void;
 };
 
 type PackageCounts = {
@@ -213,11 +215,51 @@ const metricValueParts = (metric: FinancialMetricResponse) => {
 };
 
 const getMetricSource = (metric: FinancialMetricResponse) => {
-  if (metric.inputMethod === 'MANUAL') return 'Nhập tay';
-  if (!metric.source) return 'Trực tiếp';
-  if (metric.source.page) return `Trang ${metric.source.page}`;
-  return metric.source.documentName || 'Tài liệu nguồn';
+  if (metric.inputMethod === 'MANUAL') return 'Manual Entry';
+  if (!metric.source) return 'Direct';
+  if (metric.source.page) return `Page ${metric.source.page}`;
+  return metric.source.documentName || 'Source Document';
 };
+
+function getReportHeaderMetaItems(report: FinancialReportEntry): string[] {
+  const items: string[] = [];
+  const titleLower = (report.title || '').toLowerCase();
+
+  // Period: only show if title doesn't already clearly contain the period
+  const period = formatPeriod(report);
+  if (period) {
+    const quarterMatch = period.match(/Q[1-4]/i);
+    const yearMatch = period.match(/\b(19\d\d|20\d\d)\b/);
+    const hasQuarter = quarterMatch ? titleLower.includes(quarterMatch[0].toLowerCase()) : true;
+    const hasYear = yearMatch ? titleLower.includes(yearMatch[0]) : true;
+    if (!(hasQuarter && hasYear)) {
+      items.push(period);
+    }
+  }
+
+  // Report type: only show if non-empty, not generic 'FINANCIAL_STATEMENT', and not in title
+  if (report.reportType && report.reportType !== 'FINANCIAL_STATEMENT') {
+    const formatted = formatReportType(report.reportType);
+    if (formatted && !titleLower.includes(formatted.toLowerCase())) {
+      items.push(formatted);
+    }
+  }
+
+  // Publication date: only show if explicitly set (never show 'Not set')
+  if (report.publicationDate) {
+    items.push(`Published ${formatDate(report.publicationDate)}`);
+  }
+
+  // File name: only show if set and different from report title
+  if (report.fileName) {
+    const baseFileName = report.fileName.replace(/\.[^/.]+$/, '').trim().toLowerCase();
+    if (baseFileName !== titleLower && !titleLower.includes(baseFileName)) {
+      items.push(report.fileName);
+    }
+  }
+
+  return items;
+}
 
 
 function FinancialReportsEmptyState() {
@@ -270,19 +312,23 @@ function SelectedReportSummary({
   const isExtracting = report.extractionStatus === 'EXTRACTING';
   const isFailed = report.extractionStatus === 'FAILED';
   const isChangesRequested = isReportChangesRequested(report);
+  const metaItems = getReportHeaderMetaItems(report);
 
   return (
     <div className={styles.metricsPanel}>
       <div className={styles.reportDetailHead}>
         <div className={styles.reportDetailTitleGroup}>
           <h3>{report.title}</h3>
-          <div className={styles.reportDetailMeta}>
-            <span>{formatPeriod(report)}</span>
-            <span>•</span>
-            <span>{formatReportType(report.reportType) || 'Financial Statement'}</span>
-            <span>•</span>
-            <span>{formatDate(report.publicationDate)}</span>
-          </div>
+          {metaItems.length > 0 && (
+            <div className={styles.reportDetailMeta}>
+              {metaItems.map((item, idx) => (
+                <React.Fragment key={item}>
+                  <span>{item}</span>
+                  {idx < metaItems.length - 1 && <span>•</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {resolveReportDocumentId(report) && onViewPdf && (
@@ -296,7 +342,7 @@ function SelectedReportSummary({
               {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)
                 ? 'Opening PDF...'
                 : isManualReport(report)
-                ? 'View PDF tham khảo'
+                ? 'View Reference PDF'
                 : 'View Source PDF'}
             </button>
           )}
@@ -305,11 +351,15 @@ function SelectedReportSummary({
               <AlertTriangle size={13} />
               Changes Requested
             </span>
-          ) : (
-            <span className={`${styles.statusBadge} ${isFailed ? styles.statusError : isExtracting ? styles.statusInProgress : styles.statusNeutral}`}>
-              {isExtracting ? 'Extracting...' : isFailed ? 'Extraction Failed' : 'Ready for Extraction'}
+          ) : isFailed ? (
+            <span className={`${styles.statusBadge} ${styles.statusError}`}>
+              Extraction Failed
             </span>
-          )}
+          ) : isExtracting ? (
+            <span className={`${styles.statusBadge} ${styles.statusInProgress}`}>
+              Extracting...
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -346,7 +396,7 @@ function SelectedReportSummary({
             type="button"
             onClick={() => onExtract(report.id)}
             disabled={!canEdit || isAnyExtracting}
-            title={isAnyExtracting ? 'Một tài liệu khác đang được AI xử lý. Vui lòng đợi hoàn tất.' : undefined}
+            title={isAnyExtracting ? 'Another document is currently being processed by AI. Please wait for completion.' : undefined}
             style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
           >
             <Sparkles size={14} />
@@ -515,113 +565,26 @@ function ExtractedMetricsPanel({
   const aiTableColumns: FinancialTableColumn[] = useMemo(() => {
     if (canPerformAiActions) {
       return [
-        { key: 'label', label: 'Chỉ số tài chính', width: '32%', align: 'left' },
-        { key: 'value', label: 'Giá trị', width: '22%', align: 'right' },
-        { key: 'unit', label: 'Đơn vị', width: '12%', align: 'center' },
-        { key: 'source', label: 'Nguồn', width: '12%', align: 'center' },
-        { key: 'status', label: 'Trạng thái', width: '12%', align: 'center' },
-        { key: 'actions', label: 'Thao tác', width: '10%', align: 'center' },
+        { key: 'label', label: 'Financial Metric', width: '32%', align: 'left' },
+        { key: 'value', label: 'Value', width: '22%', align: 'right' },
+        { key: 'unit', label: 'Unit', width: '12%', align: 'center' },
+        { key: 'source', label: 'Source', width: '12%', align: 'center' },
+        { key: 'status', label: 'Status', width: '12%', align: 'center' },
+        { key: 'actions', label: 'Actions', width: '10%', align: 'center' },
       ];
     }
     return [
-      { key: 'label', label: 'Chỉ số tài chính', width: '40%', align: 'left' },
-      { key: 'value', label: 'Giá trị', width: '26%', align: 'right' },
-      { key: 'unit', label: 'Đơn vị', width: '14%', align: 'center' },
-      { key: 'source', label: 'Nguồn', width: '10%', align: 'center' },
-      { key: 'status', label: 'Trạng thái', width: '10%', align: 'center' },
+      { key: 'label', label: 'Financial Metric', width: '40%', align: 'left' },
+      { key: 'value', label: 'Value', width: '26%', align: 'right' },
+      { key: 'unit', label: 'Unit', width: '14%', align: 'center' },
+      { key: 'source', label: 'Source', width: '10%', align: 'center' },
+      { key: 'status', label: 'Status', width: '10%', align: 'center' },
     ];
   }, [canPerformAiActions]);
 
   return (
     <div className={styles.metricsPanel}>
-      {/* 1. Shared Report Header Bar */}
-      <div className={styles.reportDetailHead}>
-        <div className={styles.reportDetailTitleGroup}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h3>{report.title}</h3>
-            {report.dataEntryMethod === 'MANUAL' ? (
-              <span
-                className={styles.statusBadge}
-                style={{
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #cbd5e1',
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                <FileText size={13} />
-                MANUAL ENTRY
-              </span>
-            ) : (
-              <span
-                className={styles.statusBadge}
-                style={{
-                  background: '#f0fdf4',
-                  color: '#16a34a',
-                  border: '1px solid #bbf7d0',
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                <Sparkles size={13} />
-                AI EXTRACTION
-              </span>
-            )}
-            {report.dataEntryMethod === 'MANUAL' && manualViewMode === 'EDIT' && (
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#2563eb',
-                  background: '#eff6ff',
-                  border: '1px solid #bfdbfe',
-                  padding: '2px 8px',
-                  borderRadius: 12,
-                }}
-              >
-                Đang chỉnh sửa biểu mẫu
-              </span>
-            )}
-          </div>
-          <div className={styles.reportDetailMeta}>
-            <span>{formatPeriod(report)}</span>
-            {report.fileName ? (
-              <span>• File: {report.fileName}</span>
-            ) : report.dataEntryMethod === 'MANUAL' ? (
-              <span style={{ color: '#94a3b8' }}>• Không có tài liệu tham khảo</span>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Lifecycle Status Badge (separate from mode) */}
-        {report.reviewStatus === 'APPROVED' ? (
-          <span className={`${styles.statusBadge} ${styles.statusApproved}`}>
-            <CheckCircle2 size={13} />
-            Approved by Manager (Read Only)
-          </span>
-        ) : isChangesRequested ? (
-          <span className={`${styles.statusBadge} ${styles.statusChangesRequested}`}>
-            <AlertTriangle size={13} />
-            Changes Requested
-          </span>
-        ) : report.reviewStatus === 'PENDING_REVIEW' ? (
-          <span
-            className={styles.statusBadge}
-            style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
-          >
-            <Clock size={13} />
-            Pending Review
-          </span>
-        ) : (
-          <span className={`${styles.statusBadge} ${styles.statusNeutral}`}>
-            <FileText size={13} />
-            In Progress
-          </span>
-        )}
-      </div>
-
-      {/* 2. Manager Feedback Banner if changes requested */}
+      {/* 1. Manager Feedback Banner if changes requested */}
       {!hasTopReviewBanner && isChangesRequested && (
         <div className={styles.managerFeedbackBanner}>
           <AlertTriangle size={18} color="#b45309" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -709,7 +672,7 @@ function ExtractedMetricsPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', fontWeight: 600 }}>
             <ShieldCheck size={18} color={percentVerified === 100 ? '#16a34a' : '#2563eb'} />
             <span>
-              Tiến độ thẩm định: <strong>{verifiedCount}/{totalMetrics}</strong> chỉ số ({percentVerified}%)
+              Verification Progress: <strong>{verifiedCount}/{totalMetrics}</strong> metrics ({percentVerified}%)
             </span>
           </div>
 
@@ -799,7 +762,7 @@ function ExtractedMetricsPanel({
           manualViewMode === 'EDIT' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: '#2563eb' }}>
-                Biểu mẫu nhập liệu 61 chỉ số chuẩn
+                Standard 61 Financial Metrics Form
               </span>
             </div>
           ) : (
@@ -818,8 +781,8 @@ function ExtractedMetricsPanel({
                   gap: 6,
                 }}
               >
-                Đã nhập: <strong>{manualStats.filled} / 61</strong> chỉ số chuẩn
-                {manualStats.custom > 0 && ` (+${manualStats.custom} bổ sung)`}
+                Entered: <strong>{manualStats.filled} / 61</strong> standard metrics
+                {manualStats.custom > 0 && ` (+${manualStats.custom} custom)`}
               </span>
             </div>
           )
@@ -855,14 +818,14 @@ function ExtractedMetricsPanel({
                 {Boolean(openingPdfId) && openingPdfId === resolveReportDocumentId(report)
                   ? 'Opening PDF...'
                   : isManualReport(report)
-                  ? 'View PDF tham khảo'
+                  ? 'View Reference PDF'
                   : 'View Source PDF'}
               </button>
               {report.dataEntryMethod === 'MANUAL' && canEditThisReport && !isManagerMode && onReplaceFile && (
                 <label
                   className={styles.secondaryButton}
                   style={{ fontSize: 12.5, height: 32, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: isReplacingFile ? 'not-allowed' : 'pointer' }}
-                  title="Thay đổi tài liệu PDF tham khảo cho báo cáo này"
+                  title="Replace reference PDF document for this report"
                 >
                   <input
                     type="file"
@@ -883,7 +846,7 @@ function ExtractedMetricsPanel({
                     }}
                   />
                   {isReplacingFile ? <Loader2 size={13} className={styles.spinIcon} /> : <RefreshCw size={13} />}
-                  <span>{isReplacingFile ? 'Đang thay đổi...' : 'Thay đổi PDF'}</span>
+                  <span>{isReplacingFile ? 'Replacing...' : 'Change PDF'}</span>
                 </label>
               )}
             </div>
@@ -892,7 +855,7 @@ function ExtractedMetricsPanel({
               <label
                 className={styles.secondaryButton}
                 style={{ fontSize: 12.5, height: 32, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: isReplacingFile ? 'not-allowed' : 'pointer' }}
-                title="Đính kèm tài liệu PDF tham khảo cho báo cáo này"
+                title="Attach reference PDF document for this report"
               >
                 <input
                   type="file"
@@ -913,12 +876,12 @@ function ExtractedMetricsPanel({
                   }}
                 />
                 {isReplacingFile ? <Loader2 size={13} className={styles.spinIcon} /> : <FileUp size={13} />}
-                <span>{isReplacingFile ? 'Đang tải lên...' : 'Đính kèm PDF tham khảo'}</span>
+                <span>{isReplacingFile ? 'Uploading...' : 'Attach Reference PDF'}</span>
               </label>
             ) : (
               <span style={{ fontSize: 12, color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <FileText size={13} />
-                <span>Không có tài liệu tham khảo</span>
+                <span>No reference document</span>
               </span>
             )
           ) : null}
@@ -939,7 +902,7 @@ function ExtractedMetricsPanel({
                       style={{ fontSize: 12.5, height: 32, display: 'flex', alignItems: 'center', gap: 5 }}
                     >
                       <Eye size={13} />
-                      <span>Xem bảng tổng hợp</span>
+                      <span>View Summary Table</span>
                     </button>
                   )}
                 </>
@@ -953,7 +916,7 @@ function ExtractedMetricsPanel({
                       style={{ fontSize: 12.5, height: 32, display: 'flex', alignItems: 'center', gap: 5 }}
                     >
                       <Plus size={14} />
-                      <span>Thêm chỉ số khác</span>
+                      <span>Add Custom Metric</span>
                     </button>
                     <button
                       className={styles.primaryButton}
@@ -971,7 +934,7 @@ function ExtractedMetricsPanel({
                       }}
                     >
                       <Edit2 size={13} />
-                      <span>Chỉnh sửa số liệu</span>
+                      <span>Edit Metrics</span>
                     </button>
                   </>
                 )
@@ -986,7 +949,7 @@ function ExtractedMetricsPanel({
                 className={styles.secondaryButton}
                 type="button"
                 disabled={isAnyExtracting}
-                title={isAnyExtracting ? 'Đang có tài liệu sử dụng AI trích xuất. Vui lòng đợi hoàn tất.' : undefined}
+                title={isAnyExtracting ? 'Another document is currently being processed by AI. Please wait for completion.' : undefined}
                 onClick={() => onReExtract(report.id)}
                 style={isAnyExtracting ? { opacity: 0.6, cursor: 'not-allowed' } : undefined}
               >
@@ -1068,7 +1031,7 @@ function ExtractedMetricsPanel({
                 <React.Fragment key={`group-${group.key}`}>
                   <FinancialSectionRow
                     title={group.title}
-                    countText={`${group.metrics.length} chỉ số`}
+                    countText={`${group.metrics.length} ${group.metrics.length === 1 ? 'metric' : 'metrics'}`}
                     colSpan={canPerformAiActions ? 6 : 5}
                   />
                   {group.metrics.map(metric => {
@@ -1094,7 +1057,7 @@ function ExtractedMetricsPanel({
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <span className={`${styles.statusBadge} ${isVerified ? styles.statusApproved : styles.statusNeutral}`}>
-                              {isVerified ? 'Đã xác minh' : 'Sẵn sàng'}
+                              {isVerified ? 'Verified' : 'Ready'}
                             </span>
                           </td>
                           {canPerformAiActions && (
@@ -1131,19 +1094,19 @@ function ExtractedMetricsPanel({
                                         onVerifyMetric(metric.id);
                                       }
                                     }}
-                                    title={isVerified ? 'Hủy xác minh chỉ số này' : 'Xác thực chỉ số này'}
+                                    title={isVerified ? 'Unverify this metric' : 'Verify this metric'}
                                   >
                                     {isVerified ? (
                                       <>
                                         <RotateCcw size={12} />
-                                        {unverifyingMetricId === metric.id ? 'Đang hủy...' : 'Hủy xác minh'}
+                                        {unverifyingMetricId === metric.id ? 'Unverifying...' : 'Unverify'}
                                       </>
                                     ) : verifyingMetricId === metric.id ? (
-                                      'Đang lưu...'
+                                      'Saving...'
                                     ) : (
                                       <>
                                         <Check size={12} />
-                                        Xác thực
+                                        Verify
                                       </>
                                     )}
                                   </button>
@@ -1158,10 +1121,10 @@ function ExtractedMetricsPanel({
                                         onEditMetric(metric);
                                       }}
                                       style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
-                                      title="Chỉnh sửa chỉ số"
+                                      title="Edit metric"
                                     >
                                       <Edit3 size={12} />
-                                      Chỉnh sửa
+                                      Edit
                                     </button>
                                     <button
                                       className={styles.secondaryButton}
@@ -1178,10 +1141,10 @@ function ExtractedMetricsPanel({
                                         borderColor: '#fecaca',
                                         background: '#fef2f2',
                                       }}
-                                      title="Xóa chỉ số này"
+                                      title="Delete this metric"
                                     >
                                       <Trash2 size={12} />
-                                      Xóa
+                                      Delete
                                     </button>
                                   </>
                                 )}
@@ -1255,10 +1218,10 @@ function ExtractedMetricsPanel({
                                         fontWeight: 600,
                                       }}
                                       onClick={() => onDeleteMetric?.(metric)}
-                                      title="Xóa chỉ số này"
+                                      title="Delete this metric"
                                     >
                                       <Trash2 size={13} />
-                                      Xóa chỉ số
+                                      Delete Metric
                                     </button>
                                     {report.dataEntryMethod !== 'MANUAL' && metric.inputMethod !== 'MANUAL' && (
                                       <button
@@ -1272,7 +1235,7 @@ function ExtractedMetricsPanel({
                                             onVerifyMetric(metric.id);
                                           }
                                         }}
-                                        title={isVerified ? 'Unverify this metric' : 'Xác thực chỉ số này'}
+                                        title={isVerified ? 'Unverify this metric' : 'Verify this metric'}
                                       >
                                         {isVerified ? (
                                           <>
@@ -1282,7 +1245,7 @@ function ExtractedMetricsPanel({
                                         ) : (
                                           <>
                                             <Check size={12} />
-                                            {verifyingMetricId === metric.id ? 'Đang lưu...' : 'Xác thực'}
+                                            {verifyingMetricId === metric.id ? 'Saving...' : 'Verify'}
                                           </>
                                         )}
                                       </button>
@@ -1328,12 +1291,14 @@ function FinancialReportsPanel({
   onDeselectAll,
   isManagerMode = false,
   hasTopReviewBanner = false,
+  isCreatingReport = false,
 }: {
   reports: FinancialReportEntry[];
   metrics: FinancialMetricResponse[];
   selectedReportId?: string | null;
   canEdit: boolean;
   isAnyExtracting?: boolean;
+  isCreatingReport?: boolean;
   onCreate: () => void;
   onSelect: (reportId: string) => void;
   onExtract: (reportId: string) => void;
@@ -1393,11 +1358,11 @@ function FinancialReportsPanel({
             className={styles.primaryButton}
             type="button"
             onClick={onCreate}
-            disabled={!canEdit || isAnyExtracting}
-            title={isAnyExtracting ? 'Vui lòng đợi quá trình AI hoàn tất' : undefined}
+            disabled={!canEdit || isAnyExtracting || isCreatingReport}
+            title={isAnyExtracting ? 'Please wait for AI extraction to complete' : isCreatingReport ? 'Creating report...' : undefined}
           >
             <Plus size={14} />
-            Create Report
+            {isCreatingReport ? 'Creating...' : 'Create Report'}
           </button>
         )}
       </div>
@@ -1406,7 +1371,7 @@ function FinancialReportsPanel({
         <div className={styles.selectionToolbar}>
           <div className={styles.selectionCountBadge}>
             <span className={styles.selectionCountText}>
-              Đã chọn <strong>{selectedCount}</strong>/{eligibleCount}
+              Selected <strong>{selectedCount}</strong>/{eligibleCount}
             </span>
           </div>
 
@@ -1416,20 +1381,20 @@ function FinancialReportsPanel({
               className={`${styles.selectionActionBtn} ${styles.selectionActionBtnPrimary}`}
               onClick={onSelectAll}
               disabled={!canEdit || isAllSelected || eligibleCount === 0 || isAnyExtracting}
-              title="Tích tất cả các báo cáo đủ điều kiện để nộp"
+              title="Select all eligible reports for submission"
             >
               <CheckCheck size={13} />
-              <span>Tích tất cả</span>
+              <span>Select all</span>
             </button>
             <button
               type="button"
               className={styles.selectionActionBtn}
               onClick={onDeselectAll}
               disabled={!canEdit || selectedCount === 0 || isAnyExtracting}
-              title="Hủy tích tất cả các báo cáo"
+              title="Deselect all reports"
             >
               <X size={13} />
-              <span>Hủy tích</span>
+              <span>Clear selection</span>
             </button>
           </div>
         </div>
@@ -1531,7 +1496,7 @@ function FinancialPackageSummary({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, width: '100%' }}>
           {isDirty && (
             <span style={{ fontSize: 13, color: '#ea580c', fontWeight: 500 }}>
-              Bạn có thay đổi chưa lưu. Vui lòng lưu số liệu trước khi gửi duyệt.
+              You have unsaved changes. Please save the data before submitting for review.
             </span>
           )}
           <button
@@ -1539,7 +1504,7 @@ function FinancialPackageSummary({
             type="button"
             onClick={onSubmit}
             disabled={disabled || submitted || submitting || isDirty}
-            title={isDirty ? 'Bạn có thay đổi chưa lưu. Vui lòng lưu số liệu trước khi gửi duyệt.' : undefined}
+            title={isDirty ? 'You have unsaved changes. Please save the data before submitting for review.' : undefined}
           >
             {submitting ? (
               <>
@@ -1692,6 +1657,8 @@ export default function FinancialResearchWorkbench({
   onRefreshWorkbench,
   onRecallSuccess,
   onSubmitSuccess,
+  initialResearch,
+  onClearWorkbenchError,
 }: FinancialResearchWorkbenchProps) {
   const queryClient = useQueryClient();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -1720,6 +1687,7 @@ export default function FinancialResearchWorkbench({
   const { data: researchRes, isLoading, isError, error } = useQuery({
     queryKey: ['financial-research', projectId, taskId],
     queryFn: () => financialResearchApi.getResearch(projectId, taskId),
+    initialData: initialResearch ? { data: initialResearch, success: true } : undefined,
     refetchInterval: (query) => {
       const data = query.state.data?.data;
       const anyExtracting = (data?.reports || []).some(
@@ -1728,6 +1696,12 @@ export default function FinancialResearchWorkbench({
       return anyExtracting ? 1500 : false;
     },
   });
+
+  useEffect(() => {
+    if (researchRes?.data) {
+      onClearWorkbenchError?.();
+    }
+  }, [researchRes?.data, onClearWorkbenchError]);
 
   const research = researchRes?.data;
   const effectiveTargetYear = useMemo(() => {
@@ -1889,9 +1863,33 @@ export default function FinancialResearchWorkbench({
       setIsCreateModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setToast({ message: 'Financial report created successfully.', type: 'success' });
+      onClearWorkbenchError?.();
     },
-    onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Failed to create report.', type: 'error' });
+    onError: async (err: any) => {
+      const status = err?.response?.status;
+      if (status === 409) {
+        await queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
+        try {
+          const refreshed = await queryClient.fetchQuery({
+            queryKey: ['financial-research', projectId, taskId],
+            queryFn: () => financialResearchApi.getResearch(projectId, taskId),
+          });
+          const reportsList = refreshed?.data?.reports || [];
+          if (reportsList.length > 0) {
+            setSelectedReportId(reportsList[reportsList.length - 1].id);
+          }
+        } catch {
+          // ignore fetch error if any
+        }
+        setIsCreateModalOpen(false);
+        onClearWorkbenchError?.();
+        setToast({
+          message: err?.response?.data?.message || 'A financial report already exists for this task.',
+          type: 'error',
+        });
+      } else {
+        setToast({ message: err?.response?.data?.message || 'Failed to create report.', type: 'error' });
+      }
     },
   });
 
@@ -2028,11 +2026,11 @@ export default function FinancialResearchWorkbench({
         queryClient.setQueryData(['financial-research', projectId, taskId], res);
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setToast({ message: 'Đã hủy quá trình trích xuất AI.', type: 'success' });
+      setToast({ message: 'AI extraction cancelled successfully.', type: 'success' });
     },
     onError: (err: any) => {
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setToast({ message: err?.response?.data?.message || 'Hủy trích xuất thất bại.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to cancel extraction.', type: 'error' });
     },
   });
 
@@ -2115,10 +2113,10 @@ export default function FinancialResearchWorkbench({
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
       setIsAddMetricModalOpen(false);
-      setToast({ message: 'Đã thêm chỉ số tài chính thủ công thành công.', type: 'success' });
+      setToast({ message: 'Financial metric added successfully.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Không thể thêm chỉ số tài chính.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to add financial metric.', type: 'error' });
     },
   });
 
@@ -2130,10 +2128,10 @@ export default function FinancialResearchWorkbench({
         queryClient.setQueryData(['financial-research', projectId, taskId], res);
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setToast({ message: 'Đã lưu các chỉ số tài chính thành công.', type: 'success' });
+      setToast({ message: 'Financial metrics saved successfully.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Không thể lưu các chỉ số tài chính.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to save financial metrics.', type: 'error' });
     },
   });
 
@@ -2145,10 +2143,10 @@ export default function FinancialResearchWorkbench({
         queryClient.setQueryData(['financial-research', projectId, taskId], res);
       }
       queryClient.invalidateQueries({ queryKey: ['financial-research', projectId, taskId] });
-      setToast({ message: 'Tài liệu PDF đã được cập nhật thành công.', type: 'success' });
+      setToast({ message: 'PDF document updated successfully.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Không thể cập nhật tài liệu PDF.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to update PDF document.', type: 'error' });
     },
   });
 
@@ -2177,10 +2175,10 @@ export default function FinancialResearchWorkbench({
         setSelectedMetricId(null);
         setEvidenceOpen(false);
       }
-      setToast({ message: 'Đã xóa chỉ số tài chính thành công.', type: 'success' });
+      setToast({ message: 'Financial metric deleted successfully.', type: 'success' });
     },
     onError: (err: any) => {
-      setToast({ message: err?.response?.data?.message || 'Không thể xóa chỉ số.', type: 'error' });
+      setToast({ message: err?.response?.data?.message || 'Failed to delete metric.', type: 'error' });
     },
   });
 
@@ -2280,7 +2278,7 @@ export default function FinancialResearchWorkbench({
   const handleExtract = (reportId: string) => {
     if (isAnyExtracting) {
       setToast({
-        message: 'Một tài liệu đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+        message: 'Another document is currently being processed by AI. Please wait for completion before proceeding.',
         type: 'error',
       });
       return;
@@ -2328,7 +2326,7 @@ export default function FinancialResearchWorkbench({
 
   const handleViewPdf = async (documentId?: string | null) => {
     if (!documentId) {
-      setToast({ message: 'Không tìm thấy ID tài liệu PDF gốc.', type: 'error' });
+      setToast({ message: 'Original PDF document ID not found.', type: 'error' });
       return;
     }
 
@@ -2390,7 +2388,7 @@ export default function FinancialResearchWorkbench({
           'noopener,noreferrer'
         );
       } else {
-        setToast({ message: 'Không thể mở tài liệu PDF. Vui lòng kiểm tra quyền truy cập hoặc thử lại sau.', type: 'error' });
+        setToast({ message: 'Unable to open PDF document. Please check access permissions or try again later.', type: 'error' });
       }
     } finally {
       setOpeningPdfId(null);
@@ -2420,6 +2418,7 @@ export default function FinancialResearchWorkbench({
           selectedReportId={selectedReportId}
           canEdit={effectiveCanEdit}
           isAnyExtracting={isAnyExtracting}
+          isCreatingReport={addReportMutation.isPending}
           onCreate={() => setIsCreateModalOpen(true)}
           onSelect={handleSelectReport}
           onExtract={handleExtract}
@@ -2476,7 +2475,7 @@ export default function FinancialResearchWorkbench({
                 onReExtract={(reportId) => {
                   if (isAnyExtracting) {
                     setToast({
-                      message: 'Một tài liệu đang được AI xử lý. Vui lòng đợi hoàn tất trước khi thao tác tiếp.',
+                      message: 'Another document is currently being processed by AI. Please wait for completion before proceeding.',
                       type: 'error',
                     });
                     return;
@@ -2572,7 +2571,7 @@ export default function FinancialResearchWorkbench({
             const unconfirmed = selectedSubmissionReports.find(isCompanyConfirmationRequired);
             if (unconfirmed) {
               setToast({
-                message: `Báo cáo "${unconfirmed.title}" cần được xác nhận thuộc công ty mục tiêu trước khi gửi duyệt.`,
+                message: `Report "${unconfirmed.title}" must be confirmed as matching the target company before submitting for review.`,
                 type: 'error',
               });
               return;
@@ -2587,7 +2586,7 @@ export default function FinancialResearchWorkbench({
                   const parsed = parseFinancialValue(val);
                   if (parsed.entered && !parsed.valid) {
                     setToast({
-                      message: `Báo cáo "${report.title}" chứa chỉ số "${m.label}" có giá trị không hợp lệ. Giá trị phải là số.`,
+                      message: `Report "${report.title}" contains metric "${m.label}" with an invalid value. Value must be a number.`,
                       type: 'error',
                     });
                     return;
@@ -2862,10 +2861,10 @@ export default function FinancialResearchWorkbench({
               <div className={styles.deleteModalIcon} style={{ background: '#fef2f2', color: '#ef4444' }}>
                 <Trash2 size={20} />
               </div>
-              <h3>Xóa chỉ số tài chính</h3>
+              <h3>Delete Financial Metric</h3>
             </div>
             <p className={styles.deleteModalText}>
-              Bạn có chắc chắn muốn xóa chỉ số <strong>"{metricToDelete.label}"</strong> ({metricValueParts(metricToDelete).value} {metricValueParts(metricToDelete).unit}) không? Hành động này không thể hoàn tác.
+              Are you sure you want to delete metric <strong>"{metricToDelete.label}"</strong> ({metricValueParts(metricToDelete).value} {metricValueParts(metricToDelete).unit})? This action cannot be undone.
             </p>
             <div className={styles.deleteModalActions}>
               <button
@@ -2874,7 +2873,7 @@ export default function FinancialResearchWorkbench({
                 onClick={() => setMetricToDelete(null)}
                 disabled={removeMetricMutation.isPending}
               >
-                Hủy
+                Cancel
               </button>
               <button
                 type="button"
@@ -2885,10 +2884,10 @@ export default function FinancialResearchWorkbench({
                 {removeMetricMutation.isPending ? (
                   <>
                     <Loader2 size={14} className={styles.spinIcon} />
-                    Đang xóa...
+                    Deleting...
                   </>
                 ) : (
-                  'Xóa chỉ số'
+                  'Delete Metric'
                 )}
               </button>
             </div>

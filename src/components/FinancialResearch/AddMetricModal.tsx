@@ -16,15 +16,15 @@ interface Props {
 }
 
 const UNIT_OPTIONS = [
-  { value: 'MILLION_VND', label: 'Triệu VNĐ' },
-  { value: 'BILLION_VND', label: 'Tỷ VNĐ' },
-  { value: 'VND', label: 'VNĐ' },
-  { value: 'MILLION_USD', label: 'Triệu USD' },
+  { value: 'MILLION_VND', label: 'Million VND' },
+  { value: 'BILLION_VND', label: 'Billion VND' },
+  { value: 'VND', label: 'VND' },
+  { value: 'MILLION_USD', label: 'Million USD' },
   { value: 'USD', label: 'USD' },
   { value: 'PERCENT', label: '%' },
-  { value: 'RATIO', label: 'Tỷ lệ' },
-  { value: 'TIMES', label: 'Lần' },
-  { value: 'COUNT', label: 'Số lượng' },
+  { value: 'RATIO', label: 'Ratio' },
+  { value: 'TIMES', label: 'Times' },
+  { value: 'COUNT', label: 'Count' },
 ];
 
 export default function AddMetricModal({
@@ -64,7 +64,7 @@ export default function AddMetricModal({
 
     const trimmedLabel = metricLabel.trim();
     if (!trimmedLabel) {
-      setValidationError('Vui lòng nhập tên chỉ số.');
+      setValidationError('Please enter a metric name.');
       return;
     }
 
@@ -73,7 +73,7 @@ export default function AddMetricModal({
     if (canonicalMatch) {
       setMatchedCanonicalCode(canonicalMatch.code);
       setValidationError(
-        `Chỉ số này đã có sẵn trong biểu mẫu ("${canonicalMatch.label}"). Vui lòng nhập trực tiếp trên biểu mẫu thay vì thêm chỉ số tùy chỉnh.`
+        `This metric is already available in the standard form ("${canonicalMatch.label}"). Please enter it directly on the form instead of adding a custom metric.`
       );
       return;
     }
@@ -86,14 +86,14 @@ export default function AddMetricModal({
     });
 
     if (isDuplicate) {
-      setValidationError(`Chỉ số "${trimmedLabel}" đã tồn tại trong báo cáo này.`);
+      setValidationError(`Metric "${trimmedLabel}" already exists in this report.`);
       return;
     }
 
     // 3. Validate numeric value
     const parsedVal = parseFinancialValue(value);
     if (!parsedVal.entered) {
-      setValidationError('Vui lòng nhập giá trị cho chỉ số.');
+      setValidationError('Please enter a value for the metric.');
       return;
     }
     if (!parsedVal.valid) {
@@ -136,7 +136,7 @@ export default function AddMetricModal({
       await onSave(createData);
       onClose();
     } catch (err: any) {
-      setValidationError(err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi thêm chỉ số.');
+      setValidationError(err?.response?.data?.message || err?.message || 'An error occurred while adding the metric.');
     }
   };
 
@@ -187,10 +187,10 @@ export default function AddMetricModal({
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
-                Thêm Chỉ Số Khác
+                Add Custom Metric
               </h3>
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
-                Chỉ số bổ sung ngoài danh mục chỉ số tài chính chuẩn
+                Additional metric outside the standard financial taxonomy
               </p>
             </div>
           </div>
@@ -232,7 +232,7 @@ export default function AddMetricModal({
                   whiteSpace: 'nowrap',
                 }}
               >
-                <span>Đi tới chỉ số</span>
+                <span>Go to metric</span>
                 <ArrowRight size={12} />
               </button>
             )}
@@ -244,7 +244,7 @@ export default function AddMetricModal({
           {/* Tên chỉ số */}
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-              Tên chỉ số *
+              Metric Name *
             </label>
             <input
               type="text"
@@ -257,7 +257,7 @@ export default function AddMetricModal({
                   setMatchedCanonicalCode(null);
                 }
               }}
-              placeholder="Ví dụ: Chi phí chuyển đổi số, Chi phí ESG..."
+              placeholder="e.g. Digital Transformation Cost, ESG Expense..."
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -274,7 +274,7 @@ export default function AddMetricModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
             <div>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                Giá trị *
+                Value *
               </label>
               <input
                 type="text"
@@ -285,7 +285,7 @@ export default function AddMetricModal({
                   setValue(e.target.value);
                   if (validationError) setValidationError(null);
                 }}
-                placeholder="Ví dụ: 1250000"
+                placeholder="e.g. 1250000"
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -299,7 +299,7 @@ export default function AddMetricModal({
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                Đơn vị *
+                Unit *
               </label>
               <select
                 value={unit}
@@ -327,7 +327,7 @@ export default function AddMetricModal({
           {/* Kỳ báo cáo (Read-only) */}
           <div>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
-              Kỳ báo cáo
+              Reporting Period
             </label>
             <div
               style={{
@@ -340,19 +340,19 @@ export default function AddMetricModal({
                 fontWeight: 500,
               }}
             >
-              {reportPeriodStr || 'Theo kỳ báo cáo của tài liệu'}
+              {reportPeriodStr || 'Follows document reporting period'}
             </div>
           </div>
 
           {/* Ghi chú nguồn (Optional) */}
           <div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-              Ghi chú nguồn (Tùy chọn)
+              Source Evidence / Note (Optional)
             </label>
             <textarea
               value={evidence}
               onChange={(e) => setEvidence(e.target.value)}
-              placeholder="Ví dụ: Thuyết minh BCTC trang 18..."
+              placeholder="e.g. Notes to Financial Statements page 18..."
               rows={2}
               style={{
                 width: '100%',
@@ -385,7 +385,7 @@ export default function AddMetricModal({
               fontSize: 13,
             }}
           >
-            Hủy
+            Cancel
           </button>
           <button
             type="submit"
@@ -408,12 +408,12 @@ export default function AddMetricModal({
             {isSaving ? (
               <>
                 <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                <span>Đang thêm...</span>
+                <span>Adding...</span>
               </>
             ) : (
               <>
                 <Check size={15} />
-                <span>Thêm chỉ số</span>
+                <span>Add Metric</span>
               </>
             )}
           </button>

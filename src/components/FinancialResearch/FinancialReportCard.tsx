@@ -88,6 +88,15 @@ export default function FinancialReportCard({
   const requiresRevision = isReportChangesRequested(report);
   const canEditCard = canEdit && !isApproved;
 
+  const titleLower = (report.title || '').toLowerCase();
+  const quarterMatch = period ? period.match(/Q[1-4]/i) : null;
+  const yearMatch = period ? period.match(/\b(19\d\d|20\d\d)\b/) : null;
+  const titleHasPeriod = Boolean(
+    period &&
+    (quarterMatch ? titleLower.includes(quarterMatch[0].toLowerCase()) : true) &&
+    (yearMatch ? titleLower.includes(yearMatch[0]) : true)
+  );
+
   return (
     <article
       className={`${styles.reportCard} ${
@@ -165,7 +174,7 @@ export default function FinancialReportCard({
                 }}
                 disabled={isExtracting || isAnyExtracting}
                 aria-label={`Edit ${report.title}`}
-                title={isAnyExtracting ? 'Không thể chỉnh sửa khi đang có tài liệu trích xuất' : 'Edit report details'}
+                title={isAnyExtracting ? 'Cannot edit while extraction is in progress' : 'Edit report details'}
                 style={isAnyExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : { color: '#2563eb' }}
               >
                 <Edit3 size={15} />
@@ -178,7 +187,7 @@ export default function FinancialReportCard({
               onClick={(event) => { stop(event); onDelete(report.id); }}
               disabled={isExtracting || isAnyExtracting}
               aria-label={`Delete ${report.title}`}
-              title={isAnyExtracting ? 'Không thể xóa khi đang có tài liệu trích xuất' : 'Delete report'}
+              title={isAnyExtracting ? 'Cannot delete while extraction is in progress' : 'Delete report'}
             >
               <Trash2 size={15} />
             </button>
@@ -200,8 +209,10 @@ export default function FinancialReportCard({
         >
           {isManual ? 'MANUAL ENTRY' : 'AI EXTRACTION'}
         </span>
-        {period && <span className={styles.cardPeriodPill}>{period}</span>}
-        {!isManual && reportType && <span className={styles.cardPeriodPill}>{reportType}</span>}
+        {period && !titleHasPeriod && <span className={styles.cardPeriodPill}>{period}</span>}
+        {!isManual && reportType && report.reportType !== 'FINANCIAL_STATEMENT' && !titleLower.includes(reportType.toLowerCase()) && (
+          <span className={styles.cardPeriodPill}>{reportType}</span>
+        )}
         {!isManual && report.publicationDate && <span>{formatDate(report.publicationDate)}</span>}
       </div>
 
@@ -229,13 +240,13 @@ export default function FinancialReportCard({
           {isOpeningPdf
             ? 'Opening PDF...'
             : isManual
-            ? 'View PDF tham khảo'
+            ? 'View Reference PDF'
             : 'View Source PDF'}
         </button>
       ) : isManual ? (
         <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px', padding: '3px 0' }}>
           <FileText size={12} />
-          <span>Không có tài liệu tham khảo</span>
+          <span>No reference document</span>
         </div>
       ) : null}
 
@@ -295,7 +306,7 @@ export default function FinancialReportCard({
               disabled={isAnyExtracting}
               title={
                 isAnyExtracting
-                  ? 'Một tài liệu khác đang được AI trích xuất. Vui lòng đợi hoàn tất.'
+                  ? 'Another document is currently being extracted by AI. Please wait for completion.'
                   : undefined
               }
               style={{

@@ -41,15 +41,15 @@ interface Props {
 }
 
 const UNIT_OPTIONS = [
-  { value: 'MILLION_VND', label: 'Triệu VNĐ' },
-  { value: 'BILLION_VND', label: 'Tỷ VNĐ' },
-  { value: 'VND', label: 'VNĐ' },
-  { value: 'MILLION_USD', label: 'Triệu USD' },
+  { value: 'MILLION_VND', label: 'Million VND' },
+  { value: 'BILLION_VND', label: 'Billion VND' },
+  { value: 'VND', label: 'VND' },
+  { value: 'MILLION_USD', label: 'Million USD' },
   { value: 'USD', label: 'USD' },
   { value: 'PERCENT', label: '%' },
-  { value: 'RATIO', label: 'Tỷ lệ' },
-  { value: 'TIMES', label: 'Lần' },
-  { value: 'COUNT', label: 'Số lượng' },
+  { value: 'RATIO', label: 'Ratio' },
+  { value: 'TIMES', label: 'Times' },
+  { value: 'COUNT', label: 'Count' },
 ];
 
 export default function ManualFinancialEntryTemplate({
@@ -69,11 +69,11 @@ export default function ManualFinancialEntryTemplate({
   const balanceSheetGroups = useMemo(() => {
     const bs = CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BALANCE_SHEET');
     return [
-      { subCategory: 'CURRENT_ASSETS', title: '1.1 TÀI SẢN NGẮN HẠN', metrics: bs.filter((m) => m.subCategory === 'CURRENT_ASSETS') },
-      { subCategory: 'NON_CURRENT_ASSETS', title: '1.2 TÀI SẢN DÀI HẠN', metrics: bs.filter((m) => m.subCategory === 'NON_CURRENT_ASSETS') },
-      { subCategory: 'TOTAL_ASSETS', title: '1.3 TỔNG TÀI SẢN', metrics: bs.filter((m) => m.subCategory === 'TOTAL_ASSETS') },
-      { subCategory: 'LIABILITIES', title: '1.4 NỢ PHẢI TRẢ', metrics: bs.filter((m) => m.subCategory === 'LIABILITIES') },
-      { subCategory: 'EQUITY', title: '1.5 VỐN CHỦ SỞ HỮU', metrics: bs.filter((m) => m.subCategory === 'EQUITY') },
+      { subCategory: 'CURRENT_ASSETS', title: '1.1 CURRENT ASSETS', metrics: bs.filter((m) => m.subCategory === 'CURRENT_ASSETS') },
+      { subCategory: 'NON_CURRENT_ASSETS', title: '1.2 NON-CURRENT ASSETS', metrics: bs.filter((m) => m.subCategory === 'NON_CURRENT_ASSETS') },
+      { subCategory: 'TOTAL_ASSETS', title: '1.3 TOTAL ASSETS', metrics: bs.filter((m) => m.subCategory === 'TOTAL_ASSETS') },
+      { subCategory: 'LIABILITIES', title: '1.4 LIABILITIES', metrics: bs.filter((m) => m.subCategory === 'LIABILITIES') },
+      { subCategory: 'EQUITY', title: '1.5 OWNER EQUITY', metrics: bs.filter((m) => m.subCategory === 'EQUITY') },
     ];
   }, []);
 
@@ -200,7 +200,7 @@ export default function ManualFinancialEntryTemplate({
   // Handle explicit deletion of persisted metric
   const handleDeletePersisted = (metric: FinancialMetricResponse) => {
     if (!canEdit || !onDeleteMetric) return;
-    const confirmMsg = `Bạn có chắc muốn xóa chỉ số "${metric.label}" khỏi báo cáo tài chính?`;
+    const confirmMsg = `Are you sure you want to remove metric "${metric.label}" from this financial report?`;
     if (window.confirm(confirmMsg)) {
       onDeleteMetric(metric);
       if (metric.metricCode) {
@@ -225,7 +225,7 @@ export default function ManualFinancialEntryTemplate({
       .filter(({ parsed }) => parsed.entered);
 
     if (enteredEntries.length === 0 && customMetrics.length === 0) {
-      setValidationError('Vui lòng nhập giá trị cho ít nhất một chỉ số để lưu.');
+      setValidationError('Please enter a value for at least one metric to save.');
       return;
     }
 
@@ -271,7 +271,7 @@ export default function ManualFinancialEntryTemplate({
       await onSaveBatch(payload);
       onSaveSuccess?.();
     } catch (err: any) {
-      setValidationError(err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi lưu chỉ số.');
+      setValidationError(err?.response?.data?.message || err?.message || 'An error occurred while saving metrics.');
     }
   };
 
@@ -306,7 +306,7 @@ export default function ManualFinancialEntryTemplate({
             disabled={!canEdit || isSaving}
             value={current.value}
             onChange={(e) => handleValueChange(metric.code, e.target.value)}
-            placeholder="Trống"
+            placeholder="Empty"
             style={{
               width: '100%',
               padding: '6px 10px',
@@ -361,7 +361,7 @@ export default function ManualFinancialEntryTemplate({
             <button
               type="button"
               onClick={() => handleDeletePersisted(persisted)}
-              title="Xóa chỉ số khỏi báo cáo"
+              title="Remove metric from report"
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -446,11 +446,11 @@ export default function ManualFinancialEntryTemplate({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <PieChart size={16} color="#2563eb" />
               <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                1. Bảng Cân Đối Kế Toán (Balance Sheet)
+                1. Balance Sheet
               </span>
             </div>
             <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-              {totalBalanceSheet.length} chỉ số • {bsFilledCount} đã nhập
+              {totalBalanceSheet.length} metrics • {bsFilledCount} entered
             </span>
           </div>
 
@@ -472,9 +472,9 @@ export default function ManualFinancialEntryTemplate({
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
                   <thead>
                     <tr style={{ background: '#ffffff', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
-                      <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
-                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
-                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                      <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Financial Metric</th>
+                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Value</th>
+                      <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Unit</th>
                       <th style={{ padding: '6px 10px', width: '44px' }}></th>
                     </tr>
                   </thead>
@@ -516,20 +516,20 @@ export default function ManualFinancialEntryTemplate({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <TrendingUp size={16} color="#16a34a" />
               <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                2. Báo Cáo Kết Quả Hoạt Động Kinh Doanh (Income Statement)
+                2. Income Statement
               </span>
             </div>
             <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-              {incomeStatementMetrics.length} chỉ số • {isFilledCount} đã nhập
+              {incomeStatementMetrics.length} metrics • {isFilledCount} entered
             </span>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
             <thead>
               <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
-                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Financial Metric</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Value</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Unit</th>
                 <th style={{ padding: '6px 10px', width: '44px' }}></th>
               </tr>
             </thead>
@@ -568,20 +568,20 @@ export default function ManualFinancialEntryTemplate({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Building2 size={16} color="#8b5cf6" />
               <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                3. Ngân Hàng & Tổ Chức Tín Dụng (Banking & Credit Institutions)
+                3. Banking & Credit Institutions
               </span>
             </div>
             <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-              {bankingMetrics.length} chỉ số • {bankFilledCount} đã nhập
+              {bankingMetrics.length} metrics • {bankFilledCount} entered
             </span>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
             <thead>
               <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
-                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Financial Metric</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Value</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Unit</th>
                 <th style={{ padding: '6px 10px', width: '44px' }}></th>
               </tr>
             </thead>
@@ -620,20 +620,20 @@ export default function ManualFinancialEntryTemplate({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <LineChart size={16} color="#f59e0b" />
               <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                4. Các Chỉ Số Tài Chính & An Toàn (Financial & Safety Ratios)
+                4. Financial & Safety Ratios
               </span>
             </div>
             <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-              {ratioMetrics.length} chỉ số • {ratioFilledCount} đã nhập
+              {ratioMetrics.length} metrics • {ratioFilledCount} entered
             </span>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
             <thead>
               <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
-                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Chỉ số tài chính</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
-                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Financial Metric</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Value</th>
+                <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Unit</th>
                 <th style={{ padding: '6px 10px', width: '44px' }}></th>
               </tr>
             </thead>
@@ -673,20 +673,20 @@ export default function ManualFinancialEntryTemplate({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Plus size={16} color="#0284c7" />
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  5. Chỉ Số Bổ Sung (Custom Indicators)
+                  5. Custom Indicators
                 </span>
               </div>
               <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-                {customMetrics.length} chỉ số
+                {customMetrics.length} metrics
               </span>
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, height: 'auto', overflow: 'visible' }}>
               <thead>
                 <tr style={{ background: '#fafafa', borderBottom: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase' }}>
-                  <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Tên chỉ số</th>
-                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Giá trị</th>
-                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Đơn vị tính</th>
+                  <th style={{ padding: '6px 16px', textAlign: 'left', fontWeight: 600 }}>Metric Name</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '220px' }}>Value</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Unit</th>
                   <th style={{ padding: '6px 10px', width: '44px' }}></th>
                 </tr>
               </thead>
@@ -717,7 +717,7 @@ export default function ManualFinancialEntryTemplate({
                         <button
                           type="button"
                           onClick={() => handleDeletePersisted(metric)}
-                          title="Xóa chỉ số bổ sung"
+                          title="Remove custom metric"
                           style={{
                             background: 'transparent',
                             border: 'none',
@@ -759,10 +759,10 @@ export default function ManualFinancialEntryTemplate({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ fontSize: 13, color: '#475569' }}>
-            Đã nhập: <strong>{totalFilledCanonical + customMetrics.length}</strong> chỉ số
+            Entered: <strong>{totalFilledCanonical + customMetrics.length}</strong> metrics
             {isDirty && (
               <span style={{ marginLeft: 8, color: '#ea580c', fontWeight: 600, fontSize: 12 }}>
-                (Có thay đổi chưa lưu)
+                (Unsaved changes)
               </span>
             )}
           </div>
@@ -777,7 +777,7 @@ export default function ManualFinancialEntryTemplate({
               style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Eye size={15} />
-              <span>Xem bảng tổng hợp</span>
+              <span>View Summary Table</span>
             </button>
           )}
           {canEdit && (
@@ -788,7 +788,7 @@ export default function ManualFinancialEntryTemplate({
               style={{ fontSize: 13, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Plus size={15} />
-              <span>Thêm chỉ số khác</span>
+              <span>Add Custom Metric</span>
             </button>
           )}
           {canEdit && (
@@ -802,12 +802,12 @@ export default function ManualFinancialEntryTemplate({
               {isSaving ? (
                 <>
                   <Loader2 size={15} className={styles.spinIcon} />
-                  <span>Đang lưu...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <Save size={15} />
-                  <span>Lưu số liệu ({totalFilledCanonical})</span>
+                  <span>Save Metrics ({totalFilledCanonical})</span>
                 </>
               )}
             </button>

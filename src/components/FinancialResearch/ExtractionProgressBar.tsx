@@ -16,13 +16,13 @@ interface Props {
 }
 
 const FINANCIAL_STAGE_LABELS: Record<string, string> = {
-  QUEUED: 'Đang xếp hàng chờ xử lý...',
-  PARSING_DOCUMENT: 'Đang đọc và phân tích cấu trúc tài liệu PDF...',
-  EXTRACTING_METRICS: 'Đang trích xuất các chỉ số tài chính với Gemini AI...',
-  VALIDATING_RESULTS: 'Đang đối chiếu và kiểm chuẩn số liệu tài chính...',
-  SAVING_RESULTS: 'Đang lưu trữ và hoàn tất kết quả...',
-  COMPLETED: 'Đã hoàn tất trích xuất dữ liệu!',
-  FAILED: 'Trích xuất thất bại',
+  QUEUED: 'Queued for processing...',
+  PARSING_DOCUMENT: 'Reading and analyzing PDF document structure...',
+  EXTRACTING_METRICS: 'Extracting financial metrics with Gemini AI...',
+  VALIDATING_RESULTS: 'Reconciling and validating financial figures...',
+  SAVING_RESULTS: 'Saving and finalizing extraction results...',
+  COMPLETED: 'Financial data extraction completed!',
+  FAILED: 'Extraction failed',
 };
 
 const FINANCIAL_BASE_PROGRESS: Record<string, number> = {

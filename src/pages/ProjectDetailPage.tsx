@@ -26,6 +26,7 @@ import {
   Globe2,
   Info,
   Lightbulb,
+  Loader2,
   MessageSquare,
   MoreHorizontal,
   MoreVertical,
@@ -1506,12 +1507,13 @@ const Avatar: React.FC<{ name: string; initials: string; color: string; small?: 
   </span>
 );
 
-const makeTaskMember = (member?: ProjectMemberResponse | null) => {
+const makeTaskMember = (member?: ProjectMemberResponse | null, fallbackEmail?: string | null) => {
   const fallback = members[2];
   if (!member) return fallback;
   return {
     id: member.accountId,
     name: memberDisplayName(member),
+    email: member.email || fallbackEmail || undefined,
     role: memberRoleLabel(member),
     avatar: memberInitials(member),
     color: member.projectRole === 'LEADER' ? '#2563EB' : member.projectRole === 'DEPUTY' ? '#8B5CF6' : '#22C55E',
@@ -1521,12 +1523,14 @@ const makeTaskMember = (member?: ProjectMemberResponse | null) => {
 
 const mapApiTaskToCard = (task: ProjectTaskResponse, projectMembers: ProjectMemberResponse[]): ProjectTask => {
   const assignedMember = projectMembers.find((member) => member.accountId === task.assignedToUserId);
+  const assignedEmail = task.assignedToEmail || (task.assignedToName && task.assignedToName.includes('@') ? task.assignedToName : undefined) || assignedMember?.email || undefined;
   const fallbackMember = assignedMember
-    ? makeTaskMember(assignedMember)
+    ? makeTaskMember(assignedMember, assignedEmail)
     : {
       ...members[2],
       id: task.assignedToUserId ?? task.id,
       name: task.assignedToName || 'Unassigned',
+      email: assignedEmail,
       avatar: (task.assignedToName || 'UN').slice(0, 2).toUpperCase(),
     };
 
@@ -1704,8 +1708,9 @@ const TaskCard: React.FC<{
 
 const TaskDetailModal: React.FC<{
   task: ProjectTask | null;
+  projectMembers?: ProjectMemberResponse[];
   onClose: () => void;
-}> = ({ task, onClose }) => {
+}> = ({ task, projectMembers = [], onClose }) => {
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
@@ -1787,7 +1792,30 @@ const TaskDetailModal: React.FC<{
     }
   };
 
-  const isUnassigned = !task || task.status === 'AVAILABLE' || !task.assignee?.name || task.assignee.name === 'Unassigned';
+  const assignedEmail = task?.assignee?.email
+    || (task?.assignee?.name && task.assignee.name.includes('@') ? task.assignee.name : undefined)
+    || (task?.assignee?.id ? projectMembers.find((m) => m.accountId === task.assignee.id)?.email : undefined);
+  const assigneeDisplay = assignedEmail || task?.assignee?.name || 'Unassigned';
+  const isUnassigned = !task || task.status === 'AVAILABLE' || !task.assignee?.name || task.assignee.name === 'Unassigned' || assigneeDisplay === 'Unassigned';
+
+  const getActorDisplay = (item: any) => {
+    if (item.actorEmail) return item.actorEmail;
+    if (item.actorId) {
+      const found = projectMembers.find((m) => m.accountId === item.actorId);
+      if (found?.email) return found.email;
+    }
+    if (item.actorName) {
+      if (item.actorName.includes('@')) return item.actorName;
+      if (item.actorName !== 'System') {
+        const foundByName = projectMembers.find(
+          (m) => m.fullName === item.actorName || m.email?.split('@')[0] === item.actorName
+        );
+        if (foundByName?.email) return foundByName.email;
+      }
+      return item.actorName;
+    }
+    return 'System';
+  };
 
   return typeof document !== 'undefined'
     ? createPortal(
@@ -1823,10 +1851,10 @@ const TaskDetailModal: React.FC<{
                       className={styles.taskDetailAssigneeAvatar}
                       style={{ background: task.assignee.color || '#2563EB' }}
                     >
-                      {task.assignee.avatar || (task.assignee.name ? task.assignee.name.slice(0, 2).toUpperCase() : 'UN')}
+                      {task.assignee.avatar || (assigneeDisplay ? assigneeDisplay.slice(0, 2).toUpperCase() : 'UN')}
                     </span>
                     <div className={styles.taskDetailAssigneeInfo}>
-                      <span className={styles.taskDetailAssigneeName}>{task.assignee.name}</span>
+                      <span className={styles.taskDetailAssigneeName}>{assigneeDisplay}</span>
                       {task.assignee.role && (
                         <span className={styles.taskDetailAssigneeRole}>{task.assignee.role}</span>
                       )}
@@ -1863,7 +1891,7 @@ const TaskDetailModal: React.FC<{
                           <div className={styles.taskDetailTimelineDot} />
                           <div className={styles.taskDetailTimelineContent}>
                             <div className={styles.taskDetailTimelineHeader}>
-                              <strong className={styles.taskDetailActorName}>{item.actorName}</strong>
+                              <strong className={styles.taskDetailActorName}>{getActorDisplay(item)}</strong>
                             </div>
                             <div className={styles.taskDetailTimelineAction}>
                               {getActionText(item.action, item.detail)}
@@ -4056,13 +4084,14 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     selectedStaffTask?.taskType === 'COMPANY_DATA_PREPARATION' && staffTaskStatus === 'DONE'
   );
   const isCompanyDataReviewOrDone = isCompanyDataInReview || isCompanyDataDone;
-  const inReviewPendingSub = isCompanyDataReviewOrDone
+  const isCurrentTaskWorkbench = Boolean(selectedStaffTask && workbench && workbench.taskId === selectedStaffTask.id);
+  const inReviewPendingSub = (isCompanyDataReviewOrDone && isCurrentTaskWorkbench)
     ? (workbench?.submissions?.find((s) => s.status === 'IN_REVIEW')
       ?? workbench?.submissions?.find((s) => s.status === 'APPROVED')
       ?? workbench?.submissions?.[0])
     : undefined;
-  const inReviewSubmittedCandId = inReviewPendingSub?.targetEntityId || workbench?.candidateDrafts?.[0]?.candidateId;
-  const inReviewDrafts = isCompanyDataReviewOrDone
+  const inReviewSubmittedCandId = inReviewPendingSub?.targetEntityId || (isCurrentTaskWorkbench ? workbench?.candidateDrafts?.[0]?.candidateId : undefined);
+  const inReviewDrafts = (isCompanyDataReviewOrDone && isCurrentTaskWorkbench)
     ? (() => {
       let list = [...(workbench?.candidateDrafts || [])];
       if (list.length === 0 && inReviewPendingSub?.targetEntityId) {
@@ -4553,6 +4582,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   }, [selectedStaffTask?.id, selectedStaffTask?.projectId, selectedStaffTask?.taskType, loadTaskDocuments]);
 
   useEffect(() => {
+    setWorkbench(null);
+    setSubmittedCandidateData(null);
     setInReviewSelectedCandidateId(null);
     staffCandidateRequest.current++;
     setStaffCandidateLoading(false);
@@ -5955,8 +5986,6 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
 
     try {
       const payload = await taskApi.getTaskWorkbench(task.projectId, task.id);
-      setWorkbench(payload.data);
-
 
       if (task.taskType === 'COMPANY_DATA_PREPARATION') {
         try {
@@ -5978,20 +6007,21 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
         }
       }
 
+      let candidateData: CandidateResponse | null = null;
       if (task.status === 'IN_REVIEW' || task.status === 'DONE') {
         const pendingSub = payload.data?.submissions?.find((s: any) => s.status === 'IN_REVIEW' || s.status === 'APPROVED') ?? payload.data?.submissions?.[0];
         const candId = pendingSub?.targetEntityId || payload.data?.candidateDrafts?.[0]?.candidateId;
         if (candId) {
           try {
             const candPayload = await candidateApi.getCandidateById(candId);
-            setSubmittedCandidateData(candPayload.data);
+            candidateData = candPayload.data;
           } catch (e) {
             console.error('Failed to load in-review/approved candidate data', e);
           }
         }
-      } else {
-        setSubmittedCandidateData(null);
       }
+      setSubmittedCandidateData(candidateData);
+      setWorkbench(payload.data);
     } catch (error) {
       setWorkbenchError(error instanceof Error ? error.message : 'Cannot load task workbench.');
     } finally {
@@ -6073,6 +6103,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setStaffCandidate(null);
     setStaffCandidateEdit(emptyStaffCandidateEdit);
     setSubmittedCandidateData(null);
+    setWorkbench(null);
+    setInReviewSelectedCandidateId(null);
+    setWorkbenchError(null);
+    setWorkbenchMessage(null);
     setShowCancelSubmissionModal(false);
     setCompanyMemberDraft(null);
     setCompanyMemberItems([]);
@@ -9448,12 +9482,18 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
               <div className={`${styles.staffWorkbenchGrid} ${selectedStaffTask.taskType === 'COMPANY_MEMBER_RESEARCH' ? styles.companyMemberWorkbenchGrid : ''} ${(selectedStaffTask.taskType === 'FINANCIAL_RESEARCH' || selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION') ? styles.financialResearchWorkbenchGrid : ''} ${staffCandidate ? styles.staffWorkbenchCandidateOpen : ''}`}>
                 <main className={styles.workbenchMain}>
                   {isCompanyDataReviewOrDone ? (
-                    inReviewActiveCandId ? (
+                    workbenchLoading || !workbench || workbench.taskId !== selectedStaffTask.id ? (
+                      <div style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}>
+                        <Loader2 size={24} style={{ display: 'inline-block', animation: 'spin 1s linear infinite', marginBottom: '10px', color: '#2563eb' }} />
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>Loading candidate...</div>
+                      </div>
+                    ) : inReviewActiveCandId ? (
                       <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                         <CandidateReviewWorkspace
                           key={inReviewActiveCandId}
                           projectId={String(currentProjectId)}
                           candidateId={inReviewActiveCandId}
+                          initialCandidate={submittedCandidateData?.id === inReviewActiveCandId ? submittedCandidateData : undefined}
                           taskId={selectedStaffTask.id}
                           role="STAFF"
                           targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
@@ -9686,6 +9726,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             key={staffCandidate.id}
                             projectId={String(currentProjectId)}
                             candidateId={staffCandidate.id}
+                            initialCandidate={staffCandidate}
                             taskId={selectedStaffTask.id}
                             role="STAFF"
                             targetCompanyName={workbench?.targetCompanyName || displayedProject.targetCompanyName}
@@ -9750,6 +9791,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         setTaskRefreshTick((current) => current + 1);
                         setSelectedStaffTask(null);
                       }}
+                      onClose={() => setSelectedStaffTask(null)}
+                      initialResearch={workbench?.taskId === selectedStaffTask.id ? workbench?.financialResearch : undefined}
+                      onClearWorkbenchError={() => setWorkbenchError(null)}
                     />
                   ) : selectedStaffTask.taskType === 'PARTNER_CONTRACT_COLLECTION' ? (
                     <ContractResearchWorkbench
@@ -12202,6 +12246,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       )}
       <TaskDetailModal
         task={selectedTask}
+        projectMembers={projectMembers}
         onClose={() => setSelectedTask(null)}
       />
       {showCloseModal && apiProject && createPortal(

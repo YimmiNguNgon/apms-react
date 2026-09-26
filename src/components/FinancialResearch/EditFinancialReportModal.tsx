@@ -357,7 +357,7 @@ export default function EditFinancialReportModal({
               style={inputStyle}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Báo cáo tài chính Q2 2026"
+              placeholder="e.g. Q2 2026 Financial Report"
               disabled={isSubmitting}
             />
           </label>

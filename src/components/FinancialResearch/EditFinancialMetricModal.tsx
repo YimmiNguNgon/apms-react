@@ -17,15 +17,15 @@ interface Props {
 }
 
 const UNIT_OPTIONS = [
-  { value: 'MILLION_VND', label: 'Triệu VNĐ' },
-  { value: 'BILLION_VND', label: 'Tỷ VNĐ' },
-  { value: 'VND', label: 'VNĐ' },
-  { value: 'MILLION_USD', label: 'Triệu USD' },
+  { value: 'MILLION_VND', label: 'Million VND' },
+  { value: 'BILLION_VND', label: 'Billion VND' },
+  { value: 'VND', label: 'VND' },
+  { value: 'MILLION_USD', label: 'Million USD' },
   { value: 'USD', label: 'USD' },
   { value: 'PERCENT', label: '%' },
-  { value: 'RATIO', label: 'Tỷ lệ' },
-  { value: 'TIMES', label: 'Lần' },
-  { value: 'COUNT', label: 'Số lượng' },
+  { value: 'RATIO', label: 'Ratio' },
+  { value: 'TIMES', label: 'Times' },
+  { value: 'COUNT', label: 'Count' },
 ];
 
 export default function EditFinancialMetricModal({
@@ -100,7 +100,7 @@ export default function EditFinancialMetricModal({
 
     const parsedVal = parseFinancialValue(value);
     if (!parsedVal.entered) {
-      setValidationError('Vui lòng nhập giá trị cho chỉ số.');
+      setValidationError('Please enter a value for the metric.');
       return;
     }
     if (!parsedVal.valid) {

@@ -848,6 +848,7 @@ export interface ProjectTaskWorkbenchResponse {
   candidateDrafts?: CandidateDraftSummary[];
   profileUpdateProposalDrafts?: unknown[];
   submissions?: ProjectTaskSubmissionResponse[];
+  financialResearch?: FinancialResearchResponse | null;
 }
 
 export interface CreateProjectTaskSubmissionRequest {
@@ -1041,6 +1042,7 @@ export interface ProjectTaskResponse {
   description?: string | null;
   assignedToUserId?: number | null;
   assignedToName?: string | null;
+  assignedToEmail?: string | null;
   createdByUserId?: number | null;
   status: TaskStatus;
   priority: TaskPriority;
@@ -1064,6 +1066,7 @@ export interface ProjectTaskActivityResponse {
   id: number;
   actorId?: number;
   actorName: string;
+  actorEmail?: string | null;
   action: string;
   detail?: string;
   occurredAt: string;

@@ -6,6 +6,7 @@ export type TaskPriority = 'Highest' | 'High' | 'Medium' | 'Low';
 export type ProjectMember = {
   id: number;
   name: string;
+  email?: string;
   role: string;
   avatar: string;
   color: string;
