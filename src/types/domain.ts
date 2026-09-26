@@ -1652,12 +1652,12 @@ export type MonitoringReviewResult = 'NO_CHANGE' | 'UPDATE_PROPOSED' | 'RELATION
 export interface CompanyMonitoringAssignmentRequest {
   companyProfileId: string;
   assignedStaffId: number;
-  frequency: MonitoringFrequency;
+  frequency?: MonitoringFrequency;
 }
 
 export interface CompanyMonitoringUpdateRequest {
   assignedStaffId: number;
-  frequency: MonitoringFrequency;
+  frequency?: MonitoringFrequency;
 }
 
 export interface CompanyMonitoringReviewRequest {
@@ -1674,7 +1674,7 @@ export interface CompanyMonitoringAssignmentResponse {
   assignedStaffName: string;
   assignedStaffEmail: string;
   assignedByManagerId: number;
-  frequency: MonitoringFrequency;
+  frequency?: MonitoringFrequency;
   assignmentStatus: MonitoringStatus;
   displayStatus: string;
   latestReviewResult?: string | null;

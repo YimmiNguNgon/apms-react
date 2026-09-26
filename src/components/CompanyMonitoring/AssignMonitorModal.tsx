@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { accountApi } from '../../API/accountApi';
 import { companyMonitoringApi } from '../../API/companyMonitoringApi';
-import type { CompanyMonitoringAssignmentResponse, ProfileResponse, MonitoringFrequency } from '../../types/domain';
+import type { CompanyMonitoringAssignmentResponse, ProfileResponse } from '../../types/domain';
 
 interface StaffCandidate {
   id: number;
@@ -24,14 +24,13 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
   selectedCompany,
   selectedAssignment
 }) => {
-  const [form, setForm] = useState<{ assignedStaffId: string | number; frequency: MonitoringFrequency }>({
-    assignedStaffId: '',
-    frequency: 'MONTHLY'
+  const [form, setForm] = useState<{ assignedStaffId: string | number }>({
+    assignedStaffId: ''
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ staff?: string; frequency?: string }>({});
-  const [fieldTouched, setFieldTouched] = useState<{ staff?: boolean; frequency?: boolean }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ staff?: string }>({});
+  const [fieldTouched, setFieldTouched] = useState<{ staff?: boolean }>({});
 
   const [staffQuery, setStaffQuery] = useState('');
   const [staffSuggestions, setStaffSuggestions] = useState<StaffCandidate[]>([]);
@@ -45,8 +44,7 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
     if (isOpen) {
       if (selectedAssignment) {
         setForm({
-          assignedStaffId: selectedAssignment.assignedStaffId,
-          frequency: selectedAssignment.frequency
+          assignedStaffId: selectedAssignment.assignedStaffId
         });
         setStaffQuery(selectedAssignment.assignedStaffEmail || '');
         setSelectedStaff({
@@ -55,7 +53,7 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
           name: selectedAssignment.assignedStaffName || ''
         });
       } else {
-        setForm({ assignedStaffId: '', frequency: 'MONTHLY' });
+        setForm({ assignedStaffId: '' });
         setStaffQuery('');
         setSelectedStaff(null);
       }
@@ -120,12 +118,9 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
   }, [isOpen]);
 
   const validateForm = () => {
-    const errors: { staff?: string; frequency?: string } = {};
+    const errors: { staff?: string } = {};
     if (!form.assignedStaffId) {
       errors.staff = 'Please select a staff member from the suggestions.';
-    }
-    if (!form.frequency) {
-      errors.frequency = 'Please select a review cycle.';
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -141,7 +136,7 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFieldTouched({ staff: true, frequency: true });
+    setFieldTouched({ staff: true });
     
     if (!validateForm()) return;
     
@@ -151,8 +146,7 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
     try {
       if (selectedAssignment) {
         await companyMonitoringApi.updateAssignment(selectedAssignment.id, {
-          assignedStaffId: Number(form.assignedStaffId),
-          frequency: form.frequency
+          assignedStaffId: Number(form.assignedStaffId)
         });
       } else {
         if (!selectedCompany) {
@@ -160,8 +154,7 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
         }
         await companyMonitoringApi.assignMonitor({
           companyProfileId: selectedCompany.id,
-          assignedStaffId: Number(form.assignedStaffId),
-          frequency: form.frequency
+          assignedStaffId: Number(form.assignedStaffId)
         });
       }
       onSuccess();
@@ -204,8 +197,8 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
             </h3>
             <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
               {selectedAssignment
-                ? 'Update the assigned staff member or schedule frequency.'
-                : 'Assign a staff member to periodically monitor this company.'}
+                ? 'Update the assigned staff member.'
+                : 'Assign a staff member to monitor this company.'}
             </p>
           </div>
           <button
@@ -282,28 +275,11 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
                 )}
                 {fieldErrors.staff && <div style={{ color: 'var(--cds-support-error, #da1e28)', fontSize: '0.85rem', marginTop: '2px' }}>{fieldErrors.staff}</div>}
               </label>
-
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Review cycle</span>
-                <select
-                  className="admin-select"
-                  value={form.frequency}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, frequency: event.target.value as MonitoringFrequency }));
-                    if (!fieldTouched.frequency) setFieldTouched(curr => ({ ...curr, frequency: true }));
-                  }}
-                >
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="SEMI_ANNUALLY">Semi-annually</option>
-                </select>
-                {fieldErrors.frequency && <div style={{ color: 'var(--cds-support-error, #da1e28)', fontSize: '0.85rem', marginTop: '2px' }}>{fieldErrors.frequency}</div>}
-              </label>
             </div>
 
             {selectedAssignment && (
               <div className="monitoring-management-summary" style={{ marginTop: '8px', padding: '16px', background: 'var(--cds-layer-01)', borderRadius: '6px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Current company</span>
                     <strong style={{ fontSize: '0.95rem' }}>{selectedAssignment.companyName}</strong>
@@ -315,10 +291,6 @@ export const AssignMonitorModal: React.FC<AssignMonitorModalProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Last reviewed</span>
                     <strong style={{ fontSize: '0.95rem' }}>{formatDateTime(selectedAssignment.lastReviewedAt || undefined)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Next review</span>
-                    <strong style={{ fontSize: '0.95rem' }}>{formatDateTime(selectedAssignment.nextReviewAt || undefined)}</strong>
                   </div>
                 </div>
               </div>

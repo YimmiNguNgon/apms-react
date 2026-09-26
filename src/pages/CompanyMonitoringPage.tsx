@@ -11,7 +11,6 @@ import type {
   CompanyMonitoringAssignmentResponse,
   CompanyMonitoringReviewResponse,
   CompanyProfileUpdateProposalResponse,
-  MonitoringFrequency,
   ProfileResponse,
   UserSearchResponse,
   FieldEvidence
@@ -51,7 +50,6 @@ export type MonitoringStatusFilter = 'ALL' | 'UNASSIGNED' | 'NOT_ASSIGNED' | 'AC
 type MonitoringFormState = {
   companyProfileId: string;
   assignedStaffId: string;
-  frequency: MonitoringFrequency;
 };
 type StaffCandidate = UserSearchResponse & {
   role?: string;
@@ -68,7 +66,6 @@ type MonitoringRow =
 type MonitoringFieldErrors = {
   company?: string;
   staff?: string;
-  frequency?: string;
 };
 
 type CompanyMonitoringPageProps = {
@@ -80,8 +77,7 @@ const PENDING_PROPOSAL_STATUSES = new Set(['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'P
 
 const initialForm: MonitoringFormState = {
   companyProfileId: '',
-  assignedStaffId: '',
-  frequency: 'MONTHLY'
+  assignedStaffId: ''
 };
 
 
@@ -126,7 +122,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<MonitoringStatusFilter>('ALL');
-  const [frequencyFilter, setFrequencyFilter] = useState('ALL');
   const [proposalSearch, setProposalSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [proposalPage, setProposalPage] = useState(1);
@@ -146,8 +141,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
   const [staffQuery, setStaffQuery] = useState('');
   const [fieldTouched, setFieldTouched] = useState({
     company: false,
-    staff: false,
-    frequency: false
+    staff: false
   });
   const [selectedCompany, setSelectedCompany] = useState<ProfileResponse | null>(null);
 
@@ -428,7 +422,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, frequencyFilter]);
+  }, [search, statusFilter]);
 
   useEffect(() => {
     const valid: string[] = ['ALL', 'UNASSIGNED', 'NOT_ASSIGNED', 'ACTIVE'];
@@ -448,7 +442,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     setSelectedStaff(null);
     setStaffSuggestions([]);
     setStaffSuggestionsOpen(false);
-    setFieldTouched({ company: false, staff: false, frequency: false });
+    setFieldTouched({ company: false, staff: false });
     setFormError(null);
   };
 
@@ -460,11 +454,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     if (fieldTouched.staff && !form.assignedStaffId) {
       errors.staff = 'Please select a valid staff member.';
     }
-    if (fieldTouched.frequency && !form.frequency) {
-      errors.frequency = 'Please select a review cycle.';
-    }
     return errors;
-  }, [fieldTouched, form.assignedStaffId, form.companyProfileId, form.frequency]);
+  }, [fieldTouched, form.assignedStaffId, form.companyProfileId]);
 
 
   const selectCompany = (profile: ProfileResponse) => {
@@ -512,13 +503,12 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     } satisfies StaffCandidate;
     setForm({
       companyProfileId: assignment.companyProfileId,
-      assignedStaffId: String(assignment.assignedStaffId),
-      frequency: assignment.frequency
+      assignedStaffId: String(assignment.assignedStaffId)
     });
     setSelectedCompany(company);
     setSelectedStaff(staff);
     setStaffQuery(assignment.assignedStaffEmail);
-    setFieldTouched({ company: false, staff: false, frequency: false });
+    setFieldTouched({ company: false, staff: false });
     setStaffSuggestionsOpen(false);
     setFormError(null);
     setShowCreateModal(true);
@@ -550,8 +540,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
     event.preventDefault();
     setFormError(null);
 
-    if (!form.companyProfileId || !form.assignedStaffId || !form.frequency) {
-      setFormError('Please select a company, a staff member, and a monitoring frequency.');
+    if (!form.companyProfileId || !form.assignedStaffId) {
+      setFormError('Please select a company and a staff member.');
       return;
     }
 
@@ -559,16 +549,14 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
       setSaving(true);
       if (selectedAssignment) {
         await companyMonitoringApi.updateAssignment(selectedAssignment.id, {
-          assignedStaffId: Number(form.assignedStaffId),
-          frequency: form.frequency
+          assignedStaffId: Number(form.assignedStaffId)
         });
         closeModal();
         await refreshAfterMutation('Monitoring assignment updated.');
       } else {
         await companyMonitoringApi.assignMonitor({
           companyProfileId: form.companyProfileId,
-          assignedStaffId: Number(form.assignedStaffId),
-          frequency: form.frequency
+          assignedStaffId: Number(form.assignedStaffId)
         });
         closeModal();
         await refreshAfterMutation('Monitoring assignment created.');
@@ -660,14 +648,9 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         }
       }
 
-      if (frequencyFilter !== 'ALL') {
-        if (isUnassigned) return false; // Unassigned has no frequency
-        if (row.assignment.frequency !== frequencyFilter) return false;
-      }
-
       return true;
     });
-  }, [monitoringRows, search, statusFilter, frequencyFilter]);
+  }, [monitoringRows, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const currentRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -717,10 +700,8 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
 
   const metrics = useMemo(() => {
     const active = assignments.filter((item) => item.assignmentStatus === 'ACTIVE').length;
-    const due = assignments.filter((item) => item.displayStatus === 'DUE').length;
-    const overdue = assignments.filter((item) => item.displayStatus === 'OVERDUE').length;
     const paused = assignments.filter((item) => item.assignmentStatus === 'PAUSED').length;
-    return { active, due, overdue, paused, unassigned: unassignedProfiles.length };
+    return { active, paused, unassigned: unassignedProfiles.length };
   }, [assignments, unassignedProfiles.length]);
 
   const selectedProposalBundle = selectedProposalId ? proposalBundles[selectedProposalId] : null;
@@ -825,8 +806,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
           <strong className="project-name-primary" title={profileName(profile)}>{profileName(profile)}</strong>
         </td>
         <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
-        <td><span style={{ color: 'var(--text-muted)' }}>&mdash;</span></td>
         <td>
           <span className="project-status-badge danger">Not Assigned</span>
         </td>
@@ -865,10 +844,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
         ) : (
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{assignment.assignedStaffEmail}</span>
         )}
-      </td>
-      <td><span style={{ color: 'var(--text-secondary)' }}>{frequencyLabel(assignment.frequency)}</span></td>
-      <td>
-        <span className="project-list-date">{formatDate(assignment.nextReviewAt)}</span>
       </td>
       <td>
         <span className={`project-status-badge ${statusTone(assignment.assignmentStatus)}`}>
@@ -1023,10 +998,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
               <strong>{pendingReviewRows.length}</strong>
               <span>Pending Reviews</span>
             </article>
-            <article>
-              <strong>{metrics.overdue}</strong>
-              <span>Overdue</span>
-            </article>
           </div>
         </div>
 
@@ -1083,16 +1054,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                   <option value="UNASSIGNED">Not Assigned</option>
                   <option value="ACTIVE">Active</option>
                 </select>
-                <select
-                  className="search-input"
-                  value={frequencyFilter}
-                  onChange={(event) => setFrequencyFilter(event.target.value)}
-                >
-                  <option value="ALL">All Frequencies</option>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="SEMI_ANNUALLY">Semi-annually</option>
-                </select>
               </div>
 
               <div className="manager-project-table-scroll">
@@ -1103,8 +1064,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                         <th className="col-mono">#</th>
                         <th>Company</th>
                         <th>Assigned Staff</th>
-                        <th>Review Cycle</th>
-                        <th>Next Review</th>
                         <th>Status</th>
                         <th>Proposal</th>
                         <th>Actions</th>
@@ -1113,7 +1072,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={8} className="project-table-empty">
+                          <td colSpan={6} className="project-table-empty">
                             <p className="project-table-empty-title">Loading monitoring assignments...</p>
                           </td>
                         </tr>
@@ -1125,7 +1084,7 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                         )
                       ) : (
                         <tr>
-                          <td colSpan={8} className="project-table-empty">
+                          <td colSpan={6} className="project-table-empty">
                             <p className="project-table-empty-title">No monitoring assignments found.</p>
                             <p className="project-table-empty-desc">Try adjusting your search or filters.</p>
                           </td>
@@ -1473,10 +1432,6 @@ export const CompanyMonitoringPage: React.FC<CompanyMonitoringPageProps> = ({ se
                     <div style={{ flex: '1 1 150px' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Submitted at</div>
                       <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>{formatDate(selectedProposalBundle.proposal.createdAt)}</div>
-                    </div>
-                    <div style={{ flex: '1 1 120px' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Review cycle</div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>{selectedProposalAssignment ? frequencyLabel(selectedProposalAssignment.frequency) : '-'}</div>
                     </div>
                     <div style={{ flex: '1 1 100px' }}>
                       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Changes</div>

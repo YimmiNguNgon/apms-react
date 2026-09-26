@@ -210,27 +210,11 @@ export const CompanyMonitoringCard: React.FC<CompanyMonitoringCardProps> = ({ co
               </div>
             </div>
             <div className={styles.infoItem}>
-              <Clock size={14} className={styles.infoIcon} />
-              <div className={styles.infoContent}>
-                <span className={styles.infoLabel}>{t('review_cycle', 'Review Cycle')}</span>
-                <span className={styles.infoValue}>{assignment.frequency === 'SEMI_ANNUALLY' ? 'Semi-annually' : assignment.frequency.charAt(0) + assignment.frequency.slice(1).toLowerCase()}</span>
-              </div>
-            </div>
-            <div className={styles.infoItem}>
-              <Calendar size={14} className={styles.infoIcon} />
-              <div className={styles.infoContent}>
-                <span className={styles.infoLabel}>{t('next_review', 'Next Review')}</span>
-                <span className={styles.infoValue}>
-                  {assignment.nextReviewAt ? new Date(assignment.nextReviewAt).toLocaleDateString('en-GB') : '—'}
-                </span>
-              </div>
-            </div>
-            <div className={styles.infoItem}>
               <AlertCircle size={14} className={styles.infoIcon} style={{ color: getStatusColor(assignment.displayStatus) }} />
               <div className={styles.infoContent}>
                 <span className={styles.infoLabel}>{t('status', 'Status')}</span>
                 <span className={styles.infoValue} style={{ color: getStatusColor(assignment.displayStatus) }}>
-                  {assignment.assignmentStatus === 'PAUSED' ? 'Paused' : assignment.displayStatus === 'OVERDUE' ? 'Overdue' : 'Active'}
+                  {assignment.assignmentStatus === 'PAUSED' ? 'Paused' : 'Active'}
                 </span>
               </div>
             </div>

@@ -66,22 +66,9 @@ const reviewResultTone = (result?: string | null) => {
 };
 
 const getStatusBadge = (assignment: CompanyMonitoringAssignment) => {
-  const status = assignment.displayStatus;
-  let tone = 'neutral';
-  let label = 'On Schedule';
-  if (status === 'OVERDUE') {
-    tone = 'danger';
-    label = 'Overdue';
-  } else if (status === 'DUE') {
-    tone = 'warning';
-    label = 'Due';
-  } else if (status === 'ON_SCHEDULE' || status === 'UP_TO_DATE') {
-    tone = 'success';
-    label = 'On Schedule';
-  } else if (status === 'PAUSED') {
-    tone = 'neutral';
-    label = 'Paused';
-  }
+  const isPaused = assignment.assignmentStatus === 'PAUSED' || assignment.displayStatus === 'PAUSED';
+  const tone = isPaused ? 'neutral' : 'success';
+  const label = isPaused ? 'Paused' : 'Active';
   return (
     <span className={`project-status-badge ${tone}`}>
       {label}
@@ -100,7 +87,6 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [frequencyFilter, setFrequencyFilter] = useState('ALL');
   
   const [currentPage, setCurrentPage] = useState(0);
 
@@ -156,8 +142,6 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   }, [isManagerOrAdmin]);
 
   const totalCount = allAssignments.length;
-  const overdueCount = allAssignments.filter(a => a.displayStatus === 'OVERDUE').length;
-  const dueCount = allAssignments.filter(a => a.displayStatus === 'DUE').length;
   const reviewedCount = allAssignments.filter(a => a.lastReviewedAt != null).length;
 
   const myProposals = useMemo(() => {
@@ -171,6 +155,13 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
     });
     return Array.from(map.values());
   }, [staffHistory]);
+
+  const pendingProposalsCount = useMemo(() => {
+    return myProposals.filter(p => {
+      const s = (p.proposalStatus || '').toUpperCase();
+      return s === 'SUBMITTED' || s === 'PENDING' || s === 'IN_REVIEW' || s === 'DRAFT';
+    }).length;
+  }, [myProposals]);
 
   const displayedProposals = useMemo(() => {
     return myProposals.filter(proposal => {
@@ -202,16 +193,14 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
       const matchSearch = !searchQuery || 
         assignment.companyName?.toLowerCase().includes(searchQuery.toLowerCase());
         
+      const isPaused = assignment.assignmentStatus === 'PAUSED' || assignment.displayStatus === 'PAUSED';
       const matchStatus = statusFilter === 'ALL' || 
-        assignment.displayStatus === statusFilter ||
-        (statusFilter === 'ON_SCHEDULE' && assignment.displayStatus === 'UP_TO_DATE');
+        (statusFilter === 'PAUSED' && isPaused) ||
+        (statusFilter === 'ACTIVE' && !isPaused);
         
-      const matchFreq = frequencyFilter === 'ALL' || 
-        assignment.frequency === frequencyFilter;
-        
-      return matchSearch && matchStatus && matchFreq;
+      return matchSearch && matchStatus;
     });
-  }, [allAssignments, searchQuery, statusFilter, frequencyFilter]);
+  }, [allAssignments, searchQuery, statusFilter]);
 
   const currentTabData = useMemo(() => {
     if (activeTab === 'monitoring') return displayedAssignments;
@@ -228,7 +217,7 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchQuery, statusFilter, frequencyFilter, activeTab]);
+  }, [searchQuery, statusFilter, activeTab]);
 
   useEffect(() => {
     if (currentPage >= pageCount && pageCount > 0) {
@@ -244,7 +233,6 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     setStatusFilter('ALL');
-    setFrequencyFilter('ALL');
     setSearchQuery('');
     setCurrentPage(0);
   };
@@ -344,12 +332,8 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
               <span>My Assignments</span>
             </article>
             <article>
-              <strong>{dueCount}</strong>
-              <span>Due Soon</span>
-            </article>
-            <article>
-              <strong>{overdueCount}</strong>
-              <span>Overdue</span>
+              <strong>{pendingProposalsCount}</strong>
+              <span>Pending Proposals</span>
             </article>
             <article>
               <strong>{reviewedCount}</strong>
@@ -410,20 +394,8 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="ALL">All Statuses</option>
-                <option value="ON_SCHEDULE">On Schedule</option>
-                <option value="DUE">Due</option>
-                <option value="OVERDUE">Overdue</option>
+                <option value="ACTIVE">Active</option>
                 <option value="PAUSED">Paused</option>
-              </select>
-              <select 
-                className="search-input"
-                value={frequencyFilter}
-                onChange={(e) => setFrequencyFilter(e.target.value)}
-              >
-                <option value="ALL">All Frequencies</option>
-                <option value="MONTHLY">Monthly</option>
-                <option value="QUARTERLY">Quarterly</option>
-                <option value="SEMI_ANNUALLY">Semi-annually</option>
               </select>
             </div>
           )}
@@ -494,9 +466,7 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                           <th className="col-center" style={{ width: '44px' }}>#</th>
                           <th>Company</th>
                           <th style={{ width: '130px' }}>Status</th>
-                          <th style={{ width: '130px' }}>Review Cycle</th>
-                          <th style={{ width: '130px' }}>Last Reviewed</th>
-                          <th style={{ width: '130px' }}>Next Review</th>
+                          <th style={{ width: '140px' }}>Last Reviewed</th>
                           <th style={{ width: '110px' }}>Actions</th>
                         </tr>
                       </thead>
@@ -510,14 +480,13 @@ export const StaffMonitoringDashboard: React.FC<StaffMonitoringDashboardProps> =
                             <td>
                               {getStatusBadge(assignment)}
                             </td>
-                            <td>{formatEnum(assignment.frequency)}</td>
                             <td><span style={{ color: 'var(--text-secondary)' }}>{formatDate(assignment.lastReviewedAt)}</span></td>
-                            <td><strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatDate(assignment.nextReviewAt)}</strong></td>
                             <td>
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                 <button 
                                   type="button"
                                   className="project-detail-btn primary"
+                                  disabled={assignment.assignmentStatus === 'PAUSED'}
                                   onClick={() => setSelectedAssignmentForReview(assignment)}
                                 >
                                   Review
