@@ -135,7 +135,7 @@ export const ContractCard: React.FC<Props> = ({
               title={
                 !isEligible
                   ? 'Extract this contract before adding to submission package.'
-                  : 'Select this contract for Manager submission'
+                  : 'Include this contract for review'
               }
             >
               <input
@@ -143,9 +143,9 @@ export const ContractCard: React.FC<Props> = ({
                 checked={selectedForSubmission}
                 disabled={!canEditCard || !isEligible || isOtherExtracting}
                 onChange={handleSelectionChange}
-                aria-label={`Select ${contract.title || 'Contract'} to submit`}
+                aria-label={`Include ${contract.title || 'Contract'} for review`}
               />
-              <span>Submit</span>
+              <span>Include for review</span>
             </label>
 
             {requiresRevision ? (
@@ -209,15 +209,6 @@ export const ContractCard: React.FC<Props> = ({
 
       {/* Contract Title & Number */}
       <h4 className={styles.cardTitle}>{contract.title}</h4>
-      {contract.documentName ? (
-        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#64748b' }}>
-          File: {contract.documentName}
-        </p>
-      ) : contract.dataEntryMethod === 'MANUAL' ? (
-        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
-          Không có tài liệu tham khảo
-        </p>
-      ) : null}
 
       {requiresRevision && (
         <div className={styles.cardRevisionNotice}>
@@ -226,80 +217,59 @@ export const ContractCard: React.FC<Props> = ({
         </div>
       )}
 
-      {/* View Source PDF Link */}
-      {contract.documentId ? (
-        <button
-          className={styles.cardPdfLink}
-          type="button"
-          disabled={isOtherExtracting}
-          onClick={(event) => {
-            stop(event);
-            if (isOtherExtracting) return;
-            onViewPdf(contract.documentId!);
-          }}
-          style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-          title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : undefined}
-        >
-          <FileText size={14} />
-          {contract.dataEntryMethod === 'MANUAL' ? 'View Reference PDF' : 'View Original PDF'}
-        </button>
-      ) : null}
-
       {/* Card Footer */}
-      <div className={styles.cardFooter}>
-        <div
-          className={`${styles.cardStatus} ${
-            isExtracted
-              ? styles.cardStatusSuccess
-              : isFailed
-              ? styles.cardStatusError
-              : isExtracting
-              ? styles.cardStatusExtracting
-              : ''
-          }`}
-        >
-          {isExtracting ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
-                  <Loader2 size={12} className={styles.spinIcon} />
-                  <span>Extracting...</span>
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
-                  {contract.extractionProgress || 35}%
-                </span>
+      {(isExtracting || isExtracted || isFailed || contract.dataEntryMethod === 'MANUAL') && (
+        <div className={styles.cardFooter}>
+          <div
+            className={`${styles.cardStatus} ${
+              isExtracted
+                ? styles.cardStatusSuccess
+                : isFailed
+                ? styles.cardStatusError
+                : isExtracting
+                ? styles.cardStatusExtracting
+                : ''
+            }`}
+          >
+            {isExtracting ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
+                    <Loader2 size={12} className={styles.spinIcon} />
+                    <span>Extracting...</span>
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
+                    {contract.extractionProgress || 35}%
+                  </span>
+                </div>
+                <div style={{ width: '100%', height: 4, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${Math.max(contract.extractionProgress || 35, 10)}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
+                      borderRadius: 999,
+                      transition: 'width 0.35s ease',
+                    }}
+                  />
+                </div>
               </div>
-              <div style={{ width: '100%', height: 4, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    width: `${Math.max(contract.extractionProgress || 35, 10)}%`,
-                    height: '100%',
-                    background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
-                    borderRadius: 999,
-                    transition: 'width 0.35s ease',
-                  }}
-                />
-              </div>
-            </div>
-          ) : contract.dataEntryMethod === 'MANUAL' ? (
-            <>
-              <FileText size={14} color="#2563eb" />
-              <span style={{ color: '#1d4ed8', fontWeight: 600 }}>Manual Entry</span>
-            </>
-          ) : isFailed ? (
-            <span>Extraction Failed</span>
-          ) : isExtracted ? (
-            <>
-              <CheckCircle2 size={14} />
-              <span>{clauseCount} extracted fields</span>
-            </>
-          ) : (
-            <span style={{ color: '#64748b' }}>Not Extracted</span>
-          )}
-        </div>
+            ) : contract.dataEntryMethod === 'MANUAL' ? (
+              <>
+                <FileText size={14} color="#2563eb" />
+                <span style={{ color: '#1d4ed8', fontWeight: 600 }}>Manual Entry</span>
+              </>
+            ) : isFailed ? (
+              <span>Extraction Failed</span>
+            ) : isExtracted ? (
+              <>
+                <CheckCircle2 size={14} />
+                <span>{clauseCount} extracted fields</span>
+              </>
+            ) : null}
+          </div>
 
-        {canEditCard && contract.dataEntryMethod !== 'MANUAL' && (
-          isExtracted ? (
+          {canEditCard && contract.dataEntryMethod !== 'MANUAL' && isExtracted && (
             <button
               className={styles.cardExtractBtn}
               type="button"
@@ -316,26 +286,9 @@ export const ContractCard: React.FC<Props> = ({
               <RefreshCw size={12} />
               Re-extract
             </button>
-          ) : !isExtracting && (
-            <button
-              className={styles.cardExtractBtn}
-              type="button"
-              disabled={isOtherExtracting}
-              onClick={(event) => {
-                stop(event);
-                if (isOtherExtracting) return;
-                onSelect(contract.id);
-                onExtract(contract.id);
-              }}
-              style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : { color: '#2563eb', fontWeight: 600 }}
-              title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : 'Extract contract terms with AI'}
-            >
-              <Sparkles size={12} />
-              {isFailed ? 'Retry' : 'Extract'}
-            </button>
-          )
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </article>
   );
 };

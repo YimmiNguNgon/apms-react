@@ -989,7 +989,6 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
               <div>
                 <span className="workspace-side-eyebrow">CREATE NEW PROJECT</span>
                 <h3 id="create-project-title">Create new project</h3>
-                <p>Define the project goal, target company, and deliverables.</p>
               </div>
               <button className="project-modal-close" type="button" aria-label={t('create.closeAria')} onClick={() => { setShowCreateForm(false); setFeedback(null); setTaxCodeCheck(null); setOpenProjectConflict(null); setTaxCodeError(null); }}>&times;</button>
             </div>
@@ -1047,7 +1046,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({ setActiveP
                     </select>
                   </label>
                   <label>
-                    <span>Target Company</span>
+                    <span>Target Company (Legal Name)</span>
                     {projectForm.projectType === 'UPDATE_EXISTING_COMPANY' ? (
                       <>
                         <select

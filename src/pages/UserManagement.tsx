@@ -495,7 +495,7 @@ const UsersTab: React.FC<{
         </div>
         <div className="workspace-head-actions">
           <button className="btn btn-primary" type="button" onClick={openCreateForm}>
-            + {t('users.createAccount', 'Create account')}
+             {t('users.createAccount', 'Create account')}
           </button>
         </div>
       </div>

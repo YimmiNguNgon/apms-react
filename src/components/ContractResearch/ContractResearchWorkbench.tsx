@@ -71,18 +71,18 @@ export function hasMeaningfulContractData(contract?: ContractEntry | null): bool
 }
 
 export function getDerivedStatusLabel(status?: string | null): string {
-  if (!status) return '';
+  if (!status) return 'Not determined';
   switch (status) {
     case 'NOT_EFFECTIVE':
-      return 'Chưa có hiệu lực';
+      return 'Not effective';
     case 'ACTIVE':
-      return 'Đang có hiệu lực';
+      return 'Active';
     case 'EXPIRED':
-      return 'Hết hiệu lực';
+      return 'Expired';
     case 'TERMINATED':
-      return 'Đã chấm dứt';
+      return 'Terminated';
     case 'UNKNOWN':
-      return 'Chưa xác định';
+      return 'Not determined';
     default:
       return status;
   }
@@ -96,21 +96,21 @@ export function getDerivedStatusTooltip(
   if (!status) return undefined;
   if (status === 'NOT_EFFECTIVE') {
     if (effectiveDate) {
-      return `Hợp đồng sẽ có hiệu lực từ ${formatDate(effectiveDate)}.`;
+      return `Contract will be effective from ${formatDate(effectiveDate)}.`;
     }
-    return 'Hợp đồng chưa đến ngày có hiệu lực.';
+    return 'Contract is not yet effective.';
   }
   if (status === 'EXPIRED') {
     if (expiryDate) {
-      return `Hợp đồng đã hết hiệu lực từ ${formatDate(expiryDate)}.`;
+      return `Contract expired on ${formatDate(expiryDate)}.`;
     }
-    return 'Hợp đồng đã hết hiệu lực.';
+    return 'Contract has expired.';
   }
   if (status === 'ACTIVE') {
-    return 'Hợp đồng đang có hiệu lực.';
+    return 'Contract is currently active.';
   }
   if (status === 'TERMINATED') {
-    return 'Hợp đồng đã chấm dứt hiệu lực.';
+    return 'Contract has been terminated.';
   }
   return undefined;
 }
@@ -429,7 +429,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (id === selectedContractId) return;
     if (manualContractDirty) {
       const confirmLeave = window.confirm(
-        'Bạn có thay đổi chưa lưu trên hợp đồng này. Bạn có chắc chắn muốn chuyển sang hợp đồng khác không?'
+        'You have unsaved changes on this contract. Are you sure you want to switch to another contract?'
       );
       if (!confirmLeave) return;
       setManualContractDirty(false);
@@ -833,7 +833,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
     if (manualContractDirty) {
       setToast({
-        message: 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.',
+        message: 'You have unsaved changes. Please save your changes before submitting for review.',
         type: 'error',
       });
       return;
@@ -851,7 +851,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
     if (manualContractDirty) {
       setToast({
-        message: 'Bạn có thay đổi chưa lưu trên biểu mẫu nhập thủ công. Vui lòng lưu thông tin hợp đồng trước khi gửi duyệt.',
+        message: 'You have unsaved changes on the manual entry form. Please save contract details before submitting for review.',
         type: 'error',
       });
       return;
@@ -870,7 +870,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
         setSelectedContractId(c.id);
         const errorDetail = dateErrors.signingDate || dateErrors.effectiveDate || dateErrors.expiryDate;
         setToast({
-          message: `Hợp đồng "${c.title}" có ngày không hợp lệ: ${errorDetail}`,
+          message: `Contract "${c.title}" has invalid dates: ${errorDetail}`,
           type: 'error',
         });
         return;
@@ -883,7 +883,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     if (emptyManualContract) {
       setSelectedContractId(emptyManualContract.id);
       setToast({
-        message: `Hợp đồng "${emptyManualContract.title}" chưa có thông tin nào. Vui lòng nhập thông tin hợp đồng trước khi gửi duyệt.`,
+        message: `Contract "${emptyManualContract.title}" has no details. Please fill in the contract information before submitting for review.`,
         type: 'error',
       });
       return;
@@ -1416,10 +1416,10 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
     try {
       const updated = await contractResearchApi.replaceContractFile(projectId, taskId, contractId, file);
       setResearch(updated);
-      setToast({ message: 'Đã cập nhật tài liệu PDF tham khảo thành công.', type: 'success' });
+      setToast({ message: 'Reference PDF document updated successfully.', type: 'success' });
     } catch (err: any) {
       setToast({
-        message: err?.response?.data?.message || err?.message || 'Không thể cập nhật tài liệu PDF.',
+        message: err?.response?.data?.message || err?.message || 'Failed to update PDF document.',
         type: 'error',
       });
     } finally {
@@ -1706,33 +1706,27 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
           </div>
 
           {!isManagerMode && contractsToDisplay.length > 0 && (
-            <div className={styles.selectionToolbar}>
-              <div className={styles.selectionCountBadge}>
-                <span className={styles.selectionCountText}>
-                  Đã chọn <strong>{selectedCount}</strong>/{eligibleCount}
-                </span>
-              </div>
-
+            <div className={styles.selectionToolbar} style={{ justifyContent: 'flex-start' }}>
               <div className={styles.selectionBtnGroup}>
                 <button
                   type="button"
                   className={`${styles.selectionActionBtn} ${styles.selectionActionBtnPrimary}`}
                   onClick={handleSelectAllContracts}
                   disabled={!effectiveCanEdit || isAllSelected || eligibleCount === 0 || isAnyExtracting}
-                  title="Tích tất cả các hợp đồng đủ điều kiện để nộp"
+                  title="Select all eligible contracts for review"
                 >
                   <CheckCheck size={13} />
-                  <span>Tích tất cả</span>
+                  <span>Select all</span>
                 </button>
                 <button
                   type="button"
                   className={styles.selectionActionBtn}
                   onClick={handleDeselectAllContracts}
                   disabled={!effectiveCanEdit || selectedCount === 0 || isAnyExtracting}
-                  title="Hủy tích tất cả các hợp đồng"
+                  title="Deselect all contracts"
                 >
                   <X size={13} />
-                  <span>Hủy tích</span>
+                  <span>Deselect all</span>
                 </button>
               </div>
             </div>
@@ -1893,7 +1887,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         }}
                       >
                         <FileText size={13} color="#94a3b8" style={{ flexShrink: 0 }} />
-                        <span>Không có tài liệu tham khảo</span>
+                        <span>No reference document</span>
                       </div>
                     ) : (
                       <div
@@ -2016,7 +2010,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     </button>
                   )}
 
-                  {/* For Manual contracts in SUMMARY mode: Chỉnh sửa thông tin */}
+                  {/* For Manual contracts in SUMMARY mode: Edit Details */}
                   {selectedContract.dataEntryMethod === 'MANUAL' &&
                     selectedContractEditable &&
                     currentManualMode === 'SUMMARY' && (
@@ -2027,7 +2021,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       style={{ padding: '6px 14px', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}
                     >
                       <Edit3 size={14} />
-                      Chỉnh sửa thông tin
+                      Edit Details
                     </button>
                   )}
 
@@ -2062,7 +2056,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             cursor: isReplacingContractFile ? 'not-allowed' : 'pointer',
                             fontSize: 13,
                           }}
-                          title="Thay đổi tài liệu PDF tham khảo cho hợp đồng này"
+                          title="Change reference PDF document for this contract"
                         >
                           <input
                             type="file"
@@ -2077,7 +2071,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                             }}
                           />
                           {isReplacingContractFile ? <Loader2 size={14} className={styles.spinIcon} /> : <RefreshCw size={14} />}
-                          <span>{isReplacingContractFile ? 'Đang thay đổi...' : 'Thay đổi PDF'}</span>
+                          <span>{isReplacingContractFile ? 'Updating...' : 'Change PDF'}</span>
                         </label>
                       )}
                     </div>
@@ -2091,7 +2085,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         cursor: isReplacingContractFile ? 'not-allowed' : 'pointer',
                         fontSize: 13,
                       }}
-                      title="Đính kèm tài liệu PDF tham khảo cho hợp đồng này"
+                      title="Attach reference PDF document for this contract"
                     >
                       <input
                         type="file"
@@ -2106,7 +2100,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         }}
                       />
                       {isReplacingContractFile ? <Loader2 size={14} className={styles.spinIcon} /> : <FileUp size={14} />}
-                      <span>{isReplacingContractFile ? 'Đang tải lên...' : 'Đính kèm PDF tham khảo'}</span>
+                      <span>{isReplacingContractFile ? 'Uploading...' : 'Attach PDF'}</span>
                     </label>
                   ) : null}
 
@@ -2173,7 +2167,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         </div>
                       ) : (
                         <span className={`${styles.statusBadge} ${styles.statusDraft}`}>
-                          ● Unextracted
+                          ● Not Extracted
                         </span>
                       )}
                     </>
@@ -2262,7 +2256,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       setResearch(updated);
                       setManualViewModes((prev) => ({ ...prev, [selectedContract.id]: 'SUMMARY' }));
                       setManualContractDirty(false);
-                      setToast({ message: 'Lưu thông tin hợp đồng thành công!', type: 'success' });
+                      setToast({ message: 'Contract details saved successfully!', type: 'success' });
                     }}
                     onCancel={() => {
                       if (hasMeaningfulContractData(selectedContract)) {
@@ -2414,7 +2408,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                                     : '#c2410c',
                               }}
                             >
-                              {getDerivedStatusLabel(selectedContract.derivedContractStatus) || 'Đang có hiệu lực'}
+                              {getDerivedStatusLabel(selectedContract.derivedContractStatus) || 'Active'}
                             </strong>
                           </span>
                         </div>
@@ -2825,7 +2819,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 </span>
                 {manualContractDirty && (
                   <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
-                    • Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.
+                    • You have unsaved changes. Please save your changes before submitting for review.
                   </span>
                 )}
               </div>
@@ -2836,7 +2830,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 disabled={!effectiveCanEdit || isSubmittingPackage || effectiveSubmissionIds.length === 0 || manualContractDirty}
                 title={
                   manualContractDirty
-                    ? 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.'
+                    ? 'You have unsaved changes. Please save your changes before submitting for review.'
                     : undefined
                 }
               >
@@ -2862,7 +2856,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 </span>
                 {manualContractDirty && (
                   <span style={{ color: '#dc2626', fontWeight: 600, marginLeft: 8 }}>
-                    • Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.
+                    • You have unsaved changes. Please save your changes before submitting for review.
                   </span>
                 )}
               </div>
@@ -2873,7 +2867,7 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                 disabled={!effectiveCanEdit || isSubmittingPackage || allApproved || isAnyExtracting || effectiveSubmissionIds.length === 0 || manualContractDirty}
                 title={
                   manualContractDirty
-                    ? 'Bạn có thay đổi chưa lưu. Vui lòng lưu thông tin trước khi gửi duyệt.'
+                    ? 'You have unsaved changes. Please save your changes before submitting for review.'
                     : isAnyExtracting
                     ? 'AI extraction is currently in progress. Please wait for completion before submitting.'
                     : effectiveSubmissionIds.length === 0

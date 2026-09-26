@@ -96,7 +96,7 @@ export const ManualContractSummaryView: React.FC<Props> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <FileText size={16} color="#2563eb" />
           <span style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>
-            Hợp đồng nhập thủ công • {parties.length} bên tham gia
+            Manual Entry • {parties.length} {parties.length === 1 ? 'party' : 'parties'}
           </span>
         </div>
 
@@ -117,7 +117,7 @@ export const ManualContractSummaryView: React.FC<Props> = ({
               <label
                 className={styles.secondaryButton}
                 style={{ padding: '4px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, cursor: isReplacingFile ? 'not-allowed' : 'pointer' }}
-                title="Thay đổi tài liệu PDF tham khảo"
+                title="Change reference PDF document"
               >
                 <input
                   type="file"
@@ -138,7 +138,7 @@ export const ManualContractSummaryView: React.FC<Props> = ({
                   }}
                 />
                 {isReplacingFile ? <Loader2 size={12} className={styles.spinIcon} /> : <RefreshCw size={12} />}
-                <span>{isReplacingFile ? 'Đang thay đổi...' : 'Thay đổi PDF'}</span>
+                <span>{isReplacingFile ? 'Updating...' : 'Change PDF'}</span>
               </label>
             )}
           </div>
@@ -146,7 +146,7 @@ export const ManualContractSummaryView: React.FC<Props> = ({
           <label
             className={styles.secondaryButton}
             style={{ padding: '4px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, cursor: isReplacingFile ? 'not-allowed' : 'pointer' }}
-            title="Đính kèm tài liệu PDF tham khảo"
+            title="Attach reference PDF document"
           >
             <input
               type="file"
@@ -167,12 +167,12 @@ export const ManualContractSummaryView: React.FC<Props> = ({
               }}
             />
             {isReplacingFile ? <Loader2 size={12} className={styles.spinIcon} /> : <FileUp size={12} />}
-            <span>{isReplacingFile ? 'Đang tải lên...' : 'Đính kèm PDF tham khảo'}</span>
+            <span>{isReplacingFile ? 'Uploading...' : 'Attach PDF'}</span>
           </label>
         ) : (
           <span style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
             <FileText size={13} />
-            <span>Không có tài liệu tham khảo</span>
+            <span>No reference document</span>
           </span>
         )}
       </div>
@@ -294,7 +294,7 @@ export const ManualContractSummaryView: React.FC<Props> = ({
         <div className={contractStyles.partyGrid}>
           {parties.length === 0 ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-              Chưa có bên tham gia nào được nhập.
+              No contracting parties entered yet.
             </div>
           ) : (
             parties.map((party, idx) => {

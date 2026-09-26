@@ -6393,23 +6393,24 @@
 .memberResearchCards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 520px;
+  gap: 10px;
+  max-height: 480px;
   overflow-y: auto;
   padding-right: 4px;
 }
 
 .memberResearchCard {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
-  align-items: center;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #ffffff;
-  padding: 10px 14px;
+  padding: 12px 14px;
+  min-height: 64px;
   height: auto;
-  min-height: 0;
+  box-sizing: border-box;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -6431,6 +6432,7 @@
   font-size: 14px;
   font-weight: 700;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .memberResearchAvatar img {
@@ -6440,27 +6442,35 @@
 }
 
 .memberResearchBody {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .memberResearchBody strong {
-  display: inline;
+  display: block;
   color: #0f172a;
   font-size: 15px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-word;
   overflow-wrap: anywhere;
 }
 
 .memberResearchBody>span {
-  display: inline;
+  display: block;
   color: #64748b;
   font-size: 13px;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .memberResearchBody p {
@@ -6469,6 +6479,8 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
+  white-space: normal;
+  word-break: break-word;
   overflow-wrap: anywhere;
 }
 
@@ -6480,6 +6492,8 @@
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
+  margin-top: 3px;
+  width: fit-content;
 }
 
 .memberResearchBody a:hover {
@@ -6491,6 +6505,50 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+}
+
+.draftMembersPagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 10px;
+  margin-top: 4px;
+}
+
+.showMoreButton {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #2563eb !important;
+  background: #eff6ff !important;
+  border: 1px solid #bfdbfe !important;
+  padding: 6px 18px !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer;
+}
+
+.showMoreButton:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+}
+
+.showLessButton {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 6px 18px !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+  cursor: pointer;
+}
+
+.showLessButton:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
 }
 
 .managerMemberResearchCards {

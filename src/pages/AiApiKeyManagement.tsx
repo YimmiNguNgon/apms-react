@@ -316,7 +316,7 @@ export const AiApiKeyManagement: React.FC = () => {
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <Plus size={16} />
-              <span>+ Add API Key</span>
+              <span>Add API Key</span>
             </button>
           </div>
         </div>
@@ -460,7 +460,7 @@ export const AiApiKeyManagement: React.FC = () => {
                       setShowAddModal(true);
                     }}
                   >
-                    + Add API Key
+                    Add API Key
                   </button>
                 </div>
               ) : (

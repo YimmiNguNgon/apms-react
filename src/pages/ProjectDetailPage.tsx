@@ -3469,8 +3469,9 @@ const CompanyMemberLayerBoard: React.FC<{
   members: CompanyMemberResearchItem[];
   emptyText: string;
   statusLabel?: string;
+  containerRef?: React.Ref<HTMLDivElement>;
   renderActions?: (member: CompanyMemberResearchItem, index: number) => React.ReactNode;
-}> = ({ members, emptyText, statusLabel, renderActions }) => {
+}> = ({ members, emptyText, statusLabel, containerRef, renderActions }) => {
   if (!members || members.length === 0) {
     return (
       <div
@@ -3496,59 +3497,63 @@ const CompanyMemberLayerBoard: React.FC<{
   }
 
   return (
-    <div className={styles.memberResearchCards}>
-      {members.map((member, index) => (
-        <article className={styles.memberResearchCard} key={`${member.fullName}-${member.position}-${index}`}>
-          <div className={styles.memberResearchAvatar}>
-            <CompanyMemberAvatar fullName={member.fullName} imageUrl={member.imageUrl} />
-          </div>
-          <div className={styles.memberResearchBody}>
-            <strong>{member.fullName || 'Unnamed member'}</strong>
-            <span>{member.position || 'Position not provided'}</span>
-            {member.sourceUrl ? (
-              <a href={member.sourceUrl} target="_blank" rel="noreferrer" style={{ marginTop: '2px' }}>
-                <ExternalLink size={12} /> Source
-              </a>
-            ) : null}
-            {statusLabel && statusLabel !== 'Draft' && (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '1px 7px',
-                  borderRadius: '4px',
-                  background: statusLabel === 'Approved'
-                    ? '#dcfce7'
-                    : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
-                      ? '#ffedd5'
-                      : statusLabel === 'Submitted'
-                        ? '#dbeafe'
-                        : '#f1f5f9',
-                  color: statusLabel === 'Approved'
-                    ? '#15803d'
-                    : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
-                      ? '#c2410c'
-                      : statusLabel === 'Submitted'
-                        ? '#1e40af'
-                        : '#475569',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  width: 'fit-content',
-                  marginTop: '2px',
-                }}
-              >
-                {statusLabel}
-              </span>
-            )}
-          </div>
-          {renderActions && (
-            <div className={styles.memberResearchActions}>
-              {renderActions(member, index)}
+    <div ref={containerRef} className={styles.memberResearchCards}>
+      {members.map((member, index) => {
+        const sourceUrl = member.sourceUrl?.trim();
+        const formattedSourceUrl = sourceUrl ? (sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://') ? sourceUrl : `https://${sourceUrl}`) : null;
+        return (
+          <article className={styles.memberResearchCard} key={`${member.fullName}-${member.position}-${index}`}>
+            <div className={styles.memberResearchAvatar}>
+              <CompanyMemberAvatar fullName={member.fullName} imageUrl={member.imageUrl} />
             </div>
-          )}
-        </article>
-      ))}
+            <div className={styles.memberResearchBody}>
+              <strong>{member.fullName || 'Unnamed member'}</strong>
+              <span>{member.position || 'Position not provided'}</span>
+              {formattedSourceUrl ? (
+                <a href={formattedSourceUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink size={12} /> Source
+                </a>
+              ) : null}
+              {statusLabel && statusLabel !== 'Draft' && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '1px 7px',
+                    borderRadius: '4px',
+                    background: statusLabel === 'Approved'
+                      ? '#dcfce7'
+                      : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
+                        ? '#ffedd5'
+                        : statusLabel === 'Submitted'
+                          ? '#dbeafe'
+                          : '#f1f5f9',
+                    color: statusLabel === 'Approved'
+                      ? '#15803d'
+                      : (statusLabel === 'Changes Requested' || statusLabel === 'Changes requested')
+                        ? '#c2410c'
+                        : statusLabel === 'Submitted'
+                          ? '#1e40af'
+                          : '#475569',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    width: 'fit-content',
+                    marginTop: '2px',
+                  }}
+                >
+                  {statusLabel}
+                </span>
+              )}
+            </div>
+            {renderActions && (
+              <div className={styles.memberResearchActions}>
+                {renderActions(member, index)}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 };
@@ -3843,6 +3848,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [cancellingSubmission, setCancellingSubmission] = useState(false);
   const [companyMemberDraft, setCompanyMemberDraft] = useState<CompanyMemberResearchDraftResponse | null>(null);
   const [companyMemberItems, setCompanyMemberItems] = useState<CompanyMemberResearchItem[]>([]);
+  const [draftMemberVisibleCount, setDraftMemberVisibleCount] = useState<number>(5);
+  const draftMemberListRef = useRef<HTMLDivElement>(null);
   const [companyMemberForm, setCompanyMemberForm] = useState<CompanyMemberResearchItem>(emptyCompanyMemberForm);
   const [editingCompanyMemberIndex, setEditingCompanyMemberIndex] = useState<number | null>(null);
   const [companyMemberFormImageName, setCompanyMemberFormImageName] = useState('');
@@ -3854,6 +3861,8 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   const [companyMemberSubmitting, setCompanyMemberSubmitting] = useState(false);
   const [managerCompanyMemberDraft, setManagerCompanyMemberDraft] = useState<CompanyMemberResearchDraftResponse | null>(null);
   const [managerCompanyMemberLoading, setManagerCompanyMemberLoading] = useState(false);
+  const [submittedMemberVisibleCount, setSubmittedMemberVisibleCount] = useState<number>(5);
+  const managerSubmittedListRef = useRef<HTMLDivElement>(null);
   const [roleEvaluationForm, setRoleEvaluationForm] = useState({
     relationship: '',
     evidenceSummary: '',
@@ -4011,6 +4020,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setSelectedReviewHistoryItem(null);
     setIsCompanyMemberRequestChangesOpen(false);
     setCompanyMemberRequestChangesReason('');
+    setSubmittedMemberVisibleCount(5);
   };
 
   useEffect(() => {
@@ -5996,9 +6006,11 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       const draft = payload.data;
       setCompanyMemberDraft(draft);
       setCompanyMemberItems(draft?.members ?? []);
+      setDraftMemberVisibleCount(5);
     } catch (error) {
       setCompanyMemberDraft(null);
       setCompanyMemberItems([]);
+      setDraftMemberVisibleCount(5);
       const errMsg = error instanceof Error ? error.message : '';
       if (!errMsg.toLowerCase().includes('not found')) {
         setWorkbenchError(errMsg || 'Cannot load company member research draft.');
@@ -6009,6 +6021,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
   };
 
   const loadManagerCompanyMemberDraft = async (task: ProjectTaskResponse) => {
+    setSubmittedMemberVisibleCount(5);
     setManagerCompanyMemberLoading(true);
     try {
       const payload = await companyMemberResearchApi.getDraft(task.projectId, task.id);
@@ -6063,6 +6076,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     setShowCancelSubmissionModal(false);
     setCompanyMemberDraft(null);
     setCompanyMemberItems([]);
+    setDraftMemberVisibleCount(5);
     setCompanyMemberForm(emptyCompanyMemberForm);
     setEditingCompanyMemberIndex(null);
     setRoleEvaluationForm({
@@ -6198,19 +6212,32 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
       return;
     }
 
-    const fullName = companyMemberForm.fullName.trim();
-    const position = companyMemberForm.position.trim();
-    const sourceUrl = companyMemberForm.sourceUrl.trim();
-    if (!fullName || !position || !sourceUrl) {
-      setWorkbenchError('Full name, position, and source URL are required.');
+    const fullName = (companyMemberForm.fullName || '').trim();
+    const position = (companyMemberForm.position || '').trim();
+    const sourceUrl = (companyMemberForm.sourceUrl || '').trim();
+    if (!fullName || !position) {
+      setWorkbenchError('Full name and position are required.');
       return;
+    }
+
+    if (sourceUrl) {
+      try {
+        const parsed = new URL(sourceUrl.startsWith('http://') || sourceUrl.startsWith('https://') ? sourceUrl : `https://${sourceUrl}`);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          setWorkbenchError('Source URL must be a valid URL.');
+          return;
+        }
+      } catch {
+        setWorkbenchError('Source URL must be a valid URL.');
+        return;
+      }
     }
 
     const nextItem: CompanyMemberResearchItem = {
       fullName,
       position,
       imageUrl: companyMemberForm.imageUrl?.trim() || null,
-      sourceUrl,
+      sourceUrl: sourceUrl || null,
       notes: editingCompanyMemberIndex !== null ? (companyMemberItems[editingCompanyMemberIndex]?.notes || null) : null,
     };
 
@@ -6252,7 +6279,16 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
     if (!canUseStaffWorkbench) return;
 
     const nextItems = companyMemberItems.filter((_, itemIndex) => itemIndex !== index);
-    if (editingCompanyMemberIndex === index) resetCompanyMemberForm();
+    if (editingCompanyMemberIndex === index) {
+      resetCompanyMemberForm();
+    } else if (editingCompanyMemberIndex !== null && editingCompanyMemberIndex > index) {
+      setEditingCompanyMemberIndex(editingCompanyMemberIndex - 1);
+    }
+
+    setDraftMemberVisibleCount((current) => {
+      if (nextItems.length <= 5) return 5;
+      return Math.min(current, nextItems.length);
+    });
 
     setCompanyMemberSaving(true);
     setWorkbenchError(null);
@@ -9805,11 +9841,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                             {companyMemberItems.length === 0 ? (
                               <div className={styles.empty}>No members in this submission.</div>
                             ) : (
-                              <CompanyMemberLayerBoard
-                                members={companyMemberItems}
-                                emptyText="No members in this submission."
-                                statusLabel="Submitted"
-                              />
+                              <>
+                                <CompanyMemberLayerBoard
+                                  members={companyMemberItems.slice(0, draftMemberVisibleCount)}
+                                  emptyText="No members in this submission."
+                                />
+                                {companyMemberItems.length > 5 && (
+                                  <div className={styles.draftMembersPagination}>
+                                    {companyMemberItems.length > draftMemberVisibleCount ? (
+                                      <button
+                                        type="button"
+                                        className={`${styles.button} ${styles.showMoreButton}`}
+                                        onClick={() => setDraftMemberVisibleCount((prev) => prev + 5)}
+                                      >
+                                        Show more ({companyMemberItems.length - draftMemberVisibleCount})
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className={`${styles.button} ${styles.showLessButton}`}
+                                        onClick={() => setDraftMemberVisibleCount(5)}
+                                      >
+                                        Show less
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </section>
                         );
@@ -9848,11 +9906,33 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                         {companyMemberItems.length === 0 ? (
                           <div className={styles.empty}>No approved members found.</div>
                         ) : (
-                          <CompanyMemberLayerBoard
-                            members={companyMemberItems}
-                            emptyText="No approved members found."
-                            statusLabel="Approved"
-                          />
+                          <>
+                            <CompanyMemberLayerBoard
+                              members={companyMemberItems.slice(0, draftMemberVisibleCount)}
+                              emptyText="No approved members found."
+                            />
+                            {companyMemberItems.length > 5 && (
+                              <div className={styles.draftMembersPagination}>
+                                {companyMemberItems.length > draftMemberVisibleCount ? (
+                                  <button
+                                    type="button"
+                                    className={`${styles.button} ${styles.showMoreButton}`}
+                                    onClick={() => setDraftMemberVisibleCount((prev) => prev + 5)}
+                                  >
+                                    Show more ({companyMemberItems.length - draftMemberVisibleCount})
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`${styles.button} ${styles.showLessButton}`}
+                                    onClick={() => setDraftMemberVisibleCount(5)}
+                                  >
+                                    Show less
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </section>
                     ) : (
@@ -9903,7 +9983,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                     />
                                   </label>
                                   <div className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
-                                    <span>Profile image</span>
+                                    <span>Profile image (optional)</span>
                                     <input
                                       type="file"
                                       ref={companyMemberFileInputRef}
@@ -9980,9 +10060,9 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                     )}
                                   </div>
                                   <label className={`${styles.inviteField} ${styles.memberResearchHalfField}`}>
-                                    <span>Source URL</span>
+                                    <span>Source URL (optional)</span>
                                     <input
-                                      value={companyMemberForm.sourceUrl}
+                                      value={companyMemberForm.sourceUrl || ''}
                                       placeholder="https://company.com/leadership"
                                       onChange={(event) => setCompanyMemberForm((current) => ({ ...current, sourceUrl: event.target.value }))}
                                       disabled={!canUseStaffWorkbench}
@@ -10027,34 +10107,64 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                       gap: '6px',
                                     }}
                                   >
-                                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>No members added yet.</div>
+                                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>No management members have been added yet.</div>
                                     <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 400 }}>Add a company member using the form.</div>
                                   </div>
                                 ) : (
-                                  <CompanyMemberLayerBoard
-                                    members={companyMemberItems}
-                                    emptyText="No members added yet."
-                                    renderActions={(_, index) => (
-                                      <>
-                                        <button
-                                          className={styles.button}
-                                          type="button"
-                                          onClick={() => handleEditCompanyMemberItem(index)}
-                                          disabled={!canUseStaffWorkbench || companyMemberSaving}
-                                        >
-                                          <Edit3 size={15} />Edit
-                                        </button>
-                                        <button
-                                          className={`${styles.button} ${styles.dangerButton}`}
-                                          type="button"
-                                          onClick={() => void handleRemoveCompanyMemberItem(index)}
-                                          disabled={!canUseStaffWorkbench || companyMemberSaving}
-                                        >
-                                          <Trash2 size={15} />Delete
-                                        </button>
-                                      </>
+                                  <>
+                                    <CompanyMemberLayerBoard
+                                      members={companyMemberItems.slice(0, draftMemberVisibleCount)}
+                                      containerRef={draftMemberListRef}
+                                      emptyText="No management members have been added yet."
+                                      renderActions={(member, visibleIndex) => {
+                                        const actualIndex = companyMemberItems.indexOf(member) >= 0 ? companyMemberItems.indexOf(member) : visibleIndex;
+                                        return (
+                                          <>
+                                            <button
+                                              className={styles.button}
+                                              type="button"
+                                              onClick={() => handleEditCompanyMemberItem(actualIndex)}
+                                              disabled={!canUseStaffWorkbench || companyMemberSaving}
+                                            >
+                                              <Edit3 size={15} />Edit
+                                            </button>
+                                            <button
+                                              className={`${styles.button} ${styles.dangerButton}`}
+                                              type="button"
+                                              onClick={() => void handleRemoveCompanyMemberItem(actualIndex)}
+                                              disabled={!canUseStaffWorkbench || companyMemberSaving}
+                                            >
+                                              <Trash2 size={15} />Delete
+                                            </button>
+                                          </>
+                                        );
+                                      }}
+                                    />
+                                    {companyMemberItems.length > 5 && (
+                                      <div className={styles.draftMembersPagination}>
+                                        {companyMemberItems.length > draftMemberVisibleCount ? (
+                                          <button
+                                            type="button"
+                                            className={`${styles.button} ${styles.showMoreButton}`}
+                                            onClick={() => setDraftMemberVisibleCount((prev) => prev + 5)}
+                                          >
+                                            Show more ({companyMemberItems.length - draftMemberVisibleCount})
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className={`${styles.button} ${styles.showLessButton}`}
+                                            onClick={() => {
+                                              setDraftMemberVisibleCount(5);
+                                              draftMemberListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                            }}
+                                          >
+                                            Show less
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
-                                  />
+                                  </>
                                 )}
                               </section>
                             </div>
@@ -11085,11 +11195,37 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               ) : !managerCompanyMemberDraft?.members?.length ? (
                                 <div className={styles.empty}>No company members were submitted for review.</div>
                               ) : (
-                                <CompanyMemberLayerBoard
-                                  members={managerCompanyMemberDraft.members}
-                                  emptyText="No company members were submitted for review."
-                                  statusLabel={statusLabel}
-                                />
+                                <>
+                                  <CompanyMemberLayerBoard
+                                    members={managerCompanyMemberDraft.members.slice(0, submittedMemberVisibleCount)}
+                                    containerRef={managerSubmittedListRef}
+                                    emptyText="No company members were submitted for review."
+                                  />
+                                  {managerCompanyMemberDraft.members.length > 5 && (
+                                    <div className={styles.draftMembersPagination}>
+                                      {managerCompanyMemberDraft.members.length > submittedMemberVisibleCount ? (
+                                        <button
+                                          type="button"
+                                          className={`${styles.button} ${styles.showMoreButton}`}
+                                          onClick={() => setSubmittedMemberVisibleCount((prev) => prev + 5)}
+                                        >
+                                          Show more ({managerCompanyMemberDraft.members.length - submittedMemberVisibleCount})
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className={`${styles.button} ${styles.showLessButton}`}
+                                          onClick={() => {
+                                            setSubmittedMemberVisibleCount(5);
+                                            managerSubmittedListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                          }}
+                                        >
+                                          Show less
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
                               )}
 
                               {!isCompletedTask && !isApproved && selectedManagerReviewTask.status !== 'DONE' && (

@@ -39,7 +39,7 @@
   "users": {
     "title": "Account Management",
     "desc": "Create, inspect, modify roles, and toggle access for system users.",
-    "createAccount": "+ Create account",
+    "createAccount": "Create account",
     "searchLabel": "Search directory",
     "searchPlaceholder": "Name, username, or email...",
     "statusFilter": "Status filter",

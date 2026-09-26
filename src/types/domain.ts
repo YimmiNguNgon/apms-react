@@ -1018,7 +1018,7 @@ export interface CompanyMemberResearchItem {
   fullName: string;
   position: string;
   imageUrl?: string | null;
-  sourceUrl: string;
+  sourceUrl?: string | null;
   notes?: string | null;
 }
 

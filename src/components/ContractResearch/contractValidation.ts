@@ -29,21 +29,21 @@ export function validateContractDates(dates: {
   // Rule 0: Signing Date >= Document Date
   if (doc && sign) {
     if (sign < doc) {
-      errors.signingDate = 'Ngày ký không được trước ngày tài liệu/văn bản.';
+      errors.signingDate = 'Signing date cannot be earlier than document date.';
     }
   }
 
   // Rule 1: Effective Date >= Signing Date
   if (sign && eff) {
     if (eff < sign) {
-      errors.effectiveDate = 'Ngày hiệu lực phải bằng hoặc sau ngày ký.';
+      errors.effectiveDate = 'Effective date must be on or after signing date.';
     }
   }
 
   // Rule 2: Expiry Date > Effective Date (Strictly greater)
   if (eff && exp) {
     if (exp <= eff) {
-      errors.expiryDate = 'Ngày hết hạn phải sau ngày hiệu lực.';
+      errors.expiryDate = 'Expiry date must be after effective date.';
     }
   }
 
@@ -72,7 +72,7 @@ export function validatePartiesTaxCodes(parties: { taxCode?: string | null }[]):
       const trimmed = String(raw).trim();
       if (trimmed.length > 0) {
         if (!/^\d+$/.test(trimmed)) {
-          errors[idx] = 'Mã số thuế chỉ được chứa chữ số.';
+          errors[idx] = 'Tax code can only contain digits.';
         } else {
           normalizedTaxCodes.push({ index: idx, taxCode: trimmed });
         }
@@ -91,7 +91,7 @@ export function validatePartiesTaxCodes(parties: { taxCode?: string | null }[]):
     if (indices.length > 1) {
       indices.forEach((idx) => {
         if (!errors[idx]) {
-          errors[idx] = 'Mã số thuế không được trùng với bên tham gia khác.';
+          errors[idx] = 'Tax code cannot be duplicated with another party.';
         }
       });
     }
