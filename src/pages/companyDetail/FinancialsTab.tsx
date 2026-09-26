@@ -1266,7 +1266,6 @@ const FinancialsTab = forwardRef<FinancialsTabHandle, FinancialsTabProps>(({
                                     title="Re-extract financial metrics with AI"
                                   >
                                     <Sparkles size={13} />
-                                    <span>Re-extract</span>
                                   </button>
                                 ) : (
                                   <button

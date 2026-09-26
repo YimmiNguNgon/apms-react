@@ -252,7 +252,8 @@ const CompactTagEditor: React.FC<{
   tagBg: string;
   tagColor: string;
   disabled?: boolean;
-}> = ({ tags, onChange, placeholder = 'Add new...', tagBg, tagColor, disabled }) => {
+  columnLabel?: string;
+}> = ({ tags, onChange, placeholder = 'Add new...', tagBg, tagColor, disabled, columnLabel = 'Item' }) => {
   const [inputVal, setInputVal] = useState('');
 
   const handleAdd = () => {
@@ -268,49 +269,87 @@ const CompactTagEditor: React.FC<{
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-        {tags.map((tag, idx) => (
-          <span
-            key={idx}
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div
             style={{
-              fontSize: '0.7rem',
-              background: tagBg,
-              color: tagColor,
-              padding: '2px 6px 2px 8px',
+              display: 'grid',
+              gridTemplateColumns: '36px 1fr auto',
+              gap: '8px',
+              padding: '4px 8px',
+              background: '#F1F5F9',
               borderRadius: '4px',
-              fontWeight: 600,
-              display: 'inline-flex',
+              fontSize: '0.66rem',
+              fontWeight: 700,
+              color: '#475569',
               alignItems: 'center',
-              gap: '4px',
             }}
           >
-            {tag}
-            {!disabled && (
-              <button
-                type="button"
-                onClick={() => handleRemove(idx)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: tagColor,
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontSize: '0.75rem',
-                  lineHeight: 1,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  opacity: 0.7,
-                }}
-                title="Remove"
-              >
-                ✕
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
+            <div style={{ textAlign: 'center' }}>#</div>
+            <div>{columnLabel}</div>
+            <div style={{ textAlign: 'right', paddingRight: '4px' }}>Actions</div>
+          </div>
+          {tags.map((tag, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '36px 1fr auto',
+                gap: '8px',
+                alignItems: 'center',
+                background: '#F8FAFC',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid #E2E8F0',
+              }}
+            >
+              <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                {idx + 1}
+              </div>
+              <div>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    background: tagBg,
+                    color: tagColor,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontWeight: 600,
+                    display: 'inline-block',
+                  }}
+                >
+                  {tag}
+                </span>
+              </div>
+              <div>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(idx)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#EF4444',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      fontSize: '0.68rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                    }}
+                    title="Remove"
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {!disabled && (
-        <div style={{ display: 'flex', gap: '4px', maxWidth: '320px', marginTop: tags.length > 0 ? '4px' : '0' }}>
+        <div style={{ display: 'flex', gap: '4px', maxWidth: '340px', marginTop: tags.length > 0 ? '4px' : '0' }}>
           <input
             type="text"
             value={inputVal}
@@ -345,6 +384,7 @@ const CompactTagEditor: React.FC<{
               fontSize: '0.68rem',
               fontWeight: 600,
               cursor: inputVal.trim() ? 'pointer' : 'default',
+              whiteSpace: 'nowrap',
             }}
           >
             + Add
@@ -844,7 +884,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const tradeName = profile?.identity?.tradeName;
   const legalName = profile?.identity?.legalName;
   const displayName = formatCompanyName(tradeName || legalName);
-  const initials = displayName.substring(0, 2).toUpperCase();
 
   const handleExportPdf = () => {
     alert(`Đang khởi tạo tải báo cáo PDF hồ sơ doanh nghiệp [${displayName}]...`);
@@ -2084,24 +2123,53 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
               {isExtendedEditing ? (
                 draftProducts.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr auto',
+                        gap: '8px',
+                        padding: '4px 8px',
+                        background: '#F1F5F9',
+                        borderRadius: '4px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        color: '#475569',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ textAlign: 'center' }}>#</div>
+                      <div>Product / Service</div>
+                      <div style={{ textAlign: 'right', paddingRight: '4px' }}>Actions</div>
+                    </div>
                     {draftProducts.map((p, idx) => (
                       <div
                         key={idx}
                         style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr auto',
+                          gap: '8px',
+                          alignItems: 'center',
                           background: '#F8FAFC',
-                          padding: '8px 10px',
+                          padding: '6px 8px',
                           borderRadius: '6px',
                           border: '1px solid #CBD5E1',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                            Product #{idx + 1}
-                          </span>
+                        <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            style={inlineInputStyle}
+                            value={p.name}
+                            onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
+                            placeholder="Product or service name..."
+                            disabled={isSavingProfile}
+                          />
+                        </div>
+                        <div>
                           <button
                             type="button"
                             onClick={() => handleDeleteProduct(idx)}
@@ -2112,7 +2180,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                               border: 'none',
                               color: '#EF4444',
                               cursor: 'pointer',
-                              padding: '2px',
+                              padding: '2px 6px',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '3px',
@@ -2122,20 +2190,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                             <Trash2 size={12} />
                             <span>Delete</span>
                           </button>
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600, display: 'block', marginBottom: '2px' }}>
-                            Name *
-                          </label>
-                          <input
-                            type="text"
-                            style={inlineInputStyle}
-                            value={p.name}
-                            onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
-                            placeholder="Product or service name..."
-                            disabled={isSavingProfile}
-                          />
                         </div>
                       </div>
                     ))}
@@ -2148,10 +2202,42 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   </div>
                 )
               ) : products.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '36px 1fr',
+                      gap: '8px',
+                      padding: '4px 8px',
+                      background: '#F1F5F9',
+                      borderRadius: '4px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      color: '#475569',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ textAlign: 'center' }}>#</div>
+                    <div>Product / Service</div>
+                  </div>
                   {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
-                    <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr',
+                        gap: '8px',
+                        alignItems: 'center',
+                        background: '#F8FAFC',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #F1F5F9',
+                      }}
+                    >
+                      <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                        {idx + 1}
+                      </div>
+                      <div>
                         <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
                       </div>
                     </div>
@@ -2196,13 +2282,50 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                     tagBg="#E0E7FF"
                     tagColor="#3730A3"
                     disabled={isSavingProfile}
+                    columnLabel="Industry"
                   />
                 ) : industries.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr',
+                        gap: '8px',
+                        padding: '4px 8px',
+                        background: '#F1F5F9',
+                        borderRadius: '4px',
+                        fontSize: '0.66rem',
+                        fontWeight: 700,
+                        color: '#475569',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div style={{ textAlign: 'center' }}>#</div>
+                      <div>Industry</div>
+                    </div>
                     {industries.map((ind, idx) => (
-                      <span key={idx} style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                        {ind}
-                      </span>
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr',
+                          gap: '8px',
+                          alignItems: 'center',
+                          background: '#F8FAFC',
+                          padding: '5px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #F1F5F9',
+                        }}
+                      >
+                        <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
+                            {ind}
+                          </span>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : <strong style={C.muted}>N/A</strong>}
@@ -2225,13 +2348,50 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                       tagBg="#F1F5F9"
                       tagColor="#334155"
                       disabled={isSavingProfile}
+                      columnLabel="Active Market"
                     />
                   ) : markets.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr',
+                          gap: '8px',
+                          padding: '4px 8px',
+                          background: '#F1F5F9',
+                          borderRadius: '4px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ textAlign: 'center' }}>#</div>
+                        <div>Active Market</div>
+                      </div>
                       {markets.map((m, idx) => (
-                        <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          {m}
-                        </span>
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '36px 1fr',
+                            gap: '8px',
+                            alignItems: 'center',
+                            background: '#F8FAFC',
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #F1F5F9',
+                          }}
+                        >
+                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
+                              {m}
+                            </span>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : <strong style={C.muted}>N/A</strong>}
@@ -2248,13 +2408,50 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                       tagBg="#ECFDF5"
                       tagColor="#065F46"
                       disabled={isSavingProfile}
+                      columnLabel="Target Customer"
                     />
                   ) : targetCustomers.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr',
+                          gap: '8px',
+                          padding: '4px 8px',
+                          background: '#F1F5F9',
+                          borderRadius: '4px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ textAlign: 'center' }}>#</div>
+                        <div>Target Customer</div>
+                      </div>
                       {targetCustomers.map((c, idx) => (
-                        <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          {c}
-                        </span>
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '36px 1fr',
+                            gap: '8px',
+                            alignItems: 'center',
+                            background: '#F8FAFC',
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #F1F5F9',
+                          }}
+                        >
+                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
+                              {c}
+                            </span>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : <strong style={C.muted}>N/A</strong>}
@@ -2694,26 +2891,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             flexWrap: 'wrap',
           }}
         >
-          {/* Logo Avatar */}
-          <div
-            style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#FFFFFF',
-              fontWeight: '700',
-              fontSize: '0.85rem',
-              boxShadow: '0 2px 6px rgba(37, 99, 235, 0.18)',
-              flexShrink: 0,
-            }}
-          >
-            {initials}
-          </div>
-
           <div style={{ flex: 1, minWidth: '220px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h1 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px' }}>

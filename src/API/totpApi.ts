@@ -54,6 +54,9 @@ const totpApi = {
     confirmEnrollment: (data: TotpEnrollmentConfirmRequest) => 
         api.post<StepUpVerifyResponse>('/security/totp/enrollment/confirm', data),
 
+    disableTotp: (data?: { code?: string }) =>
+        api.post<void>('/security/totp/disable', data),
+
     getStepUpStatus: (scope?: string, resourceId?: string, stepUpToken?: string | null) => 
         api.get<StepUpStatusResponse>('/security/step-up/status', {
             params: { scope, resourceId },

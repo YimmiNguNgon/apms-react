@@ -1772,7 +1772,6 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                       onExtract={handleExtract}
                       onReExtract={handleReExtract}
                       onDelete={(c) => setContractToDelete(c)}
-                      onEdit={(c) => setEditContractModalContract(c)}
                       onViewPdf={handleViewPdf}
                     />
                   );
@@ -1797,59 +1796,14 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                   background: '#ffffff',
                   borderBottom: '1px solid #e2e8f0',
                   display: 'flex',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 16,
                   flexWrap: 'wrap',
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, flex: 1 }}>
-                  {/* Title & Type */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: '#0f172a' }}>
-                      {selectedContract.title}
-                    </h3>
-                    {selectedContract.dataEntryMethod === 'MANUAL' ? (
-                      <span
-                        style={{
-                          padding: '3px 10px',
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          borderRadius: 12,
-                          background: '#eff6ff',
-                          color: '#1d4ed8',
-                          border: '1px solid #bfdbfe',
-                          letterSpacing: '0.04em',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        Manual Entry
-                      </span>
-                    ) : (
-                      selectedContractEditable && (
-                        <button
-                          type="button"
-                          onClick={() => setEditContractModalContract(selectedContract)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            cursor: 'pointer',
-                            padding: '3px 6px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            borderRadius: 4,
-                          }}
-                          title="Edit contract details"
-                        >
-                          <Edit3 size={15} />
-                        </button>
-                      )
-                    )}
-                  </div>
-
-                  {/* Metadata Chips Row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {/* Metadata Chips Row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
                     {/* File Attachment Chip */}
                     {selectedContract.documentName ? (
                       <div
@@ -1930,47 +1884,45 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                     </div>
 
                     {/* Derived Status Badge */}
-                    {selectedContract.derivedContractStatus && (
-                      <div
-                        title={getDerivedStatusTooltip(
-                          selectedContract.derivedContractStatus,
-                          selectedContract.commonData?.effectiveDate?.value ? String(selectedContract.commonData.effectiveDate.value) : null,
-                          selectedContract.commonData?.expiryDate?.value ? String(selectedContract.commonData.expiryDate.value) : null
-                        )}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                          padding: '4px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: 'help',
-                          background:
-                            selectedContract.derivedContractStatus === 'ACTIVE'
-                              ? '#f0fdf4'
-                              : selectedContract.derivedContractStatus === 'EXPIRED'
-                              ? '#fef2f2'
-                              : '#fff7ed',
-                          border: `1px solid ${
-                            selectedContract.derivedContractStatus === 'ACTIVE'
-                              ? '#bbf7d0'
-                              : selectedContract.derivedContractStatus === 'EXPIRED'
-                              ? '#fecdd3'
-                              : '#fed7aa'
-                          }`,
-                          color:
-                            selectedContract.derivedContractStatus === 'ACTIVE'
-                              ? '#15803d'
-                              : selectedContract.derivedContractStatus === 'EXPIRED'
-                              ? '#b91c1c'
-                              : '#c2410c',
-                        }}
-                      >
-                        <span>●</span>
-                        <span>{getDerivedStatusLabel(selectedContract.derivedContractStatus)}</span>
-                      </div>
-                    )}
+                    <div
+                      title={getDerivedStatusTooltip(
+                        selectedContract.derivedContractStatus,
+                        selectedContract.commonData?.effectiveDate?.value ? String(selectedContract.commonData.effectiveDate.value) : null,
+                        selectedContract.commonData?.expiryDate?.value ? String(selectedContract.commonData.expiryDate.value) : null
+                      )}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'help',
+                        background:
+                          selectedContract.derivedContractStatus === 'ACTIVE'
+                            ? '#f0fdf4'
+                            : selectedContract.derivedContractStatus === 'EXPIRED'
+                            ? '#fef2f2'
+                            : '#fff7ed',
+                        border: `1px solid ${
+                          selectedContract.derivedContractStatus === 'ACTIVE'
+                            ? '#bbf7d0'
+                            : selectedContract.derivedContractStatus === 'EXPIRED'
+                            ? '#fecdd3'
+                            : '#fed7aa'
+                        }`,
+                        color:
+                          selectedContract.derivedContractStatus === 'ACTIVE'
+                            ? '#15803d'
+                            : selectedContract.derivedContractStatus === 'EXPIRED'
+                            ? '#b91c1c'
+                            : '#c2410c',
+                      }}
+                    >
+                      <span>●</span>
+                      <span>{getDerivedStatusLabel(selectedContract.derivedContractStatus)}</span>
+                    </div>
 
                     {/* Company Match Badge */}
                     {selectedContract.companyMatchConfirmed && (
@@ -1992,12 +1944,30 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
                         <span>Target Company Confirmed</span>
                       </div>
                     )}
+
+                    {/* Manual Entry Chip */}
+                    {selectedContract.dataEntryMethod === 'MANUAL' && (
+                      <span
+                        style={{
+                          padding: '3px 10px',
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          borderRadius: 12,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Manual Entry
+                      </span>
+                    )}
                   </div>
-                </div>
 
                 <div className={contractStyles.contractHeaderActions}>
-                  {/* For AI contracts: Edit Contract metadata modal */}
-                  {selectedContract.dataEntryMethod !== 'MANUAL' && selectedContractEditable && (
+                  {/* Edit Contract metadata modal */}
+                  {selectedContractEditable && (
                     <button
                       className={styles.secondaryButton}
                       type="button"

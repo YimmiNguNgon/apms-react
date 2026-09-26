@@ -16,7 +16,7 @@ const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
     }
   : {};
 
-type LoginStep = 'CREDENTIALS' | 'MFA_REQUIRED' | 'MFA_ENROLLMENT_REQUIRED';
+type LoginStep = 'CREDENTIALS' | 'MFA_REQUIRED';
 
 export const Login: React.FC = () => {
   const { t } = useTranslation('login');
@@ -30,7 +30,6 @@ export const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [mfaError, setMfaError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [copiedKey, setCopiedKey] = useState(false);
 
   const normalizeIdentity = (value: string) => {
     const trimmed = value.trim();
@@ -58,11 +57,6 @@ export const Login: React.FC = () => {
       const result = await loginApi.login(normalizeIdentity(email), password);
       if ('requiresEmailVerification' in result) {
         setVerification(result);
-        return;
-      }
-      if ('mfaEnrollmentRequired' in result && result.mfaEnrollmentRequired) {
-        setMfaChallenge(result);
-        setStep('MFA_ENROLLMENT_REQUIRED');
         return;
       }
       if ('mfaRequired' in result && result.mfaRequired) {
@@ -148,15 +142,6 @@ export const Login: React.FC = () => {
     setTotpCode('');
     setMfaError('');
     setError('');
-    setCopiedKey(false);
-  };
-
-  const handleCopyKey = () => {
-    if (mfaChallenge?.manualEntryKey) {
-      void navigator.clipboard.writeText(mfaChallenge.manualEntryKey);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    }
   };
 
   if (verification) return <EmailVerification ticket={verification.verificationTicket} email={verification.email} emailDelivered={verification.emailDelivered} emailDeliveryMessage={verification.emailDeliveryMessage} onVerified={() => setVerification(null)} />;
@@ -319,119 +304,8 @@ export const Login: React.FC = () => {
             </button>
           </form>
         )}
-
-        {step === 'MFA_ENROLLMENT_REQUIRED' && (
-          <form className="login-card" onSubmit={handleMfaSubmit} style={{ maxWidth: 440 }}>
-            <div className="login-card-logo">
-              <div className="login-logo-mark">
-                <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-                  <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="1.5" />
-                  <circle cx="12" cy="12" r="3.5" fill="white" />
-                  <line x1="12" y1="3" x2="8.5" y2="8.5" stroke="white" strokeWidth="1.5" />
-                  <line x1="12" y1="15.5" x2="12" y2="21" stroke="white" strokeWidth="1.5" />
-                  <line x1="3" y1="12" x2="8.5" y2="12" stroke="white" strokeWidth="1.5" />
-                  <line x1="15.5" y1="12" x2="21" y2="12" stroke="white" strokeWidth="1.5" />
-                </svg>
-              </div>
-              <div>
-                <div className="login-logo-title">APMS</div>
-              </div>
-            </div>
-
-            <div className="login-form-title">Set up Authenticator</div>
-            <p style={{ fontSize: '0.875rem', color: '#94A3B8', marginTop: 4, marginBottom: 16 }}>
-              Scan the QR code with your Authenticator app, then enter the 6-digit code below.
-            </p>
-
-            {mfaChallenge?.qrCodeDataUrl && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                <div style={{ background: '#fff', padding: 8, borderRadius: 8, display: 'inline-block' }}>
-                  <img
-                    src={mfaChallenge.qrCodeDataUrl}
-                    alt="Authenticator QR Code"
-                    style={{ width: 170, height: 170, display: 'block' }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {mfaChallenge?.manualEntryKey && (
-              <div style={{ marginBottom: 16, background: 'rgba(255, 255, 255, 0.05)', padding: '10px 12px', borderRadius: 6 }}>
-                <div style={{ fontSize: '0.75rem', color: '#94A3B8', marginBottom: 4 }}>Or enter key manually:</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <code style={{ fontSize: '0.825rem', color: '#F1F5F9', wordBreak: 'break-all', fontFamily: 'monospace' }}>
-                    {mfaChallenge.manualEntryKey}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={handleCopyKey}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: 'none',
-                      color: '#60A5FA',
-                      padding: '4px 8px',
-                      borderRadius: 4,
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {copiedKey ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="form-field">
-              <label className="form-label">Verification Code</label>
-              <input
-                className="form-input"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="000000"
-                maxLength={6}
-                value={totpCode}
-                disabled={loading}
-                autoFocus
-                style={{ textAlign: 'center', letterSpacing: '0.3em', fontSize: '1.25rem', fontWeight: 600 }}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setTotpCode(val);
-                }}
-              />
-            </div>
-
-            {mfaError && <div className="form-error">{mfaError}</div>}
-
-            <button
-              className="btn btn-primary btn-block"
-              style={{ marginTop: 8, padding: '11px 16px' }}
-              type="submit"
-              disabled={loading || totpCode.length !== 6}
-            >
-              {loading ? 'Verifying...' : 'Confirm & Sign In'}
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-block"
-              style={{
-                marginTop: 10,
-                background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#94A3B8',
-                padding: '9px 16px',
-                cursor: 'pointer',
-              }}
-              onClick={handleBackToLogin}
-              disabled={loading}
-            >
-              &larr; Back to login
-            </button>
-          </form>
-        )}
       </div>
     </div>
   );
 };
+

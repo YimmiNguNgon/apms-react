@@ -1,5 +1,4 @@
-import React from 'react';
-import { CheckCircle2, FileText, Loader2, RefreshCw, Sparkles, Trash2, Edit3, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Trash2, AlertTriangle } from 'lucide-react';
 import type { ContractEntry } from '../../types/contractResearch';
 import { isContractEditableByStaff, isContractChangesRequested } from './contractEditability';
 import styles from '../FinancialResearch/FinancialResearchWorkbench.module.css';
@@ -162,24 +161,6 @@ export const ContractCard: React.FC<Props> = ({
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {canEditCard && onEdit && (
-            <button
-              className={styles.cardDeleteBtn}
-              type="button"
-              onClick={(event) => {
-                stop(event);
-                if (isOtherExtracting) return;
-                onEdit(contract);
-              }}
-              disabled={isExtracting || isOtherExtracting}
-              aria-label={`Edit ${contract.title}`}
-              title={isOtherExtracting ? 'Another document is being processed by AI' : 'Edit contract details'}
-              style={isOtherExtracting ? { opacity: 0.4, cursor: 'not-allowed' } : { color: '#2563eb' }}
-            >
-              <Edit3 size={14} />
-            </button>
-          )}
-
           {canEditCard && contract.reviewStatus === 'DRAFT' && (
             <button
               className={styles.cardDeleteBtn}
@@ -214,79 +195,6 @@ export const ContractCard: React.FC<Props> = ({
         <div className={styles.cardRevisionNotice}>
           <AlertTriangle size={12} />
           <span>Manager requested revisions</span>
-        </div>
-      )}
-
-      {/* Card Footer */}
-      {(isExtracting || isExtracted || isFailed || contract.dataEntryMethod === 'MANUAL') && (
-        <div className={styles.cardFooter}>
-          <div
-            className={`${styles.cardStatus} ${
-              isExtracted
-                ? styles.cardStatusSuccess
-                : isFailed
-                ? styles.cardStatusError
-                : isExtracting
-                ? styles.cardStatusExtracting
-                : ''
-            }`}
-          >
-            {isExtracting ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
-                    <Loader2 size={12} className={styles.spinIcon} />
-                    <span>Extracting...</span>
-                  </span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#2563eb' }}>
-                    {contract.extractionProgress || 35}%
-                  </span>
-                </div>
-                <div style={{ width: '100%', height: 4, background: '#dbeafe', borderRadius: 999, overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${Math.max(contract.extractionProgress || 35, 10)}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
-                      borderRadius: 999,
-                      transition: 'width 0.35s ease',
-                    }}
-                  />
-                </div>
-              </div>
-            ) : contract.dataEntryMethod === 'MANUAL' ? (
-              <>
-                <FileText size={14} color="#2563eb" />
-                <span style={{ color: '#1d4ed8', fontWeight: 600 }}>Manual Entry</span>
-              </>
-            ) : isFailed ? (
-              <span>Extraction Failed</span>
-            ) : isExtracted ? (
-              <>
-                <CheckCircle2 size={14} />
-                <span>{clauseCount} extracted fields</span>
-              </>
-            ) : null}
-          </div>
-
-          {canEditCard && contract.dataEntryMethod !== 'MANUAL' && isExtracted && (
-            <button
-              className={styles.cardExtractBtn}
-              type="button"
-              disabled={isOtherExtracting}
-              onClick={(event) => {
-                stop(event);
-                if (isOtherExtracting) return;
-                onSelect(contract.id);
-                onReExtract(contract.id);
-              }}
-              style={isOtherExtracting ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-              title={isOtherExtracting ? 'Another document is being processed by AI. Please wait for completion.' : 'Re-extract contract data with AI'}
-            >
-              <RefreshCw size={12} />
-              Re-extract
-            </button>
-          )}
         </div>
       )}
     </article>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { adminAiKeyApi, type AiApiKeyDto, type AiApiKeyStatus } from '../API/adminAiKeyApi';
 import { ConfirmModal } from '../components/Shared/ConfirmModal';
-import { Eye, EyeOff, Key, Plus, RefreshCw, Trash2, Power, PlayCircle, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
+import { Eye, EyeOff, Key, Plus, RefreshCw, Trash2, Power, PlayCircle, AlertCircle, CheckCircle2, Copy, Search, X, RotateCcw } from 'lucide-react';
 
 interface ToastNotice {
   type: 'success' | 'error' | 'info';
@@ -74,6 +74,204 @@ export const AiApiKeyManagement: React.FC = () => {
   const exhaustedCount = useMemo(() => keys.filter((k) => k.status === 'EXHAUSTED').length, [keys]);
   const invalidCount = useMemo(() => keys.filter((k) => k.status === 'INVALID').length, [keys]);
 
+  // Filters & Search state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [providerFilter, setProviderFilter] = useState<string>('ALL');
+  const [lastErrorFilter, setLastErrorFilter] = useState<string>('ALL');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Debounce search query by 300ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilterChange = (val: string) => {
+    setStatusFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleProviderFilterChange = (val: string) => {
+    setProviderFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleLastErrorFilterChange = (val: string) => {
+    setLastErrorFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  const isFilterActive = Boolean(
+    searchQuery.trim() ||
+    statusFilter !== 'ALL' ||
+    providerFilter !== 'ALL' ||
+    lastErrorFilter !== 'ALL'
+  );
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setStatusFilter('ALL');
+    setProviderFilter('ALL');
+    setLastErrorFilter('ALL');
+    setCurrentPage(1);
+  };
+
+  const availableProviders = useMemo(() => {
+    const set = new Set<string>();
+    keys.forEach((k) => {
+      if (k.provider) set.add(k.provider.trim().toUpperCase());
+    });
+    if (set.size === 0) set.add('GEMINI');
+    return Array.from(set).sort();
+  }, [keys]);
+
+  const getErrorCategory = (k: AiApiKeyDto): '401' | '403' | '429' | '503' | 'NONE' | 'OTHER' => {
+    const code = k.lastErrorCode;
+    const text = (k.lastError || '').toLowerCase();
+    const hasError = Boolean(text.trim() || code);
+
+    if (!hasError) {
+      if (k.status === 'EXHAUSTED') return '429';
+      return 'NONE';
+    }
+
+    if (code === 401 || text.includes('401') || text.includes('unauthorized')) {
+      return '401';
+    }
+    if (code === 403 || text.includes('403') || text.includes('forbidden')) {
+      return '403';
+    }
+    if (
+      code === 429 ||
+      text.includes('429') ||
+      text.includes('exhausted') ||
+      text.includes('too many requests') ||
+      text.includes('quota') ||
+      k.status === 'EXHAUSTED'
+    ) {
+      return '429';
+    }
+    if (
+      code === 503 ||
+      text.includes('503') ||
+      text.includes('service_unavailable') ||
+      text.includes('unavailable')
+    ) {
+      return '503';
+    }
+
+    return 'OTHER';
+  };
+
+  const filteredKeys = useMemo(() => {
+    const filtered = keys.filter((k) => {
+      // 1. Search filter
+      const query = debouncedSearch.trim().toLowerCase();
+      if (query) {
+        const label = (k.label || '').toLowerCase();
+        const maskedKey = (k.maskedKey || '').toLowerCase();
+        const provider = (k.provider || 'GEMINI').toLowerCase();
+        const lastError = (k.lastError || '').toLowerCase();
+        const lastErrorCode = k.lastErrorCode ? String(k.lastErrorCode) : '';
+        const status = (k.status || '').toLowerCase();
+        const errorCombined = `${lastErrorCode} ${lastError} ${status === 'exhausted' ? '429' : ''}`;
+
+        const matches =
+          label.includes(query) ||
+          maskedKey.includes(query) ||
+          provider.includes(query) ||
+          status.includes(query) ||
+          errorCombined.includes(query);
+
+        if (!matches) return false;
+      }
+
+      // 2. Status filter
+      if (statusFilter !== 'ALL' && k.status !== statusFilter) {
+        return false;
+      }
+
+      // 3. Provider filter
+      if (providerFilter !== 'ALL') {
+        const p = (k.provider || 'GEMINI').trim().toUpperCase();
+        if (p !== providerFilter) return false;
+      }
+
+      // 4. Last Error filter
+      if (lastErrorFilter !== 'ALL') {
+        const category = getErrorCategory(k);
+        if (category !== lastErrorFilter) return false;
+      }
+
+      return true;
+    });
+
+    // 5. Newest-first sorting: createdAt DESC, with deterministic fallback to id DESC
+    return filtered.slice().sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const validTimeA = Number.isNaN(timeA) ? 0 : timeA;
+      const validTimeB = Number.isNaN(timeB) ? 0 : timeB;
+
+      if (validTimeB !== validTimeA) {
+        return validTimeB - validTimeA;
+      }
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
+  }, [keys, debouncedSearch, statusFilter, providerFilter, lastErrorFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredKeys.length / pageSize));
+  const validPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  // Normalize currentPage whenever totalPages decreases
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedKeys = useMemo(() => {
+    const start = (validPage - 1) * pageSize;
+    return filteredKeys.slice(start, start + pageSize);
+  }, [filteredKeys, validPage, pageSize]);
+
+  const startItemIndex = filteredKeys.length === 0 ? 0 : (validPage - 1) * pageSize + 1;
+  const endItemIndex = Math.min(validPage * pageSize, filteredKeys.length);
+  const totalFiltered = filteredKeys.length;
+
+  const paginationItems = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const items: (number | string)[] = [];
+    if (validPage <= 4) {
+      items.push(1, 2, 3, 4, 5, '...', totalPages);
+    } else if (validPage >= totalPages - 3) {
+      items.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      items.push(1, '...', validPage - 1, validPage, validPage + 1, '...', totalPages);
+    }
+    return items;
+  }, [validPage, totalPages]);
+
   const showToast = (type: 'success' | 'error' | 'info', message: string) => {
     setNotice({ type, message });
     setTimeout(() => {
@@ -119,6 +317,7 @@ export const AiApiKeyManagement: React.FC = () => {
       setNewLabel('');
       setShowPassword(false);
       showToast('success', 'API key added successfully. The key is available for AI requests immediately.');
+      setCurrentPage(1);
       await fetchKeys(true);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to add API key.';
@@ -286,7 +485,7 @@ export const AiApiKeyManagement: React.FC = () => {
       <div className="workspace-main-full">
         {/* Page Header Band */}
         <div className="workspace-page-head">
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h1>AI API Key Management</h1>
             <p style={{ marginTop: '2px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
               Manage Gemini API keys used by APMS AI services without restarting the server.
@@ -321,40 +520,8 @@ export const AiApiKeyManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Toast / Inline Notification */}
-        {notice && (
-          <div
-            className={`apms-toast ${notice.type}`}
-            style={{
-              position: 'fixed',
-              top: '24px',
-              right: '24px',
-              zIndex: 10050,
-              padding: '12px 18px',
-              borderRadius: '8px',
-              background:
-                notice.type === 'success'
-                  ? '#059669'
-                  : notice.type === 'error'
-                  ? '#DC2626'
-                  : '#2563EB',
-              color: '#FFFFFF',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontWeight: 500,
-            }}
-          >
-            {notice.type === 'success' && <CheckCircle2 size={18} />}
-            {notice.type === 'error' && <AlertCircle size={18} />}
-            <span>{notice.message}</span>
-          </div>
-        )}
-
         {/* Error Banner */}
-        {error && (
+        {Boolean(error) && (
           <div
             className="workspace-inline-error"
             style={{
@@ -363,7 +530,6 @@ export const AiApiKeyManagement: React.FC = () => {
               border: '1px solid rgba(239,68,68,0.25)',
               padding: '12px 16px',
               borderRadius: '8px',
-              marginBottom: '16px',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
@@ -375,7 +541,7 @@ export const AiApiKeyManagement: React.FC = () => {
         )}
 
         {/* 4 KPI Summary Cards */}
-        <div className="workspace-focus-card" style={{ marginBottom: '20px' }}>
+        <div className="workspace-focus-card">
           <div className="workspace-focus-metrics">
             <article>
               <span>Total Keys</span>
@@ -410,8 +576,157 @@ export const AiApiKeyManagement: React.FC = () => {
 
         {/* Key Table Container */}
         <div className="manager-project-container" style={{ marginBottom: '32px' }}>
+          {/* Top Filter Toolbar */}
+          <div
+            className="company-profiles-filters"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '10px',
+              alignItems: 'center',
+              padding: '10px 14px',
+            }}
+          >
+            {/* Search API keys... (takes largest width) */}
+            <div style={{ position: 'relative', flex: '1 1 280px', minWidth: '200px' }}>
+              <Search
+                size={15}
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted, #94a3b8)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search API keys..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                style={{
+                  width: '100%',
+                  paddingLeft: '32px',
+                  paddingRight: searchQuery ? '30px' : '10px',
+                  height: '36px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => handleSearchChange('')}
+                  style={{
+                    position: 'absolute',
+                    right: '6px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: 'var(--text-muted, #94a3b8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter Dropdown */}
+            <select
+              className="search-input"
+              value={statusFilter}
+              onChange={(e) => handleStatusFilterChange(e.target.value)}
+              style={{
+                width: 'auto',
+                minWidth: '130px',
+                height: '36px',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="ALL">Status: All</option>
+              <option value="ACTIVE">Active</option>
+              <option value="DISABLED">Disabled</option>
+              <option value="EXHAUSTED">Exhausted</option>
+              <option value="INVALID">Invalid</option>
+            </select>
+
+            {/* Provider Filter Dropdown */}
+            <select
+              className="search-input"
+              value={providerFilter}
+              onChange={(e) => handleProviderFilterChange(e.target.value)}
+              style={{
+                width: 'auto',
+                minWidth: '130px',
+                height: '36px',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="ALL">Provider: All</option>
+              {availableProviders.map((p) => (
+                <option key={p} value={p}>
+                  {p === 'GEMINI' ? 'Gemini' : p}
+                </option>
+              ))}
+            </select>
+
+            {/* Last Error Filter Dropdown */}
+            <select
+              className="search-input"
+              value={lastErrorFilter}
+              onChange={(e) => handleLastErrorFilterChange(e.target.value)}
+              style={{
+                width: 'auto',
+                minWidth: '160px',
+                height: '36px',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="ALL">Last Error: All</option>
+              <option value="401">401 Unauthorized</option>
+              <option value="403">403 Forbidden</option>
+              <option value="429">429 Resource Exhausted</option>
+              <option value="503">503 Service Unavailable</option>
+              <option value="NONE">No Error</option>
+            </select>
+
+            {/* Clear filters Button */}
+            {isFilterActive && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={handleClearFilters}
+                style={{
+                  height: '36px',
+                  padding: '0 12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  borderRadius: '6px',
+                  color: '#ef4444',
+                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                  background: 'rgba(239, 68, 68, 0.05)',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <RotateCcw size={13} />
+                <span>Clear filters</span>
+              </button>
+            )}
+          </div>
+
           <div className="manager-project-table-scroll">
-            <div className="manager-project-table-inner" style={{ minWidth: '850px' }}>
+            <div className="manager-project-table-inner" style={{ minWidth: '820px' }}>
               {loading ? (
                 <div className="project-table-empty" style={{ padding: '40px', textAlign: 'center' }}>
                   <p className="project-table-empty-title">Loading Gemini API keys...</p>
@@ -443,7 +758,7 @@ export const AiApiKeyManagement: React.FC = () => {
                     <Key size={24} />
                   </div>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    No Gemini API keys configured.
+                    No API keys configured.
                   </h3>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', maxWidth: '400px' }}>
                     Add an API key to enable AI-powered features.
@@ -463,6 +778,48 @@ export const AiApiKeyManagement: React.FC = () => {
                     Add API Key
                   </button>
                 </div>
+              ) : filteredKeys.length === 0 ? (
+                <div
+                  className="project-table-empty"
+                  style={{
+                    padding: '48px 20px',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '50%',
+                      background: 'rgba(100, 116, 139, 0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#64748b',
+                    }}
+                  >
+                    <Search size={22} />
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    No API keys match the current filters.
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', maxWidth: '420px' }}>
+                    Try adjusting your search terms or clearing status and error filters.
+                  </p>
+                  <button
+                    className="btn btn-outline"
+                    type="button"
+                    onClick={handleClearFilters}
+                    style={{ marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RotateCcw size={13} />
+                    <span>Clear filters</span>
+                  </button>
+                </div>
               ) : (
                 <table className="admin-table">
                   <thead>
@@ -478,12 +835,13 @@ export const AiApiKeyManagement: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {keys.map((k, index) => {
+                    {paginatedKeys.map((k, index) => {
                       const isTesting = testingKeyId === k.id;
                       const isToggling = togglingKeyId === k.id;
                       const isRevealing = revealingKeyId === k.id;
                       const isRevealed = Boolean(revealedKeys[k.id]);
                       const isDisabled = k.status === 'DISABLED';
+                      const rowNumber = (validPage - 1) * pageSize + index + 1;
 
                       let errorSnippet = '—';
                       if (k.status !== 'ACTIVE' && (k.lastError || k.lastErrorCode)) {
@@ -504,7 +862,7 @@ export const AiApiKeyManagement: React.FC = () => {
                             }}
                             className="admin-mono"
                           >
-                            {index + 1}
+                            {rowNumber}
                           </td>
                           <td>
                             <strong>{k.provider || 'GEMINI'}</strong>
@@ -681,6 +1039,81 @@ export const AiApiKeyManagement: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Pagination Footer */}
+          {!loading && filteredKeys.length > 0 && (
+            <div className="project-table-pagination">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <span>
+                  Showing {startItemIndex}–{endItemIndex} of {totalFiltered} keys
+                  {totalFiltered !== totalCount && ` (filtered from ${totalCount} total)`}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label htmlFor="ai-key-page-size" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Per page:
+                  </label>
+                  <select
+                    id="ai-key-page-size"
+                    className="search-input"
+                    value={pageSize}
+                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                    style={{
+                      height: '28px',
+                      padding: '2px 8px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color, #e2e8f0)',
+                      background: 'var(--workspace-panel-bg, #fff)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      width: 'auto',
+                    }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  className="workspace-page-btn"
+                  disabled={validPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  title="Previous page"
+                >
+                  Previous
+                </button>
+                {paginationItems.map((item, idx) =>
+                  typeof item === 'number' ? (
+                    <button
+                      key={`page-${item}`}
+                      type="button"
+                      className={`workspace-page-btn ${validPage === item ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(item)}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span key={`dots-${idx}`} style={{ padding: '0 4px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                      ...
+                    </span>
+                  )
+                )}
+                <button
+                  type="button"
+                  className="workspace-page-btn"
+                  disabled={validPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  title="Next page"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -892,6 +1325,38 @@ export const AiApiKeyManagement: React.FC = () => {
         onConfirm={handleDelete}
         onCancel={() => !deleteLoading && setKeyToDelete(null)}
       />
+
+      {/* Global Toast / Inline Notification */}
+      {notice && (
+        <div
+          className={`apms-toast ${notice.type}`}
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 10050,
+            padding: '12px 18px',
+            borderRadius: '8px',
+            background:
+              notice.type === 'success'
+                ? '#059669'
+                : notice.type === 'error'
+                ? '#DC2626'
+                : '#2563EB',
+            color: '#FFFFFF',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontWeight: 500,
+          }}
+        >
+          {notice.type === 'success' && <CheckCircle2 size={18} />}
+          {notice.type === 'error' && <AlertCircle size={18} />}
+          <span>{notice.message}</span>
+        </div>
+      )}
     </section>
   );
 };

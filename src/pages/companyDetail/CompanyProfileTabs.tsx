@@ -165,7 +165,8 @@ const ChipListEditor: React.FC<{
   items: string[];
   onChange: (next: string[]) => void;
   placeholder?: string;
-}> = ({ items, onChange, placeholder }) => {
+  columnLabel?: string;
+}> = ({ items, onChange, placeholder, columnLabel = 'Item' }) => {
   const [text, setText] = useState('');
   const add = () => {
     const value = text.trim();
@@ -173,8 +174,74 @@ const ChipListEditor: React.FC<{
     setText('');
   };
   return (
-    <div>
-      <div style={{ display: 'flex', gap: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {items.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '36px 1fr auto',
+              gap: '8px',
+              padding: '4px 8px',
+              background: '#F1F5F9',
+              borderRadius: '4px',
+              fontSize: '0.66rem',
+              fontWeight: 700,
+              color: '#475569',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>#</div>
+            <div>{columnLabel}</div>
+            <div style={{ textAlign: 'right', paddingRight: '4px' }}>Thao tác</div>
+          </div>
+          {items.map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '36px 1fr auto',
+                gap: '8px',
+                alignItems: 'center',
+                background: '#F8FAFC',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid #E2E8F0',
+              }}
+            >
+              <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                {idx + 1}
+              </div>
+              <div>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    background: '#F1F5F9',
+                    color: '#334155',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontWeight: 600,
+                    display: 'inline-block',
+                  }}
+                >
+                  {item}
+                </span>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => onChange(items.filter((_, i) => i !== idx))}
+                  style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: '0.68rem', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  aria-label={`Xóa ${item}`}
+                >
+                  Xóa
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '4px', marginTop: items.length > 0 ? '4px' : '0' }}>
         <input
           value={text}
           style={INPUT_STYLE}
@@ -191,36 +258,6 @@ const ChipListEditor: React.FC<{
           Thêm
         </button>
       </div>
-      {items.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
-          {items.map((item, idx) => (
-            <span
-              key={idx}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '0.7rem',
-                background: '#F1F5F9',
-                color: '#334155',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontWeight: 600,
-              }}
-            >
-              {item}
-              <button
-                type="button"
-                onClick={() => onChange(items.filter((_, i) => i !== idx))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: '0.72rem', lineHeight: 1, padding: 0 }}
-                aria-label={`Xóa ${item}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -867,12 +904,42 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 <h2 style={C.h2}>Products & Services</h2>
               </div>
               {products.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '36px 1fr',
+                      gap: '8px',
+                      padding: '4px 8px',
+                      background: '#F1F5F9',
+                      borderRadius: '4px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      color: '#475569',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ textAlign: 'center' }}>#</div>
+                    <div>Product / Service</div>
+                  </div>
                   {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
-                    <div key={idx} style={{ background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr',
+                        gap: '8px',
+                        alignItems: 'center',
+                        background: '#F8FAFC',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #F1F5F9',
+                      }}
+                    >
+                      <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                        {idx + 1}
                       </div>
+                      <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
                     </div>
                   ))}
                   {products.length > 5 && (
@@ -904,11 +971,47 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 <h2 style={C.h2}>Industry</h2>
               </div>
               {industries.length > 0 ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '36px 1fr',
+                      gap: '8px',
+                      padding: '4px 8px',
+                      background: '#F1F5F9',
+                      borderRadius: '4px',
+                      fontSize: '0.66rem',
+                      fontWeight: 700,
+                      color: '#475569',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ textAlign: 'center' }}>#</div>
+                    <div>Industry</div>
+                  </div>
                   {industries.map((ind, i) => (
-                    <span key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500 }}>
-                      {ind}
-                    </span>
+                    <div
+                      key={i}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '36px 1fr',
+                        gap: '8px',
+                        alignItems: 'center',
+                        background: '#F8FAFC',
+                        padding: '5px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #F1F5F9',
+                      }}
+                    >
+                      <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                        {i + 1}
+                      </div>
+                      <div>
+                        <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500, display: 'inline-block' }}>
+                          {ind}
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -926,11 +1029,47 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 <div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
                   {markets.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr',
+                          gap: '8px',
+                          padding: '4px 8px',
+                          background: '#F1F5F9',
+                          borderRadius: '4px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ textAlign: 'center' }}>#</div>
+                        <div>Active Market</div>
+                      </div>
                       {markets.map((m, idx) => (
-                        <span key={idx} style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          {m}
-                        </span>
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '36px 1fr',
+                            gap: '8px',
+                            alignItems: 'center',
+                            background: '#F8FAFC',
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #F1F5F9',
+                          }}
+                        >
+                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
+                              {m}
+                            </span>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : <strong style={C.muted}>N/A</strong>}
@@ -938,11 +1077,47 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 <div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
                   {targetCustomers.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '36px 1fr',
+                          gap: '8px',
+                          padding: '4px 8px',
+                          background: '#F1F5F9',
+                          borderRadius: '4px',
+                          fontSize: '0.66rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ textAlign: 'center' }}>#</div>
+                        <div>Target Customer</div>
+                      </div>
                       {targetCustomers.map((c, idx) => (
-                        <span key={idx} style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                          {c}
-                        </span>
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '36px 1fr',
+                            gap: '8px',
+                            alignItems: 'center',
+                            background: '#F8FAFC',
+                            padding: '5px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #F1F5F9',
+                          }}
+                        >
+                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
+                              {c}
+                            </span>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : <strong style={C.muted}>N/A</strong>}
@@ -989,9 +1164,30 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
           {bfDraft.products.length === 0 ? (
             <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>Chưa có sản phẩm/dịch vụ nào.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '36px 1fr auto',
+                  gap: '8px',
+                  padding: '4px 8px',
+                  background: '#F1F5F9',
+                  borderRadius: '4px',
+                  fontSize: '0.66rem',
+                  fontWeight: 700,
+                  color: '#475569',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ textAlign: 'center' }}>#</div>
+                <div>Sản phẩm / Dịch vụ (Product / Service)</div>
+                <div style={{ textAlign: 'right', paddingRight: '4px' }}>Thao tác</div>
+              </div>
               {bfDraft.products.map((p, idx) => (
-                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '6px', alignItems: 'center', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #F1F5F9' }}>
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: '8px', alignItems: 'center', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                  <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                    {idx + 1}
+                  </div>
                   <input placeholder="Tên sản phẩm" value={p.name} onChange={(e) => updateProduct(idx, 'name', e.target.value)} style={INPUT_STYLE} />
                   <button
                     type="button"
@@ -1017,6 +1213,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 items={bfDraft.markets}
                 onChange={(next) => setBfDraft((prev) => (prev ? { ...prev, markets: next } : prev))}
                 placeholder="VD: Việt Nam, Singapore..."
+                columnLabel="Active Market"
               />
             </div>
             <div>
@@ -1025,6 +1222,7 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 items={bfDraft.targetCustomers}
                 onChange={(next) => setBfDraft((prev) => (prev ? { ...prev, targetCustomers: next } : prev))}
                 placeholder="VD: Ngân hàng, Bảo hiểm..."
+                columnLabel="Target Customer"
               />
             </div>
           </div>

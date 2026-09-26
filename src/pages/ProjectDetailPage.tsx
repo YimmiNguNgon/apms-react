@@ -9844,6 +9844,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                               <>
                                 <CompanyMemberLayerBoard
                                   members={companyMemberItems.slice(0, draftMemberVisibleCount)}
+                                  containerRef={draftMemberListRef}
                                   emptyText="No members in this submission."
                                 />
                                 {companyMemberItems.length > 5 && (
@@ -9860,7 +9861,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                       <button
                                         type="button"
                                         className={`${styles.button} ${styles.showLessButton}`}
-                                        onClick={() => setDraftMemberVisibleCount(5)}
+                                        onClick={() => {
+                                          setDraftMemberVisibleCount(5);
+                                          draftMemberListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                        }}
                                       >
                                         Show less
                                       </button>
@@ -9909,6 +9913,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                           <>
                             <CompanyMemberLayerBoard
                               members={companyMemberItems.slice(0, draftMemberVisibleCount)}
+                              containerRef={draftMemberListRef}
                               emptyText="No approved members found."
                             />
                             {companyMemberItems.length > 5 && (
@@ -9925,7 +9930,10 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                   <button
                                     type="button"
                                     className={`${styles.button} ${styles.showLessButton}`}
-                                    onClick={() => setDraftMemberVisibleCount(5)}
+                                    onClick={() => {
+                                      setDraftMemberVisibleCount(5);
+                                      draftMemberListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                    }}
                                   >
                                     Show less
                                   </button>
@@ -10156,7 +10164,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                             className={`${styles.button} ${styles.showLessButton}`}
                                             onClick={() => {
                                               setDraftMemberVisibleCount(5);
-                                              draftMemberListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                              draftMemberListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                                             }}
                                           >
                                             Show less
@@ -11217,7 +11225,7 @@ export const ProjectDetailPage: React.FC<ProjectDetailPageProps> = ({ setActiveP
                                           className={`${styles.button} ${styles.showLessButton}`}
                                           onClick={() => {
                                             setSubmittedMemberVisibleCount(5);
-                                            managerSubmittedListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                            managerSubmittedListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                                           }}
                                         >
                                           Show less

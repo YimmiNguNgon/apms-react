@@ -3,7 +3,7 @@ import { C } from './tokens';
 
 interface CompanyProfileHeaderProps {
   displayName: string;
-  initials: string;
+  initials?: string;
   industry?: string;
   reviewStatus?: string;
   source?: string;
@@ -67,25 +67,6 @@ export const CompanyProfileHeader: React.FC<CompanyProfileHeaderProps> = ({
           flexWrap: 'wrap',
         }}
       >
-        <div
-          style={{
-            width: '34px',
-            height: '34px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#FFFFFF',
-            fontWeight: '700',
-            fontSize: '0.85rem',
-            boxShadow: '0 2px 6px rgba(37, 99, 235, 0.18)',
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
-
         <div style={{ flex: 1, minWidth: '220px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.2px' }}>

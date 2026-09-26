@@ -55,7 +55,7 @@ const parseAuthPayload = async (response: Response): Promise<LoginPayload | Veri
   }
 
   const data = unwrapAuthPayload(payload);
-  if (data && ('mfaRequired' in data || 'mfaEnrollmentRequired' in data)) {
+  if (data && 'mfaRequired' in data && (data as MfaChallengePayload).mfaRequired) {
     return data as MfaChallengePayload;
   }
 
