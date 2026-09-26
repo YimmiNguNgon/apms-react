@@ -438,12 +438,15 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
   let source: CompanyDetailSource = 'company-profiles';
   let projectId: number | null = null;
 
-  if (sourceParam === 'project' && projectIdParam) {
+  if (projectIdParam) {
     const parsedPid = parseInt(projectIdParam, 10);
     if (!Number.isNaN(parsedPid) && parsedPid > 0) {
-      source = 'project';
       projectId = parsedPid;
     }
+  }
+
+  if (sourceParam === 'project' && projectIdParam) {
+    source = 'project';
   } else if (sourceParam === 'monitoring' || sourceParam === 'company-monitoring') {
     source = 'monitoring';
   } else if (sourceParam === 'staff-monitoring') {
@@ -612,7 +615,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     };
   }, [companyId]);
 
-  const contextProjectId = navContext.source === 'project' ? navContext.projectId : null;
+  const contextProjectId = navContext.projectId ?? null;
   const contextProject = contextProjectId ? projects.find((p) => p.id === contextProjectId) ?? null : null;
 
   const canEditListing =
@@ -768,8 +771,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         setSources(sourcesRes?.data ?? null);
         setIntelligence(intelRes?.data ?? null);
         const listProjects = projectsRes?.data?.content ?? [];
-        if (singleContextProject && !listProjects.some((p: ProjectResponse) => p.id === singleContextProject?.id)) {
-          setProjects([singleContextProject, ...listProjects]);
+        if (singleContextProject) {
+          const filtered = listProjects.filter((p: ProjectResponse) => p.id !== singleContextProject?.id);
+          setProjects([singleContextProject, ...filtered]);
         } else {
           setProjects(listProjects);
         }
@@ -951,7 +955,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const isCurrentlyHidden = profile.isHidden === true || (profile.isHidden === undefined && profile.visibility === 'HIDDEN');
     const newVisibility = isCurrentlyHidden ? 'PUBLISHED' : 'HIDDEN';
     try {
-      const response = await companyProfileApi.updateProfileVisibility(targetId, newVisibility);
+      const response = await companyProfileApi.updateProfileVisibility(targetId, newVisibility, contextProjectId);
       const data = (response as any)?.data ?? response;
       const updatedIsHidden = typeof data?.isHidden === 'boolean'
         ? data.isHidden
@@ -3089,7 +3093,24 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   if (!hasLegalName || !hasTaxCode) {
                     publishBlockReason = 'Profile requires Legal Name and Tax Code before it can be published.';
                   } else if (profile.canPublish === false) {
-                    publishBlockReason = profile.publishBlockReason || 'Profile is currently not eligible for publishing.';
+                    const isResearchComplete =
+                      contextProject?.status === 'COMPLETED' ||
+                      contextProject?.status === 'CLOSED' ||
+                      (contextProject && (contextProject as any).progress === 100) ||
+                      projects.some(
+                        (p) =>
+                          ((p as any).projectType === 'RESEARCH_NEW_COMPANY' || (p as any).type === 'RESEARCH_NEW_COMPANY') &&
+                          (p.status === 'COMPLETED' || p.status === 'CLOSED' || (p as any).progress === 100)
+                      );
+
+                    if (
+                      profile.publishBlockReason === 'Available after the New Company Research project is completed.' &&
+                      isResearchComplete
+                    ) {
+                      publishBlockReason = null;
+                    } else {
+                      publishBlockReason = profile.publishBlockReason || 'Profile is currently not eligible for publishing.';
+                    }
                   }
 
                   const canPublish = !publishBlockReason;
