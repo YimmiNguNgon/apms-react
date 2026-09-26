@@ -438,12 +438,15 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
   let source: CompanyDetailSource = 'company-profiles';
   let projectId: number | null = null;
 
-  if (sourceParam === 'project' && projectIdParam) {
+  if (projectIdParam) {
     const parsedPid = parseInt(projectIdParam, 10);
     if (!Number.isNaN(parsedPid) && parsedPid > 0) {
-      source = 'project';
       projectId = parsedPid;
     }
+  }
+
+  if (sourceParam === 'project' && projectIdParam) {
+    source = 'project';
   } else if (sourceParam === 'monitoring' || sourceParam === 'company-monitoring') {
     source = 'monitoring';
   } else if (sourceParam === 'staff-monitoring') {
@@ -612,7 +615,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     };
   }, [companyId]);
 
-  const contextProjectId = navContext.source === 'project' ? navContext.projectId : null;
+  const contextProjectId = navContext.projectId ?? null;
   const contextProject = contextProjectId ? projects.find((p) => p.id === contextProjectId) ?? null : null;
 
   const canEditListing =
@@ -3090,14 +3093,19 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   if (!hasLegalName || !hasTaxCode) {
                     publishBlockReason = 'Profile requires Legal Name and Tax Code before it can be published.';
                   } else if (profile.canPublish === false) {
+                    const isResearchComplete =
+                      contextProject?.status === 'COMPLETED' ||
+                      contextProject?.status === 'CLOSED' ||
+                      (contextProject && (contextProject as any).progress === 100) ||
+                      projects.some(
+                        (p) =>
+                          ((p as any).projectType === 'RESEARCH_NEW_COMPANY' || (p as any).type === 'RESEARCH_NEW_COMPANY') &&
+                          (p.status === 'COMPLETED' || p.status === 'CLOSED' || (p as any).progress === 100)
+                      );
+
                     if (
                       profile.publishBlockReason === 'Available after the New Company Research project is completed.' &&
-                      (contextProject?.status === 'COMPLETED' ||
-                        projects.some(
-                          (p) =>
-                            ((p as any).projectType === 'RESEARCH_NEW_COMPANY' || (p as any).type === 'RESEARCH_NEW_COMPANY') &&
-                            p.status === 'COMPLETED'
-                        ))
+                      isResearchComplete
                     ) {
                       publishBlockReason = null;
                     } else {
