@@ -14,7 +14,7 @@
 
 export const FINANCIAL_NUMBER_REGEX = /^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/;
 
-export const FINANCIAL_NUMERIC_ERROR_MESSAGE = 'Giá trị phải là số.';
+export const FINANCIAL_NUMERIC_ERROR_MESSAGE = 'Value must be a valid number.';
 
 export interface ParsedFinancialValue {
   entered: boolean;
@@ -30,7 +30,7 @@ export interface ParsedFinancialValue {
  * - null / undefined / "" -> entered: false, valid: true (sparse, unentered)
  * - 0 / "0" -> entered: true, valid: true, normalizedString: "0" (valid explicit zero)
  * - "1,250.50" -> entered: true, valid: true, normalizedString: "1250.50"
- * - "12 triệu" -> entered: true, valid: false, error: "Giá trị phải là số."
+ * - "12 million" -> entered: true, valid: false, error: "Value must be a valid number."
  */
 export function parseFinancialValue(value: string | number | null | undefined): ParsedFinancialValue {
   if (value === null || value === undefined || typeof value === 'boolean') {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { AlertCircle, Building2, CheckCheck, CheckCircle2, Edit2, Loader2 } from 'lucide-react';
 import { candidateApi } from '../../API/candidateApi';
@@ -48,6 +48,7 @@ function normalizeFieldResults(raw: Record<string, any> | undefined): Record<str
 interface CandidateReviewWorkspaceProps {
   projectId: string;
   candidateId: string;
+  initialCandidate?: CandidateResponse | null;
   taskId?: number;
   role?: string;
   targetCompanyName?: string | null;
@@ -116,6 +117,7 @@ const labelForField = (key: string) => allCandidateFields.find((field) => field.
 export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> = ({
   projectId,
   candidateId,
+  initialCandidate,
   taskId,
   role = 'STAFF',
   targetCompanyName,
@@ -127,9 +129,17 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
   isResearchNewCompany,
   onDraftRenamed
 }) => {
-  const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(null);
+  const [serverCandidate, setServerCandidate] = useState<CandidateResponse | null>(() => {
+    if (initialCandidate && initialCandidate.id === candidateId) {
+      return initialCandidate;
+    }
+    return null;
+  });
   const [pendingUpdates, setPendingUpdates] = useState<Record<string, { reviewedValue: any, reviewStatus: string }>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !(initialCandidate && initialCandidate.id === candidateId);
+  });
+  const [candidateError, setCandidateError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const [activeFilter, setActiveFilter] = useState<ReviewFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -202,9 +212,56 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     },
   });
 
-  useEffect(() => {
-    fetchData();
+  const fetchData = useCallback(async () => {
+    if (!candidateId || candidateId === 'undefined' || candidateId === 'null') {
+      setLoading(false);
+      setCandidateError(null);
+      return;
+    }
+    setLoading(true);
+    setCandidateError(null);
+    try {
+      const candidateRes = await candidateApi.getCandidateById(candidateId);
+      if (candidateRes?.data) {
+        setServerCandidate(candidateRes.data);
+        setPendingUpdates({});
+        setCandidateError(null);
+      } else {
+        setCandidateError('Unable to load candidate information.');
+      }
+    } catch (err: any) {
+      console.error('Failed to load candidate data', err);
+      const status = err?.response?.status;
+      if (status === 400) {
+        setCandidateError('Invalid candidate request (400).');
+      } else if (status === 401) {
+        setCandidateError('Authentication error. Please log in again (401).');
+      } else if (status === 403) {
+        setCandidateError('You do not have permission to access this candidate (403).');
+      } else if (status === 404) {
+        setCandidateError('Candidate data not found (404).');
+      } else if (status === 409) {
+        setCandidateError('Candidate lifecycle conflict (409).');
+      } else if (status >= 500) {
+        setCandidateError('Candidate service error. Please try again (500).');
+      } else {
+        setCandidateError(err?.response?.data?.message || err?.message || 'Unable to load candidate information.');
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [candidateId]);
+
+  useEffect(() => {
+    if (initialCandidate && initialCandidate.id === candidateId) {
+      setServerCandidate(initialCandidate);
+      setPendingUpdates({});
+      setCandidateError(null);
+      setLoading(false);
+      return;
+    }
+    void fetchData();
+  }, [candidateId, initialCandidate, fetchData]);
 
   useEffect(() => {
     if (!serverCandidate) return;
@@ -220,21 +277,6 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
       }
     }
   }, [serverCandidate?.id, serverCandidate?.status, role]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const candidateRes = await candidateApi.getCandidateById(candidateId);
-      if (candidateRes.success && candidateRes.data) {
-        setServerCandidate(candidateRes.data);
-        setPendingUpdates({});
-      }
-    } catch (err) {
-      alert("Failed to load candidate data");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleFieldChange = (key: string, value: any, status: string = 'EDITED') => {
     setPendingUpdates((prev) => ({ ...prev, [key]: { reviewedValue: value, reviewStatus: status } }));
@@ -308,8 +350,94 @@ export const CandidateReviewWorkspace: React.FC<CandidateReviewWorkspaceProps> =
     setPendingUpdates({});
   };
 
-  if (loading) return <div style={{ padding: '24px', textAlign: 'center' }}>Loading candidate...</div>;
-  if (!serverCandidate) return <div>Not found</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: '48px 24px', textAlign: 'center', color: '#64748b' }}>
+        <Loader2 size={24} style={{ display: 'inline-block', animation: 'spin 1s linear infinite', marginBottom: '10px', color: '#2563eb' }} />
+        <div style={{ fontSize: '14px', fontWeight: 500 }}>Loading candidate...</div>
+      </div>
+    );
+  }
+
+  if (candidateError) {
+    return (
+      <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+        <div style={{
+          maxWidth: '440px',
+          margin: '0 auto',
+          padding: '24px',
+          backgroundColor: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: '8px'
+        }}>
+          <AlertCircle size={28} color="#dc2626" style={{ margin: '0 auto 10px auto' }} />
+          <div style={{ color: '#991b1b', fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>
+            Unable to load candidate information.
+          </div>
+          <div style={{ color: '#b91c1c', fontSize: '13px', marginBottom: '16px', lineHeight: 1.4 }}>
+            {candidateError}
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchData()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '7px 20px',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!serverCandidate) {
+    return (
+      <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+        <div style={{
+          maxWidth: '440px',
+          margin: '0 auto',
+          padding: '24px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px'
+        }}>
+          <div style={{ color: '#334155', fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>
+            Candidate not found
+          </div>
+          <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
+            No candidate data is available for this review.
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchData()}
+            style={{
+              padding: '7px 20px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const originalFieldResults = normalizeFieldResults(serverCandidate.fieldResults);
   const fieldResults = { ...originalFieldResults };

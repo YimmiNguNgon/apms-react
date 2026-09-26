@@ -399,7 +399,11 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const latestAiMessageRef = useRef<HTMLElement>(null);
+  const isNearBottomRef = useRef(true);
+  const userInitiatedSendRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isOwnerMode = currentUser?.role === ROLES.ADMIN || currentUser?.role === ROLES.OWNER;
@@ -448,12 +452,81 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
 
   const hasStarterCatalog = isStaffMode || isManagerMode || isOwnerMode;
 
+  const handleThreadScroll = useCallback(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const threshold = 120;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distanceToBottom <= threshold;
+    isNearBottomRef.current = nearBottom;
+    if (!nearBottom) {
+      // User deliberately scrolled up away from bottom to read history
+      userInitiatedSendRef.current = false;
+    }
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior,
+        block: 'end',
+      });
+    } else if (threadRef.current) {
+      threadRef.current.scrollTo({
+        top: threadRef.current.scrollHeight,
+        behavior,
+      });
+    }
+  }, []);
+
+  const scrollToLatestTurn = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const container = threadRef.current;
+    const latestAi = latestAiMessageRef.current;
+    if (container && latestAi) {
+      const isLongResponse = latestAi.offsetHeight > container.clientHeight * 0.9;
+      if (isLongResponse) {
+        // If the AI response is longer than the viewport, position the start of the response in view
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = latestAi.getBoundingClientRect();
+        const targetTop = targetRect.top - containerRect.top + container.scrollTop;
+        container.scrollTo({
+          top: Math.max(0, targetTop - 20),
+          behavior,
+        });
+        return;
+      }
+    }
+    scrollToBottom(behavior);
+  }, [scrollToBottom]);
+
+  const triggerAutoScroll = useCallback((behavior: ScrollBehavior = 'smooth', alignToLatestTurn = false) => {
+    requestAnimationFrame(() => {
+      if (alignToLatestTurn) {
+        scrollToLatestTurn(behavior);
+      } else {
+        scrollToBottom(behavior);
+      }
+      requestAnimationFrame(() => {
+        if (alignToLatestTurn) {
+          scrollToLatestTurn(behavior);
+        } else {
+          scrollToBottom(behavior);
+        }
+      });
+    });
+  }, [scrollToBottom, scrollToLatestTurn]);
+
   // Auto-scroll on messages change
   useEffect(() => {
-    requestAnimationFrame(() => {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }, [messages]);
+    if (userInitiatedSendRef.current || isNearBottomRef.current) {
+      const latestMsg = messages[messages.length - 1];
+      const isResponseComplete = latestMsg && latestMsg.role === 'ai' && !latestMsg.isLoading;
+      triggerAutoScroll('smooth', isResponseComplete);
+      if (isResponseComplete) {
+        userInitiatedSendRef.current = false;
+      }
+    }
+  }, [messages, triggerAutoScroll]);
 
   // Resolve projects for Staff and Manager
   useEffect(() => {
@@ -1050,6 +1123,14 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
     const msg = (override ?? input).trim();
     if (!msg || isSending) return;
 
+    // Immediately collapse any expanded suggestion / catalog panels
+    setIsCatalogExpanded(false);
+    setShowFollowupCatalog(false);
+
+    // Mark as user-initiated send and reset near-bottom flag
+    userInitiatedSendRef.current = true;
+    isNearBottomRef.current = true;
+
     const effectiveMentions: AiMentionItem[] = attachedMentions.filter(m =>
       msg.includes(m.trigger + m.label)
     );
@@ -1068,6 +1149,9 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
       textareaRef.current.style.height = 'auto';
     }
     setIsSending(true);
+
+    // Scroll immediately to newly sent user message and loading indicator
+    triggerAutoScroll('smooth', false);
 
     try {
       const endpoint = isOwnerMode ? '/owner/ai-assistant/chat' : '/ai-assistant/chat';
@@ -1343,7 +1427,7 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
         {/* Right Chat Workspace Card */}
         <main className={styles.chatWorkspace}>
           {/* Scrollable Conversation Thread */}
-          <section className={styles.thread} aria-live="polite">
+          <section ref={threadRef} className={styles.thread} aria-live="polite" onScroll={handleThreadScroll}>
             <div className={styles.threadInner}>
               {isLoadingMessages ? (
                 <div className={styles.loadingThread}>
@@ -1461,13 +1545,16 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
                   )}
                 </div>
               ) : (
-                messages.map((message, index) => (
-                  <article
-                    key={index}
-                    className={`${styles.messageRow} ${
-                      message.role === 'user' ? styles.userRow : styles.aiRow
-                    }`}
-                  >
+                messages.map((message, index) => {
+                  const isLastAi = message.role === 'ai' && index === messages.length - 1;
+                  return (
+                    <article
+                      key={index}
+                      ref={isLastAi ? (latestAiMessageRef as any) : undefined}
+                      className={`${styles.messageRow} ${
+                        message.role === 'user' ? styles.userRow : styles.aiRow
+                      }`}
+                    >
                     <div className={styles.avatar}>
                       {message.role === 'ai' ? <Sparkles size={16} /> : <User size={16} />}
                     </div>
@@ -1618,9 +1705,10 @@ export const AIAgent: React.FC<AIAgentProps> = ({ setActivePage }) => {
                       )}
                     </div>
                   </article>
-                ))
+                );
+              })
               )}
-              <div ref={chatEndRef} />
+              <div ref={messagesEndRef} />
             </div>
           </section>
 

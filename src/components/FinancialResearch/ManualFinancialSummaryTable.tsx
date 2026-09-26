@@ -28,9 +28,9 @@ interface Props {
 }
 
 const MANUAL_COLUMNS: FinancialTableColumn[] = [
-  { key: 'label', label: 'Chỉ số tài chính', width: '55%', align: 'left' },
-  { key: 'value', label: 'Giá trị', width: '30%', align: 'right' },
-  { key: 'unit', label: 'Đơn vị', width: '15%', align: 'center' },
+  { key: 'label', label: 'Financial Metric', width: '55%', align: 'left' },
+  { key: 'value', label: 'Value', width: '30%', align: 'right' },
+  { key: 'unit', label: 'Unit', width: '15%', align: 'center' },
 ];
 
 export default function ManualFinancialSummaryTable({
@@ -40,11 +40,11 @@ export default function ManualFinancialSummaryTable({
   const balanceSheetGroups = useMemo(() => {
     const bs = CANONICAL_FINANCIAL_TAXONOMY.filter((m) => m.statementType === 'BALANCE_SHEET');
     return [
-      { subCategory: 'CURRENT_ASSETS', title: '1.1 TÀI SẢN NGẮN HẠN', metrics: bs.filter((m) => m.subCategory === 'CURRENT_ASSETS') },
-      { subCategory: 'NON_CURRENT_ASSETS', title: '1.2 TÀI SẢN DÀI HẠN', metrics: bs.filter((m) => m.subCategory === 'NON_CURRENT_ASSETS') },
-      { subCategory: 'TOTAL_ASSETS', title: '1.3 TỔNG TÀI SẢN', metrics: bs.filter((m) => m.subCategory === 'TOTAL_ASSETS') },
-      { subCategory: 'LIABILITIES', title: '1.4 NỢ PHẢI TRẢ', metrics: bs.filter((m) => m.subCategory === 'LIABILITIES') },
-      { subCategory: 'EQUITY', title: '1.5 VỐN CHỦ SỞ HỮU', metrics: bs.filter((m) => m.subCategory === 'EQUITY') },
+      { subCategory: 'CURRENT_ASSETS', title: '1.1 CURRENT ASSETS', metrics: bs.filter((m) => m.subCategory === 'CURRENT_ASSETS') },
+      { subCategory: 'NON_CURRENT_ASSETS', title: '1.2 NON-CURRENT ASSETS', metrics: bs.filter((m) => m.subCategory === 'NON_CURRENT_ASSETS') },
+      { subCategory: 'TOTAL_ASSETS', title: '1.3 TOTAL ASSETS', metrics: bs.filter((m) => m.subCategory === 'TOTAL_ASSETS') },
+      { subCategory: 'LIABILITIES', title: '1.4 LIABILITIES', metrics: bs.filter((m) => m.subCategory === 'LIABILITIES') },
+      { subCategory: 'EQUITY', title: '1.5 OWNER EQUITY', metrics: bs.filter((m) => m.subCategory === 'EQUITY') },
     ];
   }, []);
 
@@ -134,8 +134,8 @@ export default function ManualFinancialSummaryTable({
         <tbody>
           {/* SECTION 1: BALANCE SHEET */}
           <FinancialSectionRow
-            title="1. BẢNG CÂN ĐỐI KẾ TOÁN"
-            countText={`29 chỉ số (${bsFilledCount} đã nhập)`}
+            title="1. BALANCE SHEET"
+            countText={`29 metrics (${bsFilledCount} entered)`}
             colSpan={3}
           />
           {balanceSheetGroups.map((group) => {
@@ -144,7 +144,7 @@ export default function ManualFinancialSummaryTable({
               <React.Fragment key={group.subCategory}>
                 <FinancialSubSectionRow
                   title={group.title}
-                  countText={`(${groupFilled} / ${group.metrics.length} đã nhập)`}
+                  countText={`(${groupFilled} / ${group.metrics.length} entered)`}
                   colSpan={3}
                 />
                 {group.metrics.map((metric) => renderMetricRow(metric))}
@@ -154,24 +154,24 @@ export default function ManualFinancialSummaryTable({
 
           {/* SECTION 2: INCOME STATEMENT */}
           <FinancialSectionRow
-            title="2. BÁO CÁO KẾT QUẢ HOẠT ĐỘNG KINH DOANH"
-            countText={`18 chỉ số (${isFilledCount} đã nhập)`}
+            title="2. INCOME STATEMENT"
+            countText={`18 metrics (${isFilledCount} entered)`}
             colSpan={3}
           />
           {incomeStatementMetrics.map((metric) => renderMetricRow(metric))}
 
           {/* SECTION 3: BANKING */}
           <FinancialSectionRow
-            title="3. NGÂN HÀNG & TỔ CHỨC TÍN DỤNG"
-            countText={`8 chỉ số (${bankFilledCount} đã nhập)`}
+            title="3. BANKING & CREDIT INSTITUTIONS"
+            countText={`8 metrics (${bankFilledCount} entered)`}
             colSpan={3}
           />
           {bankingMetrics.map((metric) => renderMetricRow(metric))}
 
           {/* SECTION 4: RATIOS */}
           <FinancialSectionRow
-            title="4. CÁC CHỈ SỐ TÀI CHÍNH & AN TOÀN"
-            countText={`6 chỉ số (${ratioFilledCount} đã nhập)`}
+            title="4. FINANCIAL & PRUDENTIAL RATIOS"
+            countText={`6 metrics (${ratioFilledCount} entered)`}
             colSpan={3}
           />
           {ratioMetrics.map((metric) => renderMetricRow(metric))}
@@ -180,8 +180,8 @@ export default function ManualFinancialSummaryTable({
           {customMetrics.length > 0 && (
             <>
               <FinancialSectionRow
-                title="5. CHỈ SỐ KHÁC"
-                countText={`${customMetrics.length} chỉ số bổ sung`}
+                title="5. OTHER CUSTOM METRICS"
+                countText={`${customMetrics.length} custom metrics`}
                 colSpan={3}
               />
               {customMetrics.map((metric, idx) => {
@@ -208,10 +208,10 @@ export default function ManualFinancialSummaryTable({
 
       <div className={styles.tableFooterSummary}>
         <span>
-          Tổng cộng: <strong>{totalFilledCanonical} / 61</strong> chỉ số chuẩn đã nhập
-          {customMetrics.length > 0 && ` (+${customMetrics.length} chỉ số tùy chỉnh)`}
+          Total: <strong>{totalFilledCanonical} / 61</strong> standard metrics entered
+          {customMetrics.length > 0 && ` (+${customMetrics.length} custom metrics)`}
         </span>
-        <span>Chỉ số chưa nhập hiển thị <em>N/A</em></span>
+        <span>Unentered metrics display <em>N/A</em></span>
       </div>
     </>
   );
