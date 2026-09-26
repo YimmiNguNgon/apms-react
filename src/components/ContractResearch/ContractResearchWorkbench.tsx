@@ -781,10 +781,19 @@ export const ContractResearchWorkbench: React.FC<ContractResearchWorkbenchProps>
 
   const handleDelete = async () => {
     if (!contractToDelete) return;
+    const deletedId = contractToDelete.id;
     setIsDeleting(true);
     try {
-      const updated = await contractResearchApi.deleteContract(projectId, taskId, contractToDelete.id);
+      const updated = await contractResearchApi.deleteContract(projectId, taskId, deletedId);
       setResearch(updated);
+      setSelectedContractId((prev) => {
+        if (prev === deletedId) {
+          const remaining = updated.contracts || [];
+          return remaining.length > 0 ? remaining[0].id : null;
+        }
+        return prev;
+      });
+      setSelectedContractIdsForSubmission((prev) => prev.filter((id) => id !== deletedId));
       setContractToDelete(null);
       setToast({ message: 'Contract deleted successfully.', type: 'success' });
     } catch (err: any) {
