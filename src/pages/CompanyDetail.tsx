@@ -768,8 +768,9 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
         setSources(sourcesRes?.data ?? null);
         setIntelligence(intelRes?.data ?? null);
         const listProjects = projectsRes?.data?.content ?? [];
-        if (singleContextProject && !listProjects.some((p: ProjectResponse) => p.id === singleContextProject?.id)) {
-          setProjects([singleContextProject, ...listProjects]);
+        if (singleContextProject) {
+          const filtered = listProjects.filter((p: ProjectResponse) => p.id !== singleContextProject?.id);
+          setProjects([singleContextProject, ...filtered]);
         } else {
           setProjects(listProjects);
         }
@@ -951,7 +952,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const isCurrentlyHidden = profile.isHidden === true || (profile.isHidden === undefined && profile.visibility === 'HIDDEN');
     const newVisibility = isCurrentlyHidden ? 'PUBLISHED' : 'HIDDEN';
     try {
-      const response = await companyProfileApi.updateProfileVisibility(targetId, newVisibility);
+      const response = await companyProfileApi.updateProfileVisibility(targetId, newVisibility, contextProjectId);
       const data = (response as any)?.data ?? response;
       const updatedIsHidden = typeof data?.isHidden === 'boolean'
         ? data.isHidden
@@ -3089,7 +3090,19 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   if (!hasLegalName || !hasTaxCode) {
                     publishBlockReason = 'Profile requires Legal Name and Tax Code before it can be published.';
                   } else if (profile.canPublish === false) {
-                    publishBlockReason = profile.publishBlockReason || 'Profile is currently not eligible for publishing.';
+                    if (
+                      profile.publishBlockReason === 'Available after the New Company Research project is completed.' &&
+                      (contextProject?.status === 'COMPLETED' ||
+                        projects.some(
+                          (p) =>
+                            ((p as any).projectType === 'RESEARCH_NEW_COMPANY' || (p as any).type === 'RESEARCH_NEW_COMPANY') &&
+                            p.status === 'COMPLETED'
+                        ))
+                    ) {
+                      publishBlockReason = null;
+                    } else {
+                      publishBlockReason = profile.publishBlockReason || 'Profile is currently not eligible for publishing.';
+                    }
                   }
 
                   const canPublish = !publishBlockReason;
