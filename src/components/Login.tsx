@@ -4,17 +4,7 @@ import { useUser } from '../context/UserContext';
 import { loginApi, type VerificationPayload, type MfaChallengePayload } from '../API/loginApi';
 import { EmailVerification } from './EmailVerification';
 
-const DEV_ACCOUNT_ALIASES: Record<string, string> = import.meta.env.DEV
-  ? {
-      admin: 'admin@apms.com',
-      sysadmin: 'admin@apms.com',
-      owner: 'owner@apms.com',
-      director: 'director@apms.com',
-      manager: 'manager@apms.com',
-      keymember: 'keymember@apms.com',
-      staff: 'staff@apms.com',
-    }
-  : {};
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type LoginStep = 'CREDENTIALS' | 'MFA_REQUIRED';
 
@@ -31,19 +21,18 @@ export const Login: React.FC = () => {
   const [mfaError, setMfaError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const normalizeIdentity = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    if (trimmed.includes('@')) return trimmed;
-    return DEV_ACCOUNT_ALIASES[trimmed.toLowerCase()] || trimmed;
-  };
-
   const handleSubmit = async (event?: React.FormEvent) => {
     event?.preventDefault();
     setError('');
 
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setError(t('errorEmptyEmail'));
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      setError(t('errorInvalidEmail'));
       return;
     }
 
@@ -54,7 +43,7 @@ export const Login: React.FC = () => {
 
     setLoading(true);
     try {
-      const result = await loginApi.login(normalizeIdentity(email), password);
+      const result = await loginApi.login(trimmedEmail, password);
       if ('requiresEmailVerification' in result) {
         setVerification(result);
         return;
@@ -190,8 +179,8 @@ export const Login: React.FC = () => {
               <label className="form-label">{t('emailLabel')}</label>
               <input
                 className="form-input"
-                type="text"
-                autoComplete="username"
+                type="email"
+                autoComplete="email"
                 placeholder={t('emailPlaceholder')}
                 value={email}
                 disabled={loading}

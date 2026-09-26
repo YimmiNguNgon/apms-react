@@ -333,12 +333,12 @@ export const CompanyList: React.FC<CompanyListProps> = ({
                 ))}
               </select>
               <select className="search-input" value={relationshipFilter} onChange={(event) => setRelationshipFilter(event.target.value)}>
-                <option value="">{t('filters.allRelationships')}</option>
-                <option value="PARTNER_WITH">{t('filters.partner')}</option>
-                <option value="COMPETITOR_OF">{t('filters.competitor')}</option>
-                <option value="SUPPLIER_OF">{t('filters.supplier')}</option>
-                <option value="CUSTOMER_OF">{t('filters.customer')}</option>
-                <option value="POTENTIAL_PARTNER_OF">{t('filters.potentialPartner')}</option>
+                <option value="">{t('filters.allRelationships', 'All relationships')}</option>
+                <option value="PARTNER_WITH">{t('filters.partner', 'Partner')}</option>
+                <option value="COMPETITOR_OF">{t('filters.competitor', 'Competitor')}</option>
+                <option value="SUPPLIER_OF">{t('filters.supplier', 'Supplier')}</option>
+                <option value="CUSTOMER_OF">{t('filters.customer', 'Customer')}</option>
+                <option value="POTENTIAL_PARTNER_OF">{t('filters.potentialPartner', 'Potential Partner')}</option>
               </select>
             </div>
 

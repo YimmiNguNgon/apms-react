@@ -446,7 +446,7 @@ const UsersTab: React.FC<{
     try {
       await api.post(`/users/${resetMfaConfirm.id}/reset-authenticator`);
       setResetMfaConfirm(null);
-      showNotice('Authenticator reset successfully. The user must set up Authenticator again on the next sign-in.');
+      showNotice('Authenticator reset successfully.');
       fetchUsers();
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Could not reset Authenticator.');
@@ -534,7 +534,7 @@ const UsersTab: React.FC<{
               <table className="admin-table">
                 <thead>
                   <tr>
-                    {['#ID', 'User', 'Email', 'Role', 'Status'].map((h) => <th key={h}>{h}</th>)}
+                    {['#', 'User', 'Email', 'Role', 'Status'].map((h) => <th key={h}>{h}</th>)}
                     {showEmailStatus && <th>{t('users.table.emailStatus')}</th>}
                     <th>Actions</th>
                   </tr>
@@ -550,7 +550,7 @@ const UsersTab: React.FC<{
 
                     return (
                       <tr key={user.id || user.email}>
-                        <td className="admin-mono" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>#{user.id ?? '-'}</td>
+                        <td className="admin-mono" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{user.id ?? '-'}</td>
                         <td>
                           <strong>{user.name || user.fullName || user.username || 'Unnamed'}{isSelf && <span style={{ fontSize: '10px', color: '#3B82F6', marginLeft: '4px' }}>(you)</span>}</strong>
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px', flexWrap: 'wrap' }}>
@@ -560,7 +560,7 @@ const UsersTab: React.FC<{
                                 className={`project-status-badge ${user.authenticatorConfigured ? 'success' : 'neutral'}`}
                                 style={{ fontSize: '10px', padding: '1px 6px' }}
                               >
-                                {user.authenticatorConfigured ? 'Authenticator Configured' : 'Authenticator Setup required'}
+                                {user.authenticatorConfigured ? 'Authenticator Configured' : 'Authenticator not configured'}
                               </span>
                             )}
                           </div>
@@ -1033,11 +1033,11 @@ const UsersTab: React.FC<{
                   marginBottom: '14px',
                 }}
               >
-                <strong style={{ color: '#EF4444', display: 'block', marginBottom: '4px' }}>
-                  Reset Authenticator for {resetMfaConfirm.userName}?
+                <strong style={{ color: '#EF4444', display: 'block', marginBottom: '6px' }}>
+                  {resetMfaConfirm.userName} ({resetMfaConfirm.userEmail})
                 </strong>
                 <p style={{ margin: 0, fontSize: '13px', color: '#4B5563', lineHeight: '1.5' }}>
-                  The current Authenticator configuration will be invalidated. The user will need to sign in with their password and scan a new QR code before accessing APMS.
+                  This will remove the user's current Authenticator configuration. The user will be able to sign in with email and password and can set up two-factor authentication again from Account Profile.
                 </p>
               </div>
             </div>

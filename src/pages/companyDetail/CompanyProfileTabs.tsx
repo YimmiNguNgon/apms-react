@@ -6,6 +6,8 @@ import type { ListingTabId } from './utils';
 import { C, GHOST_BUTTON, INPUT_STYLE, PRIMARY_BUTTON } from './tokens';
 import { validateWebsite, validateEmail, validatePhone, validateCompanyProfileField } from '../../utils/companyProfileValidation';
 import { CompanyDetailEmptyState } from './CompanyDetailEmptyState';
+import { TruncatedNumberedList } from './TruncatedNumberedList';
+import styles from '../CompanyDetail.module.css';
 
 export interface OverviewPayload {
   legalName: string;
@@ -354,7 +356,6 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
   const [editingMember, setEditingMember] = useState<number | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [showAllProducts, setShowAllProducts] = useState(false);
 
   const cancelAll = () => {
     setEditing(null);
@@ -896,236 +897,62 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
     const hasData = products.length > 0 || industries.length > 0 || markets.length > 0 || targetCustomers.length > 0;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Products & Services</h2>
-              </div>
-              {products.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '36px 1fr',
-                      gap: '8px',
-                      padding: '4px 8px',
-                      background: '#F1F5F9',
-                      borderRadius: '4px',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      color: '#475569',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div style={{ textAlign: 'center' }}>#</div>
-                    <div>Product / Service</div>
-                  </div>
-                  {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '36px 1fr',
-                        gap: '8px',
-                        alignItems: 'center',
-                        background: '#F8FAFC',
-                        padding: '6px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid #F1F5F9',
-                      }}
-                    >
-                      <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                        {idx + 1}
-                      </div>
-                      <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
-                    </div>
-                  ))}
-                  {products.length > 5 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllProducts(!showAllProducts)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#1D4ED8',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        padding: '4px 0',
-                        textAlign: 'left'
-                      }}
-                    >
-                      {showAllProducts ? 'Show less' : `Show ${products.length - 5} more products`}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <strong style={C.muted}>N/A</strong>
-              )}
-            </section>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Row 1: Products & Services (left 50%) + Industry (right 50%) */}
+        <div className={styles.businessFieldsGrid}>
+          {/* Products & Services */}
+          <section style={C.card}>
+            <div style={C.cardHeader}>
+              <h2 style={C.h2}>Products & Services</h2>
+            </div>
+            <TruncatedNumberedList
+              items={products}
+              columnLabel="Product / Service"
+              rowPadding="6px 8px"
+              renderItem={(p) => <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>}
+            />
+          </section>
 
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Industry</h2>
-              </div>
-              {industries.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '36px 1fr',
-                      gap: '8px',
-                      padding: '4px 8px',
-                      background: '#F1F5F9',
-                      borderRadius: '4px',
-                      fontSize: '0.66rem',
-                      fontWeight: 700,
-                      color: '#475569',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div style={{ textAlign: 'center' }}>#</div>
-                    <div>Industry</div>
-                  </div>
-                  {industries.map((ind, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '36px 1fr',
-                        gap: '8px',
-                        alignItems: 'center',
-                        background: '#F8FAFC',
-                        padding: '5px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid #F1F5F9',
-                      }}
-                    >
-                      <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                        {i + 1}
-                      </div>
-                      <div>
-                        <span style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', color: '#334155', fontWeight: 500, display: 'inline-block' }}>
-                          {ind}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <strong style={C.muted}>N/A</strong>
-              )}
-            </section>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Markets & Customers</h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
-                  {markets.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '8px',
-                          padding: '4px 8px',
-                          background: '#F1F5F9',
-                          borderRadius: '4px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          color: '#475569',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center' }}>#</div>
-                        <div>Active Market</div>
-                      </div>
-                      {markets.map((m, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '36px 1fr',
-                            gap: '8px',
-                            alignItems: 'center',
-                            background: '#F8FAFC',
-                            padding: '5px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #F1F5F9',
-                          }}
-                        >
-                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
-                              {m}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <strong style={C.muted}>N/A</strong>}
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
-                  {targetCustomers.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '8px',
-                          padding: '4px 8px',
-                          background: '#F1F5F9',
-                          borderRadius: '4px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          color: '#475569',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center' }}>#</div>
-                        <div>Target Customer</div>
-                      </div>
-                      {targetCustomers.map((c, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '36px 1fr',
-                            gap: '8px',
-                            alignItems: 'center',
-                            background: '#F8FAFC',
-                            padding: '5px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #F1F5F9',
-                          }}
-                        >
-                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
-                              {c}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <strong style={C.muted}>N/A</strong>}
-                </div>
-              </div>
-            </section>
-          </div>
+          {/* Industry */}
+          <section style={C.card}>
+            <div style={C.cardHeader}>
+              <h2 style={C.h2}>Industry</h2>
+            </div>
+            <TruncatedNumberedList
+              items={industries}
+              columnLabel="Industry"
+              tagBg="#E0E7FF"
+              tagColor="#3730A3"
+            />
+          </section>
         </div>
+
+        {/* Row 2: Markets & Customers (Full Width) */}
+        <section style={C.card}>
+          <div style={C.cardHeader}>
+            <h2 style={C.h2}>Markets & Customers</h2>
+          </div>
+          <div className={styles.marketsCustomersGrid}>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
+              <TruncatedNumberedList
+                items={markets}
+                columnLabel="Active Market"
+                tagBg="#F1F5F9"
+                tagColor="#334155"
+              />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
+              <TruncatedNumberedList
+                items={targetCustomers}
+                columnLabel="Target Customer"
+                tagBg="#ECFDF5"
+                tagColor="#065F46"
+              />
+            </div>
+          </div>
+        </section>
       </div>
     );
   };
@@ -1152,17 +979,17 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <section style={C.card}>
           <div style={C.cardHeader}>
-            <h2 style={C.h2}>Sản phẩm & Dịch vụ (Products & Services)</h2>
+            <h2 style={C.h2}>Products & Services</h2>
             <button
               type="button"
               onClick={() => setBfDraft((prev) => (prev ? { ...prev, products: [...prev.products, { name: '' }] } : prev))}
               style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', cursor: 'pointer' }}
             >
-              + Thêm sản phẩm/dịch vụ
+              + Add Product / Service
             </button>
           </div>
           {bfDraft.products.length === 0 ? (
-            <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>Chưa có sản phẩm/dịch vụ nào.</p>
+            <p style={{ margin: 0, fontSize: '0.72rem', color: '#94A3B8' }}>No product or service recorded yet.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div
@@ -1180,21 +1007,21 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
                 }}
               >
                 <div style={{ textAlign: 'center' }}>#</div>
-                <div>Sản phẩm / Dịch vụ (Product / Service)</div>
-                <div style={{ textAlign: 'right', paddingRight: '4px' }}>Thao tác</div>
+                <div>Product / Service</div>
+                <div style={{ textAlign: 'right', paddingRight: '4px' }}>Actions</div>
               </div>
               {bfDraft.products.map((p, idx) => (
                 <div key={idx} style={{ display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: '8px', alignItems: 'center', background: '#F8FAFC', padding: '6px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
                   <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
                     {idx + 1}
                   </div>
-                  <input placeholder="Tên sản phẩm" value={p.name} onChange={(e) => updateProduct(idx, 'name', e.target.value)} style={INPUT_STYLE} />
+                  <input placeholder="Product or service name..." value={p.name} onChange={(e) => updateProduct(idx, 'name', e.target.value)} style={INPUT_STYLE} />
                   <button
                     type="button"
                     onClick={() => removeProduct(idx)}
                     style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
-                    Xóa
+                    Delete
                   </button>
                 </div>
               ))}
@@ -1204,24 +1031,24 @@ export const CompanyProfileTabs: React.FC<CompanyProfileTabsProps> = ({
 
         <section style={C.card}>
           <div style={C.cardHeader}>
-            <h2 style={C.h2}>Thị trường & Khách hàng (Markets & Customers)</h2>
+            <h2 style={C.h2}>Markets & Customers</h2>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div>
-              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Thị trường hoạt động</span>
+          <div className={styles.marketsCustomersGrid}>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
               <ChipListEditor
                 items={bfDraft.markets}
                 onChange={(next) => setBfDraft((prev) => (prev ? { ...prev, markets: next } : prev))}
-                placeholder="VD: Việt Nam, Singapore..."
+                placeholder="e.g. Vietnam, Singapore..."
                 columnLabel="Active Market"
               />
             </div>
-            <div>
-              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Khách hàng mục tiêu</span>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
               <ChipListEditor
                 items={bfDraft.targetCustomers}
                 onChange={(next) => setBfDraft((prev) => (prev ? { ...prev, targetCustomers: next } : prev))}
-                placeholder="VD: Ngân hàng, Bảo hiểm..."
+                placeholder="e.g. Banking, Insurance..."
                 columnLabel="Target Customer"
               />
             </div>

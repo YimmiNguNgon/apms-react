@@ -662,3 +662,30 @@
   color: #64748b;
   padding: 0 6px;
 }
+
+.businessFieldsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .businessFieldsGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.marketsCustomersGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .marketsCustomersGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+

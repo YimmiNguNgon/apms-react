@@ -60,13 +60,13 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
     if (!legalName.trim()) {
-      errors.legalName = 'Tên pháp lý là bắt buộc';
+      errors.legalName = 'Legal name is required';
     }
     if (!tradeName.trim()) {
-      errors.tradeName = 'Tên thương mại là bắt buộc';
+      errors.tradeName = 'Trade name is required';
     }
     if (!taxCode.trim()) {
-      errors.taxCode = 'Mã số thuế là bắt buộc';
+      errors.taxCode = 'Tax code is required';
     }
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -116,10 +116,10 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
         onSuccess(created);
         onClose();
       } else {
-        throw new Error('Không nhận được dữ liệu phản hồi từ máy chủ.');
+        throw new Error('No response data received from the server.');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Đã xảy ra lỗi khi tạo hồ sơ doanh nghiệp chủ quản.';
+      const msg = err instanceof Error ? err.message : 'An error occurred while creating the enterprise profile.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -137,14 +137,14 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
             </div>
             <div>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0F172A' }}>
-                Thiết lập Doanh nghiệp chủ quản (My Enterprise)
+                My Enterprise Setup
               </h2>
               <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
-                Khởi tạo thông tin hồ sơ doanh nghiệp chủ quản lần đầu cho hệ thống APMS
+                Create the initial profile for your enterprise in APMS.
               </p>
             </div>
           </div>
-          <button style={closeButtonStyle} onClick={onClose} aria-label="Đóng">
+          <button style={closeButtonStyle} onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -156,28 +156,28 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
             style={activeTab === 'identity' ? activeTabStyle : inactiveTabStyle}
             onClick={() => setActiveTab('identity')}
           >
-            Thông tin định danh & Pháp lý *
+            Identity & Legal Information *
           </button>
           <button
             type="button"
             style={activeTab === 'contact' ? activeTabStyle : inactiveTabStyle}
             onClick={() => setActiveTab('contact')}
           >
-            Liên hệ & Quy mô
+            Contact & Scale
           </button>
           <button
             type="button"
             style={activeTab === 'description' ? activeTabStyle : inactiveTabStyle}
             onClick={() => setActiveTab('description')}
           >
-            Giới thiệu & Mô hình
+            Introduction & Business Model
           </button>
           <button
             type="button"
             style={activeTab === 'business' ? activeTabStyle : inactiveTabStyle}
             onClick={() => setActiveTab('business')}
           >
-            Lĩnh vực kinh doanh
+            Business Fields
           </button>
         </div>
 
@@ -197,7 +197,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
               <div style={tabContentStyle}>
                 <div style={fieldGroupStyle}>
                   <label style={labelStyle}>
-                    Tên pháp lý (Legal Name) <span style={requiredMark}>*</span>
+                    Legal Name <span style={requiredMark}>*</span>
                   </label>
                   <input
                     type="text"
@@ -209,7 +209,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                         setValidationErrors((prev) => ({ ...prev, legalName: '' }));
                       }
                     }}
-                    placeholder="Ví dụ: CÔNG TY CỔ PHẦN CÔNG NGHỆ VÀ TRUYỀN THÔNG APMS"
+                    placeholder="e.g. APMS Technology and Communications JSC"
                   />
                   {validationErrors.legalName && (
                     <span style={errorTextStyle}>{validationErrors.legalName}</span>
@@ -219,7 +219,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                 <div style={twoColRowStyle}>
                   <div style={fieldGroupStyle}>
                     <label style={labelStyle}>
-                      Tên thương mại (Trade Name) <span style={requiredMark}>*</span>
+                      Trade Name <span style={requiredMark}>*</span>
                     </label>
                     <input
                       type="text"
@@ -231,7 +231,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                           setValidationErrors((prev) => ({ ...prev, tradeName: '' }));
                         }
                       }}
-                      placeholder="Ví dụ: APMS Tech"
+                      placeholder="e.g. APMS Tech"
                     />
                     {validationErrors.tradeName && (
                       <span style={errorTextStyle}>{validationErrors.tradeName}</span>
@@ -240,7 +240,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
 
                   <div style={fieldGroupStyle}>
                     <label style={labelStyle}>
-                      Mã số thuế (Tax Code) <span style={requiredMark}>*</span>
+                      Tax Code <span style={requiredMark}>*</span>
                     </label>
                     <input
                       type="text"
@@ -252,7 +252,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                           setValidationErrors((prev) => ({ ...prev, taxCode: '' }));
                         }
                       }}
-                      placeholder="Ví dụ: 0101234567"
+                      placeholder="e.g. 0101234567"
                     />
                     {validationErrors.taxCode && (
                       <span style={errorTextStyle}>{validationErrors.taxCode}</span>
@@ -262,7 +262,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
 
                 <div style={threeColRowStyle}>
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Số ĐKKD (Registration No.)</label>
+                    <label style={labelStyle}>Registration No.</label>
                     <input
                       type="text"
                       style={inputStyle}
@@ -273,18 +273,18 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Mã chứng khoán (Ticker)</label>
+                    <label style={labelStyle}>Ticker</label>
                     <input
                       type="text"
                       style={inputStyle}
                       value={stockTicker}
                       onChange={(e) => setStockTicker(e.target.value)}
-                      placeholder="Ví dụ: APM"
+                      placeholder="e.g. APM"
                     />
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Sàn giao dịch (Exchange)</label>
+                    <label style={labelStyle}>Exchange</label>
                     <input
                       type="text"
                       style={inputStyle}
@@ -313,7 +313,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Năm thành lập</label>
+                    <label style={labelStyle}>Founded Year</label>
                     <input
                       type="number"
                       style={inputStyle}
@@ -326,7 +326,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
 
                 <div style={twoColRowStyle}>
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Emails liên hệ</label>
+                    <label style={labelStyle}>Contact Emails</label>
                     <input
                       type="text"
                       style={inputStyle}
@@ -334,11 +334,11 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                       onChange={(e) => setEmailsText(e.target.value)}
                       placeholder="contact@enterprise.com, info@enterprise.com"
                     />
-                    <span style={hintStyle}>Nhiều email cách nhau bằng dấu phẩy</span>
+                    <span style={hintStyle}>Separate multiple emails with commas</span>
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Số điện thoại</label>
+                    <label style={labelStyle}>Phone Numbers</label>
                     <input
                       type="text"
                       style={inputStyle}
@@ -346,24 +346,24 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                       onChange={(e) => setPhonesText(e.target.value)}
                       placeholder="+84 24 1234 5678, +84 90 123 4567"
                     />
-                    <span style={hintStyle}>Nhiều số cách nhau bằng dấu phẩy</span>
+                    <span style={hintStyle}>Separate multiple numbers with commas</span>
                   </div>
                 </div>
 
                 <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Địa chỉ trụ sở chính</label>
+                  <label style={labelStyle}>Headquarters Address</label>
                   <input
                     type="text"
                     style={inputStyle}
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Số 10, Đường ABC, Phường XYZ, Quận 1, TP. Hồ Chí Minh"
+                    placeholder="e.g. 10 ABC Street, District 1, Ho Chi Minh City"
                   />
                 </div>
 
                 <div style={threeColRowStyle}>
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Số lượng nhân viên</label>
+                    <label style={labelStyle}>Number of Employees</label>
                     <input
                       type="number"
                       style={inputStyle}
@@ -374,34 +374,34 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Quy mô nhân sự (Tier)</label>
+                    <label style={labelStyle}>Employee Scale (Tier)</label>
                     <select
                       style={selectStyle}
                       value={employeeTier}
                       onChange={(e) => setEmployeeTier(e.target.value)}
                     >
-                      <option value="">-- Chọn phân hạng --</option>
-                      <option value="1-50">1 - 50 nhân viên</option>
-                      <option value="51-200">51 - 200 nhân viên</option>
-                      <option value="201-1000">201 - 1,000 nhân viên</option>
-                      <option value="1001-5000">1,001 - 5,000 nhân viên</option>
-                      <option value="5000+">Trên 5,000 nhân viên</option>
+                      <option value="">-- Select Tier --</option>
+                      <option value="1-50">1 - 50 employees</option>
+                      <option value="51-200">51 - 200 employees</option>
+                      <option value="201-1000">201 - 1,000 employees</option>
+                      <option value="1001-5000">1,001 - 5,000 employees</option>
+                      <option value="5000+">5,000+ employees</option>
                     </select>
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Phân hạng doanh thu</label>
+                    <label style={labelStyle}>Revenue Tier</label>
                     <select
                       style={selectStyle}
                       value={revenueTier}
                       onChange={(e) => setRevenueTier(e.target.value)}
                     >
-                      <option value="">-- Chọn phân hạng --</option>
-                      <option value="TIER_1">&lt; 10 tỷ VNĐ</option>
-                      <option value="TIER_2">10 - 50 tỷ VNĐ</option>
-                      <option value="TIER_3">50 - 200 tỷ VNĐ</option>
-                      <option value="TIER_4">200 - 1,000 tỷ VNĐ</option>
-                      <option value="TIER_5">&gt; 1,000 tỷ VNĐ</option>
+                      <option value="">-- Select Tier --</option>
+                      <option value="TIER_1">&lt; 10B VND</option>
+                      <option value="TIER_2">10 - 50B VND</option>
+                      <option value="TIER_3">50 - 200B VND</option>
+                      <option value="TIER_4">200 - 1,000B VND</option>
+                      <option value="TIER_5">&gt; 1,000B VND</option>
                     </select>
                   </div>
                 </div>
@@ -412,24 +412,24 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
             {activeTab === 'description' && (
               <div style={tabContentStyle}>
                 <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Mô tả doanh nghiệp</label>
+                  <label style={labelStyle}>Company Description</label>
                   <textarea
                     rows={4}
                     style={textareaStyle}
                     value={companyDescription}
                     onChange={(e) => setCompanyDescription(e.target.value)}
-                    placeholder="Mô tả tóm tắt về lịch sử, sứ mệnh, thế mạnh của doanh nghiệp..."
+                    placeholder="Brief summary of company history, mission, and key strengths..."
                   />
                 </div>
 
                 <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Mô hình kinh doanh (Business Model)</label>
+                  <label style={labelStyle}>Business Model</label>
                   <textarea
                     rows={3}
                     style={textareaStyle}
                     value={businessModel}
                     onChange={(e) => setBusinessModel(e.target.value)}
-                    placeholder="Ví dụ: B2B SaaS, IT Outsourcing, Hệ thống tích hợp giải pháp..."
+                    placeholder="e.g. B2B SaaS, IT Outsourcing, System Integration..."
                   />
                 </div>
               </div>
@@ -439,52 +439,52 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
             {activeTab === 'business' && (
               <div style={tabContentStyle}>
                 <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Ngành nghề hoạt động (Industries)</label>
+                  <label style={labelStyle}>Industries</label>
                   <input
                     type="text"
                     style={inputStyle}
                     value={industriesText}
                     onChange={(e) => setIndustriesText(e.target.value)}
-                    placeholder="Công nghệ thông tin, Viễn thông, Phần mềm doanh nghiệp"
+                    placeholder="Information Technology, Telecommunications, Enterprise Software"
                   />
-                  <span style={hintStyle}>Nhập danh sách cách nhau bằng dấu phẩy</span>
+                  <span style={hintStyle}>Comma-separated list</span>
                 </div>
 
                 <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Sản phẩm & Dịch vụ chính (Products & Services)</label>
+                  <label style={labelStyle}>Products & Services</label>
                   <input
                     type="text"
                     style={inputStyle}
                     value={productsText}
                     onChange={(e) => setProductsText(e.target.value)}
-                    placeholder="Nền tảng Quản trị rủi ro, Tư vấn chuyển đổi số, Dịch vụ Cloud"
+                    placeholder="Risk Management Platform, Digital Transformation Consulting, Cloud Services"
                   />
-                  <span style={hintStyle}>Nhập danh sách cách nhau bằng dấu phẩy</span>
+                  <span style={hintStyle}>Comma-separated list</span>
                 </div>
 
                 <div style={twoColRowStyle}>
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Thị trường / Khu vực (Markets & Regions)</label>
+                    <label style={labelStyle}>Markets & Regions</label>
                     <input
                       type="text"
                       style={inputStyle}
                       value={marketsText}
                       onChange={(e) => setMarketsText(e.target.value)}
-                      placeholder="Việt Nam, Đông Nam Á, Nhật Bản"
+                      placeholder="Vietnam, Southeast Asia, Japan"
                     />
-                    <span style={hintStyle}>Cách nhau bằng dấu phẩy</span>
+                    <span style={hintStyle}>Comma-separated</span>
                   </div>
 
                   <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>Khách hàng mục tiêu (Target Customers)</label>
+                    <label style={labelStyle}>Target Customers</label>
                     <input
                       type="text"
                       style={inputStyle}
                       value={targetCustomersText}
                       onChange={(e) => setTargetCustomersText(e.target.value)}
-                      placeholder="Ngân hàng & Tài chính, Bán lẻ, Cơ quan nhà nước"
+                      placeholder="Banking & Finance, Retail, Public Sector"
                     />
-                    <span style={hintStyle}>Cách nhau bằng dấu phẩy</span>
+                    <span style={hintStyle}>Comma-separated</span>
                   </div>
                 </div>
               </div>
@@ -499,7 +499,7 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Hủy
+              Cancel
             </button>
             <button
               type="submit"
@@ -512,10 +512,10 @@ export const CreateMyEnterpriseModal: React.FC<CreateMyEnterpriseModalProps> = (
               {isSubmitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" style={{ marginRight: 6 }} />
-                  Đang tạo hồ sơ...
+                  Creating profile...
                 </>
               ) : (
-                'Tạo Doanh nghiệp chủ quản'
+                'Create My Enterprise'
               )}
             </button>
           </div>

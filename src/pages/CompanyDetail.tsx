@@ -28,6 +28,8 @@ import BoardMembersTab from './companyDetail/BoardMembersTab';
 import FinancialsTab, { type FinancialsTabHandle } from './companyDetail/FinancialsTab';
 import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab, { type ContractTabHandle } from './companyDetail/DocumentsTab';
+import TruncatedNumberedList from './companyDetail/TruncatedNumberedList';
+import styles from './CompanyDetail.module.css';
 import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
 import { AccessDeniedPage } from '../components/AccessDeniedPage';
@@ -659,7 +661,6 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   }, []);
 
   const [reloadTrigger, setReloadTrigger] = useState(0);
-  const [showAllProducts, setShowAllProducts] = useState(false);
 
   useEffect(() => {
     if (isAdminMyEnterprise) {
@@ -2093,124 +2094,48 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
     const hasData = products.length > 0 || industries.length > 0 || markets.length > 0 || targetCustomers.length > 0;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
-          {/* Products & Services Column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <section style={C.card}>
-              <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={C.h2}>Products & Services</h2>
-                {isExtendedEditing && (
-                  <button
-                    type="button"
-                    onClick={handleAddProduct}
-                    disabled={isSavingProfile}
-                    style={{
-                      background: '#2563EB',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Plus size={11} />
-                    Add Product / Service
-                  </button>
-                )}
-              </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Row 1: Products & Services (left 50%) + Industry (right 50%) */}
+        <div
+          className={styles.businessFieldsGrid}
+          style={isDrawerMode ? { gridTemplateColumns: '1fr' } : undefined}
+        >
+          {/* Products & Services */}
+          <section style={C.card}>
+            <div style={{ ...C.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={C.h2}>Products & Services</h2>
+              {isExtendedEditing && (
+                <button
+                  type="button"
+                  onClick={handleAddProduct}
+                  disabled={isSavingProfile}
+                  style={{
+                    background: '#2563EB',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.68rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Plus size={11} />
+                  Add Product / Service
+                </button>
+              )}
+            </div>
 
-              {isExtendedEditing ? (
-                draftProducts.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '36px 1fr auto',
-                        gap: '8px',
-                        padding: '4px 8px',
-                        background: '#F1F5F9',
-                        borderRadius: '4px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        color: '#475569',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div style={{ textAlign: 'center' }}>#</div>
-                      <div>Product / Service</div>
-                      <div style={{ textAlign: 'right', paddingRight: '4px' }}>Actions</div>
-                    </div>
-                    {draftProducts.map((p, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr auto',
-                          gap: '8px',
-                          alignItems: 'center',
-                          background: '#F8FAFC',
-                          padding: '6px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #CBD5E1',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <input
-                            type="text"
-                            style={inlineInputStyle}
-                            value={p.name}
-                            onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
-                            placeholder="Product or service name..."
-                            disabled={isSavingProfile}
-                          />
-                        </div>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProduct(idx)}
-                            disabled={isSavingProfile}
-                            title="Delete Product"
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#EF4444',
-                              cursor: 'pointer',
-                              padding: '2px 6px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                              fontSize: '0.68rem',
-                            }}
-                          >
-                            <Trash2 size={12} />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ padding: '16px', textAlign: 'center', background: '#F8FAFC', borderRadius: '6px', border: '1px dashed #CBD5E1' }}>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
-                      No product/service recorded. Click <strong>+ Add Product / Service</strong> above to add one.
-                    </p>
-                  </div>
-                )
-              ) : products.length > 0 ? (
+            {isExtendedEditing ? (
+              draftProducts.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '36px 1fr',
+                      gridTemplateColumns: '36px 1fr auto',
                       gap: '8px',
                       padding: '4px 8px',
                       background: '#F1F5F9',
@@ -2223,247 +2148,161 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                   >
                     <div style={{ textAlign: 'center' }}>#</div>
                     <div>Product / Service</div>
+                    <div style={{ textAlign: 'right', paddingRight: '4px' }}>Actions</div>
                   </div>
-                  {(showAllProducts ? products : products.slice(0, 5)).map((p, idx) => (
+                  {draftProducts.map((p, idx) => (
                     <div
                       key={idx}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '36px 1fr',
+                        gridTemplateColumns: '36px 1fr auto',
                         gap: '8px',
                         alignItems: 'center',
                         background: '#F8FAFC',
                         padding: '6px 8px',
                         borderRadius: '6px',
-                        border: '1px solid #F1F5F9',
+                        border: '1px solid #CBD5E1',
                       }}
                     >
                       <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
                         {idx + 1}
                       </div>
                       <div>
-                        <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>
+                        <input
+                          type="text"
+                          style={inlineInputStyle}
+                          value={p.name}
+                          onChange={(e) => handleProductChange(idx, 'name', e.target.value)}
+                          placeholder="Product or service name..."
+                          disabled={isSavingProfile}
+                        />
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteProduct(idx)}
+                          disabled={isSavingProfile}
+                          title="Delete Product"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#EF4444',
+                            cursor: 'pointer',
+                            padding: '2px 6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '0.68rem',
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </div>
                   ))}
-                  {products.length > 5 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllProducts(!showAllProducts)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#1D4ED8',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        padding: '4px 0',
-                        textAlign: 'left'
-                      }}
-                    >
-                      {showAllProducts ? 'Thu gọn' : `Xem thêm ${products.length - 5} sản phẩm`}
-                    </button>
-                  )}
                 </div>
               ) : (
-                <strong style={C.muted}>N/A</strong>
+                <div style={{ padding: '16px', textAlign: 'center', background: '#F8FAFC', borderRadius: '6px', border: '1px dashed #CBD5E1' }}>
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+                    No product/service recorded. Click <strong>+ Add Product / Service</strong> above to add one.
+                  </p>
+                </div>
+              )
+            ) : (
+              <TruncatedNumberedList
+                items={products}
+                columnLabel="Product / Service"
+                rowPadding="6px 8px"
+                renderItem={(p) => <strong style={{ fontSize: '0.76rem', color: '#0F172A' }}>{p.name}</strong>}
+              />
+            )}
+          </section>
+
+          {/* Industry */}
+          <section style={C.card}>
+            <div style={C.cardHeader}>
+              <h2 style={C.h2}>Industry</h2>
+            </div>
+            <div>
+              {isExtendedEditing ? (
+                <CompactTagEditor
+                  tags={draftIndustries}
+                  onChange={setDraftIndustries}
+                  placeholder="Add industry (e.g. Semiconductor)..."
+                  tagBg="#E0E7FF"
+                  tagColor="#3730A3"
+                  disabled={isSavingProfile}
+                  columnLabel="Industry"
+                />
+              ) : (
+                <TruncatedNumberedList
+                  items={industries}
+                  columnLabel="Industry"
+                  tagBg="#E0E7FF"
+                  tagColor="#3730A3"
+                />
               )}
-            </section>
-          </div>
-
-          {/* Industry & Markets Column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Industry</h2>
-              </div>
-              <div>
-                {isExtendedEditing ? (
-                  <CompactTagEditor
-                    tags={draftIndustries}
-                    onChange={setDraftIndustries}
-                    placeholder="Add industry (e.g. Semiconductor)..."
-                    tagBg="#E0E7FF"
-                    tagColor="#3730A3"
-                    disabled={isSavingProfile}
-                    columnLabel="Industry"
-                  />
-                ) : industries.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '36px 1fr',
-                        gap: '8px',
-                        padding: '4px 8px',
-                        background: '#F1F5F9',
-                        borderRadius: '4px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        color: '#475569',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div style={{ textAlign: 'center' }}>#</div>
-                      <div>Industry</div>
-                    </div>
-                    {industries.map((ind, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '8px',
-                          alignItems: 'center',
-                          background: '#F8FAFC',
-                          padding: '5px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #F1F5F9',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.7rem', background: '#E0E7FF', color: '#3730A3', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
-                            {ind}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : <strong style={C.muted}>N/A</strong>}
-              </div>
-            </section>
-
-            <section style={C.card}>
-              <div style={C.cardHeader}>
-                <h2 style={C.h2}>Markets & Customers</h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {/* Markets */}
-                <div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active market</span>
-                  {isExtendedEditing ? (
-                    <CompactTagEditor
-                      tags={draftMarkets}
-                      onChange={setDraftMarkets}
-                      placeholder="Add market (e.g. South Korea)..."
-                      tagBg="#F1F5F9"
-                      tagColor="#334155"
-                      disabled={isSavingProfile}
-                      columnLabel="Active Market"
-                    />
-                  ) : markets.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '8px',
-                          padding: '4px 8px',
-                          background: '#F1F5F9',
-                          borderRadius: '4px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          color: '#475569',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center' }}>#</div>
-                        <div>Active Market</div>
-                      </div>
-                      {markets.map((m, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '36px 1fr',
-                            gap: '8px',
-                            alignItems: 'center',
-                            background: '#F8FAFC',
-                            padding: '5px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #F1F5F9',
-                          }}
-                        >
-                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
-                              {m}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <strong style={C.muted}>N/A</strong>}
-                </div>
-
-                {/* Customers */}
-                <div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target customers</span>
-                  {isExtendedEditing ? (
-                    <CompactTagEditor
-                      tags={draftTargetCustomers}
-                      onChange={setDraftTargetCustomers}
-                      placeholder="Add customer group (e.g. AI Server Providers)..."
-                      tagBg="#ECFDF5"
-                      tagColor="#065F46"
-                      disabled={isSavingProfile}
-                      columnLabel="Target Customer"
-                    />
-                  ) : targetCustomers.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '8px',
-                          padding: '4px 8px',
-                          background: '#F1F5F9',
-                          borderRadius: '4px',
-                          fontSize: '0.66rem',
-                          fontWeight: 700,
-                          color: '#475569',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div style={{ textAlign: 'center' }}>#</div>
-                        <div>Target Customer</div>
-                      </div>
-                      {targetCustomers.map((c, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '36px 1fr',
-                            gap: '8px',
-                            alignItems: 'center',
-                            background: '#F8FAFC',
-                            padding: '5px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #F1F5F9',
-                          }}
-                        >
-                          <div style={{ textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', background: '#ECFDF5', color: '#065F46', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, display: 'inline-block' }}>
-                              {c}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <strong style={C.muted}>N/A</strong>}
-                </div>
-              </div>
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
+
+        {/* Row 2: Markets & Customers (Full Width) */}
+        <section style={C.card}>
+          <div style={C.cardHeader}>
+            <h2 style={C.h2}>Markets & Customers</h2>
+          </div>
+          <div
+            className={styles.marketsCustomersGrid}
+            style={isDrawerMode ? { gridTemplateColumns: '1fr' } : undefined}
+          >
+            {/* Markets */}
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Active Market</span>
+              {isExtendedEditing ? (
+                <CompactTagEditor
+                  tags={draftMarkets}
+                  onChange={setDraftMarkets}
+                  placeholder="Add market (e.g. South Korea)..."
+                  tagBg="#F1F5F9"
+                  tagColor="#334155"
+                  disabled={isSavingProfile}
+                  columnLabel="Active Market"
+                />
+              ) : (
+                <TruncatedNumberedList
+                  items={markets}
+                  columnLabel="Active Market"
+                  tagBg="#F1F5F9"
+                  tagColor="#334155"
+                />
+              )}
+            </div>
+
+            {/* Customers */}
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '6px' }}>Target Customers</span>
+              {isExtendedEditing ? (
+                <CompactTagEditor
+                  tags={draftTargetCustomers}
+                  onChange={setDraftTargetCustomers}
+                  placeholder="Add customer group (e.g. AI Server Providers)..."
+                  tagBg="#ECFDF5"
+                  tagColor="#065F46"
+                  disabled={isSavingProfile}
+                  columnLabel="Target Customer"
+                />
+              ) : (
+                <TruncatedNumberedList
+                  items={targetCustomers}
+                  columnLabel="Target Customer"
+                  tagBg="#ECFDF5"
+                  tagColor="#065F46"
+                />
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     );
   };

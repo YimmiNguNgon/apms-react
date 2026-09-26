@@ -20,21 +20,21 @@ export const AdminMyEnterprisePage: React.FC<{ setActivePage: (page: string) => 
         setOwnerProfile(data || null);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('errors.loadFailed', 'Không thể tải hồ sơ doanh nghiệp chủ quản.'));
+        setError(err instanceof Error ? err.message : t('errors.loadFailed', 'Unable to load enterprise profile.'));
       })
       .finally(() => setLoading(false));
   }, [t]);
 
   const handleEnterpriseCreated = (created: ProfileResponse) => {
     setOwnerProfile(created);
-    setSuccessToast('Doanh nghiệp chủ quản đã được thiết lập thành công.');
+    setSuccessToast('My Enterprise has been successfully configured.');
     setTimeout(() => setSuccessToast(null), 5000);
   };
 
   if (loading) {
     return (
       <div style={{ padding: 24, minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
-        Đang tải thông tin hồ sơ doanh nghiệp...
+        Loading enterprise profile...
       </div>
     );
   }
@@ -42,7 +42,7 @@ export const AdminMyEnterprisePage: React.FC<{ setActivePage: (page: string) => 
   if (error) {
     return (
       <div style={{ padding: 24, color: '#EF4444' }}>
-        Lỗi: {error}
+        Error: {error}
       </div>
     );
   }

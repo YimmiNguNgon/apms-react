@@ -107,16 +107,16 @@ export interface CompanyRecentAssessmentSummaryDto {
 }
 
 export const TREND_LABELS: Record<RelationshipTrendType, string> = {
-  NEWLY_SCORED: 'Mới đánh giá',
-  IMPROVING: 'Mức độ thân thiết tăng',
-  DECLINING: 'Mức độ thân thiết giảm',
-  STABLE: 'Ổn định',
+  NEWLY_SCORED: 'Newly Assessed',
+  IMPROVING: 'Closeness Improving',
+  DECLINING: 'Closeness Declining',
+  STABLE: 'Stable',
 };
 
 export interface TrendInfo {
   trendType: RelationshipTrendType;
-  label: string; // "Mới đánh giá" | "Mức độ thân thiết tăng" | "Mức độ thân thiết giảm" | "Ổn định"
-  nodeBadgeText: string; // "Mới đánh giá" | "↑ +X" | "↓ -X" | "→ 0"
+  label: string; // "Newly Assessed" | "Closeness Improving" | "Closeness Declining" | "Stable"
+  nodeBadgeText: string; // "Newly Assessed" | "↑ +X" | "↓ -X" | "→ 0"
   deltaScore: number | null;
   badgeColors: { bg: string; text: string; border: string };
   isRecent: boolean;
@@ -173,7 +173,7 @@ export const deriveTrendInfo = (
     return {
       trendType: 'NEWLY_SCORED',
       label: TREND_LABELS.NEWLY_SCORED,
-      nodeBadgeText: 'Mới đánh giá',
+      nodeBadgeText: 'Newly Assessed',
       deltaScore: null,
       badgeColors: { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }, // soft teal/green
       isRecent: true,
@@ -1689,7 +1689,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           flexShrink: 0,
         }}
       >
-        [Chưa đánh giá]
+        [{t('closeness.unassessed', 'Not Evaluated')}]
       </span>
     );
   };
@@ -2168,7 +2168,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           }
         } catch (err: any) {
           console.error("Failed to fetch AI recommendations:", err);
-          window.alert("Lỗi tải AI: " + (err.message || String(err)));
+          window.alert("Failed to load AI recommendations: " + (err.message || String(err)));
         } finally {
           setLoadingAi(false);
         }
@@ -2470,7 +2470,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
             {(() => {
               const meetings = selectedNode.meetings || [];
               if (meetings.length === 0) {
-                return <p style={{ fontSize: '12px', color: '#64748b' }}>Không có lịch họp nào.</p>;
+                return <p style={{ fontSize: '12px', color: '#64748b' }}>{t('drawer.noMeetings', 'No scheduled meetings.')}</p>;
               }
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -2496,7 +2496,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', gap: '16px', color: '#64748b' }}>
               <div className="cds--loading" style={{ width: '40px', height: '40px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontSize: '13px', fontWeight: 600 }}>Vui lòng đợi, AI đang phân tích mạng lưới...</div>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>{t('drawer.loadingAi', 'Please wait, AI is analyzing the network...')}</div>
               <style>{`
                 @keyframes spin { 100% { transform: rotate(360deg); } }
               `}</style>
@@ -2508,7 +2508,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
         if (!aiData) {
           return (
             <div style={{ padding: '20px', color: '#64748b', fontSize: '13px', textAlign: 'center' }}>
-              Không thể tải dữ liệu AI tại thời điểm này.
+              {t('drawer.aiDataUnavailable', 'Unable to load AI data at this time.')}
             </div>
           );
         }
@@ -2806,22 +2806,22 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
           <div ref={canvasContainerRef} className="relationship-network-canvas" style={{ width: '100%', minHeight: '680px', background: '#f8fafc', borderRadius: '6px', border: '1px solid var(--cds-border-subtle-00)', overflow: 'hidden', position: 'relative' }}>
             {loadError ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
-                <div><AlertCircle size={36} style={{ color: '#dc2626', marginBottom: '12px' }} /><strong style={{ display: 'block', fontSize: '14px', color: '#991b1b' }}>Không thể tải dữ liệu mạng lưới quan hệ.</strong><span style={{ fontSize: '12px', color: '#64748b' }}>{loadError}</span></div>
+                <div><AlertCircle size={36} style={{ color: '#dc2626', marginBottom: '12px' }} /><strong style={{ display: 'block', fontSize: '14px', color: '#991b1b' }}>{t('network.loadError', 'Unable to load relationship network data.')}</strong><span style={{ fontSize: '12px', color: '#64748b' }}>{loadError}</span></div>
               </div>
             ) : nodes.length === 0 ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div>
                   <Building size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
-                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>Chưa có dữ liệu quan hệ doanh nghiệp.</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Chưa có quan hệ hợp lệ để hiển thị trong mạng lưới.</span>
+                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>{t('network.emptyData', 'No business relationship data yet. Please try refreshing.')}</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{t('network.noValidRelationships', 'No valid relationships to display in the network.')}</span>
                 </div>
               </div>
             ) : positionedNodes.length === 0 ? (
               <div style={{ minHeight: '680px', display: 'grid', placeItems: 'center', padding: '32px', textAlign: 'center' }}>
                 <div>
                   <Search size={36} style={{ color: '#94a3b8', marginBottom: '12px' }} />
-                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>Không có quan hệ phù hợp với bộ lọc hiện tại.</strong>
-                  <span style={{ fontSize: '12px', color: '#64748b' }}>Hãy điều chỉnh bộ lọc hoặc chọn Reset để xem toàn bộ mạng lưới.</span>
+                  <strong style={{ display: 'block', fontSize: '14px', color: '#1e293b', marginBottom: '6px' }}>{t('network.emptyFiltered', 'No partners match the current filters. Please adjust the industry or relationship type filters.')}</strong>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>{t('network.adjustFilterOrReset', 'Please adjust the filters or click Reset to view the entire network.')}</span>
                 </div>
               </div>
             ) : (
@@ -3242,9 +3242,9 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     <span>
                       {groupCounts[activeRelationshipGroup] === 0
                         ? (activeRelationshipGroup === 'ALL'
-                            ? 'Chưa có dữ liệu quan hệ doanh nghiệp.'
-                            : `Chưa có doanh nghiệp thuộc nhóm ${getGroupFilterLabel(activeRelationshipGroup)}.`)
-                        : 'Không có doanh nghiệp phù hợp với bộ lọc hiện tại.'}
+                            ? 'No company relationship data available.'
+                            : `No companies found in the ${getGroupFilterLabel(activeRelationshipGroup)} group.`)
+                        : t('network.noMatchingCompanies', 'No companies match the current filter.')}
                     </span>
                   </div>
                 )}
@@ -3300,7 +3300,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         <div style={{ fontSize: '10.5px', color: isAssessed ? '#86efac' : '#94a3b8', marginTop: '2px', fontWeight: 600 }}>
                           {isAssessed && summary
                             ? `${summary.score}/100 · Rank ${summary.rank}`
-                            : t('closeness.unassessed', 'Chưa đánh giá')}
+                            : t('closeness.unassessed', 'Not Evaluated')}
                         </div>
 
                         {trend && (
@@ -3312,7 +3312,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             ) : (
                               <>
                                 <div style={{ fontWeight: 700, color: trend.trendType === 'IMPROVING' ? '#6ee7b7' : (trend.trendType === 'DECLINING' ? '#fca5a5' : '#93c5fd') }}>
-                                  {trend.deltaScore !== null && trend.deltaScore > 0 ? `↑ +${trend.deltaScore}` : (trend.deltaScore !== null && trend.deltaScore < 0 ? `↓ ${trend.deltaScore}` : '→ 0')} điểm · {trend.label}
+                                  {trend.deltaScore !== null && trend.deltaScore > 0 ? `↑ +${trend.deltaScore}` : (trend.deltaScore !== null && trend.deltaScore < 0 ? `↓ ${trend.deltaScore}` : '→ 0')} {t('closeness.pts', 'pts')} · {trend.label}
                                 </div>
                                 {summary?.previousAssessment && summary?.latestAssessment && (
                                   <div style={{ color: '#cbd5e1', marginTop: '3px', fontSize: '9.5px' }}>
@@ -3421,7 +3421,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     }}
                   >
                     <span>ℹ️</span>
-                    <span>{t('network.noMatchingCompanies', 'Không có doanh nghiệp phù hợp với bộ lọc hiện tại.')}</span>
+                    <span>{t('network.noMatchingCompanies', 'No companies match the current filter.')}</span>
                   </div>
                 )}
               </>
@@ -3469,7 +3469,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         gap: '4px',
                       }}
                     >
-                      ← {t('sidebar.backToOverview', 'Tổng quan')}
+                      ← {t('sidebar.backToOverview', 'Overview')}
                     </button>
                     <button
                       type="button"
@@ -3488,7 +3488,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         fontWeight: 700,
                         lineHeight: 1,
                       }}
-                      title={t('common.close', 'Đóng')}
+                      title={t('common.close', 'Close')}
                     >
                       ✕
                     </button>
@@ -3571,7 +3571,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                   {/* Closeness Section */}
                   <div style={{ borderTop: '1px solid var(--cds-border-subtle-00)', paddingTop: '10px' }}>
                     <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.4px', marginBottom: '8px' }}>
-                      {t('closeness.headerTitle', 'Mức độ thân thiết')}
+                      {t('closeness.headerTitle', 'Relationship Closeness')}
                     </div>
 
                     {selectedUnreadState && (
@@ -3593,8 +3593,8 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#C026D3', flexShrink: 0 }} />
                         <span>
                           {selectedUnreadState.type === 'INITIAL_ASSESSMENT'
-                            ? 'Có đánh giá mức độ thân thiết mới chưa xem'
-                            : 'Có bản cập nhật đánh giá chưa xem'}
+                            ? t('closeness.newAssessmentUnread', 'New unviewed closeness assessment')
+                            : t('closeness.updateAssessmentUnread', 'Unviewed assessment update')}
                         </span>
                       </div>
                     )}
@@ -3603,7 +3603,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       /* Ineligible (Competitor / Potential Partner) */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ fontSize: '11.5px', color: '#64748b', fontStyle: 'italic', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                          {t('closeness.notApplicable', 'Không áp dụng cho loại quan hệ này.')}
+                          {t('closeness.notApplicable', 'Not applicable to this relationship type.')}
                         </div>
                         <button
                           type="button"
@@ -3621,7 +3621,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             textAlign: 'center',
                           }}
                         >
-                          {t('closeness.viewProfile', 'Xem hồ sơ')} →
+                          {t('closeness.viewProfile', 'View Profile')} →
                         </button>
                       </div>
                     ) : isAssessed && summary ? (
@@ -3665,7 +3665,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                               <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.4px' }}>
-                                Cập nhật gần nhất
+                                {t('closeness.latestUpdate', 'Latest Update')}
                               </span>
                               <span
                                 style={{
@@ -3686,19 +3686,19 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             {summary.trendInfo.trendType === 'NEWLY_SCORED' ? (
                               <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Đánh giá:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.assessment', 'Assessment:')}</span>
                                   <strong style={{ color: '#0f172a' }}>
                                     {summary.latestAssessment.formattedVersion || `V${summary.latestAssessment.versionNumber}`} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
                                   </strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Người thực hiện:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.evaluator', 'Evaluator:')}</span>
                                   <span style={{ color: '#334155', fontWeight: 500 }}>
                                     {formatActorLabel(summary.latestAssessment.actorRole, summary.latestAssessment.assessmentType)}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Thời gian:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.time', 'Time:')}</span>
                                   <span style={{ color: '#334155', fontWeight: 500 }}>
                                     {formatDateTime(summary.latestAssessment.finalizedAt)}
                                   </span>
@@ -3707,21 +3707,21 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                             ) : (
                               <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Hiện tại:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.current', 'Current:')}</span>
                                   <strong style={{ color: '#0f172a' }}>
                                     {summary.latestAssessment.formattedVersion || `V${summary.latestAssessment.versionNumber}`} · {summary.latestAssessment.score}/100 · Rank {summary.latestAssessment.rank}
                                   </strong>
                                 </div>
                                 {summary.previousAssessment && (
                                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#64748b' }}>Trước đó:</span>
+                                    <span style={{ color: '#64748b' }}>{t('closeness.previous', 'Previous:')}</span>
                                     <span style={{ color: '#475569' }}>
                                       {summary.previousAssessment.formattedVersion || `V${summary.previousAssessment.versionNumber}`} · {summary.previousAssessment.score}/100 · Rank {summary.previousAssessment.rank}
                                     </span>
                                   </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Thay đổi:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.change', 'Change:')}</span>
                                   <strong
                                     style={{
                                       color:
@@ -3737,11 +3737,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                       : summary.trendInfo.deltaScore !== null && summary.trendInfo.deltaScore < 0
                                       ? `↓ ${summary.trendInfo.deltaScore}`
                                       : '→ 0'}{' '}
-                                    điểm
+                                    {t('closeness.pts', 'pts')}
                                   </strong>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Xu hướng:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.trend', 'Trend:')}</span>
                                   <span
                                     style={{
                                       fontWeight: 600,
@@ -3757,13 +3757,13 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Người thực hiện:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.evaluator', 'Evaluator:')}</span>
                                   <span style={{ color: '#334155', fontWeight: 500 }}>
                                     {formatActorLabel(summary.latestAssessment.actorRole, summary.latestAssessment.assessmentType)}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span style={{ color: '#64748b' }}>Thời gian:</span>
+                                  <span style={{ color: '#64748b' }}>{t('closeness.time', 'Time:')}</span>
                                   <span style={{ color: '#334155', fontWeight: 500 }}>
                                     {formatDateTime(summary.latestAssessment.finalizedAt)}
                                   </span>
@@ -3776,7 +3776,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                         {/* 6 Criteria Grid */}
                         <div>
                           <div style={{ fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                            {t('closeness.criteriaBreakdown', 'Tiêu chí đánh giá')}
+                            {t('closeness.criteriaBreakdown', 'Evaluation Criteria')}
                           </div>
                           <div
                             style={{
@@ -3819,11 +3819,11 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
                         {/* Last Assessment Date */}
                         <div style={{ fontSize: '11px', color: '#64748b' }}>
-                          <span>{t('closeness.lastAssessment', 'Đánh giá gần nhất:')} </span>
+                          <span>{t('closeness.lastAssessment', 'Latest Assessment:')} </span>
                           <strong style={{ color: '#334155' }}>{formatDate(summary.completedAt) || '—'}</strong>
                         </div>
 
-                        {/* CTAs (Correction 3: Xem đánh giá & Xem hồ sơ) */}
+                        {/* CTAs (View Assessment & View Profile) */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
                           <button
                             type="button"
@@ -3844,7 +3844,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                               gap: '4px',
                             }}
                           >
-                            {t('closeness.viewAssessment', 'Xem đánh giá')} →
+                            {t('closeness.viewAssessment', 'View Assessment')} →
                           </button>
                           <button
                             type="button"
@@ -3862,7 +3862,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                               textAlign: 'center',
                             }}
                           >
-                            {t('closeness.viewProfile', 'Xem hồ sơ')}
+                            {t('closeness.viewProfile', 'View Profile')}
                           </button>
                         </div>
                       </div>
@@ -3871,10 +3871,10 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px' }}>
                           <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '2px' }}>
-                            {t('closeness.notAssessedYet', 'Chưa có đánh giá chính thức.')}
+                            {t('closeness.notAssessedYet', 'No formal assessment yet.')}
                           </div>
                           <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            {t('closeness.unassessedDesc', 'Doanh nghiệp này chưa được đánh giá mức độ thân thiết.')}
+                            {t('closeness.unassessedDesc', 'This company has not been assessed for relationship closeness.')}
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -3897,7 +3897,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                               gap: '4px',
                             }}
                           >
-                            {t('closeness.viewAssessment', 'Xem đánh giá')} →
+                            {t('closeness.viewAssessment', 'View Assessment')} →
                           </button>
                           <button
                             type="button"
@@ -3915,7 +3915,7 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                               textAlign: 'center',
                             }}
                           >
-                            {t('closeness.viewProfile', 'Xem hồ sơ')}
+                            {t('closeness.viewProfile', 'View Profile')}
                           </button>
                         </div>
                       </div>
@@ -3945,7 +3945,10 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
 
                 {!closenessAnalytics.isEligible ? (
                   <div style={{ background: 'var(--cds-layer-01, #f8fafc)', border: '1px solid var(--cds-border-subtle-00, #e2e8f0)', borderRadius: '6px', padding: '12px', fontSize: '11.5px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', lineHeight: 1.4 }}>
-                    Relationship Closeness không áp dụng cho nhóm {getGroupFilterLabel(activeRelationshipGroup)}.
+                    {t('closeness.notApplicableGroup', {
+                      defaultValue: `Relationship Closeness is not applicable to the ${getGroupFilterLabel(activeRelationshipGroup)} group.`,
+                      group: getGroupFilterLabel(activeRelationshipGroup)
+                    })}
                   </div>
                 ) : (
                   <>
@@ -3956,12 +3959,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         {[
-                          { key: 'ALL' as RankFilter, label: t('closeness.all', 'Tất cả'), count: closenessAnalytics.totalEligible },
+                          { key: 'ALL' as RankFilter, label: t('closeness.all', 'All'), count: closenessAnalytics.totalEligible },
                           { key: 'A' as RankFilter, label: 'Rank A', count: closenessAnalytics.rankA, color: '#10B981' },
                           { key: 'B' as RankFilter, label: 'Rank B', count: closenessAnalytics.rankB, color: '#2563EB' },
                           { key: 'C' as RankFilter, label: 'Rank C', count: closenessAnalytics.rankC, color: '#F59E0B' },
                           { key: 'D' as RankFilter, label: 'Rank D', count: closenessAnalytics.rankD, color: '#EF4444' },
-                          { key: 'UNASSESSED' as RankFilter, label: t('closeness.unassessed', 'Chưa đánh giá'), count: closenessAnalytics.unassessed, color: '#94A3B8' },
+                          { key: 'UNASSESSED' as RankFilter, label: t('closeness.unassessed', 'Not Evaluated'), count: closenessAnalytics.unassessed, color: '#94A3B8' },
                         ].map((r) => {
                           const isActive = rankFilter === r.key;
                           const isDisabled = r.count === 0 && r.key !== 'ALL';
@@ -4017,12 +4020,12 @@ export const RelationshipMap: React.FC<RelationshipMapProps> = ({ setActivePage 
                     <div style={{ borderTop: '1px dashed var(--cds-border-subtle-00, #e2e8f0)', marginTop: '10px', paddingTop: '8px' }}>
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--cds-text-primary, #475569)', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                          Cập nhật đánh giá gần đây
+                          {t('closeness.recentUpdates', 'Recent Assessment Updates')}
                         </span>
                       </div>
                       {recentAssessmentUpdates.length === 0 ? (
                         <div style={{ fontSize: '11px', color: 'var(--cds-text-secondary, #64748b)', fontStyle: 'italic', padding: '2px 0' }}>
-                          Không có cập nhật đánh giá gần đây.
+                          {t('closeness.noRecentUpdates', 'No recent assessment updates.')}
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>

@@ -48,6 +48,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
       { value: 'USER_ROLES_UPDATED', label: 'USER_ROLES_UPDATED' },
       { value: 'LOGIN', label: 'LOGIN' },
       { value: 'LOGOUT', label: 'LOGOUT' },
+      { value: 'AUTHENTICATOR_RESET', label: 'AUTHENTICATOR_RESET' },
       { value: 'COMPANY_PROFILE_UPDATED', label: 'COMPANY_PROFILE_UPDATED' },
     ],
     [t]
@@ -276,6 +277,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                 <table className="admin-table">
                   <thead>
                     <tr>
+                      <th style={{ width: '48px', textAlign: 'center' }}>#</th>
                       <th>{t('table.timestamp')}</th>
                       <th>{t('table.actor')}</th>
                       <th>{t('table.action')}</th>
@@ -292,6 +294,9 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
 
                       return (
                         <tr key={log.id || index}>
+                          <td style={{ textAlign: 'center', width: '48px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                            {page * pageSize + index + 1}
+                          </td>
                           <td className="admin-mono" style={{ whiteSpace: 'nowrap', fontSize: '12px', color: 'var(--text-muted)' }}>
                             {timeStr}
                           </td>
@@ -320,7 +325,7 @@ export const ActivityAudit: React.FC<{ defaultTab?: Tab }> = ({ defaultTab = 'au
                     })}
                     {filteredLogs.length === 0 && (
                       <tr>
-                        <td colSpan={5}>
+                        <td colSpan={6}>
                           <div className="workspace-empty">{t('table.noLogs', 'No audit logs found.')}</div>
                         </td>
                       </tr>

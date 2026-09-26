@@ -45,7 +45,10 @@
     "mappedConnections": "Mapped Connections",
     "showingL2": "Showing 12 of {{total}} second-degree connections",
     "showAll": "Show all",
-    "expanded": "Expanded"
+    "noMatchingCompanies": "No companies match the current filter.",
+    "loadError": "Unable to load relationship network data.",
+    "noValidRelationships": "No valid relationships to display in the network.",
+    "adjustFilterOrReset": "Please adjust the filters or click Reset to view the entire network."
   },
   "relationshipTypes": {
     "partnerWith": "Partner",
@@ -120,7 +123,39 @@
     "aiRecommendationsTitle": "Prescriptive AI Recommendations",
     "highPriority": "HIGH PRIORITY",
     "mediumPriority": "MEDIUM PRIORITY",
-    "lowPriority": "LOW PRIORITY"
+    "lowPriority": "LOW PRIORITY",
+    "noMeetings": "No scheduled meetings.",
+    "loadingAi": "Please wait, AI is analyzing the network...",
+    "aiDataUnavailable": "Unable to load AI data at this time."
+  },
+  "closeness": {
+    "title": "Relationship Closeness",
+    "headerTitle": "Relationship Closeness",
+    "loading": "Loading...",
+    "rankDistribution": "Rank Distribution",
+    "all": "All",
+    "unassessed": "Not Evaluated",
+    "recentUpdates": "Recent Assessment Updates",
+    "noRecentUpdates": "No recent assessment updates.",
+    "notApplicable": "Not applicable to this relationship type.",
+    "notApplicableGroup": "Relationship Closeness is not applicable to the {{group}} group.",
+    "viewProfile": "View Profile",
+    "viewAssessment": "View Assessment",
+    "notAssessedYet": "No formal assessment yet.",
+    "unassessedDesc": "This company has not been assessed for relationship closeness.",
+    "criteriaBreakdown": "Evaluation Criteria",
+    "lastAssessment": "Latest Assessment:",
+    "latestUpdate": "Latest Update",
+    "assessment": "Assessment:",
+    "evaluator": "Evaluator:",
+    "time": "Time:",
+    "current": "Current:",
+    "previous": "Previous:",
+    "change": "Change:",
+    "pts": "pts",
+    "trend": "Trend:",
+    "newAssessmentUnread": "New unviewed closeness assessment",
+    "updateAssessmentUnread": "Unviewed assessment update"
   },
   "node": {
     "noName": "No name"
