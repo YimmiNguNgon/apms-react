@@ -30,8 +30,10 @@ import NewsTab from './companyDetail/NewsTab';
 import DocumentsTab, { type ContractTabHandle } from './companyDetail/DocumentsTab';
 import TruncatedNumberedList from './companyDetail/TruncatedNumberedList';
 import styles from './CompanyDetail.module.css';
-import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2 } from 'lucide-react';
+import { ExternalLink, HelpCircle, AlertCircle, Info, Sparkles, ArrowLeft, History, Edit3, Plus, Trash2, X } from 'lucide-react';
 import { ProfileVersionHistoryModal } from '../components/profile/ProfileVersionHistoryModal';
+import { IndustrySelectionModal } from '../components/CandidateReview/IndustrySelectionModal';
+import { industryApi } from '../API/industryApi';
 import { AccessDeniedPage } from '../components/AccessDeniedPage';
 import { validateWebsite, validateEmail, validatePhone } from '../utils/companyProfileValidation';
 
@@ -523,6 +525,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   const [draftAddress, setDraftAddress] = useState('');
   // Business Fields draft
   const [draftIndustries, setDraftIndustries] = useState<string[]>([]);
+  const [isIndustryModalOpen, setIsIndustryModalOpen] = useState(false);
   const [draftMarkets, setDraftMarkets] = useState<string[]>([]);
   const [draftTargetCustomers, setDraftTargetCustomers] = useState<string[]>([]);
   const [draftProducts, setDraftProducts] = useState<Array<{ name: string; category?: string; description?: string }>>([]);
@@ -1469,6 +1472,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
     // 4. Only exit edit mode if all dirty sections succeeded
     if (profileSavedSuccessfully && financialSavedSuccessfully && contractSavedSuccessfully) {
+      industryApi.invalidateCache();
       setReloadTrigger(prev => prev + 1);
       setIsInlineEditing(false);
       setEditBaseline(null);
@@ -2226,15 +2230,71 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             </div>
             <div>
               {isExtendedEditing ? (
-                <CompactTagEditor
-                  tags={draftIndustries}
-                  onChange={setDraftIndustries}
-                  placeholder="Add industry (e.g. Semiconductor)..."
-                  tagBg="#E0E7FF"
-                  tagColor="#3730A3"
-                  disabled={isSavingProfile}
-                  columnLabel="Industry"
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {draftIndustries.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {draftIndustries.map((ind, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                  gap: '5px',
+                              fontSize: '0.72rem',
+                  background: '#E0E7FF',
+                  color: '#3730A3',
+                  padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <span>{ind}</span>
+                            <button
+                              type="button"
+                              onClick={() => setDraftIndustries(draftIndustries.filter((_, i) => i !== idx))}disabled={isSavingProfile}
+                  style={{
+                background: 'none',
+                                border: 'none',
+                                color: '#4338CA',
+                                cursor: isSavingProfile ? 'not-allowed' : 'pointer',
+                                padding: '0 1px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                              title={`Remove ${ind}`}
+                              aria-label={`Remove ${ind}`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setIsIndustryModalOpen(true)}
+                        disabled={isSavingProfile}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          color: '#2563EB',
+                          background: '#EFF6FF',
+                          border: '1px solid #BFDBFE',
+                          borderRadius: '5px',
+                          cursor: isSavingProfile ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        <Plus size={13} />
+                        <span>Add</span>
+                      </button>
+                    </div>
+                  </div>
               ) : (
                 <TruncatedNumberedList
                   items={industries}
@@ -3084,6 +3144,13 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
             onClose={() => setIsVersionHistoryModalOpen(false)}
           />
         )}
+
+        <IndustrySelectionModal
+          isOpen={isIndustryModalOpen}
+          initialSelected={draftIndustries}
+          onSave={(selected) => setDraftIndustries(selected)}
+          onClose={() => setIsIndustryModalOpen(false)}
+        />
       </div>
     </div>
   );

@@ -21,7 +21,7 @@ export const IndustrySelectionModal: React.FC<IndustrySelectionModalProps> = ({
   onSave,
   onClose,
 }) => {
-  const { catalog, loading, findCatalogMatch } = useIndustryCatalog();
+  const { catalog, loading, error, findCatalogMatch, fetchCatalog } = useIndustryCatalog(false);
 
   const [selectedCatalog, setSelectedCatalog] = useState<Set<string>>(new Set());
   const [proposedList, setProposedList] = useState<string[]>([]);
@@ -33,6 +33,13 @@ export const IndustrySelectionModal: React.FC<IndustrySelectionModalProps> = ({
 
   const otherInputRef = useRef<HTMLInputElement>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch catalog once when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchCatalog(false);
+    }
+  }, [isOpen, fetchCatalog]);
 
   // Synchronize state when modal opens or initialSelected/catalog changes
   useEffect(() => {
@@ -224,9 +231,13 @@ export const IndustrySelectionModal: React.FC<IndustrySelectionModalProps> = ({
             <div className={styles.catalogList}>
               {loading ? (
                 <div className={styles.emptyCatalogText}>Loading industries...</div>
+              ) : error ? (
+                <div className={styles.emptyCatalogText} style={{ color: '#EF4444' }}>
+                  Unable to load industries.
+                </div>
               ) : filteredCatalog.length === 0 ? (
                 <div className={styles.emptyCatalogText}>
-                  {searchQuery ? 'No matching industries found in catalog.' : 'No industries available in catalog.'}
+                  {searchQuery ? 'No industries found.' : 'No industries available in catalog.'}
                 </div>
               ) : (
                 filteredCatalog.map((item) => {
