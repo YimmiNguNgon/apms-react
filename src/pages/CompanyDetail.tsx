@@ -449,7 +449,7 @@ const parseNavContext = (propCompanyId?: string): NavContext => {
     }
   }
 
-  if (sourceParam === 'project' && projectIdParam) {
+  if (sourceParam === 'project') {
     source = 'project';
   } else if (sourceParam === 'monitoring' || sourceParam === 'company-monitoring') {
     source = 'monitoring';
@@ -622,6 +622,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
 
   const contextProjectId = navContext.projectId ?? null;
   const contextProject = contextProjectId ? projects.find((p) => p.id === contextProjectId) ?? null : null;
+  const isProjectContext = navContext.source === 'project';
 
   const canEditListing =
     !!currentUser &&
@@ -981,7 +982,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
   };
 
   const handleStartEdit = () => {
-    if (!profile) return;
+    if (!profile || isProjectContext) return;
 
     const major = profile.majorVersion ?? (profile.version ? parseInt(profile.version.split('.')[0].replace(/\D/g, ''), 10) || 1 : 1);
     const rev = profile.revision ?? (profile.version && profile.version.includes('.') ? parseInt(profile.version.split('.')[1], 10) || 0 : 0);
@@ -2898,7 +2899,7 @@ export const CompanyDetail: React.FC<CompanyDetailProps> = ({ companyId, setActi
                 )}
 
                 {/* Direct Edit / Inline Edit Button for authorized Manager / Admin or Admin in My Enterprise */}
-                {profile && ((isAdminMyEnterprise ? ['overview', 'business-fields', 'board'].includes(activeTab) : (!isOwnerProfile && Boolean(profile.canEditProfile))) || isInlineEditing) && (
+                {profile && !isProjectContext && ((isAdminMyEnterprise ? ['overview', 'business-fields', 'board'].includes(activeTab) : (!isOwnerProfile && Boolean(profile.canEditProfile))) || isInlineEditing) && (
                   !isInlineEditing ? (
                     <button
                       type="button"
